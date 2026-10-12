@@ -166,9 +166,11 @@ class Council:
     """Runs a live multi-agent debate and synthesises a verdict."""
 
     def __init__(self, router: Any = None, store: Any = None,
-                 members: Optional[List[CouncilMember]] = None) -> None:
+                 members: Optional[List[CouncilMember]] = None,
+                 genome: Any = None) -> None:
         self.router = router
         self.store = store
+        self.genome = genome
         self.members = list(members) if members else list(COUNCIL_MEMBERS)
         self._live = self._has_live_provider(router)
         self._provider_failed = False
@@ -333,6 +335,7 @@ class Council:
                            for m in active]}
 
         latest: Dict[str, str] = {}
+        elapsed_map: Dict[str, float] = {}
         rounds_data: List[Dict[str, Any]] = []
         score = 0.0
         for r in range(1, rounds + 1):
@@ -343,6 +346,7 @@ class Council:
                        "name": m.name, "emoji": m.emoji, "round": r}
                 out = self._generate(m, self._round_prompt(topic, m, r, rounds, latest))
                 latest[m.id] = out["text"]
+                elapsed_map[m.id] = float(out.get("elapsed", 0.0))
                 if self.store is not None and sid:
                     self.store.add_council_message(
                         sid, r, m.id, out["text"], role="opinion",
@@ -364,6 +368,18 @@ class Council:
 
         verdict = self._verdict(topic, latest)
         inf = influence(active, latest, verdict["text"])
+        # Feed each member's verdict-alignment into its genome so standing
+        # genuinely rises / falls across sessions (the Agent Genome loop).
+        if self.genome is not None and inf:
+            for m in active:
+                d = inf.get(m.id, {})
+                self.genome.outcome_from_influence(
+                    m.id, alignment=float(d.get("alignment", 0.0)),
+                    standing_delta=int(d.get("standing_delta", 0)),
+                    consensus=round(score, 3),
+                    latency_ms=int(elapsed_map.get(m.id, 0.0) * 1000),
+                    detail={"session": sid},
+                )
         if self.store is not None and sid:
             self.store.update_council_session(
                 sid, status="done", verdict=verdict["text"],

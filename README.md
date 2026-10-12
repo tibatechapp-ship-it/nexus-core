@@ -95,6 +95,29 @@ by how well it agreed with the final decision.
 - **UI** — the ⚖️ topbar button opens the council panel: topic + rounds, live
   member bubbles, consensus bars, verdict card with influence, and history.
 
+## Agent Genome (v2.0 — جينوم الوكلاء)
+
+Every agent has a permanent genome: a persona, a lineage (generation / parent),
+and lifetime performance (runs, successes, latency, verdict alignment). The
+council feeds each member's outcome back into its genome, so **standing rises
+and falls across sessions** — the strong get promoted, the weak go to
+probation and can be re-trained.
+
+- **Engine** — `src/novamind/genome/`: pure `scoring.py` (success rate,
+  consensus, speed → a weighted 0-1 standing; `promoted` / `active` /
+  `probation`) plus a `Genome` manager over the SQLite `agent_genome` +
+  `genome_events` tables.
+- **Learning loop** — after every debate the council records each member's
+  verdict alignment, latency and consensus; the genome recomputes standing and
+  keeps an append-only timeline (born / outcome / council / edit / reset).
+- **API** — `GET /api/genome` (ranked agents), `GET /api/genome/{id}`
+  (detail + timeline), `PATCH /api/genome/{id}` (edit persona), `POST
+  /api/genome/{id}/reset` (re-train), `GET /api/genome/export`, `POST
+  /api/genome/import`.
+- **UI** — the 🧬 topbar button opens the genome panel: ranked agent cards with
+  🥇🥈🥉 badges, standing bars, status pills; click one for stats, its editable
+  persona, re-train, and its evolution timeline.
+
 ## Verify before shipping (must all pass)
 
 ```bash

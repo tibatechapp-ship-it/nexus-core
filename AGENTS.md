@@ -105,6 +105,29 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   bubbles, consensus bars, verdict card + influence, history).
 - Tests: `tests/test_council.py` (27).
 
+## v2.0 — Agent Genome (جينوم الوكلاء)
+- `src/novamind/genome/scoring.py`: pure scoring (no I/O). `success_rate`,
+  `avg_latency`, `consensus_avg`, `speed_score`, `compute_standing` (weighted
+  0.6 success / 0.3 consensus / 0.1 speed → 0-1), `classify` →
+  `promoted` (≥0.7) / `active` / `probation` (<0.4). Neutral standing 0.5.
+- `src/novamind/genome/genome.py`: `Genome` manager over the store — `seed`
+  (idempotent, carries emoji in meta), `record`, `outcome_from_influence`,
+  `reset`, `rank`, `detail`, `export`/`import_`. The store stays a dumb DB; the
+  manager owns the scoring math (no import cycle).
+- Store `agent_genome` + `genome_events` tables (SCHEMA_VERSION=3) with
+  `upsert_agent/get_agent/list_agents/update_agent/record_agent_outcome/
+  reset_agent/agent_timeline/genome_import`; `stats()` now has `agents`.
+- Council→genome loop: after the verdict, `debate_stream` calls
+  `genome.outcome_from_influence` per member (success = standing_delta>0,
+  consensus=round score, latency from elapsed_map, detail={session}). Wired via
+  `Council(genome=...)`; leave it None → council runs unchanged (back-compat).
+- `unified_agent.py`: imports `COUNCIL_MEMBERS` + `Genome`; `get_genome()`
+  singleton seeds from `COUNCIL_MEMBERS`; `get_council()` passes it. Endpoints
+  `/api/genome` (+ `/{id}` GET/PATCH, `/{id}/reset`, `/export`, `/import`).
+- UI: 🧬 topbar button → genome panel (ranked rows, 🥇🥈🥉, standing bars,
+  status pills; detail = stats + editable persona + re-train + timeline).
+- Tests: `tests/test_genome.py` (31, incl. the council↔genome loop).
+
 ## Decisions
 - 2026-10-12: unified as nexus-core v1.0.0 (merge, coexistence layout). Both old
   repos archived after release. Framework keeps its 99% gate; novamind layer

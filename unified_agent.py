@@ -44,7 +44,8 @@ from pydantic import BaseModel
 # NovaMind core
 from novamind.core.llm_router import LLMRouter
 from novamind.core.orchestrator import Orchestrator
-from novamind.council import Council
+from novamind.council import COUNCIL_MEMBERS, Council
+from novamind.genome import Genome
 TASK_TEMPLATES = {}
 from novamind.core.observability import metrics
 from novamind.core.mcp_server import NovaMindMCP
@@ -816,13 +817,27 @@ class CouncilRequest(BaseModel):
 
 
 _council: Optional[Council] = None
+_genome: Optional[Genome] = None
+
+
+def get_genome() -> Genome:
+    """Process-wide Agent Genome, backed by the shared SQLite store.
+
+    Seeded from the council roles on first use so every member has a genome
+    row to evolve from.
+    """
+    global _genome
+    if _genome is None:
+        _genome = Genome(store)
+        _genome.seed(members=COUNCIL_MEMBERS)
+    return _genome
 
 
 def get_council() -> Council:
     """Process-wide council, sharing the chat router + the SQLite store."""
     global _council
     if _council is None:
-        _council = Council(router=unified.router, store=store)
+        _council = Council(router=unified.router, store=store, genome=get_genome())
     return _council
 
 
@@ -892,6 +907,63 @@ async def council_session_delete(sid: str):
     if not ok:
         raise HTTPException(status_code=404, detail="council session not found")
     return {"deleted": True, "id": sid}
+
+
+# ═══════════════════════════════════════════════════════════
+# Agent Genome (جينوم الوكلاء) — v2.0
+# ═══════════════════════════════════════════════════════════
+class GenomePatch(BaseModel):
+    name: Optional[str] = None
+    persona: Optional[str] = None
+
+
+@app.get("/api/genome")
+async def genome_list():
+    """Every agent's genome, ranked by standing (best first)."""
+    return {"agents": get_genome().rank()}
+
+
+@app.get("/api/genome/export")
+async def genome_export():
+    """Export the whole genome (agents + timelines) as a downloadable JSON."""
+    payload = get_genome().export()
+    return JSONResponse(
+        content=payload,
+        headers={"Content-Disposition": 'attachment; filename="genome.json"'},
+    )
+
+
+@app.post("/api/genome/import")
+async def genome_import(body: Dict):
+    """Import agents from an exported genome (idempotent by agent_id)."""
+    n = get_genome().import_(body or {})
+    return {"imported": n}
+
+
+@app.get("/api/genome/{agent_id}")
+async def genome_detail(agent_id: str):
+    agent = get_genome().detail(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return agent
+
+
+@app.patch("/api/genome/{agent_id}")
+async def genome_patch(agent_id: str, req: GenomePatch):
+    """Edit an agent's persona / display name (does not touch its stats)."""
+    ok = store.update_agent(agent_id, name=req.name, persona=req.persona)
+    if not ok:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return store.get_agent(agent_id)
+
+
+@app.post("/api/genome/{agent_id}/reset")
+async def genome_reset(agent_id: str):
+    """Re-train an agent: zero its stats, bump generation, keep lineage."""
+    agent = get_genome().reset(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return agent
 
 
 if __name__ == "__main__":

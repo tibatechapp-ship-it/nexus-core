@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -89,6 +89,34 @@ CREATE TABLE IF NOT EXISTS traces (
 );
 CREATE INDEX IF NOT EXISTS idx_traces_conv ON traces(conversation_id, ts);
 CREATE INDEX IF NOT EXISTS idx_traces_ts ON traces(ts DESC);
+
+CREATE TABLE IF NOT EXISTS agent_genome (
+    agent_id        TEXT PRIMARY KEY,
+    name            TEXT NOT NULL DEFAULT '',
+    persona         TEXT NOT NULL DEFAULT '',
+    generation      INTEGER NOT NULL DEFAULT 1,
+    parent_id       TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'active',
+    runs            INTEGER NOT NULL DEFAULT 0,
+    successes       INTEGER NOT NULL DEFAULT 0,
+    failures        INTEGER NOT NULL DEFAULT 0,
+    latency_sum_ms  INTEGER NOT NULL DEFAULT 0,
+    consensus_sum   REAL NOT NULL DEFAULT 0,
+    consensus_n     INTEGER NOT NULL DEFAULT 0,
+    standing        REAL NOT NULL DEFAULT 0.5,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    meta            TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS genome_events (
+    id       TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    kind     TEXT NOT NULL DEFAULT '',
+    detail   TEXT NOT NULL DEFAULT '{}',
+    ts       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_genome_events ON genome_events(agent_id, ts);
 """
 
 
@@ -625,6 +653,200 @@ class SessionStore:
                       json.dumps(tr["plan"], ensure_ascii=False, indent=2), "```", ""]
         return "\n".join(lines)
 
+    # ── genome (v2.2 — Agent Genome) ─────────────────────────────────────
+    @staticmethod
+    def _row_to_agent(row: sqlite3.Row) -> Dict[str, Any]:
+        d = {k: row[k] for k in row.keys()}
+        d["meta"] = json.loads(d.get("meta") or "{}")
+        return d
+
+    def upsert_agent(self, agent_id: str, name: str = "", persona: str = "",
+                     parent_id: str = "", generation: int = 1,
+                     meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Create a genome row if absent; return the row either way."""
+        now = _now_ms()
+        with self._connect() as conn:
+            exists = conn.execute(
+                "SELECT agent_id FROM agent_genome WHERE agent_id = ?", (agent_id,)
+            ).fetchone()
+            if exists is None:
+                conn.execute(
+                    "INSERT INTO agent_genome (agent_id,name,persona,generation,parent_id,"
+                    "status,created_at,updated_at,meta) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (agent_id, name, persona, int(generation), parent_id, "active",
+                     now, now, json.dumps(meta or {}, ensure_ascii=False)),
+                )
+                conn.execute(
+                    "INSERT INTO genome_events (id,agent_id,kind,detail,ts)"
+                    " VALUES (?,?,?,?,?)",
+                    (_new_id("g"), agent_id, "born",
+                     json.dumps({"name": name}, ensure_ascii=False), now),
+                )
+        row = self.get_agent(agent_id)
+        assert row is not None
+        return row
+
+    def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        rows = self._sql("SELECT * FROM agent_genome WHERE agent_id = ?", (agent_id,))
+        return self._row_to_agent(rows[0]) if rows else None
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        rows = self._sql(
+            "SELECT * FROM agent_genome ORDER BY standing DESC, runs DESC, name ASC"
+        )
+        return [self._row_to_agent(r) for r in rows]
+
+    def update_agent(self, agent_id: str, name: Optional[str] = None,
+                     persona: Optional[str] = None, status: Optional[str] = None,
+                     meta: Optional[Dict[str, Any]] = None) -> bool:
+        sets: List[str] = []
+        params: List[Any] = []
+        if name is not None:
+            sets.append("name = ?")
+            params.append(name)
+        if persona is not None:
+            sets.append("persona = ?")
+            params.append(persona)
+        if status is not None:
+            sets.append("status = ?")
+            params.append(status)
+        if meta is not None:
+            sets.append("meta = ?")
+            params.append(json.dumps(meta, ensure_ascii=False))
+        if not sets:
+            return False
+        sets.append("updated_at = ?")
+        params.append(_now_ms())
+        params.append(agent_id)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE agent_genome SET {', '.join(sets)} WHERE agent_id = ?",
+                tuple(params),
+            )
+            ok = cur.rowcount > 0
+            if ok:
+                conn.execute(
+                    "INSERT INTO genome_events (id,agent_id,kind,detail,ts)"
+                    " VALUES (?,?,?,?,?)",
+                    (_new_id("g"), agent_id, "edit",
+                     json.dumps({"fields": [s.split(" =")[0] for s in sets
+                                            if not s.startswith("updated_at")]},
+                                ensure_ascii=False), _now_ms()),
+                )
+            return ok
+
+    def record_agent_outcome(self, agent_id: str, success: bool, latency_ms: int = 0,
+                             consensus: Optional[float] = None,
+                             standing: Optional[float] = None,
+                             status: Optional[str] = None, kind: str = "outcome",
+                             detail: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Append one outcome to an agent's stats. Standing/status come from the
+        caller (the Genome manager owns the scoring math)."""
+        now = _now_ms()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_genome WHERE agent_id = ?", (agent_id,)
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "INSERT INTO agent_genome (agent_id,name,created_at,updated_at)"
+                    " VALUES (?,?,?,?)",
+                    (agent_id, agent_id, now, now),
+                )
+                row = conn.execute(
+                    "SELECT * FROM agent_genome WHERE agent_id = ?", (agent_id,)
+                ).fetchone()
+            assert row is not None
+            runs = int(row["runs"]) + 1
+            successes = int(row["successes"]) + (1 if success else 0)
+            failures = int(row["failures"]) + (0 if success else 1)
+            latency_sum = int(row["latency_sum_ms"]) + int(latency_ms or 0)
+            consensus_sum = float(row["consensus_sum"]) + float(consensus or 0.0)
+            consensus_n = int(row["consensus_n"]) + (1 if consensus is not None else 0)
+            new_standing = float(standing) if standing is not None else float(row["standing"])
+            new_status = status or str(row["status"]) or "active"
+            conn.execute(
+                "UPDATE agent_genome SET runs=?,successes=?,failures=?,latency_sum_ms=?,"
+                "consensus_sum=?,consensus_n=?,standing=?,status=?,updated_at=?"
+                " WHERE agent_id=?",
+                (runs, successes, failures, latency_sum, consensus_sum, consensus_n,
+                 new_standing, new_status, now, agent_id),
+            )
+            conn.execute(
+                "INSERT INTO genome_events (id,agent_id,kind,detail,ts) VALUES (?,?,?,?,?)",
+                (_new_id("g"), agent_id, kind,
+                 json.dumps({
+                     "success": bool(success),
+                     "latency_ms": int(latency_ms or 0),
+                     "consensus": consensus,
+                     "standing": round(new_standing, 4),
+                     **(detail or {}),
+                 }, ensure_ascii=False), now),
+            )
+        out = self.get_agent(agent_id)
+        assert out is not None
+        return out
+
+    def reset_agent(self, agent_id: str, note: str = "") -> Optional[Dict[str, Any]]:
+        """Re-train: zero stats, neutral standing, bump generation."""
+        now = _now_ms()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT generation FROM agent_genome WHERE agent_id = ?", (agent_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            gen = int(row["generation"]) + 1
+            conn.execute(
+                "UPDATE agent_genome SET runs=0,successes=0,failures=0,latency_sum_ms=0,"
+                "consensus_sum=0,consensus_n=0,standing=0.5,status='active',"
+                "generation=?,updated_at=? WHERE agent_id=?",
+                (gen, now, agent_id),
+            )
+            conn.execute(
+                "INSERT INTO genome_events (id,agent_id,kind,detail,ts) VALUES (?,?,?,?,?)",
+                (_new_id("g"), agent_id, "reset",
+                 json.dumps({"generation": gen, "note": note}, ensure_ascii=False), now),
+            )
+        return self.get_agent(agent_id)
+
+    def agent_timeline(self, agent_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        rows = self._sql(
+            "SELECT * FROM genome_events WHERE agent_id = ? ORDER BY ts DESC LIMIT ?",
+            (agent_id, int(limit)),
+        )
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            d = {k: r[k] for k in r.keys()}
+            d["detail"] = json.loads(d.get("detail") or "{}")
+            out.append(d)
+        return out
+
+    def genome_import(self, agents: List[Dict[str, Any]]) -> int:
+        """Insert agents (and their events) that are not already present."""
+        imported = 0
+        now = _now_ms()
+        for a in agents:
+            agent_id = str(a.get("agent_id") or "")
+            if not agent_id or self.get_agent(agent_id) is not None:
+                continue
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO agent_genome (agent_id,name,persona,generation,parent_id,"
+                    "status,runs,successes,failures,latency_sum_ms,consensus_sum,consensus_n,"
+                    "standing,created_at,updated_at,meta) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (agent_id, str(a.get("name") or ""), str(a.get("persona") or ""),
+                     int(a.get("generation") or 1), str(a.get("parent_id") or ""),
+                     str(a.get("status") or "active"), int(a.get("runs") or 0),
+                     int(a.get("successes") or 0), int(a.get("failures") or 0),
+                     int(a.get("latency_sum_ms") or 0), float(a.get("consensus_sum") or 0),
+                     int(a.get("consensus_n") or 0), float(a.get("standing") or 0.5),
+                     int(a.get("created_at") or now), int(a.get("updated_at") or now),
+                     json.dumps(a.get("meta") or {}, ensure_ascii=False)),
+                )
+            imported += 1
+        return imported
+
     # ── stats ────────────────────────────────────────────────────────────
     def stats(self) -> Dict[str, Any]:
         def count(table: str) -> int:
@@ -638,6 +860,7 @@ class SessionStore:
             "council_sessions": count("council_sessions"),
             "council_messages": count("council_messages"),
             "traces": count("traces"),
+            "agents": count("agent_genome"),
         }
 
 
