@@ -1,0 +1,23 @@
+title = "NovaMind gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "novamind-api-keys"
+description = "API keys in docs examples"
+regex = '''(?i)(api[_-]?key|token|secret)[\s]*=[\s]*["']?([a-zA-Z0-9_\-]{20,})'''
+tags = ["key", "secret"]
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''.+_test\.py$''',
+    '''.+tests/.+\.py$''',
+    '''.+examples/.+\.py$''',
+]
+regexes = [
+    '''sk-YOUR-KEY-HERE''',
+    '''<API_KEY>''',
+    '''\$\{?[A-Z_]+\}?''',
+]

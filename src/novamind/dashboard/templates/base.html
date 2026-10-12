@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Hive Admin</title>
+<style>
+  body { font-family: system-ui; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
+  h1 { color: #38bdf8; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  pre { background: #1e293b; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 600px; }
+  button { background: #3b82f6; color: white; border: none; padding: 10px 20px;
+           cursor: pointer; border-radius: 5px; margin: 4px; }
+  button:hover { background: #2563eb; }
+  .card { background: #1e293b; padding: 15px; border-radius: 8px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+{% block content %}{% endblock %}
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

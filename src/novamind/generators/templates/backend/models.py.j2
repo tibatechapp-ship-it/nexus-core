@@ -1,0 +1,23 @@
+"""{{ ir.name }} — SQLAlchemy models."""
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Text, JSON
+from sqlalchemy.sql import func
+from .db import Base
+
+
+{% for entity in ir.entities %}
+class {{ entity.name }}(Base):
+    __tablename__ = "{{ entity.table_name }}"
+
+{% for f in entity.fields %}
+    {{ f.name }} = Column({% if f.type.value == 'int' %}Integer{% elif f.type.value == 'str' %}String({% if f.max_length %}{{ f.max_length }}{% else %}255{% endif %}){% elif f.type.value == 'bool' %}Boolean{% elif f.type.value == 'float' %}Float{% elif f.type.value == 'datetime' %}DateTime{% elif f.type.value == 'text' %}Text{% elif f.type.value == 'json' %}JSON{% else %}String(255){% endif %}{% if f.primary %}, primary_key=True{% endif %}{% if not f.nullable and not f.primary %}, nullable=False{% endif %}{% if f.unique %}, unique=True{% endif %}{% if f.default is not none %}, default={{ f.default }}{% endif %})
+{% endfor %}
+{% if entity.timestamps %}
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+{% endif %}
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+{% endfor %}

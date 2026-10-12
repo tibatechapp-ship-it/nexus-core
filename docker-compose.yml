@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════════════════
+# NovaMind-Hive v2.0 — Docker Compose
+# ═══════════════════════════════════════════════════════════
+version: '3.9'
+
+services:
+  novamind:
+    build: .
+    container_name: novamind-hive
+    restart: unless-stopped
+    env_file:
+      - .vault/secrets.env
+    volumes:
+      - ./logs:/app/logs
+      - ./memory:/app/memory
+      - ./nova:/app/nova
+    ports:
+      - "8080:8080"
+    networks:
+      - novamind-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: novamind-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - novamind-net
+
+networks:
+  novamind-net:
+    driver: bridge
+
+volumes:
+  redis-data:

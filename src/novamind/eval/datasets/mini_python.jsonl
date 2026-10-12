@@ -1,0 +1,3 @@
+{"id": "py-001", "prompt": "اكتب دالة add(a, b) تعيد مجموعهما", "test": "assert add(2, 3) == 5"}
+{"id": "py-002", "prompt": "اكتب دالة reverse(s) تعكس string", "test": "assert reverse('abc') == 'cba'"}
+{"id": "py-003", "prompt": "اكتب دالة is_even(n) تعيد True للزوجي", "test": "assert is_even(4) == True"}

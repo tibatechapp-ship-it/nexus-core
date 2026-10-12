@@ -1,0 +1,248 @@
+[
+  {
+    "name": "read_file",
+    "description": "Read the contents of a file.",
+    "danger_level": "safe",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "default": 50000
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  },
+  {
+    "name": "write_file",
+    "description": "Write content to a file.",
+    "danger_level": "warn",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ]
+    }
+  },
+  {
+    "name": "list_dir",
+    "description": "List files and directories in a path.",
+    "danger_level": "safe",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "default": "."
+        }
+      }
+    }
+  },
+  {
+    "name": "search_files",
+    "description": "Search for a pattern in files under a directory.",
+    "danger_level": "safe",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "default": "."
+        },
+        "max_results": {
+          "type": "integer",
+          "default": 30
+        }
+      },
+      "required": [
+        "pattern"
+      ]
+    }
+  },
+  {
+    "name": "edit_file",
+    "description": "Replace a unique string in a file.",
+    "danger_level": "warn",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "old": {
+          "type": "string"
+        },
+        "new": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "old",
+        "new"
+      ]
+    }
+  },
+  {
+    "name": "run_command",
+    "description": "Execute a shell command (whitelisted).",
+    "danger_level": "dangerous",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer",
+          "default": 30
+        },
+        "cwd": {
+          "type": "string",
+          "default": "/public/agent/novamind"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  },
+  {
+    "name": "run_python",
+    "description": "Run Python code and return output.",
+    "danger_level": "warn",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer",
+          "default": 20
+        }
+      },
+      "required": [
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "fetch_url",
+    "description": "Fetch the content of a URL (HTTP GET).",
+    "danger_level": "warn",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "default": 100000
+        },
+        "timeout": {
+          "type": "integer",
+          "default": 15
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  },
+  {
+    "name": "http_post",
+    "description": "Send HTTP POST with JSON body.",
+    "danger_level": "warn",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "json_body": {
+          "type": "object"
+        },
+        "timeout": {
+          "type": "integer",
+          "default": 15
+        }
+      },
+      "required": [
+        "url",
+        "json_body"
+      ]
+    }
+  },
+  {
+    "name": "git_status",
+    "description": "Get git status.",
+    "danger_level": "safe",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "git_commit",
+    "description": "Commit all changes with a message.",
+    "danger_level": "warn",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ]
+    }
+  },
+  {
+    "name": "git_log",
+    "description": "Show recent git commits.",
+    "danger_level": "safe",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "default": 10
+        }
+      }
+    }
+  },
+  {
+    "name": "git_diff",
+    "description": "Get diff of uncommitted changes.",
+    "danger_level": "safe",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string"
+        }
+      }
+    }
+  }
+]

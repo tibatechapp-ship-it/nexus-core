@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaMind Unified IDE</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+:root{--bg:#0a0e14;--panel:#12161f;--border:#1f2937;--accent:#38bdf8;--accent2:#818cf8;--text:#e2e8f0;--dim:#64748b;--green:#22c55e;--red:#ef4444}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Tahoma,sans-serif}
+body{background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.header{background:linear-gradient(135deg,var(--panel) 0%,#1e293b 100%);padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:1.2em;font-weight:bold;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.badge{font-size:.7em;padding:3px 8px;background:rgba(56,189,248,.15);color:var(--accent);border-radius:12px;border:1px solid var(--accent)}
+.main{flex:1;display:flex;overflow:hidden}
+.chat-panel{width:42%;min-width:300px;background:var(--panel);display:flex;flex-direction:column;border-left:1px solid var(--border)}
+.workspace{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.chat-box{flex:1;padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.msg{padding:10px 14px;border-radius:10px;line-height:1.6;max-width:95%;word-wrap:break-word;font-size:.9em}
+.user{background:linear-gradient(135deg,#1e40af,#3b82f6);align-self:flex-start}
+.ai{background:var(--panel);border:1px solid var(--border);align-self:flex-end;width:100%}
+.ai pre{background:#0a0e14;padding:10px;border-radius:6px;overflow-x:auto;margin:8px 0;direction:ltr;text-align:left;font-size:.85em;border:1px solid var(--border)}
+.ai code{font-family:'Consolas',monospace}
+.tool-start{background:rgba(56,189,248,.1);border:1px solid var(--accent);color:var(--accent);font-size:.8em;align-self:center;padding:5px 12px;border-radius:15px;font-family:monospace}
+.tool-end{background:rgba(34,197,94,.1);border:1px solid var(--green);color:var(--green);font-size:.75em;align-self:center;padding:4px 10px;border-radius:15px;font-family:monospace}
+.error{background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);font-size:.85em;align-self:center;padding:8px 14px;border-radius:8px}
+.input-area{padding:10px;border-top:1px solid var(--border);display:flex;gap:8px}
+textarea.input-box{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:8px;outline:none;resize:none;height:44px;max-height:100px;font-size:.9em;font-family:inherit}
+button{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0a0e14;border:none;padding:0 18px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:.9em}
+button:disabled{opacity:.4;cursor:not-allowed}
+.explorer{width:200px;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;padding:8px;font-size:.8em}
+.tree-item{padding:4px 6px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tree-item:hover{background:rgba(56,189,248,.1)}
+.tree-children{padding-right:12px}
+.hidden{display:none}
+.editor-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.editor-tabs{height:32px;background:var(--panel);display:flex;overflow-x:auto;border-bottom:1px solid var(--border)}
+.editor-tab{padding:0 12px;display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--panel);font-size:.8em;border-left:1px solid var(--border);white-space:nowrap}
+.editor-tab.active{background:var(--bg);color:var(--accent)}
+.editor-tab .close{color:var(--dim);margin-right:4px}
+.editor-tab .close:hover{color:var(--red)}
+#editor{width:100%;height:100%;background:var(--bg);color:var(--text);border:none;outline:none;padding:12px;font-family:'Consolas',monospace;font-size:13px;resize:none;direction:ltr;text-align:left;line-height:1.6;flex:1}
+.status-bar{height:26px;background:var(--panel);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;font-size:.7em;color:var(--dim);justify-content:space-between}
+.quick-actions{padding:8px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap}
+.qa-btn{font-size:.75em;padding:4px 10px;background:var(--panel);border:1px solid var(--border);color:var(--dim);border-radius:12px;cursor:pointer}
+.qa-btn:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:768px){.main{flex-direction:column}.chat-panel{width:100%;height:55%}.explorer{width:100%;height:100px}}
+</style>
+</head>
+<body>
+<div class="header">
+    <div class="logo">NovaMind Unified v10.0</div>
+    <div style="display:flex;gap:8px;align-items:center">
+        <span class="badge" id="agentCount">52 agents</span>
+        <span class="badge" id="providerBadge">LLM: ?</span>
+    </div>
+</div>
+<div class="main">
+    <div class="chat-panel">
+        <div class="chat-box" id="chatBox">
+            <div class="msg ai" style="text-align:center;color:var(--dim);font-size:.85em">
+                مرحباً بك في NovaMind Unified.<br>
+                اسألني: "حلل الكود بحثاً عن ثغرات" أو "اكتب دالة Python"
+            </div>
+        </div>
+        <div class="quick-actions">
+            <span class="qa-btn" onclick="quick('حلل هذا الكود أمنياً: ')">أمان</span>
+            <span class="qa-btn" onclick="quick('اكتب دالة Python لـ ')">كود</span>
+            <span class="qa-btn" onclick="quick('اشرح هذا الكود: ')">شرح</span>
+            <span class="qa-btn" onclick="quick('اقترح تحسينات للأداء')">أداء</span>
+        </div>
+        <div class="input-area">
+            <textarea class="input-box" id="userInput" placeholder="اكتب طلبك... (Enter للإرسال)" autofocus></textarea>
+            <button id="sendBtn" onclick="sendMsg()">إرسال</button>
+        </div>
+    </div>
+    <div class="workspace">
+        <div style="display:flex;flex:1;overflow:hidden">
+            <div class="explorer"><div id="treeRoot">جاري التحميل...</div></div>
+            <div class="editor-area">
+                <div class="editor-tabs" id="editorTabs"></div>
+                <textarea id="editor" placeholder="// اختر ملفاً أو اطلب من NovaMind إنشاء ملف..."></textarea>
+            </div>
+        </div>
+        <div class="status-bar">
+            <span id="statusText">جاهز</span>
+            <span id="metricsText">LLM: 0 | Agents: 0</span>
+        </div>
+    </div>
+</div>
+<script>
+let openFiles={},activeFilePath=null;
+const threadId='nova_'+Math.random().toString(36).substr(2,9);
+const editor=document.getElementById('editor');
+const chatBox=document.getElementById('chatBox');
+const userInput=document.getElementById('userInput');
+const sendBtn=document.getElementById('sendBtn');
+let isStreaming=false;
+
+// ═══ Tree ═══
+async function loadTree(){
+    try{
+        const r=await fetch('/api/workspace/tree');
+        const tree=await r.json();
+        document.getElementById('treeRoot').innerHTML=renderTree(tree);
+    }catch(e){document.getElementById('treeRoot').textContent='Error loading tree'}
+}
+function renderTree(nodes){
+    let h='';
+    for(const n of nodes){
+        if(n.type==='dir'){
+            h+='<div class="tree-item" data-type="dir">📁 '+n.name+'</div>';
+            h+='<div class="tree-children hidden">'+renderTree(n.children||[])+'</div>';
+        }else{
+            h+='<div class="tree-item" data-type="file" data-path="'+n.path+'">📄 '+n.name+'</div>';
+        }
+    }
+    return h;
+}
+document.getElementById('treeRoot').addEventListener('click',async(e)=>{
+    const item=e.target.closest('.tree-item');
+    if(!item)return;
+    if(item.dataset.type==='dir'){
+        item.nextElementSibling.classList.toggle('hidden');
+    }else{
+        const name=item.textContent.replace('📄 ','').trim();
+        await openFile(item.dataset.path,name);
+    }
+});
+
+// ═══ Files ═══
+async function openFile(path,name){
+    if(openFiles[path]){switchToFile(path);return}
+    try{
+        const r=await fetch('/api/workspace/file?path='+encodeURIComponent(path));
+        const d=await r.json();
+        if(d.content!==undefined){
+            openFiles[path]={name,content:d.content};
+            switchToFile(path);renderTabs();
+        }
+    }catch(e){}
+}
+function switchToFile(path){
+    activeFilePath=path;
+    editor.value=openFiles[path].content;
+    document.getElementById('statusText').textContent=path;
+    renderTabs();
+}
+function renderTabs(){
+    const t=document.getElementById('editorTabs');t.innerHTML='';
+    for(const[p,f]of Object.entries(openFiles)){
+        const d=document.createElement('div');
+        d.className='editor-tab'+(p===activeFilePath?' active':'');
+        d.innerHTML=f.name+' <span class="close" data-path="'+p+'">×</span>';
+        d.onclick=ev=>{
+            if(ev.target.classList.contains('close')){
+                delete openFiles[p];
+                if(activeFilePath===p){activeFilePath=null;editor.value=''}
+                renderTabs();return;
+            }
+            switchToFile(p);
+        };
+        t.appendChild(d);
+    }
+}
+editor.addEventListener('input',()=>{
+    if(activeFilePath&&openFiles[activeFilePath])openFiles[activeFilePath].content=editor.value;
+});
+async function saveFile(){
+    if(!activeFilePath)return;
+    try{
+        await fetch('/api/workspace/file',{
+            method:'PUT',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({path:activeFilePath,content:editor.value})
+        });
+        document.getElementById('statusText').textContent='✅ Saved: '+activeFilePath;
+    }catch(e){}
+}
+document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveFile()}
+});
+
+// ═══ Chat ═══
+userInput.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}
+});
+function appendMsg(text,cls){
+    const d=document.createElement('div');
+    d.className='msg '+cls;
+    if(cls==='ai')d.innerHTML=marked.parse(text);
+    else d.textContent=text;
+    chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;
+    if(cls==='ai')d.querySelectorAll('pre code').forEach(el=>hljs.highlightElement(el));
+    return d;
+}
+function quick(prefix){userInput.value=prefix;userInput.focus()}
+async function sendMsg(){
+    if(isStreaming)return;
+    const text=userInput.value.trim();
+    if(!text)return;
+    userInput.value='';
+    appendMsg(text,'user');
+    const ai=appendMsg('','ai');
+    let full='';
+    isStreaming=true;sendBtn.disabled=true;sendBtn.textContent='...';
+    try{
+        const r=await fetch('/api/chat',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({message:text,thread_id:threadId})
+        });
+        const reader=r.body.getReader();
+        const dec=new TextDecoder();
+        let buf='';
+        while(true){
+            const{done,value}=await reader.read();
+            if(done)break;
+            buf+=dec.decode(value,{stream:true});
+            const lines=buf.split('\n');buf=lines.pop()||'';
+            for(const l of lines){
+                if(!l.startsWith('data: '))continue;
+                const d=l.slice(6).trim();
+                if(d==='[DONE]')continue;
+                try{
+                    const p=JSON.parse(d);
+                    if(p.type==='chunk'){
+                        full+=p.content;
+                        ai.innerHTML=marked.parse(full);
+                        ai.querySelectorAll('pre code').forEach(el=>hljs.highlightElement(el));
+                        chatBox.scrollTop=chatBox.scrollHeight;
+                    }else if(p.type==='tool_start'){
+                        appendMsg('🔧 '+p.name,'tool-start');
+                    }else if(p.type==='tool_end'){
+                        appendMsg('✅ '+p.name,'tool-end');
+                    }else if(p.type==='error'){
+                        appendMsg('❌ '+p.content,'error');
+                        ai.remove();
+                    }
+                }catch(e){}
+            }
+        }
+    }catch(e){ai.textContent='خطأ: '+e.message}
+    finally{isStreaming=false;sendBtn.disabled=false;sendBtn.textContent='إرسال'}
+    updateMetrics();
+}
+
+// ═══ Metrics ═══
+async function updateMetrics(){
+    try{
+        const r=await fetch('/api/metrics');
+        const m=await r.json();
+        document.getElementById('metricsText').textContent=
+            'LLM: '+m.total_llm_calls+' | Agents: '+m.total_agent_calls+' | Errors: '+m.errors;
+    }catch(e){}
+}
+
+// ═══ Init ═══
+async function init(){
+    try{
+        const r=await fetch('/api/health');
+        const h=await r.json();
+        document.getElementById('agentCount').textContent=h.agents+' agents';
+        document.getElementById('statusText').textContent='جاهز — '+h.agents+' وكيل';
+    }catch(e){}
+    loadTree();
+    updateMetrics();
+    setInterval(updateMetrics,10000);
+}
+init();
+</script>
+</body>
+</html>

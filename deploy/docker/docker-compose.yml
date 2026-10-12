@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # ═══ Redis Cache & State Store ═══
+  redis:
+    image: redis:7-alpine
+    container_name: hive-redis
+    restart: unless-stopped
+    networks:
+      - hive-net
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Uncomment below to expose Redis externally for debugging ONLY (Not recommended for Prod)
+    # ports:
+    #   - "6379:6379"
+
+  # ═══ Novamind Core & Dashboard ═══
+  app:
+    build:
+      context: ../../          # Build from project root
+      dockerfile: deploy/docker/Dockerfile.app
+    container_name: hive-app
+    restart: unless-stopped
+    env_file:
+      - ../../.env             # Load secrets from root .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - hive-net
+    ports:
+      - "${PORT:-8080}:8080"   # Map host port to container port
+    volumes:
+      # Mount logs directory for persistence outside container
+      - ./logs:/app/logs
+      # Mount audit logs specifically if configured differently
+      - ../..//var/log/hive:/var/log/hive
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    # Resource Limits (Prevent DoS/OOM Kill)
+    mem_limit: 512m
+    cpus: 1.0
+
+networks:
+  hive-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

@@ -1,0 +1,184 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-core"
+version = "1.0.0"
+description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "tibatechapp-ship-it" }]
+keywords = ["multi-agent", "orchestration", "llm", "ai", "memory", "learning", "security", "termux"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Android",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Terminals",
+    "Topic :: Software Development :: Libraries",
+]
+
+# Core runtime (the 20-agent framework, memory, learning, security scanner,
+# TUI) is the Python standard library only — it runs on the phone with zero
+# installs. The former novamind server layer (FastAPI orchestration, RAG,
+# observability) is opt-in via the `novamind` extras so the phone stays light.
+[project.optional-dependencies]
+voice = ["gTTS>=2.5.0", "SpeechRecognition>=3.10.0"]
+tui = ["textual>=0.80"]
+novamind = [
+    "fastapi",
+    "uvicorn",
+    "pydantic-settings",
+    "httpx",
+    "aiofiles",
+    "jinja2",
+    "pyyaml",
+    "sqlalchemy>=2.0.35",
+    "aiosqlite>=0.20.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.12",
+]
+observability = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20",
+    "prometheus-client>=0.19",
+]
+rag = [
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.0",
+]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "pytest-textual-snapshot",
+    "textual>=0.80",
+    "pytest-asyncio>=0.24",
+    "pytest-benchmark>=4",
+    "hypothesis>=6",
+    "syrupy>=4",
+]
+
+[project.urls]
+Homepage = "https://github.com/tibatechapp-ship-it/nexus-core"
+Repository = "https://github.com/tibatechapp-ship-it/nexus-core"
+Issues = "https://github.com/tibatechapp-ship-it/nexus-core/issues"
+
+# src-layout: the flat framework package (src.agents, src.core, ...) and the
+# former novamind package (src.novamind.*) coexist under one `src/`.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+exclude = ["novamind.tests*", "*__pycache__*"]
+
+[tool.setuptools.package-data]
+novamind = [
+    "registry/data/*.yaml",
+    "dashboard/web/*.html",
+    "platform/backend/static/*.html",
+    "**/*.json",
+]
+
+# ─── Linting (ruff) ─────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# The former novamind package + its legacy root scripts keep their own lint
+# legacy (442 unused imports etc.) — excluded here so the lint gate reflects
+# the maintained framework surface. novamind is verified by its own test
+# suite. Cleanup of those files is a separate, explicit task.
+extend-exclude = [
+    ".git",
+    "__pycache__",
+    "src/novamind",
+    "tests/novamind",
+    "scripts/novamind",
+    "registry_full.py",
+    "telegram_notify.py",
+    "github_client.py",
+    "greeting.py",
+    "groq_pool.py",
+    "groq_rotator.py",
+    "hive_agent_smart.py",
+    "hive_security_scanner.py",
+    "manager.py",
+    "models.py",
+    "note.py",
+    "post.py",
+    "pr_reviewer.py",
+    "review_engine.py",
+    "safe_runner.py",
+    "secure_load_v2.py",
+    "security.py",
+    "tools.py",
+    "unified_agent.py",
+    "user.py",
+    "webhook_server.py",
+    "nova_bridge.py",
+]
+
+[tool.ruff.lint]
+# Conservative set (E4 = imports, E7 = statements, E9 = runtime/syntax,
+# F = pyflakes) — same as the framework's original config, applies repo-wide.
+select = ["E4", "E7", "E9", "F"]
+
+# ─── Type checking (mypy) ───────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+# Optional runtime imports (gTTS, speech_recognition, fastapi...) are imported
+# lazily and may be absent — don't fail the build for them.
+ignore_missing_imports = true
+check_untyped_defs = true
+pretty = false
+# The former novamind package (src/novamind) is NOT mypy-clean by design — it
+# is verified by its own test suite + runtime checks, not by static typing
+# gates. The framework modules keep the full annotation gate.
+exclude = ["src/novamind"]
+
+# ─── pytest ─────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+# Framework imports are `src.*` (root on path); novamind imports are
+# `novamind.*` (src/ on path) — both styles work.
+pythonpath = [".", "src"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "adversarial: adversarial attack vector (tests/adversarial)",
+    "slow: resource-heavy vector (large payloads)",
+    "integration: marks integration tests",
+    "unit: marks unit tests",
+]
+# The deep test-suites (phases 1-5) mix sync and async tests.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+# ─── coverage ───────────────────────────────────────────────────────────────
+[tool.coverage.run]
+branch = true
+# Framework surface only — the src/novamind package is measured separately in
+# CI (report-only until its own floor is established).
+source = ["src"]
+omit = ["src/novamind/*", "tests/*", "scripts/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+# The deep security/performance suites must keep overall coverage this high.
+fail_under = 95
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

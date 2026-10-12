@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Language Switcher & Export Buttons -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <div>
+        <button onclick="setLanguage('en')" id="btn-en" class="btn btn-sm">EN</button>
+        <button onclick="setLanguage('ar')" id="btn-ar" class="btn btn-sm active">عربي</button>
+    </div>
+    <div>
+        <button onclick="exportMarkdown()" id="btn-export-md" class="btn btn-ghost" style="margin-left:5px;">📝 MD</button>
+        <button onclick="exportPDF()" id="btn-export-pdf" class="btn btn-primary">📄 PDF</button>
+    </div>
+</div>
+
+<h1 id="main-title">🐝 Hive Admin Dashboard</h1>
+<p id="subtitle">Real-time Monitoring & Control Center</p>
+
+<!-- Status Grid -->
+<div class="grid-container">
+    <!-- Agent Status Panel -->
+    <div class="panel" id="capture-area-agents">
+        <h3 id="panel-agents">🤖 Agents Status</h3>
+        <div id="connection-status" style="color:#fbbf24">Connecting...</div>
+        <pre id="data-output" style="max-height:300px; overflow:auto; background:#1e293b; padding:10px; border-radius:5px;">Waiting for live updates...</pre>
+    </div>
+
+    <!-- Memory Stats Panel -->
+    <div class="panel" id="capture-area-memory">
+        <h3 id="panel-memory">🧠 Long-Term Memory</h3>
+        <button onclick="loadMemoryData()" style="margin-bottom:10px;" id="btn-refresh-mem">🔄 Refresh Memory</button>
+        
+        <div id="memory-stats" style="background:#1e293b; padding:10px; border-radius:5px; margin-bottom:10px;">
+            Loading stats...
+        </div>
+
+        <h4 id="panel-recent">Recent Lessons Learned:</h4>
+        <ul id="memory-list" style="list-style:none; padding:0; font-size:12px; max-height:200px; overflow-y:auto;">
+            <li>Loading...</li>
+        </ul>
+    </div>
+</div>
+
+<button onclick="location.reload()" id="btn-force-reload" style="margin-top:20px;">Force Full Reload</button>
+{% endblock %}
+
+{% block scripts %}
+<!-- Load Libraries for PDF Generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// TRANSLATION DICTIONARY (Extended with Export Labels)
+// ═══════════════════════════════════════════════════════════
+const translations = {
+    en: {
+        title: "🐝 Hive Admin Dashboard",
+        subtitle: "Real-time Monitoring & Control Center",
+        panel_agents: "🤖 Agents Status",
+        panel_memory: "🧠 Long-Term Memory",
+        panel_recent: "Recent Lessons Learned:",
+        btn_refresh_mem: "🔄 Refresh Memory",
+        btn_force_reload: "Force Full Reload",
+        connecting: "Connecting...",
+        connected: "✅ Connected (Live)",
+        disconnected: "❌ Disconnected. Retrying...",
+        waiting_updates: "Waiting for live updates...",
+        loading_stats: "Loading stats...",
+        no_memories: "No memories yet.",
+        total_memories_label: "Total Memories:",
+        export_md_btn: "📝 MD",
+        export_pdf_btn: "📄 PDF",
+        report_header: "Hive System Report",
+        generated_at: "Generated At:"
+    },
+    ar: {
+        title: "🐝 لوحة تحكم خلية النحل",
+        subtitle: "مركز المراقبة والتحكم الفوري",
+        panel_agents: "🤖 حالة الوكلاء",
+        panel_memory: "🧠 الذاكرة طويلة المدى",
+        panel_recent: "أحدث الدروس المستفادة:",
+        btn_refresh_mem: "🔄 تحديث الذاكرة",
+        btn_force_reload: "إعادة تحميل كاملة",
+        connecting: "جارٍ الاتصال...",
+        connected: "✅ متصل (مباشر)",
+        disconnected: "❌ انقطع الاتصال. جارٍ المحاولة...",
+        waiting_updates: "في انتظار التحديثات الحية...",
+        loading_stats: "جارٍ تحميل الإحصائيات...",
+        no_memories: "لا توجد ذكريات بعد.",
+        total_memories_label: "إجمالي الذكريات:",
+        export_md_btn: "📝 MD",
+        export_pdf_btn: "📄 PDF",
+        report_header: "تقرير نظام Hive",
+        generated_at: "تاريخ الإنشاء:"
+    }
+};
+
+let currentLang = 'ar';
+
+// ═══════════════════════════════════════════════════════════
+// EXPORT FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+
+function getReportData() {
+    // Gather all visible data into a structured object
+    const agentsText = document.getElementById('data-output').innerText || "No agent data.";
+    const memoryStatsText = document.getElementById('memory-stats').innerText || "No memory stats.";
+    const recentMemoriesHtml = document.getElementById('memory-list').innerHTML || "<li>No recent lessons.</li>";
+    
+    return {
+        timestamp: new Date().toISOString(),
+        lang: currentLang,
+        agents: agentsText,
+        memoryStats: memoryStatsText,
+        recentMemoriesRaw: recentMemoriesHtml
+    };
+}
+
+function exportMarkdown() {
+    const data = getReportData();
+    const t = translations[currentLang];
+    
+    let mdContent = `# ${t.report_header}\n\n`;
+    mdContent += `**${t.generated_at}** ${new Date().toLocaleString(currentLang === 'ar' ? 'ar-SA' : 'en-US')}\n\n`;
+    
+    mdContent += `## ${t.panel_agents}\n\`\`\`\n${data.agents}\n\`\`\`\n\n`;
+    
+    mdContent += `## ${t.panel_memory}\n${data.memoryStats}\n\n`;
+    
+    // Simple strip of HTML tags for markdown list
+    const cleanMemories = data.recentMemoriesRaw.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    mdContent += `### ${t.panel_recent}\n- ${cleanMemories.split('\n').filter(x=>x.trim()).join('\n- ')}\n`;
+
+    // Trigger Download
+    const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hive_report_${Date.now()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+async function exportPDF() {
+    const t = translations[currentLang];
+    const data = getReportData();
+    
+    // Create a temporary hidden div for rendering the PDF content cleanly
+    const pdfContainer = document.createElement('div');
+    pdfContainer.style.position = 'absolute';
+    pdfContainer.style.left = '-9999px';
+    pdfContainer.style.width = '800px'; // Standard A4 width approx
+    pdfContainer.style.backgroundColor = '#ffffff';
+    pdfContainer.style.color = '#000000';
+    pdfContainer.style.fontFamily = 'Arial, sans-serif';
+    pdfContainer.style.padding = '40px';
+    
+    // Header
+    pdfContainer.innerHTML = `
+        <div style="border-bottom:2px solid #3b82f6; padding-bottom:10px; margin-bottom:20px;">
+            <h1 style="margin:0; color:#1e293b;">${t.report_header}</h1>
+            <p style="margin:5px 0 0; color:#64748b;">${t.generated_at} ${new Date().toLocaleString()}</p>
+        </div>
+    `;
+
+    // Agents Section
+    pdfContainer.innerHTML += `
+        <h2 style="color:#3b82f6;">${t.panel_agents}</h2>
+        <pre style="background:#f1f5f9; padding:10px; border-radius:5px; white-space:pre-wrap; word-break:break-all; font-size:12px; direction:ltr; text-align:left;">${escapeHtml(data.agents)}</pre>
+    `;
+
+    // Memory Section
+    pdfContainer.innerHTML += `
+        <h2 style="color:#3b82f6;">${t.panel_memory}</h2>
+        <div style="font-size:14px; margin-bottom:10px;">${escapeHtml(data.memoryStats)}</div>
+        
+        <h3 style="color:#64748b;">${t.panel_recent}</h3>
+        <ul style="list-style-type:square; padding-left:20px; font-size:12px;">
+            ${data.recentMemoriesRaw} 
+        </ul>
+    `;
+
+    document.body.appendChild(pdfContainer);
+
+    try {
+        // Render to Canvas
+        const canvas = await html2canvas(pdfContainer, { scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        
+        // Initialize jsPDF
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`hive_report_${Date.now()}.pdf`);
+
+    } catch (error) {
+        console.error("PDF Generation Error:", error);
+        alert("Failed to generate PDF. Please check console.");
+    } finally {
+        document.body.removeChild(pdfContainer);
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return "";
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// ═══════════════════════════════════════════════════════════
+// UI LOGIC (Same as before, updated buttons)
+// ═══════════════════════════════════════════════════════════
+
+function setLanguage(lang) {
+    currentLang = lang;
+    document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
+    
+    const t = translations[lang];
+    document.getElementById('main-title').textContent = t.title;
+    document.getElementById('subtitle').textContent = t.subtitle;
+    document.getElementById('panel-agents').textContent = t.panel_agents;
+    document.getElementById('panel-memory').textContent = t.panel_memory;
+    document.getElementById('panel-recent').textContent = t.panel_recent;
+    document.getElementById('btn-refresh-mem').textContent = t.btn_refresh_mem;
+    document.getElementById('btn-force-reload').textContent = t.btn_force_reload;
+    document.getElementById('btn-export-md').textContent = t.export_md_btn;
+    document.getElementById('btn-export-pdf').textContent = t.export_pdf_btn;
+    
+    document.querySelectorAll('.btn-sm').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`btn-${lang}`).classList.add('active');
+
+    renderStatus(); 
+    loadMemoryData();
+}
+
+window.onload = () => {
+    setLanguage(currentLang);
+    connectSSE();
+    setInterval(loadMemoryData, 30000);
+};
+
+let es = null;
+const output = document.getElementById('data-output');
+const connStatus = document.getElementById('connection-status');
+
+function connectSSE() {
+    if(es) es.close();
+    es = new EventSource('/stream/events');
+    es.onopen = () => {
+        connStatus.textContent = translations[currentLang].connected;
+        connStatus.style.color = '#10b981';
+    };
+    es.onerror = () => {
+        connStatus.textContent = translations[currentLang].disconnected;
+        connStatus.style.color = '#ef4444';
+    };
+    es.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            if(msg.type === 'status_update') renderStatus(msg.data.agents);
+        } catch(e) { console.error(e); }
+    };
+}
+
+function renderStatus(agentsData = null) {
+    if (!agentsData && !window.lastAgentsData) {
+         output.innerHTML = `<span style="color:#94a3b8">${translations[currentLang].waiting_updates}</span>`;
+         return;
+    }
+    if (agentsData) window.lastAgentsData = agentsData;
+    else agentsData = window.lastAgentsData;
+
+    let html = `<strong>${new Date().toLocaleTimeString()}</strong><br><br>`;
+    for(const [name, info] of Object.entries(agentsData)) {
+        const sec = info.security || {};
+        const cbState = sec.circuit_breaker?.state || 'unknown';
+        const rlDenied = sec.rate_limiter?.total_denied || 0;
+        let color = cbState === 'closed' ? '#10b981' : (cbState === 'open' ? '#ef4444' : '#f59e0b');
+        html += `<span style="color:${color}; font-weight:bold;">[${cbState.toUpperCase()}]</span> `;
+        html += `<strong>${name}</strong>: Tasks=${info.stats?.total||0}, RL_Denied=${rlDenied}<br>`;
+    }
+    output.innerHTML = html;
+}
+
+async function loadMemoryData() {
+    const statsDiv = document.getElementById('memory-stats');
+    const listUl = document.getElementById('memory-list');
+    const t = translations[currentLang];
+    
+    statsDiv.textContent = t.loading_stats;
+    listUl.innerHTML = `<li>${t.loading_stats}</li>`;
+
+    try {
+        const resStats = await fetch('/api/memory/stats');
+        const dataStats = await resStats.json();
+        if(dataStats.error) throw new Error(dataStats.error);
+        
+        statsDiv.innerHTML = `
+            <div style="font-size:16px; font-weight:bold; color:#3b82f6;">${t.total_memories_label} ${dataStats.total_memories}</div>
+            <div style="font-size:12px; color:#94a3b8;">Path: ${dataStats.db_path || './data/chroma_db'}</div>
+        `;
+
+        const resRecent = await fetch('/api/memory/recent?limit=5');
+        const dataRecent = await resRecent.json();
+        if(dataRecent.error) throw new Error(dataRecent.error);
+        
+        listUl.innerHTML = '';
+        if(dataRecent.recent && dataRecent.recent.length > 0) {
+            dataRecent.recent.forEach(item => {
+                const li = document.createElement('li');
+                li.style.borderBottom = '1px solid #334155';
+                li.style.padding = '5px 0';
+                const agent = item.metadata.agent_name || 'Unknown';
+                const time = item.metadata.timestamp ? new Date(item.metadata.timestamp).toLocaleTimeString() : 'N/A';
+                const success = item.metadata.success === 'True' ? '✅' : '❌';
+                
+                li.innerHTML = `
+                    <span style="color:#94a3b8; font-size:10px;">${time}</span> 
+                    <strong>[${agent}]</strong> ${success} 
+                    <div style="white-space:normal; word-break:break-word; margin-top:2px; font-size:11px; color:#cbd5e1; direction: ltr; text-align: left;">
+                        ${item.content.substring(0, 100)}...
+                    </div>
+                `;
+                listUl.appendChild(li);
+            });
+        } else {
+            listUl.innerHTML = `<li>${t.no_memories}</li>`;
+        }
+
+    } catch(e) {
+        statsDiv.innerHTML = `<span style="color:red;">Error: ${e.message}</span>`;
+        listUl.innerHTML = '';
+    }
+}
+</script>
+
+<style>
+/* Existing Styles */
+.grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.panel { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
+.btn-sm { padding: 5px 10px; font-size: 12px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+.active { background-color: #3b82f6 !important; color: white !important; }
+.btn-ghost { background: transparent; border: 1px solid #3b82f6; color: #3b82f6; }
+.btn-primary { background: #3b82f6; color: white; border: none; }
+
+/* RTL Adjustments */
+[dir="rtl"] pre { direction: ltr; text-align: left; } /* Keep code LTR */
+[dir="rtl"] ul { text-align: right; }
+</style>
+{% endblock %}

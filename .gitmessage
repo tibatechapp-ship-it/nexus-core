@@ -1,0 +1,26 @@
+# <type>(<scope>): <subject>
+#
+# Types:
+#   feat:     ميزة جديدة
+#   fix:      إصلاح
+#   docs:     توثيق
+#   style:    تنسيق (بلا تغيير منطقي)
+#   refactor: إعادة هيكلة
+#   perf:     تحسين أداء
+#   test:     اختبارات
+#   build:    بناء/اعتماديات
+#   ci:       CI/CD
+#   chore:    مهام روتينية
+#   revert:   تراجع
+#
+# Scope examples: registry, factory, commander, agents, tests, ci
+#
+# Subject: imperative mood, ≤ 50 chars, no period
+#
+# Body (optional):
+#   - ما ولماذا (لا كيف)
+#   - ≤ 72 chars per line
+#
+# Footer (optional):
+#   Closes #123
+#   BREAKING CHANGE: ...

@@ -1,0 +1,5 @@
+*.pyc binary
+*.pyo binary
+__pycache__/ export-ignore
+*.pyc -diff
+*.pyo -diff

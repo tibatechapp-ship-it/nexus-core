@@ -1,0 +1,49 @@
+# Pre-commit hooks for NovaMind
+# Install: pre-commit install
+
+repos:
+  # ─── Basic file hygiene ───
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+
+  # ─── Markdown structure (mdformat - fast) ───
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.19
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat-tables
+          - mdformat-frontmatter
+        files: ^docs/.*\.md$
+        args: ["--wrap=100"]
+
+  # ─── Vale: DISABLED locally (Alpine incompatibility) ───
+  # Runs in GitHub Actions instead (glibc environment)
+
+  # ─── Python quality (only src/) ───
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        files: ^src/
+      - id: ruff-format
+        files: ^src/
+
+  # ─── Security: secrets in any file ───
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        args: ["--verbose"]

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>NovaMind Test Chat</title>
+<style>
+  body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 10px; }
+  #chat-container { height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #f8fafc; }
+  .user-msg { margin-bottom: 10px; color: #1e293b; }
+  .bot-msg { margin-bottom: 15px; color: #0f766e; padding: 10px; background: #ffffff; border-radius: 8px; }
+  .input-row { margin-top: 10px; display: flex; gap: 10px; }
+  #prompt-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+  button { padding: 10px 20px; background: #0f766e; color: white; border: none; border-radius: 8px; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+</style>
+</head>
+<body>
+<h1>NovaMind Chat Test</h1>
+<div id="chat-container"></div>
+<div class="input-row">
+  <input type="text" id="prompt-input" placeholder="اكتب سؤالك هنا..." />
+  <button id="send-btn" onclick="sendMessage()">إرسال</button>
+</div>
+
+<script>
+const API_URL = "http://localhost:8000/api/pipeline/run";
+const chatBox = document.getElementById("chat-container");
+const inputEl = document.getElementById("prompt-input");
+const sendBtn = document.getElementById("send-btn");
+let isBusy = false;
+
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+function appendMsg(text, cls) {
+  const div = document.createElement("div");
+  div.className = cls;
+  div.textContent = text;
+  chatBox.appendChild(div);
+  chatBox.scrollTop = chatBox.scrollHeight;
+  return div;
+}
+
+async function sendMessage() {
+  if (isBusy) return;
+  const msg = inputEl.value.trim();
+  if (!msg) return;
+  inputEl.value = "";
+  isBusy = true;
+  sendBtn.disabled = true;
+  sendBtn.textContent = "…";
+
+  appendMsg("أنت: " + msg, "user-msg");
+  const botDiv = appendMsg("NovaMind: (جاري التفكير...)", "bot-msg");
+
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg }),
+    });
+    const data = await res.json();
+    let text = "";
+    if (data.status === "blocked") {
+      text = "⛔ محظور: " + (data.gatekeeper?.reason || "غير مسموح");
+    } else {
+      text = data.answer || "(لا يوجد رد)";
+    }
+    botDiv.textContent = "NovaMind: " + text;
+  } catch (err) {
+    botDiv.textContent = "NovaMind: ❌ خطأ — " + err.message;
+  } finally {
+    isBusy = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = "إرسال";
+  }
+}
+</script>
+</body>
+</html>

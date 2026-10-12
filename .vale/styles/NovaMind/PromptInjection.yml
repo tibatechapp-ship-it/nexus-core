@@ -1,0 +1,10 @@
+extends: existence
+message: "⚠️  Potential prompt injection: '%s'."
+level: warning
+ignorecase: true
+tokens:
+  - 'ignore (all|previous) (instructions|prompts)'
+  - 'disregard (above|previous)'
+  - 'you are now'
+  - 'system prompt'
+  - 'as an AI'

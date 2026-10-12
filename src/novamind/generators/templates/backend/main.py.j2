@@ -1,0 +1,32 @@
+"""{{ ir.name }} — FastAPI Backend (v{{ ir.version }}).
+
+{{ ir.description }}
+"""
+from fastapi import FastAPI
+from .db import init_db
+{% for entity in ir.entities %}
+from .api.{{ entity.snake_name }} import router as {{ entity.snake_name }}_router
+{% endfor %}
+
+# أنشئ الجداول عند استيراد الوحدة (idempotent)
+init_db()
+
+app = FastAPI(
+    title="{{ ir.name }}",
+    version="{{ ir.version }}",
+    description="{{ ir.description }}",
+)
+
+{% for entity in ir.entities %}
+app.include_router({{ entity.snake_name }}_router)
+{% endfor %}
+
+
+@app.get("/")
+def root():
+    return {"service": "{{ ir.name }}", "version": "{{ ir.version }}", "status": "ok"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}

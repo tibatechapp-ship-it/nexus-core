@@ -1,0 +1,77 @@
+# ─── Secrets (NEVER commit) ────────────────────────────────────────────────
+.env
+*.env
+telegram.env
+secrets.*
+*.pem
+*.key
+# zyvo runtime state / credentials
+.config/zyvo/telegram.env
+.config/zyvo/*-session
+
+# ─── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Tooling caches ────────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+coverage.json
+# the published coverage badge is intentionally tracked:
+!.github/badges/coverage.json
+htmlcov/
+.tox/
+
+# ─── Generated audio / media (voice notes, transcripts) ────────────────────
+*.ogg
+*.opus
+*.mp3
+*.wav
+*.16k.wav
+voice-out/
+
+# ─── Runtime logs / pid ────────────────────────────────────────────────────
+*.log
+*.pid
+zyvo-*-server.log
+
+# ─── Generated security reports (kept in ~/.local/share/tyb-zyv-ai/reports) ─
+security-report-*.md
+
+# ─── Former novamind runtime state (never commit) ───────────────────────────
+data/
+*.bundle
+.nova_memory*
+.bootstrap_state*
+.build-meta
+audit_*.json
+agent_hash*.json
+all_agents_signatures.json
+groq_pool.json
+benchmark_*.txt
+*.audit.json
+exports/
+memory/
+
+# ─── OS / editor junk ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
