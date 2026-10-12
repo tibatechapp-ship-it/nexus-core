@@ -2,7 +2,7 @@
 
 Unified AI Agent System: **Memory + Learning + Security + 20 Agents** — the
 merge of tyb-zyv-ai (stdlib-only 20-agent framework + TUI) and novamind-core
-(server-side orchestration). v1.0.0, MIT, repo
+(server-side orchestration). v1.0.0 → v1.5.0, MIT, repo
 github.com/tibatechapp-ship-it/nexus-core. Decision 2026-10-12 by tyba:
 merge everything, lose NO feature, test after each stage.
 
@@ -62,6 +62,25 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   ~/.local/share/..., never the working tree.
 - src/novamind: see docs/novamind/ARCHITECTURE.md (their own docs).
 
+## v1.5 — chat server: SQLite + Time Machine + web UI
+- `src/novamind/core/session_store.py`: stdlib SQLite store (WAL,
+  connection-per-op, PRAGMA user_version). Tables: conversations, messages,
+  council_sessions, council_messages (reserved for the v2.0 Council), traces
+  (Time Machine). `default_db_path()` = `$NEXUS_DB` → `<repo>/data/sessions.db`
+  → `$TMPDIR` fallback; `get_store()` process singleton. Pure stdlib so the
+  phone gate + CI both run it with no extras.
+- `unified_agent.py` (root FastAPI): serves `web/unified_ui.html` + JSON API.
+  `/api/chat` streams SSE (`plan`/`chunk`/`pre_check`/`error` … `[DONE]`) and
+  now logs a trace per request (ChatRequest carries conversation_id + agent).
+  Conversation CRUD + `PUT` = client-authoritative full-thread sync;
+  `/api/traces[...]` (list/get/export json|md/replay/delete/clear);
+  `/api/export/conversations`; `/api/db/stats`.
+- `web/unified_ui.html`: DB-first chat UI (RTL ar + en). localStorage is only a
+  fallback mirror; first boot migrates it via `/api/conversations/migrate`.
+  Time-Machine modal (topbar clock, Ctrl+Shift+T), pin / inline rename /
+  export+import, Markdown tables + images, copy/regenerate/edit, agent picker.
+- Run: `PYTHONPATH=src/novamind:src:. python unified_agent.py` → :8000.
+
 ## Decisions
 - 2026-10-12: unified as nexus-core v1.0.0 (merge, coexistence layout). Both old
   repos archived after release. Framework keeps its 99% gate; novamind layer
@@ -71,7 +90,7 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   user — CI verifies novamind instead).
 - 2026-10-12: Phase-11 files (streaming.py, checkpoint.py, toolruns.py + 2 test
   files) were UNCOMMITTED in tyb-zyv-ai — copied from the working tree here.
-- Version lives in pyproject.toml AND src/__init__.py (both 1.0.0).
+- Version lives in pyproject.toml AND src/__init__.py (both 1.5.0).
 - Coverage badge: shields endpoint at .github/badges/coverage.json, committed
   by the badge CI job (framework coverage only).
 - Adversarial suite: 92 vectors / 8 categories, HELD = pass. Stdlib-only
@@ -88,6 +107,15 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   pass --cov-fail-under explicitly in CI.
 - One root conftest only; no second conftest in tests sub-dirs without
   __init__.py (shadowing).
+- v1.5 chat UI rename bug: `save()` persists the *current* conversation, not the
+  target — to persist an arbitrary conversation use `saveConv(c)`. (The rename
+  flow originally called `save()` and silently updated the wrong conv.)
+- v1.5 headless-CDP gotcha: a synthetic `blur()` is a no-op (the element is not
+  truly focused in headless), so an onblur-commit never runs and tests lie —
+  commit on `keydown`/Enter directly. Real browsers do fire the blur.
+- v1.5 perf note: with dead ZAI keys a chat takes ~22s (5 providers × 7 retries
+  before the MockProvider fallback). Provider retry/budget control is a v2.0
+  (offline / provider-admin) target.
 - `unified_agent.py` (legacy root server) was BROKEN post-merge: `from core.*`
   imports (16 refs) but no top-level `core/` — novamind's modules live at
   `src/novamind/core/`. FIXED 2026-10-12 (option 1): added

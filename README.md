@@ -53,6 +53,28 @@ python zyvo-voice.py
 python -m src.security . --fail-on high   # offline security scan
 ```
 
+## Chat server + web UI (v1.5)
+
+The FastAPI layer (`unified_agent.py`) serves a ChatGPT-style web UI plus a
+small JSON API. v1.5 moves conversation history server-side into SQLite,
+adds a request "Time Machine", and polishes the chat surface.
+
+```bash
+python -m pip install -e ".[novamind]"
+PYTHONPATH=src/novamind:src:. python unified_agent.py   # http://localhost:8000
+```
+
+- **Persistence** — `data/sessions.db` (stdlib `sqlite3`, WAL). Conversations
+  and messages live in the DB, not the browser; the UI migrates old
+  `localStorage` on first boot.
+- **Time Machine** — every request is logged (message, response, agent,
+  latency, status, planner output) under `/api/traces`, with replay and
+  JSON/Markdown export.
+- **Chat polish** — Markdown tables & images, copy/regenerate/edit, pin,
+  inline rename, and full conversation export/import.
+- **API** — `/api/chat` (SSE stream), `/api/conversations[...]`,
+  `/api/traces[...]`, `/api/export/conversations`, `/api/db/stats`.
+
 ## Verify before shipping (must all pass)
 
 ```bash

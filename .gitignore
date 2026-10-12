@@ -84,3 +84,9 @@ Thumbs.db
 *.orig
 *.rej
 .env.env.bak
+
+# ─── Runtime state (generated while running) ───────────────────────────────
+/security_audit_report.json
+src/novamind/core/hive/data/
+*.db-wal
+*.db-shm
