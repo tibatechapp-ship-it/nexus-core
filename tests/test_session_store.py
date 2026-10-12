@@ -164,6 +164,34 @@ def test_export_missing_returns_none(store: SessionStore) -> None:
     assert store.export_conversation("nope") is None
 
 
+def test_export_all_conversations_json(store: SessionStore) -> None:
+    a = store.create_conversation(title="A")
+    store.add_message(a["id"], "user", "hi")
+    store.create_conversation(title="B")
+    raw = store.export_all_conversations("json")
+    data = json.loads(raw)
+    assert len(data["conversations"]) == 2
+    assert all("messages" in c for c in data["conversations"])
+
+
+def test_export_all_conversations_markdown(store: SessionStore) -> None:
+    store.create_conversation(title="A")
+    store.create_conversation(title="B")
+    md = store.export_all_conversations("markdown")
+    assert "# A" in md and "# B" in md and "---" in md
+
+
+def test_meta_roundtrips_through_import(store: SessionStore) -> None:
+    store.import_conversations([
+        {"id": "m1", "title": "pinned", "messages": [], "meta": {"pinned": True}},
+    ])
+    conv = store.get_conversation("m1")
+    assert conv is not None
+    assert conv["meta"].get("pinned") is True
+    assert store.update_conversation("m1", meta={"pinned": False}) is True
+    assert store.get_conversation("m1")["meta"]["pinned"] is False
+
+
 def test_import_localstorage_payload_is_idempotent(store: SessionStore) -> None:
     payload = [{
         "id": "old1", "title": "قديم",

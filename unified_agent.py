@@ -626,6 +626,7 @@ class ConversationCreate(BaseModel):
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     agent: Optional[str] = None
+    meta: Optional[Dict] = None
 
 
 class MessageCreate(BaseModel):
@@ -638,6 +639,7 @@ class MessageCreate(BaseModel):
 class ConversationPut(BaseModel):
     title: Optional[str] = None
     agent: Optional[str] = None
+    meta: Optional[Dict] = None
     messages: Optional[List[Dict]] = None
 
 
@@ -672,7 +674,7 @@ async def get_conversation(cid: str):
 
 @app.patch("/api/conversations/{cid}")
 async def update_conversation(cid: str, req: ConversationUpdate):
-    ok = store.update_conversation(cid, title=req.title, agent=req.agent)
+    ok = store.update_conversation(cid, title=req.title, agent=req.agent, meta=req.meta)
     if not ok:
         raise HTTPException(status_code=404, detail="conversation not found")
     return {"status": "updated", "id": cid}
@@ -683,9 +685,9 @@ async def put_conversation(cid: str, req: ConversationPut):
     """Create-or-replace a conversation (client-authoritative full sync)."""
     if store.get_conversation(cid) is None:
         store.create_conversation(conv_id=cid, title=req.title or "",
-                                  agent=req.agent or "")
-    elif req.title is not None or req.agent is not None:
-        store.update_conversation(cid, title=req.title, agent=req.agent)
+                                  agent=req.agent or "", meta=req.meta)
+    elif req.title is not None or req.agent is not None or req.meta is not None:
+        store.update_conversation(cid, title=req.title, agent=req.agent, meta=req.meta)
     if req.messages is not None:
         store.replace_messages(cid, req.messages)
     return store.get_conversation(cid)
@@ -727,6 +729,16 @@ async def export_conversation(cid: str, format: str = "json"):
 @app.post("/api/conversations/migrate")
 async def migrate_conversations(req: MigrateRequest):
     return {"imported": store.import_conversations(req.conversations)}
+
+
+@app.get("/api/export/conversations")
+async def export_all_conversations(format: str = "json"):
+    """Bulk backup: every conversation with its messages (json or markdown)."""
+    data = store.export_all_conversations(fmt=format)
+    if format in ("md", "markdown"):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(data, media_type="text/markdown")
+    return JSONResponse(content=json.loads(data))
 
 
 # ── Time Machine: request traces (v1.5) ──────────────────────────────────

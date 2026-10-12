@@ -189,6 +189,15 @@ kbd{background:#333;border:1px solid #4a4a4a;border-radius:4px;padding:0 5px;fon
   border-radius:9px;padding:10px;font-size:12px;max-height:30vh;overflow:auto;margin:0 0 6px}
 .trace-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .trace-meta{font-size:11px;color:var(--faint)}
+.bubble table{border-collapse:collapse;margin:8px 0;width:100%;font-size:13px}
+.bubble th,.bubble td{border:1px solid var(--line);padding:6px 9px;text-align:start}
+.bubble th{background:var(--hover);font-weight:600}
+.bubble img{max-width:100%;border-radius:9px;margin:6px 0;display:block}
+.conv .pin{opacity:0;background:transparent;border:0;color:var(--faint);cursor:pointer;font-size:13px;padding:3px 5px;border-radius:6px;flex:none}
+.conv:hover .pin{opacity:1}
+.conv .pin.on{opacity:1;color:var(--accent2)}
+input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:var(--text);
+  border-radius:6px;padding:3px 7px;font:inherit;font-size:13px;outline:none}
 .toasts{position:fixed;bottom:20px;inset-inline-start:20px;z-index:80;display:flex;flex-direction:column;gap:8px}
 .toast{background:#2f2f2f;border:1px solid var(--border);border-inline-start:3px solid var(--accent);
   padding:10px 16px;border-radius:10px;font-size:14px;animation:slide .25s ease;box-shadow:0 8px 24px rgba(0,0,0,.4)}
@@ -313,6 +322,11 @@ kbd{background:#333;border:1px solid #4a4a4a;border-radius:4px;padding:0 5px;fon
   <div class="switch"><span data-i18n="language">اللغة</span>
     <button class="pill ghost" id="setLang">AR / EN</button></div>
   <div class="switch"><span data-i18n="showInfo">إظهار لوحة المعلومات</span><span class="tgl on" id="setInfo"></span></div>
+  <div class="switch"><span data-i18n="exportAll">تصدير كل المحادثات</span>
+    <button class="pill ghost" id="setExport">⬇ JSON</button></div>
+  <div class="switch"><span data-i18n="importConvs">استيراد محادثات</span>
+    <span><button class="pill ghost" id="setImport">⬆ JSON</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none"></span></div>
   <div class="switch"><span data-i18n="confirmClear">حذف كل المحادثات</span>
     <button class="pill" id="setClear" style="background:var(--danger)">🗑</button></div>
   <div style="margin-top:14px;text-align:end">
@@ -348,7 +362,9 @@ const I18N={
     stopped:"تم الإيقاف",thinking:"يكتب…",agentDefault:"الوكيل التلقائي",
     timeMachine:"🔭 آلة الزمن",clearTraces:"مسح السجل",clearTracesQ:"مسح كل سجل الطلبات؟",
     noTraces:"لا توجد طلبات مسجّلة بعد",replay:"إعادة التشغيل",export:"تصدير",
-    request:"الطلب",response:"الرد",latency:"الزمن",status:"الحالة",replayDone:"تمت الإعادة — أُضيف طلب جديد"},
+    request:"الطلب",response:"الرد",latency:"الزمن",status:"الحالة",replayDone:"تمت الإعادة — أُضيف طلب جديد",
+    pin:"تثبيت",pinned:"تم التثبيت 📌",unpinned:"أُلغي التثبيت",
+    exportAll:"تصدير كل المحادثات",importConvs:"استيراد محادثات",imported:"تم الاستيراد"},
   en:{newChat:"New chat",settings:"Settings",language:"Language",online:"Online",offline:"Offline",
     placeholder:"Type your message…",enterSend:"to send",shiftNewline:"new line",curAgent:"Current agent",
     tools:"Available tools",stats:"Stats",msgCount:"Messages",lastUpdate:"Last update",conn:"Connection",
@@ -359,7 +375,9 @@ const I18N={
     stopped:"Stopped",thinking:"Typing…",agentDefault:"Auto agent",
     timeMachine:"🔭 Time Machine",clearTraces:"Clear log",clearTracesQ:"Clear the whole request log?",
     noTraces:"No requests logged yet",replay:"Replay",export:"Export",
-    request:"Request",response:"Response",latency:"Latency",status:"Status",replayDone:"Replayed — new request logged"}
+    request:"Request",response:"Response",latency:"Latency",status:"Status",replayDone:"Replayed — new request logged",
+    pin:"Pin",pinned:"Pinned 📌",unpinned:"Unpinned",
+    exportAll:"Export all conversations",importConvs:"Import conversations",imported:"Imported"}
 };
 const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces"};
 const LS={conv:"nm_convs",cur:"nm_cur",lang:"nm_lang",migrated:"nm_migrated"};
@@ -384,7 +402,7 @@ async function apiSend(method,p,body){
 // that aren't loaded yet.
 function saveConv(c){
   if(!useDB||!c)return;
-  const body={title:c.title,agent:c.agent||""};
+  const body={title:c.title,agent:c.agent||"",meta:c.meta||{}};
   if(c.messages)body.messages=c.messages.map(m=>({role:m.role,content:m.content,ts:m.ts||Date.now()}));
   apiSend("PUT",API.convs+"/"+c.id,body);
 }
@@ -437,6 +455,7 @@ function fmt(ts){const d=new Date(ts);
 function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function inline(s){
   s=s.replace(/`([^`]+)`/g,"<code class=\"ic\">$1</code>");
+  s=s.replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g,'<img src="$2" alt="$1" loading="lazy">');
   s=s.replace(/\*\*([^*\n]+)\*\*/g,"<strong>$1</strong>");
   s=s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g,"$1<em>$2</em>");
   s=s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
@@ -447,6 +466,9 @@ function md(src){
   const lines=src.split("\n");const out=[];let i=0;
   codes=[];
   const isBlank=l=>/^\s*$/.test(l);
+  const isTableStart=k=>k<lines.length&&lines[k].includes("|")&&k+1<lines.length
+    &&/^[\s|:-]+$/.test(lines[k+1])&&lines[k+1].includes("-");
+  const tCells=h=>h.replace(/^\s*\|/,"").replace(/\|\s*$/,"").split("|").map(x=>x.trim());
   while(i<lines.length){
     const line=lines[i];
     let m;
@@ -464,9 +486,17 @@ function md(src){
       while(i<lines.length&&/^\s*\d+[.)]\s+/.test(lines[i])){out.push("<li>"+inline(esc(lines[i].replace(/^\s*\d+[.)]\s+/,"")))+"</li>");i++;}out.push("</ol>");continue;}
     if(/^\s*>\s?/.test(line)){out.push("<blockquote>"+inline(esc(line.replace(/^\s*>\s?/,"")))+"</blockquote>");i++;continue;}
     if(/^\s*---+\s*$/.test(line)){out.push("<hr>");i++;continue;}
+    if(isTableStart(i)){
+      const head=tCells(lines[i]);i+=2;const rows=[];
+      while(i<lines.length&&lines[i].includes("|")&&!isBlank(lines[i])){rows.push(tCells(lines[i]));i++;}
+      out.push("<table><thead><tr>"+head.map(h=>"<th>"+inline(esc(h))+"</th>").join("")+"</tr></thead><tbody>"+
+        rows.map(r=>"<tr>"+r.map(c=>"<td>"+inline(esc(c))+"</td>").join("")+"</tr>").join("")+"</tbody></table>");
+      continue;
+    }
     const p=[];
     while(i<lines.length&&!isBlank(lines[i])&&!/^\s*```/.test(lines[i])&&!/^#{1,6}\s/.test(lines[i])
-      &&!/^\s*[-*+]\s+/.test(lines[i])&&!/^\s*\d+[.)]\s+/.test(lines[i])&&!/^\s*>/.test(lines[i])&&!/^\s*---+\s*$/.test(lines[i])){
+      &&!/^\s*[-*+]\s+/.test(lines[i])&&!/^\s*\d+[.)]\s+/.test(lines[i])&&!/^\s*>/.test(lines[i])
+      &&!/^\s*---+\s*$/.test(lines[i])&&!isTableStart(i)){
       p.push(lines[i]);i++;}
     out.push("<p>"+inline(esc(p.join("\n"))).replace(/\n/g,"<br>")+"</p>");
   }
@@ -482,15 +512,24 @@ function md(src){
 function renderSidebar(){
   const box=$("convList");box.innerHTML="";
   if(!state.convs.length){box.innerHTML='<div style="color:var(--faint);text-align:center;padding:24px 8px;font-size:13px">'+t("empty")+'</div>';return;}
-  state.convs.forEach(c=>{
+  const sorted=state.convs.slice().sort((a,b)=>{
+    const pa=(a.meta&&a.meta.pinned)?1:0,pb=(b.meta&&b.meta.pinned)?1:0;
+    return pb-pa||(b.date||0)-(a.date||0);});
+  sorted.forEach(c=>{
     const el=document.createElement("div");
     el.className="conv"+(c.id===state.cur?" active":"");
+    el.dataset.id=c.id;
     el.innerHTML='<div class="meta"><div class="title"></div><div class="date"></div></div>'+
+      '<button class="pin'+(c.meta&&c.meta.pinned?" on":"")+'" title="'+t("pin")+'">📌</button>'+
       '<button class="del" title="'+t("del")+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>';
-    el.querySelector(".title").textContent=c.title||t("empty");
+    el.querySelector(".title").textContent=(c.meta&&c.meta.pinned?"📌 ":"")+(c.title||t("empty"));
     el.querySelector(".date").textContent=fmt(c.date||Date.now());
-    el.onclick=e=>{if(e.target.closest(".del"))return;state.cur=c.id;save();
+    el.onclick=e=>{if(e.target.closest(".del")||e.target.closest(".pin"))return;state.cur=c.id;save();
       renderSidebar();renderMessages();renderInfo();closeAll();};
+    el.querySelector(".title").ondblclick=e=>{e.stopPropagation();renameConv(c);};
+    el.querySelector(".pin").onclick=e=>{e.stopPropagation();
+      c.meta=c.meta||{};c.meta.pinned=!c.meta.pinned;saveConv(c);saveCache();renderSidebar();
+      toast(c.meta.pinned?"📌 "+t("pinned"):t("unpinned"));};
     el.querySelector(".del").onclick=()=>{if(confirm(t("deleteQ"))){
       if(useDB)apiSend("DELETE",API.convs+"/"+c.id);
       state.convs=state.convs.filter(x=>x.id!==c.id);
@@ -498,6 +537,20 @@ function renderSidebar(){
       saveCache();renderSidebar();renderMessages();renderInfo();toast(t("del"));}};
     box.appendChild(el);
   });
+}
+function renameConv(c){
+  const el=document.querySelector('#convList .conv[data-id="'+c.id+'"]');
+  if(!el)return;
+  const titleEl=el.querySelector(".title");
+  const inp=document.createElement("input");
+  inp.className="rename";inp.value=c.title||"";
+  titleEl.replaceWith(inp);inp.focus();inp.select();
+  let done=false;
+  const commit=()=>{if(done)return;done=true;const v=inp.value.trim();if(v)c.title=v;saveConv(c);saveCache();renderSidebar();};
+  inp.onclick=e=>e.stopPropagation();
+  inp.onblur=commit;
+  inp.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();commit();}
+    else if(e.key==="Escape"){e.preventDefault();done=true;renderSidebar();}};
 }
 
 /* ============================ render: messages ============================ */
@@ -797,6 +850,22 @@ function bind(){
   $("setClose").onclick=closeAll;
   $("setLang").onclick=()=>{state.lang=state.lang==="ar"?"en":"ar";save();applyLang();toast("🌐 "+state.lang.toUpperCase());};
   $("btnLang").onclick=$("setLang").onclick;
+  $("setExport").onclick=()=>{const a=document.createElement("a");
+    a.href="/api/export/conversations?format=json";a.download="nexus-conversations.json";
+    document.body.appendChild(a);a.click();a.remove();};
+  $("setImport").onclick=()=>$("importFile").click();
+  $("importFile").onchange=async e=>{
+    const f=e.target.files&&e.target.files[0];if(!f)return;
+    try{
+      const j=JSON.parse(await f.text());
+      const convs=j.conversations||(Array.isArray(j)?j:[]);
+      const r=await apiSend("POST",API.convs+"/migrate",{conversations:convs});
+      localStorage.setItem(LS.migrated,"1");
+      await load();renderSidebar();await renderMessages();renderInfo();
+      toast(t("imported")+": "+(r&&r.imported!=null?r.imported:convs.length));
+    }catch(err){toast(t("err"),1);}
+    e.target.value="";
+  };
   $("setClear").onclick=()=>{if(confirm(t("confirmClearQ"))){if(useDB)apiSend("DELETE",API.convs);
     state.convs=[];state.cur=null;saveCache();
     renderSidebar();renderMessages();renderInfo();closeAll();toast(t("del"));}};

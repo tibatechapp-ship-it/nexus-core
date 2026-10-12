@@ -345,6 +345,14 @@ class SessionStore:
             return self._to_markdown(conv)
         return json.dumps(conv, ensure_ascii=False, indent=2)
 
+    def export_all_conversations(self, fmt: str = "json", limit: int = 10000) -> str:
+        """Export every conversation (with messages) for backup / migration."""
+        convs = [self.get_conversation(c["id"]) for c in self.list_conversations(limit=limit)]
+        convs = [c for c in convs if c]
+        if fmt in ("md", "markdown"):
+            return "\n\n---\n\n".join(self._to_markdown(c) for c in convs)
+        return json.dumps({"conversations": convs}, ensure_ascii=False, indent=2)
+
     @staticmethod
     def _to_markdown(conv: Dict[str, Any]) -> str:
         lines = [f"# {conv.get('title') or 'محادثة'}", ""]
@@ -375,7 +383,8 @@ class SessionStore:
                     "INSERT INTO conversations (id,title,agent,created_at,updated_at,meta)"
                     " VALUES (?,?,?,?,?,?)",
                     (cid, str(conv.get("title") or ""), str(conv.get("agent") or ""),
-                     created, created, "{}"),
+                     created, created,
+                     json.dumps(conv.get("meta") or {}, ensure_ascii=False)),
                 )
                 for m in conv.get("messages") or []:
                     conn.execute(
