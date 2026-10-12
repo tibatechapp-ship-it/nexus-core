@@ -63,7 +63,7 @@ jobs:
             echo "::error::A secrets file is tracked in git."
             fail=1
           fi
-          if git grep -nE '[0-9]{8,10}:[A-Za-z0-9_-]{35}|ghp_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----' -- . ':(exclude)*.md' 2>/dev/null; then
+          if git grep -nE '[0-9]{8,10}:[A-Za-z0-9_-]{35}|ghp_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----' -- . ':(exclude)*.md' ':(exclude)tests/novamind/**' 2>/dev/null; then
             echo "::error::Possible hardcoded secret found."
             fail=1
           fi

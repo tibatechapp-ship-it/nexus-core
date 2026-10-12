@@ -9,6 +9,7 @@ injection vectors) in one place.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from pathlib import Path
 
 __all__ = [
