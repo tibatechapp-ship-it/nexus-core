@@ -1,6 +1,7 @@
 """MemoryEngine — Lightweight Long-Term Memory using SQLite."""
 import sqlite3
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -26,8 +27,8 @@ class MemoryEngine:
             return
         self._initialized = True
         
-        # Ensure directory exists
-        db_dir = Path("/var/lib/hive")
+        # Ensure directory exists (NOVAMIND_HOME overrides the legacy path)
+        db_dir = Path(os.environ.get("NOVAMIND_HOME", "/var/lib/hive"))
         db_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = db_dir / "memory.db"
         
