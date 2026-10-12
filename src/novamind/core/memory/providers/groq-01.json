@@ -1,0 +1,16 @@
+{
+  "name": "groq-01",
+  "calls": 10,
+  "successes": 10,
+  "failures": 0,
+  "rate_limits": 0,
+  "server_errors": 0,
+  "auth_errors": 0,
+  "total_latency_ms": 21150.492191314697,
+  "last_call_at": 1791436769.1558151,
+  "last_success_at": 1791436769.8818846,
+  "last_error": "",
+  "last_error_at": 0.0,
+  "cooldown_until": 0,
+  "cooldown_reason": ""
+}

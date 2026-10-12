@@ -53,7 +53,7 @@ zyvo-*-server.log
 security-report-*.md
 
 # ─── Former novamind runtime state (never commit) ───────────────────────────
-data/
+/data/
 *.bundle
 .nova_memory*
 .bootstrap_state*
@@ -64,8 +64,8 @@ all_agents_signatures.json
 groq_pool.json
 benchmark_*.txt
 *.audit.json
-exports/
-memory/
+/exports/
+/memory/
 
 # ─── OS / editor junk ──────────────────────────────────────────────────────
 .DS_Store

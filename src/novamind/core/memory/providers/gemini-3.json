@@ -1,0 +1,16 @@
+{
+  "name": "gemini-3",
+  "calls": 7,
+  "successes": 0,
+  "failures": 7,
+  "rate_limits": 0,
+  "server_errors": 0,
+  "auth_errors": 0,
+  "total_latency_ms": 0.0,
+  "last_call_at": 1791436763.6040363,
+  "last_success_at": 0.0,
+  "last_error": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommend you to use the Interactions API (https://ai.google.dev/gemini-api/d",
+  "last_error_at": 1791436765.3799384,
+  "cooldown_until": 1791436825.3799589,
+  "cooldown_reason": "unknown"
+}

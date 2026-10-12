@@ -1,0 +1,1271 @@
+version: 3.0.0
+generated_at: '2026-10-09T12:39:22.210806+00:00'
+generator: nova/scripts/build_nova_yaml.py
+naming_convention: short (canonical) + aliases (compatibility)
+summary:
+  agents_total: 79
+  tools: 53
+  managers: 26
+  categories:
+  - code
+  - data
+  - infra
+  - meta
+  - quality
+  - research
+  - security
+  - ui
+  criticalities:
+  - core
+  - optional
+  - standard
+  pipelines: 4
+  providers: 6
+  aliases_count: 0
+categories:
+  code:
+    description: كتابة وإصلاح الكود
+  security:
+    description: فحص أمني وثغرات
+  quality:
+    description: جودة وتحليل ثابت
+  infra:
+    description: بنية تحتية ونشر
+  data:
+    description: بيانات وقواعد
+  ui:
+    description: واجهات أمامية
+  research:
+    description: بحث وتخطيط
+  meta:
+    description: وكلاء يتعاملون مع الوكلاء
+criticality:
+  core:
+    description: لا يمكن حذفه — أساسي
+    min_count: 1
+  standard:
+    description: مهم لكن قابل للتعطيل
+  optional:
+    description: إضافي
+roles:
+  tool:
+    description: يُستخدم مباشرة — له main_function
+  manager:
+    description: يُدار من الخارج — قد لا يكون له main_function
+agents:
+  a11y:
+    module: novamind.agents.a11y_agent
+    class_name: A11yAgent
+    main_function: analyze
+    role: tool
+    category: ui
+    criticality: standard
+    capabilities:
+    - accessibility
+    dependencies: []
+    description: WCAG
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  alert_bot:
+    module: novamind.agents.alert_bot
+    class_name: AlertBotAgent
+    main_function: send
+    role: manager
+    category: meta
+    criticality: standard
+    capabilities:
+    - alerting
+    dependencies: []
+    description: تنبيهات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  analyzer:
+    module: novamind.agents.analyzer
+    class_name: AnalyzerAgent
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: core
+    capabilities:
+    - static_analysis
+    dependencies:
+    - llm_router
+    description: تحليل ثابت
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  api_design:
+    module: novamind.agents.api_design_agent
+    class_name: APIDesignAgent
+    main_function: analyze
+    role: tool
+    category: ui
+    criticality: standard
+    capabilities:
+    - api_check
+    dependencies: []
+    description: REST/GraphQL
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  arabic:
+    module: novamind.agents.arabic_analyzer
+    class_name: ArabicAnalyzer
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: standard
+    capabilities:
+    - arabic_check
+    dependencies: []
+    description: تحليل عربي
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  architect:
+    module: novamind.agents.architect
+    class_name: Architect
+    main_function: null
+    role: manager
+    category: research
+    criticality: standard
+    capabilities:
+    - decompose
+    dependencies: []
+    description: تفكيك مهام
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  architecture:
+    module: novamind.agents.architecture_agent
+    class_name: ArchitectureAgent
+    main_function: analyze
+    role: tool
+    category: research
+    criticality: standard
+    capabilities:
+    - solid_check
+    dependencies: []
+    description: SOLID
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  auth:
+    module: novamind.agents.auth_agent
+    class_name: AuthAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: standard
+    capabilities:
+    - auth
+    - authz
+    dependencies: []
+    description: مصادقة وتفويض
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  builder:
+    module: novamind.agents.agent_builder
+    class_name: AgentBuilder
+    main_function: analyze
+    role: tool
+    category: meta
+    criticality: core
+    capabilities:
+    - build_agents
+    dependencies: []
+    description: يبني وكلاء جدد
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  chief_architect:
+    module: novamind.agents.chief_architect
+    class_name: ChiefArchitect
+    main_function: _analyze_requirements
+    role: manager
+    category: research
+    criticality: core
+    capabilities:
+    - architecture
+    - planning
+    dependencies:
+    - llm_router
+    description: تخطيط معمارية
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  ci_doctor:
+    module: novamind.agents.ci_doctor
+    class_name: CIDoctorAgent
+    main_function: analyze_ci_logs
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - ci_diagnosis
+    dependencies: []
+    description: تشخيص CI
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  cicd:
+    module: novamind.agents.cicd_agent
+    class_name: CICDAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - ci_cd_check
+    dependencies: []
+    description: CI/CD
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  cleanup:
+    module: novamind.agents.cleanup_agent
+    class_name: CleanupAgent
+    main_function: null
+    role: manager
+    category: code
+    criticality: standard
+    capabilities:
+    - safe_cleanup
+    dependencies: []
+    description: حذف آمن للملفات المؤقتة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  code_review:
+    module: novamind.agents.code_review_agent
+    class_name: CodeReviewAgent
+    main_function: review
+    role: tool
+    category: code
+    criticality: core
+    capabilities:
+    - unified_review
+    - security
+    - performance
+    - docs
+    dependencies:
+    - security_agent
+    - performance_agent
+    - documentation_agent
+    description: مراجعة موحّدة — يجمع كل المحللات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  coder:
+    module: novamind.agents.coder
+    class_name: CoderAgent
+    main_function: build
+    role: tool
+    category: code
+    criticality: core
+    capabilities:
+    - write_code
+    - refactor
+    - implement
+    dependencies:
+    - llm_router
+    description: يكتب كود Python من وصف
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  complexity:
+    module: novamind.agents.complexity_agent
+    class_name: ComplexityAgent
+    main_function: analyze
+    role: tool
+    category: code
+    criticality: optional
+    capabilities:
+    - complexity_check
+    dependencies: []
+    description: يقيس التعقيد الدوري
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  compliance:
+    module: novamind.agents.compliance_agent
+    class_name: ComplianceAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: standard
+    capabilities:
+    - soc2
+    - iso27001
+    - hipaa
+    dependencies: []
+    description: SOC2/ISO/HIPAA
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  config_validator:
+    module: novamind.agents.config_validator
+    class_name: ConfigValidatorAgent
+    main_function: null
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - validate_yaml
+    - validate_docker
+    dependencies: []
+    description: مدقق إعدادات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  crypto:
+    module: novamind.agents.crypto_agent
+    class_name: CryptoAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: standard
+    capabilities:
+    - weak_crypto
+    dependencies: []
+    description: تشفير ضعيف
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  css:
+    module: novamind.agents.css_agent
+    class_name: CSSAgent
+    main_function: analyze
+    role: tool
+    category: ui
+    criticality: optional
+    capabilities:
+    - css_check
+    dependencies: []
+    description: CSS/Tailwind
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  data_scientist:
+    module: novamind.agents.data_scientist
+    class_name: DataScientist
+    main_function: _analyze
+    role: manager
+    category: data
+    criticality: standard
+    capabilities:
+    - data_analysis
+    dependencies:
+    - llm_router
+    description: تحليل بيانات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  db_migration:
+    module: novamind.agents.db_migration_agent
+    class_name: DBMigrationAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - db_migration
+    dependencies: []
+    description: DB migration
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  deadcode:
+    module: novamind.agents.deadcode_agent
+    class_name: DeadCodeAgent
+    main_function: analyze
+    role: tool
+    category: code
+    criticality: optional
+    capabilities:
+    - deadcode_check
+    dependencies: []
+    description: يكتشف الكود الميت
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  dependency:
+    module: novamind.agents.dependency_agent
+    class_name: DependencyAgent
+    main_function: analyze
+    role: tool
+    category: meta
+    criticality: standard
+    capabilities:
+    - dep_check
+    dependencies: []
+    description: تبعيات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  devops:
+    module: novamind.agents.devops_engineer
+    class_name: DevOpsEngineer
+    main_function: null
+    role: manager
+    category: infra
+    criticality: standard
+    capabilities:
+    - deploy
+    - monitor
+    dependencies: []
+    description: DevOps
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  docker:
+    module: novamind.agents.docker_agent
+    class_name: DockerAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - dockerfile_check
+    dependencies: []
+    description: Dockerfile
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  docker_doctor:
+    module: novamind.agents.docker_doctor
+    class_name: DockerDoctorAgent
+    main_function: null
+    role: manager
+    category: meta
+    criticality: standard
+    capabilities:
+    - diagnose_docker
+    dependencies: []
+    description: طبيب Docker
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  documentation:
+    module: novamind.agents.documentation_agent
+    class_name: DocumentationAgent
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: standard
+    capabilities:
+    - docs_check
+    dependencies: []
+    description: توثيق تلقائي
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  duplication:
+    module: novamind.agents.duplication_agent
+    class_name: DuplicationAgent
+    main_function: analyze
+    role: tool
+    category: code
+    criticality: optional
+    capabilities:
+    - dr_check
+    dependencies: []
+    description: يكتشف تكرار الكود
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  embedding:
+    module: novamind.agents.embedding_agent
+    class_name: EmbeddingAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: standard
+    capabilities:
+    - embedding_check
+    dependencies: []
+    description: Vector search
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  evaluation:
+    module: novamind.agents.evaluation_agent
+    class_name: EvaluationAgent
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: standard
+    capabilities:
+    - llm_eval
+    dependencies: []
+    description: تقييم LLM
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  factory:
+    module: novamind.agents.factory
+    class_name: AgentFactory
+    main_function: null
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - factory
+    dependencies: []
+    description: مصنع الوكلاء
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  finetune:
+    module: novamind.agents.finetune_agent
+    class_name: FinetuneAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: optional
+    capabilities:
+    - finetune_check
+    dependencies: []
+    description: Fine-tuning
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  fixer:
+    module: novamind.agents.fixer
+    class_name: FixerAgent
+    main_function: fix
+    role: tool
+    category: code
+    criticality: standard
+    capabilities:
+    - auto_fix
+    - multi_strategy
+    dependencies:
+    - llm_router
+    description: إصلاح متعدد الاستراتيجيات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  git:
+    module: novamind.agents.git_agent
+    class_name: GitAgent
+    main_function: _run
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - git_ops
+    dependencies: []
+    description: Git طبيعي
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  indexing:
+    module: novamind.agents.indexing_agent
+    class_name: IndexingAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: standard
+    capabilities:
+    - index_check
+    dependencies: []
+    description: فهارس
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  injection:
+    module: novamind.agents.injection_agent
+    class_name: InjectionAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: standard
+    capabilities:
+    - sql_injection
+    - nosql_injection
+    dependencies: []
+    description: يكتشف SQL/NoSQL injection
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  junior:
+    module: novamind.agents.junior_engineer
+    class_name: JuniorEngineer
+    main_function: null
+    role: manager
+    category: code
+    criticality: optional
+    capabilities:
+    - simple_tasks
+    dependencies: []
+    description: مهام بسيطة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  k8s:
+    module: novamind.agents.k8s_agent
+    class_name: K8sAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - k8s_check
+    dependencies: []
+    description: Kubernetes
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  lead_researcher:
+    module: novamind.agents.lead_researcher
+    class_name: LeadResearcher
+    main_function: null
+    role: manager
+    category: data
+    criticality: standard
+    capabilities:
+    - research
+    dependencies:
+    - llm_router
+    description: بحث متقدم
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  learner:
+    module: novamind.agents.learner
+    class_name: LearnerAgent
+    main_function: learn
+    role: tool
+    category: data
+    criticality: core
+    capabilities:
+    - feedback_loop
+    - learning
+    dependencies: []
+    description: تعلّم من التجارب
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  maintenance:
+    module: novamind.agents.maintenance_agent
+    class_name: MaintenanceAgent
+    main_function: null
+    role: manager
+    category: meta
+    criticality: optional
+    capabilities:
+    - maintenance
+    dependencies: []
+    description: صيانة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  memory_keeper:
+    module: novamind.agents.memory_keeper
+    class_name: MemoryKeeperAgent
+    main_function: null
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - save_lessons
+    dependencies: []
+    description: حفظ الدروس
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  migration:
+    module: novamind.agents.migration_agent
+    class_name: MigrationAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - code_migration
+    dependencies: []
+    description: ترحيل كود
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  monitoring:
+    module: novamind.agents.monitoring_agent
+    class_name: MonitoringAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - observability
+    dependencies: []
+    description: Observability
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  multi_fixer:
+    module: novamind.agents.multi_fixer
+    class_name: MultiFixer
+    main_function: fix
+    role: tool
+    category: code
+    criticality: standard
+    capabilities:
+    - parallel_fix
+    dependencies:
+    - llm_router
+    description: 3 استراتيجيات إصلاح متوازية
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  multilang:
+    module: novamind.agents.multilang_analyzer
+    class_name: MultiLangAnalyzer
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: standard
+    capabilities:
+    - multi_lang
+    dependencies: []
+    description: 6 لغات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  naming:
+    module: novamind.agents.naming_agent
+    class_name: NamingAgent
+    main_function: analyze
+    role: tool
+    category: code
+    criticality: optional
+    capabilities:
+    - naming_check
+    dependencies: []
+    description: يكتشف تسميات سيئة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  nginx:
+    module: novamind.agents.nginx_agent
+    class_name: NginxAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: optional
+    capabilities:
+    - nginx_check
+    dependencies: []
+    description: Nginx
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  nosql:
+    module: novamind.agents.nosql_agent
+    class_name: NoSQLAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: standard
+    capabilities:
+    - nosql_check
+    dependencies: []
+    description: NoSQL
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  nova_brain:
+    module: novamind.agents.nova_brain
+    class_name: NovaBrain
+    main_function: handle_ci_failure
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - orchestrate
+    - coordinate
+    dependencies:
+    - ci_doctor
+    - self_healer
+    - memory_keeper
+    - alert_bot
+    description: العقل المنسّق 🧠
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  orm:
+    module: novamind.agents.orm_agent
+    class_name: ORMAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: standard
+    capabilities:
+    - orm_check
+    dependencies: []
+    description: ORM
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  parallel:
+    module: novamind.agents.parallel_agents
+    class_name: ParallelAgentPool
+    main_function: run_all
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - parallel_exec
+    dependencies: []
+    description: محرّك Async متوازي
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  performance:
+    module: novamind.agents.performance_agent
+    class_name: PerformanceAgent
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: standard
+    capabilities:
+    - perf_analysis
+    dependencies: []
+    description: أداء
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  precommit_guard:
+    module: novamind.agents.precommit_guard
+    class_name: PreCommitGuardAgent
+    main_function: null
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - precommit_check
+    dependencies: []
+    description: حارس pre-commit
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  privacy:
+    module: novamind.agents.privacy_agent
+    class_name: PrivacyAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: standard
+    capabilities:
+    - pii
+    - gdpr
+    dependencies: []
+    description: PII/GDPR
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  project_manager:
+    module: novamind.agents.project_manager
+    class_name: ProjectManager
+    main_function: null
+    role: manager
+    category: research
+    criticality: core
+    capabilities:
+    - manage_tasks
+    - track
+    dependencies: []
+    description: إدارة مهام
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  prompt:
+    module: novamind.agents.prompt_agent
+    class_name: PromptAgent
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: optional
+    capabilities:
+    - prompt_eng
+    dependencies: []
+    description: هندسة prompts
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  qa_devops:
+    module: novamind.agents.qa_devops
+    class_name: QA_DevOps
+    main_function: null
+    role: manager
+    category: research
+    criticality: standard
+    capabilities:
+    - qa_ops
+    dependencies: []
+    description: QA + DevOps
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  quality_guardian:
+    module: novamind.agents.quality_guardian
+    class_name: QualityGuardian
+    main_function: null
+    role: manager
+    category: quality
+    criticality: core
+    capabilities:
+    - quality_standards
+    dependencies: []
+    description: معايير الجودة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  react:
+    module: novamind.agents.react_agent
+    class_name: ReactAgent
+    main_function: analyze
+    role: tool
+    category: ui
+    criticality: standard
+    capabilities:
+    - react_check
+    dependencies: []
+    description: React
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  refactor:
+    module: novamind.agents.refactor_agent
+    class_name: RefactorAgent
+    main_function: analyze
+    role: tool
+    category: code
+    criticality: standard
+    capabilities:
+    - refactor_suggest
+    dependencies:
+    - llm_router
+    description: يقترح إعادة هيكلة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  rtl:
+    module: novamind.agents.rtl_agent
+    class_name: RTLAgent
+    main_function: analyze
+    role: tool
+    category: quality
+    criticality: optional
+    capabilities:
+    - rtl_check
+    dependencies: []
+    description: RTL/LTR
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  secret_scanner:
+    module: novamind.agents.secret_scanner
+    class_name: SecretScanner
+    main_function: null
+    role: manager
+    category: security
+    criticality: core
+    capabilities:
+    - regex_scan
+    - no_llm
+    dependencies: []
+    description: كاشف محلي بدون LLM
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  secrets:
+    module: novamind.agents.secrets_agent
+    class_name: SecretsAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: core
+    capabilities:
+    - hardcoded_secrets
+    dependencies: []
+    description: مفاتيح مسربة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  security:
+    module: novamind.agents.security_agent
+    class_name: SecurityAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: core
+    capabilities:
+    - owasp
+    - vulnerabilities
+    dependencies: []
+    description: فحص ثغرات OWASP
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  security_engineer:
+    module: novamind.agents.security_engineer
+    class_name: SecurityEngineer
+    main_function: null
+    role: manager
+    category: security
+    criticality: standard
+    capabilities:
+    - threat_modeling
+    - pentest
+    dependencies: []
+    description: threat modeling
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  self_healer:
+    module: novamind.agents.self_healer
+    class_name: SelfHealerAgent
+    main_function: null
+    role: manager
+    category: meta
+    criticality: core
+    capabilities:
+    - auto_heal
+    dependencies: []
+    description: معالجة ذاتية
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  senior:
+    module: novamind.agents.senior_engineer
+    class_name: SeniorEngineer
+    main_function: _analyze_patterns
+    role: manager
+    category: code
+    criticality: standard
+    capabilities:
+    - design_patterns
+    dependencies:
+    - llm_router
+    description: أنماط التصميم
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  sql:
+    module: novamind.agents.sql_agent
+    class_name: SQLAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: standard
+    capabilities:
+    - sql_check
+    dependencies: []
+    description: SQL
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  tech_writer:
+    module: novamind.agents.technical_writer
+    class_name: TechnicalWriter
+    main_function: null
+    role: manager
+    category: quality
+    criticality: standard
+    capabilities:
+    - write_docs
+    dependencies:
+    - llm_router
+    description: كتابة تقنية
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  terraform:
+    module: novamind.agents.terraform_agent
+    class_name: TerraformAgent
+    main_function: analyze
+    role: tool
+    category: infra
+    criticality: standard
+    capabilities:
+    - iac_check
+    dependencies: []
+    description: IaC
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  test_generator:
+    module: novamind.agents.test_generator
+    class_name: TestGenerator
+    main_function: generate
+    role: tool
+    category: code
+    criticality: standard
+    capabilities:
+    - generate_tests
+    - edge_cases
+    dependencies:
+    - llm_router
+    description: توليد اختبارات
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  test_runner:
+    module: novamind.agents.test_runner
+    class_name: TestRunner
+    main_function: run_pytest
+    role: tool
+    category: code
+    criticality: core
+    capabilities:
+    - run_pytest
+    - coverage
+    dependencies: []
+    description: يُشغّل pytest مع coverage
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  tester:
+    module: novamind.agents.tester
+    class_name: Tester
+    main_function: run
+    role: tool
+    category: code
+    criticality: core
+    capabilities:
+    - run_tests
+    - sandbox
+    dependencies: []
+    description: يُشغّل كود في بيئة معزولة
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  transaction:
+    module: novamind.agents.transaction_agent
+    class_name: TransactionAgent
+    main_function: analyze
+    role: tool
+    category: data
+    criticality: standard
+    capabilities:
+    - acid_check
+    dependencies: []
+    description: ACID
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  vue:
+    module: novamind.agents.vue_agent
+    class_name: VueAgent
+    main_function: analyze
+    role: tool
+    category: ui
+    criticality: optional
+    capabilities:
+    - vue_check
+    dependencies: []
+    description: Vue
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  watchdog:
+    module: novamind.agents.watchdog
+    class_name: WatchdogAgent
+    main_function: run_forever
+    role: manager
+    category: meta
+    criticality: standard
+    capabilities:
+    - continuous_monitor
+    dependencies: []
+    description: مراقب دائم
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+  xss:
+    module: novamind.agents.xss_agent
+    class_name: XSSAgent
+    main_function: analyze
+    role: tool
+    category: security
+    criticality: standard
+    capabilities:
+    - xss
+    - csrf
+    dependencies: []
+    description: يكتشف XSS/CSRF
+    timeout_seconds: 120
+    max_cost_usd: 0.1
+    aliases: []
+alias_index: {}
+pipelines:
+  system_creation:
+    name: System Creation
+    description: من spec → نظام كامل (production-ready)
+    stages:
+    - agent: analyzer
+      output_key: analysis
+    - agent: task_planner
+      output_key: plan
+    - agent: coder
+      output_key: code
+    - agent: lint_agent
+      output_key: lint
+    - agent: type_agent
+      output_key: types
+    - agent: test_generator
+      output_key: tests
+    - agent: code_review
+      output_key: review
+    - agent: security
+      output_key: security
+    - agent: docker
+      output_key: docker
+    - agent: docs_writer
+      output_key: docs
+  bug_fix:
+    name: Bug Fix
+    description: إصلاح خطأ
+    stages:
+    - agent: analyzer
+      output_key: analysis
+    - agent: debug_agent
+      output_key: diagnosis
+    - agent: fixer
+      output_key: fix
+    - agent: test_runner
+      output_key: test_result
+  code_review:
+    name: Code Review
+    description: مراجعة شاملة
+    stages:
+    - agent: code_review
+      output_key: review
+    - agent: security
+      output_key: security
+    - agent: lint_agent
+      output_key: lint
+    - agent: type_agent
+      output_key: types
+  deploy:
+    name: Deploy
+    description: نشر نظام
+    stages:
+    - agent: docker
+      output_key: docker
+    - agent: deploy_agent
+      output_key: deployment
+    - agent: monitor_agent
+      output_key: monitoring
+providers:
+  list:
+  - gemini
+  - glm
+  - groq
+  - mistral
+  - ollama
+  - openrouter

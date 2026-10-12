@@ -1,0 +1,16 @@
+{
+  "name": "glm-2",
+  "calls": 2,
+  "successes": 0,
+  "failures": 2,
+  "rate_limits": 1,
+  "server_errors": 0,
+  "auth_errors": 0,
+  "total_latency_ms": 0.0,
+  "last_call_at": 1791434352.5984566,
+  "last_success_at": 0.0,
+  "last_error": "Error code: 429 - {'error': {'code': '1113', 'message': '余额不足或无可用资源包,请充值。'}}",
+  "last_error_at": 1791434355.6495566,
+  "cooldown_until": 1791437955.6495824,
+  "cooldown_reason": "rate_limit"
+}

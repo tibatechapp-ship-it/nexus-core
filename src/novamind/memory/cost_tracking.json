@@ -1,0 +1,21 @@
+{
+  "lifetime": {
+    "gemini": {
+      "input_tokens": 4963,
+      "output_tokens": 5000,
+      "cost": 0.001872225,
+      "calls": 38,
+      "failures": 36
+    }
+  },
+  "daily": {
+    "gemini": {
+      "input_tokens": 4963,
+      "output_tokens": 5000,
+      "cost": 0.001872225,
+      "calls": 38,
+      "failures": 36
+    }
+  },
+  "last_reset": "2026-10-08"
+}
