@@ -159,8 +159,8 @@ class LLMRouter:
             ))
         logger.info(f"Groq: {len(groq_keys)} keys loaded")
 
-        # 3. ZAI / GLM — 4 مفاتيح
-        for i in range(1, 5):
+        # 3. ZAI / GLM — 13 مفاتيح
+        for i in range(1, 14):
             glm_key = os.environ.get(f"ZAI_API_KEY_{i}", "").strip()
             if glm_key and len(glm_key) > 10:
                 self.providers.append(ProviderConfig(

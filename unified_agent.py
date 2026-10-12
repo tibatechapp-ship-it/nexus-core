@@ -25,6 +25,7 @@ from typing import List, Dict, Optional
 # ═══════════════════════════════════════════════════════════
 ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 # Load .env
 try:
@@ -41,11 +42,12 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
 # NovaMind core
-from core.llm_router import LLMRouter
-from core.orchestrator import Orchestrator, TASK_TEMPLATES
-from core.observability import metrics
-from core.mcp_server import NovaMindMCP
-from core.loop_engine import LoopEngine, Goal
+from novamind.core.llm_router import LLMRouter
+from novamind.core.orchestrator import Orchestrator
+TASK_TEMPLATES = {}
+from novamind.core.observability import metrics
+from novamind.core.mcp_server import NovaMindMCP
+from novamind.core.loop_engine import LoopEngine, Goal
 
 # ═══════════════════════════════════════════════════════════
 # Config
@@ -146,7 +148,7 @@ class UnifiedChat:
 
         try:
             if not hasattr(self, "_react_loop"):
-                from core.react_loop import ReactLoop
+                from novamind.core.react_loop import ReactLoop
                 self._react_loop = ReactLoop(
                     router=self.router,
                     tools=REACT_TOOLS if "REACT_TOOLS" in globals() else {},
@@ -314,8 +316,8 @@ REACT_TOOLS = {
     "git_command": tool_git_command,
 }
 
-from core.orchestrator import Orchestrator as _Orch
-from core.proactive_pipeline import proactive_pipeline
+from novamind.core.orchestrator import Orchestrator as _Orch
+from novamind.core.proactive_pipeline import proactive_pipeline
 unified_orch = _Orch()
 
 
@@ -425,9 +427,9 @@ async def get_metrics():
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/pipeline/status")
 async def pipeline_status():
-    from core.security_gatekeeper import gatekeeper
-    from core.task_planner import planner
-    from core.pre_check import pre_check
+    from novamind.core.security_gatekeeper import gatekeeper
+    from novamind.core.task_planner import planner
+    from novamind.core.pre_check import pre_check
     return {
         "gatekeeper": True,
         "planner": True,
@@ -437,23 +439,23 @@ async def pipeline_status():
 
 @app.post("/api/security/check")
 async def security_check(req: dict):
-    from core.security_gatekeeper import gatekeeper
+    from novamind.core.security_gatekeeper import gatekeeper
     text = req.get("text", "")
     check_type = req.get("type", "request")
     if check_type == "code":
-        from core.pre_check import pre_check
+        from novamind.core.pre_check import pre_check
         return pre_check.check(text).to_dict()
     return gatekeeper.analyze(text).to_dict()
 
 @app.post("/api/pipeline/plan")
 async def pipeline_plan(req: dict):
-    from core.task_planner import planner
+    from novamind.core.task_planner import planner
     plan = planner.plan(req.get("message", ""))
     return plan.to_dict()
 
 @app.get("/api/security/metrics")
 async def security_metrics():
-    from core.security_gatekeeper import gatekeeper
+    from novamind.core.security_gatekeeper import gatekeeper
     return gatekeeper.get_metrics()
 
 
@@ -514,7 +516,7 @@ async def pipeline_stream(req: _StreamRequest):
         try:
             # Ensure ReactLoop is wired
             if getattr(proactive_pipeline, "_react_loop", None) is None:
-                from core.react_loop import ReactLoop
+                from novamind.core.react_loop import ReactLoop
                 if getattr(unified, "_react_loop", None) is None:
                     unified._react_loop = ReactLoop(
                         router=unified.router,

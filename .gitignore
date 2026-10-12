@@ -75,3 +75,12 @@ Thumbs.db
 *~
 .idea/
 .vscode/
+
+# ─── Backup / stale files (never commit) ───────────────────────────────────
+*.bak
+*.bak[0-9]*
+*.old
+*.BROKEN
+*.orig
+*.rej
+.env.env.bak
