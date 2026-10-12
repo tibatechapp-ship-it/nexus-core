@@ -141,10 +141,26 @@ class UnifiedChat:
     def get_history(self, thread_id: str) -> List[Dict]:
         return self.conversations.setdefault(thread_id, [])
 
-    async def chat_stream(self, message: str, thread_id: str):
+    async def chat_stream(self, message: str, thread_id: str,
+                          conversation_id: str = "", agent: str = ""):
         """Stream via Proactive Pipeline: Gatekeeper -> Planner -> ReAct -> PreCheck."""
         import asyncio as _aio
         import json as _json
+
+        t0 = time.time()
+        cid = conversation_id or thread_id
+
+        def _trace(status: str, answer: str, plan=None, gate=None, pc=None) -> None:
+            """Best-effort Time-Machine log; never break the stream on failure."""
+            try:
+                store.add_trace(
+                    conversation_id=cid, message=message, response=answer or "",
+                    agent=agent or "", status=status,
+                    latency_ms=int((time.time() - t0) * 1000),
+                    plan=plan or {}, gatekeeper=gate or {}, pre_check=pc or {},
+                )
+            except Exception:
+                pass
 
         try:
             if not hasattr(self, "_react_loop"):
@@ -156,6 +172,7 @@ class UnifiedChat:
                 )
             proactive_pipeline.set_react_loop(self._react_loop)
         except Exception as e:
+            _trace("error", "Init error: " + str(e))
             yield "data: " + _json.dumps({"type": "error", "content": "Init error: " + str(e)}, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
             return
@@ -166,12 +183,15 @@ class UnifiedChat:
                 None, lambda: proactive_pipeline.execute(message)
             )
         except Exception as e:
+            _trace("error", "Pipeline error: " + str(e))
             yield "data: " + _json.dumps({"type": "error", "content": "Pipeline error: " + str(e)}, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
             return
 
         gate = result.gatekeeper if isinstance(result.gatekeeper, dict) else {}
         if result.status == "blocked" or gate.get("decision") == "block":
+            _trace("blocked", result.answer or "Blocked",
+                   plan=result.plan if isinstance(result.plan, dict) else {}, gate=gate)
             yield "data: " + _json.dumps({"type": "error", "content": result.answer or "Blocked"}, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
             return
@@ -190,6 +210,7 @@ class UnifiedChat:
         if pc and pc.get("decision") and pc["decision"] != "clean":
             yield "data: " + _json.dumps({"type": "pre_check", "decision": pc["decision"]}, ensure_ascii=False) + chr(10) + chr(10)
 
+        _trace("ok", answer, plan=plan, gate=gate, pc=pc)
         yield "data: [DONE]" + chr(10) + chr(10)
 
     def analyze(self, task: str, code: str) -> Dict:
@@ -330,6 +351,8 @@ unified = UnifiedChat()
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "default"
+    conversation_id: str = ""
+    agent: str = ""
 
 
 class FileRequest(BaseModel):
@@ -391,7 +414,10 @@ async def write_file(req: FileRequest):
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     async def event_gen():
-        async for event in unified.chat_stream(req.message, req.thread_id):
+        async for event in unified.chat_stream(
+            req.message, req.thread_id,
+            conversation_id=req.conversation_id, agent=req.agent,
+        ):
             yield event
     return StreamingResponse(
         event_gen(),
@@ -701,6 +727,71 @@ async def export_conversation(cid: str, format: str = "json"):
 @app.post("/api/conversations/migrate")
 async def migrate_conversations(req: MigrateRequest):
     return {"imported": store.import_conversations(req.conversations)}
+
+
+# ── Time Machine: request traces (v1.5) ──────────────────────────────────
+@app.get("/api/traces")
+async def list_traces(conversation_id: str = "", q: str = "", limit: int = 200):
+    if q:
+        return {"traces": store.search_traces(q, limit=limit)}
+    return {"traces": store.list_traces(conversation_id=conversation_id or None,
+                                        limit=limit)}
+
+
+@app.get("/api/traces/{tid}")
+async def get_trace(tid: str):
+    tr = store.get_trace(tid)
+    if tr is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    return tr
+
+
+@app.delete("/api/traces/{tid}")
+async def delete_trace(tid: str):
+    return {"deleted": store.delete_trace(tid), "id": tid}
+
+
+@app.delete("/api/traces")
+async def clear_traces(conversation_id: str = ""):
+    return {"cleared": store.clear_traces(conversation_id or None)}
+
+
+@app.get("/api/traces/{tid}/export")
+async def export_trace(tid: str, format: str = "json"):
+    data = store.export_trace(tid, fmt=format)
+    if data is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    if format in ("md", "markdown"):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(data, media_type="text/markdown")
+    return JSONResponse(content=json.loads(data))
+
+
+@app.post("/api/traces/{tid}/replay")
+async def replay_trace(tid: str):
+    """Re-run a logged request through the pipeline and log the new result."""
+    import asyncio as _aio
+
+    tr = store.get_trace(tid)
+    if tr is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    loop = _aio.get_event_loop()
+    t0 = time.time()
+    try:
+        result = await loop.run_in_executor(
+            None, lambda: proactive_pipeline.execute(tr["message"])
+        )
+        answer = result.answer or "(no answer)"
+        status = "blocked" if result.status == "blocked" else "ok"
+    except Exception as e:  # pragma: no cover - defensive
+        answer = "Replay error: " + str(e)
+        status = "error"
+    new = store.add_trace(
+        conversation_id=tr["conversation_id"], message=tr["message"],
+        response=answer, agent=tr.get("agent", ""), status=status,
+        latency_ms=int((time.time() - t0) * 1000), meta={"replay_of": tid},
+    )
+    return {"trace": new, "answer": answer, "replay_of": tid}
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -72,6 +72,23 @@ CREATE TABLE IF NOT EXISTS council_messages (
     FOREIGN KEY (session_id) REFERENCES council_sessions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_councilmsg_sess ON council_messages(session_id, round, ts);
+
+CREATE TABLE IF NOT EXISTS traces (
+    id              TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL DEFAULT '',
+    message         TEXT NOT NULL DEFAULT '',
+    response        TEXT NOT NULL DEFAULT '',
+    agent           TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'ok',
+    latency_ms      INTEGER NOT NULL DEFAULT 0,
+    plan            TEXT NOT NULL DEFAULT '{}',
+    gatekeeper      TEXT NOT NULL DEFAULT '{}',
+    pre_check       TEXT NOT NULL DEFAULT '{}',
+    ts              INTEGER NOT NULL,
+    meta            TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_traces_conv ON traces(conversation_id, ts);
+CREATE INDEX IF NOT EXISTS idx_traces_ts ON traces(ts DESC);
 """
 
 
@@ -433,6 +450,140 @@ class SessionStore:
             m["meta"] = json.loads(m.get("meta") or "{}")
         return sess
 
+    # ── time machine: traces (v1.5) ──────────────────────────────────────
+    @staticmethod
+    def _json_field(value: Any) -> str:
+        """Coerce a value (dict / str / None) into a JSON text column."""
+        if value is None:
+            return "{}"
+        if isinstance(value, str):
+            try:
+                json.loads(value)
+                return value
+            except (ValueError, TypeError):
+                return json.dumps({"text": value}, ensure_ascii=False)
+        return json.dumps(value, ensure_ascii=False)
+
+    @staticmethod
+    def _row_to_trace(row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "conversation_id": row["conversation_id"],
+            "message": row["message"],
+            "response": row["response"],
+            "agent": row["agent"],
+            "status": row["status"],
+            "latency_ms": row["latency_ms"],
+            "plan": json.loads(row["plan"] or "{}"),
+            "gatekeeper": json.loads(row["gatekeeper"] or "{}"),
+            "pre_check": json.loads(row["pre_check"] or "{}"),
+            "ts": row["ts"],
+            "meta": json.loads(row["meta"] or "{}"),
+        }
+
+    def add_trace(self, conversation_id: str, message: str, response: str,
+                  agent: str = "", status: str = "ok", latency_ms: int = 0,
+                  plan: Any = None, gatekeeper: Any = None, pre_check: Any = None,
+                  meta: Optional[Dict[str, Any]] = None,
+                  ts: Optional[int] = None) -> Dict[str, Any]:
+        """Record one chat request → response pair (the Time-Machine log)."""
+        tid = _new_id("t")
+        ts = ts if ts is not None else _now_ms()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO traces (id,conversation_id,message,response,agent,status,"
+                "latency_ms,plan,gatekeeper,pre_check,ts,meta)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (tid, conversation_id or "", message or "", response or "", agent or "",
+                 status or "ok", int(latency_ms or 0), self._json_field(plan),
+                 self._json_field(gatekeeper), self._json_field(pre_check), ts,
+                 json.dumps(meta or {}, ensure_ascii=False)),
+            )
+        return {"id": tid, "conversation_id": conversation_id or "", "message": message or "",
+                "response": response or "", "agent": agent or "", "status": status or "ok",
+                "latency_ms": int(latency_ms or 0), "plan": plan or {},
+                "gatekeeper": gatekeeper or {}, "pre_check": pre_check or {},
+                "ts": ts, "meta": meta or {}}
+
+    def get_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
+        rows = self._sql("SELECT * FROM traces WHERE id = ?", (trace_id,))
+        return self._row_to_trace(rows[0]) if rows else None
+
+    def list_traces(self, conversation_id: Optional[str] = None,
+                    limit: int = 200, newest_first: bool = True) -> List[Dict[str, Any]]:
+        order = "DESC" if newest_first else "ASC"
+        if conversation_id:
+            rows = self._sql(
+                f"SELECT * FROM traces WHERE conversation_id = ? ORDER BY ts {order} LIMIT ?",
+                (conversation_id, int(limit)),
+            )
+        else:
+            rows = self._sql(
+                f"SELECT * FROM traces ORDER BY ts {order} LIMIT ?", (int(limit),)
+            )
+        return [self._row_to_trace(r) for r in rows]
+
+    def search_traces(self, query: str, limit: int = 100) -> List[Dict[str, Any]]:
+        q = f"%{query.strip()}%"
+        rows = self._sql(
+            "SELECT * FROM traces WHERE message LIKE ? OR response LIKE ? OR agent LIKE ?"
+            " ORDER BY ts DESC LIMIT ?",
+            (q, q, q, int(limit)),
+        )
+        return [self._row_to_trace(r) for r in rows]
+
+    def delete_trace(self, trace_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM traces WHERE id = ?", (trace_id,))
+            return cur.rowcount > 0
+
+    def clear_traces(self, conversation_id: Optional[str] = None) -> int:
+        with self._connect() as conn:
+            if conversation_id:
+                cur = conn.execute(
+                    "DELETE FROM traces WHERE conversation_id = ?", (conversation_id,)
+                )
+            else:
+                cur = conn.execute("DELETE FROM traces")
+            return cur.rowcount
+
+    def export_trace(self, trace_id: str, fmt: str = "json") -> Optional[str]:
+        tr = self.get_trace(trace_id)
+        if tr is None:
+            return None
+        if fmt in ("md", "markdown"):
+            return self._trace_to_markdown(tr)
+        return json.dumps(tr, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _trace_to_markdown(tr: Dict[str, Any]) -> str:
+        import datetime as _dt
+
+        when = _dt.datetime.fromtimestamp(tr["ts"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        lines = [
+            "# 🔭 Time Machine — trace",
+            "",
+            f"- id: `{tr['id']}`",
+            f"- when: {when}",
+            f"- conversation: `{tr['conversation_id'] or '—'}`",
+            f"- agent: `{tr['agent'] or 'auto'}`",
+            f"- status: {tr['status']}",
+            f"- latency: {tr['latency_ms']} ms",
+            "",
+            "## ❓ Request",
+            "",
+            tr["message"],
+            "",
+            "## 💬 Response",
+            "",
+            tr["response"],
+            "",
+        ]
+        if tr.get("plan"):
+            lines += ["## 🧭 Plan", "", "```json",
+                      json.dumps(tr["plan"], ensure_ascii=False, indent=2), "```", ""]
+        return "\n".join(lines)
+
     # ── stats ────────────────────────────────────────────────────────────
     def stats(self) -> Dict[str, Any]:
         def count(table: str) -> int:
@@ -445,6 +596,7 @@ class SessionStore:
             "messages": count("messages"),
             "council_sessions": count("council_sessions"),
             "council_messages": count("council_messages"),
+            "traces": count("traces"),
         }
 
 

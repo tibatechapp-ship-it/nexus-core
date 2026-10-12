@@ -175,6 +175,20 @@ kbd{background:#333;border:1px solid #4a4a4a;border-radius:4px;padding:0 5px;fon
   border:1px solid var(--border);color:var(--text);font:inherit;outline:none;margin-bottom:10px}
 .result{padding:10px;border-radius:9px;cursor:pointer}.result:hover{background:var(--hover)}
 .result .d{font-size:11px;color:var(--faint)}
+.modal.wide{width:min(94vw,720px);max-height:84vh;overflow:auto}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.trace-item{padding:10px;border-radius:9px;cursor:pointer;border:1px solid transparent}
+.trace-item:hover{background:var(--hover)}
+.trace-item.sel{border-color:var(--accent);background:var(--hover)}
+.trace-item .t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trace-item .d{font-size:11px;color:var(--faint);margin-top:3px}
+.trace-detail{margin-top:12px;border-top:1px solid var(--border);padding-top:12px;display:none}
+.trace-detail.show{display:block}
+.trace-detail h4{margin:10px 0 4px;font-size:13px;color:var(--faint)}
+.trace-detail pre{white-space:pre-wrap;word-break:break-word;background:#1a1a1a;border:1px solid var(--border);
+  border-radius:9px;padding:10px;font-size:12px;max-height:30vh;overflow:auto;margin:0 0 6px}
+.trace-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.trace-meta{font-size:11px;color:var(--faint)}
 .toasts{position:fixed;bottom:20px;inset-inline-start:20px;z-index:80;display:flex;flex-direction:column;gap:8px}
 .toast{background:#2f2f2f;border:1px solid var(--border);border-inline-start:3px solid var(--accent);
   padding:10px 16px;border-radius:10px;font-size:14px;animation:slide .25s ease;box-shadow:0 8px 24px rgba(0,0,0,.4)}
@@ -236,6 +250,9 @@ kbd{background:#333;border:1px solid #4a4a4a;border-radius:4px;padding:0 5px;fon
       <div class="grow"></div>
       <button class="icon-btn" id="btnTopNew" aria-label="new">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="icon-btn" id="btnTraces" aria-label="time machine" title="Time Machine">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       </button>
       <button class="icon-btn" id="btnSearch" aria-label="search">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -303,6 +320,17 @@ kbd{background:#333;border:1px solid #4a4a4a;border-radius:4px;padding:0 5px;fon
   </div>
 </div>
 
+<!-- Time Machine modal -->
+<div class="modal wide" id="tracesModal">
+  <div class="modal-head">
+    <h2 style="margin:0" data-i18n="timeMachine">🔭 آلة الزمن</h2>
+    <button class="pill ghost" id="traceClear" data-i18n="clearTraces">مسح السجل</button>
+  </div>
+  <input class="search" id="traceSearch" placeholder="🔎 …" autocomplete="off">
+  <div id="traceList" style="max-height:42vh;overflow:auto"></div>
+  <div class="trace-detail" id="traceDetail"></div>
+</div>
+
 <div class="toasts" id="toasts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -317,7 +345,10 @@ const I18N={
     confirmClear:"حذف كل المحادثات",close:"إغلاق",copy:"نسخ",copied:"تم النسخ ✅",del:"تم الحذف 🗑️",
     err:"خطأ في الاتصال ❌",you:"أنت",assistant:"NovaMind",regen:"إعادة",edit:"تعديل",save:"حفظ",cancel:"إلغاء",
     empty:"ابدأ محادثة جديدة ✨",deleteQ:"حذف هذه المحادثة؟",confirmClearQ:"حذف كل المحادثات نهائياً؟",
-    stopped:"تم الإيقاف",thinking:"يكتب…",agentDefault:"الوكيل التلقائي"},
+    stopped:"تم الإيقاف",thinking:"يكتب…",agentDefault:"الوكيل التلقائي",
+    timeMachine:"🔭 آلة الزمن",clearTraces:"مسح السجل",clearTracesQ:"مسح كل سجل الطلبات؟",
+    noTraces:"لا توجد طلبات مسجّلة بعد",replay:"إعادة التشغيل",export:"تصدير",
+    request:"الطلب",response:"الرد",latency:"الزمن",status:"الحالة",replayDone:"تمت الإعادة — أُضيف طلب جديد"},
   en:{newChat:"New chat",settings:"Settings",language:"Language",online:"Online",offline:"Offline",
     placeholder:"Type your message…",enterSend:"to send",shiftNewline:"new line",curAgent:"Current agent",
     tools:"Available tools",stats:"Stats",msgCount:"Messages",lastUpdate:"Last update",conn:"Connection",
@@ -325,16 +356,19 @@ const I18N={
     confirmClear:"Delete all conversations",close:"Close",copy:"Copy",copied:"Copied ✅",del:"Deleted 🗑️",
     err:"Connection error ❌",you:"You",assistant:"NovaMind",regen:"Regenerate",edit:"Edit",save:"Save",cancel:"Cancel",
     empty:"Start a new chat ✨",deleteQ:"Delete this conversation?",confirmClearQ:"Delete ALL conversations?",
-    stopped:"Stopped",thinking:"Typing…",agentDefault:"Auto agent"}
+    stopped:"Stopped",thinking:"Typing…",agentDefault:"Auto agent",
+    timeMachine:"🔭 Time Machine",clearTraces:"Clear log",clearTracesQ:"Clear the whole request log?",
+    noTraces:"No requests logged yet",replay:"Replay",export:"Export",
+    request:"Request",response:"Response",latency:"Latency",status:"Status",replayDone:"Replayed — new request logged"}
 };
-const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations"};
+const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces"};
 const LS={conv:"nm_convs",cur:"nm_cur",lang:"nm_lang",migrated:"nm_migrated"};
 const MAX_CONV=200;
 let useDB=true;              // false = localStorage fallback (API unreachable)
 let codes=[];               // highlighted code blocks (per render, kept for copy)
 
 /* ============================ state ============================ */
-let state={convs:[],cur:null,lang:"ar",agents:[],agent:"",streaming:false,ctrl:null,stream:true};
+let state={convs:[],cur:null,lang:"ar",agents:[],agent:"",streaming:false,ctrl:null,stream:true,curTrace:null};
 const $=id=>document.getElementById(id);
 const t=k=>(I18N[state.lang]||I18N.ar)[k]||k;
 
@@ -648,7 +682,8 @@ function renderAgents(){
 
 /* ============================ overlays ============================ */
 function closeAll(){$("sidebar").classList.remove("open");$("info").classList.remove("open");
-  $("backdrop").classList.remove("show");$("searchModal").classList.remove("show");$("settingsModal").classList.remove("show");}
+  $("backdrop").classList.remove("show");$("searchModal").classList.remove("show");$("settingsModal").classList.remove("show");
+  $("tracesModal").classList.remove("show");}
 function openSearch(){closeAll();$("searchModal").classList.add("show");$("backdrop").classList.add("show");
   const inp=$("searchInput");inp.value="";searchRender("");inp.focus();}
 async function searchRender(q){
@@ -665,6 +700,65 @@ async function searchRender(q){
     el.onclick=async()=>{state.cur=c.id;if(!state.convs.find(x=>x.id===c.id))state.convs.unshift(c);
       saveCache();renderSidebar();await renderMessages();renderInfo();closeAll();};
     box.appendChild(el);});
+}
+/* ============================ time machine ============================ */
+async function openTraces(){
+  closeAll();
+  $("tracesModal").classList.add("show");$("backdrop").classList.add("show");
+  state.curTrace=null;
+  const det=$("traceDetail");det.classList.remove("show");det.innerHTML="";
+  const inp=$("traceSearch");inp.value="";
+  inp.oninput=()=>renderTraces(inp.value);
+  await renderTraces("");
+  inp.focus();
+}
+async function renderTraces(q){
+  const box=$("traceList");box.innerHTML="";
+  let list;
+  try{
+    const url=q?API.traces+"?q="+encodeURIComponent(q):API.traces+"?limit=200";
+    list=(await apiGet(url)).traces||[];
+  }catch(e){list=[];}
+  if(!list.length){box.innerHTML='<div style="color:var(--faint);padding:14px;text-align:center">'+t("noTraces")+'</div>';return;}
+  list.forEach(tr=>{
+    const el=document.createElement("div");
+    el.className="trace-item"+(state.curTrace===tr.id?" sel":"");
+    el.innerHTML='<div class="t"></div><div class="d"></div>';
+    el.children[0].textContent=(tr.message||"").slice(0,80)||"—";
+    el.children[1].textContent=fmt(tr.ts)+" · "+tr.latency_ms+"ms · "+tr.status+" · "+(tr.agent||t("agentDefault"));
+    el.onclick=()=>openTraceDetail(tr.id);
+    box.appendChild(el);
+  });
+}
+async function openTraceDetail(tid){
+  state.curTrace=tid;
+  let tr;try{tr=await apiGet(API.traces+"/"+tid);}catch(e){toast(t("err"),1);return;}
+  const d=$("traceDetail");d.classList.add("show");
+  d.innerHTML='<h4>'+t("request")+'</h4><pre class="req"></pre>'+
+    '<h4>'+t("response")+'</h4><pre class="res"></pre>'+
+    '<div class="trace-detail-actions"></div>'+
+    '<div class="trace-meta"></div>';
+  d.querySelector(".req").textContent=tr.message||"—";
+  d.querySelector(".res").textContent=tr.response||"—";
+  d.querySelector(".trace-meta").textContent=
+    fmt(tr.ts)+" · "+t("latency")+": "+tr.latency_ms+"ms · "+t("status")+": "+tr.status;
+  const acts=d.querySelector(".trace-detail-actions");
+  const bR=document.createElement("button");bR.className="pill";bR.textContent="↻ "+t("replay");
+  const bJ=document.createElement("button");bJ.className="pill ghost";bJ.textContent="⬇ "+t("export")+" JSON";
+  const bM=document.createElement("button");bM.className="pill ghost";bM.textContent="⬇ "+t("export")+" MD";
+  acts.append(bR,bJ,bM);
+  bR.onclick=()=>replayTrace(tid);
+  bJ.onclick=()=>window.open(API.traces+"/"+tid+"/export?format=json","_blank");
+  bM.onclick=()=>window.open(API.traces+"/"+tid+"/export?format=markdown","_blank");
+  renderTraces($("traceSearch").value);
+}
+async function replayTrace(tid){
+  const r=await apiSend("POST",API.traces+"/"+tid+"/replay",{});
+  if(!r||!r.trace){toast(t("err"),1);return;}
+  state.curTrace=r.trace.id;
+  toast(t("replayDone"));
+  await renderTraces($("traceSearch").value);
+  openTraceDetail(r.trace.id);
 }
 function toast(msg,isErr){
   const el=document.createElement("div");el.className="toast"+(isErr?" err":"");el.textContent=msg;
@@ -693,6 +787,10 @@ function bind(){
     if(window.innerWidth>900){$("app").classList.toggle("no-info");state.stream=state.stream;}
     $("backdrop").classList.toggle("show",$("info").classList.contains("open")&&window.innerWidth<=900);};
   $("btnSearch").onclick=openSearch;
+  $("btnTraces").onclick=openTraces;
+  $("traceClear").onclick=()=>{if(confirm(t("clearTracesQ"))){apiSend("DELETE",API.traces);
+    state.curTrace=null;const det=$("traceDetail");det.classList.remove("show");det.innerHTML="";
+    renderTraces("");toast(t("del"));}};
   $("backdrop").onclick=closeAll;
   $("btnSettings").onclick=()=>{closeAll();$("settingsModal").classList.add("show");$("backdrop").classList.add("show");
     $("setInfo").classList.toggle("on",!$("app").classList.contains("no-info"));};
@@ -714,6 +812,7 @@ function bind(){
   document.addEventListener("keydown",e=>{
     if(e.ctrlKey&&e.key.toLowerCase()==="k"){e.preventDefault();openSearch();}
     else if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==="o"){e.preventDefault();newChat();}
+    else if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==="t"){e.preventDefault();openTraces();}
     else if(e.key==="Escape")closeAll();
   });
   document.addEventListener("click",e=>{const cp=e.target.closest(".code-copy");

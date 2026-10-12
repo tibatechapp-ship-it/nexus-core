@@ -32,9 +32,10 @@ def _tables(db: Path) -> set[str]:
     return {r[0] for r in rows}
 
 
-def test_schema_creates_the_four_tables(store: SessionStore) -> None:
+def test_schema_creates_all_tables(store: SessionStore) -> None:
     tables = _tables(store.db_path)
-    assert {"conversations", "messages", "council_sessions", "council_messages"} <= tables
+    assert {"conversations", "messages", "council_sessions", "council_messages",
+            "traces"} <= tables
 
 
 def test_schema_version_is_recorded(store: SessionStore) -> None:
@@ -188,3 +189,78 @@ def test_stats_snapshot(store: SessionStore) -> None:
     stats = store.stats()
     assert stats["conversations"] == 1
     assert set(stats) >= {"db_path", "messages", "council_sessions", "council_messages"}
+
+
+# ── time machine (traces) ────────────────────────────────────────────────
+def test_add_and_get_trace(store: SessionStore) -> None:
+    tr = store.add_trace("c1", "ping", "pong", agent="coder", status="ok",
+                         latency_ms=42, plan={"category": "code"},
+                         gatekeeper={"decision": "allow"}, pre_check={"decision": "clean"})
+    assert tr["id"]
+    got = store.get_trace(tr["id"])
+    assert got is not None
+    assert got["message"] == "ping"
+    assert got["response"] == "pong"
+    assert got["latency_ms"] == 42
+    assert got["plan"]["category"] == "code"
+    assert got["gatekeeper"]["decision"] == "allow"
+    assert got["pre_check"]["decision"] == "clean"
+
+
+def test_get_missing_trace_returns_none(store: SessionStore) -> None:
+    assert store.get_trace("nope") is None
+
+
+def test_list_traces_filters_by_conversation(store: SessionStore) -> None:
+    store.add_trace("c1", "a", "A", ts=100)
+    store.add_trace("c1", "b", "B", ts=200)
+    store.add_trace("c2", "c", "C", ts=300)
+    assert len(store.list_traces()) == 3
+    c1 = store.list_traces("c1")
+    assert [t["message"] for t in c1] == ["b", "a"]  # newest first
+    assert store.list_traces("c1", newest_first=False)[0]["message"] == "a"
+
+
+def test_search_traces(store: SessionStore) -> None:
+    store.add_trace("c1", "deploy the service", "ok", agent="ops")
+    store.add_trace("c1", "hello world", "hi", agent="coder")
+    assert len(store.search_traces("deploy")) == 1
+    assert len(store.search_traces("ops")) == 1
+    assert store.search_traces("zzz-nope") == []
+
+
+def test_delete_and_clear_traces(store: SessionStore) -> None:
+    t1 = store.add_trace("c1", "a", "A")
+    store.add_trace("c2", "b", "B")
+    assert store.delete_trace(t1["id"]) is True
+    assert store.delete_trace(t1["id"]) is False
+    assert store.clear_traces("c2") == 1
+    store.add_trace("c3", "c", "C")
+    assert store.clear_traces() == 1
+    assert store.stats()["traces"] == 0
+
+
+def test_export_trace_json_and_markdown(store: SessionStore) -> None:
+    tr = store.add_trace("c1", "issue", "solution", agent="coder", latency_ms=7)
+    raw = store.export_trace(tr["id"], "json")
+    assert raw is not None
+    assert json.loads(raw)["message"] == "issue"
+    md = store.export_trace(tr["id"], "markdown")
+    assert md is not None
+    assert "Time Machine" in md and "issue" in md and "solution" in md
+    assert store.export_trace("nope") is None
+
+
+def test_trace_json_field_coercion(store: SessionStore) -> None:
+    # a JSON string passes through, a plain string is wrapped, None → {}
+    tr = store.add_trace("c1", "m", "r",
+                         plan='{"a": 1}', gatekeeper="not json", pre_check=None)
+    got = store.get_trace(tr["id"])
+    assert got["plan"] == {"a": 1}
+    assert got["gatekeeper"] == {"text": "not json"}
+    assert got["pre_check"] == {}
+
+
+def test_trace_counted_in_stats(store: SessionStore) -> None:
+    store.add_trace("c1", "m", "r")
+    assert store.stats()["traces"] == 1
