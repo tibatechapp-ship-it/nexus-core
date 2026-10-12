@@ -18,6 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+    env:
+      NOVAMIND_HOME: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,7 +35,9 @@ jobs:
           python -m pip install pytest pytest-cov textual pytest-textual-snapshot \
             pytest-asyncio pytest-benchmark syrupy \
             fastapi uvicorn pydantic-settings httpx aiofiles jinja2 pyyaml \
-            sqlalchemy aiosqlite python-jose passlib python-multipart
+            sqlalchemy aiosqlite python-jose passlib python-multipart \
+            prometheus-client opentelemetry-api opentelemetry-sdk \
+            opentelemetry-exporter-otlp-proto-grpc
 
       # ── Layer 1: the stdlib-only framework (hard gate, ≥95% coverage) ──────
       - name: Framework test suite with coverage (floor 95%)
