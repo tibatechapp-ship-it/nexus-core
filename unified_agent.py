@@ -583,5 +583,125 @@ async def pipeline_stream(req: _StreamRequest):
         },
     )
 
+# ═══════════════════════════════════════════════════════
+# v1.5 — Conversation persistence (SQLite, replaces localStorage)
+# ═══════════════════════════════════════════════════════
+from novamind.core.session_store import get_store
+
+store = get_store()
+
+
+class ConversationCreate(BaseModel):
+    id: Optional[str] = None
+    title: str = ""
+    agent: str = ""
+
+
+class ConversationUpdate(BaseModel):
+    title: Optional[str] = None
+    agent: Optional[str] = None
+
+
+class MessageCreate(BaseModel):
+    role: str = "user"
+    content: str = ""
+    ts: Optional[int] = None
+    meta: Optional[Dict] = None
+
+
+class ConversationPut(BaseModel):
+    title: Optional[str] = None
+    agent: Optional[str] = None
+    messages: Optional[List[Dict]] = None
+
+
+class MigrateRequest(BaseModel):
+    conversations: List[Dict] = []
+
+
+@app.get("/api/db/stats")
+async def db_stats():
+    return store.stats()
+
+
+@app.get("/api/conversations")
+async def list_conversations(q: Optional[str] = None, limit: int = 500):
+    if q:
+        return {"conversations": store.search_conversations(q, limit=limit)}
+    return {"conversations": store.list_conversations(limit=limit)}
+
+
+@app.post("/api/conversations")
+async def create_conversation(req: ConversationCreate):
+    return store.create_conversation(conv_id=req.id, title=req.title, agent=req.agent)
+
+
+@app.get("/api/conversations/{cid}")
+async def get_conversation(cid: str):
+    conv = store.get_conversation(cid)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return conv
+
+
+@app.patch("/api/conversations/{cid}")
+async def update_conversation(cid: str, req: ConversationUpdate):
+    ok = store.update_conversation(cid, title=req.title, agent=req.agent)
+    if not ok:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return {"status": "updated", "id": cid}
+
+
+@app.put("/api/conversations/{cid}")
+async def put_conversation(cid: str, req: ConversationPut):
+    """Create-or-replace a conversation (client-authoritative full sync)."""
+    if store.get_conversation(cid) is None:
+        store.create_conversation(conv_id=cid, title=req.title or "",
+                                  agent=req.agent or "")
+    elif req.title is not None or req.agent is not None:
+        store.update_conversation(cid, title=req.title, agent=req.agent)
+    if req.messages is not None:
+        store.replace_messages(cid, req.messages)
+    return store.get_conversation(cid)
+
+
+@app.delete("/api/conversations/{cid}")
+async def delete_conversation(cid: str):
+    return {"deleted": store.delete_conversation(cid), "id": cid}
+
+
+@app.delete("/api/conversations")
+async def clear_conversations():
+    return {"cleared": store.clear_conversations()}
+
+
+@app.post("/api/conversations/{cid}/messages")
+async def add_message(cid: str, req: MessageCreate):
+    if store.get_conversation(cid) is None:
+        store.create_conversation(conv_id=cid)
+    return store.add_message(cid, req.role, req.content, meta=req.meta, ts=req.ts)
+
+
+@app.delete("/api/messages/{mid}")
+async def delete_message(mid: str):
+    return {"deleted": store.delete_message(mid), "id": mid}
+
+
+@app.get("/api/conversations/{cid}/export")
+async def export_conversation(cid: str, format: str = "json"):
+    data = store.export_conversation(cid, fmt=format)
+    if data is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if format in ("md", "markdown"):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(data, media_type="text/markdown")
+    return JSONResponse(content=json.loads(data))
+
+
+@app.post("/api/conversations/migrate")
+async def migrate_conversations(req: MigrateRequest):
+    return {"imported": store.import_conversations(req.conversations)}
+
+
 if __name__ == "__main__":
     main()
