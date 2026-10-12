@@ -459,6 +459,38 @@ class SessionStore:
             m["meta"] = json.loads(m.get("meta") or "{}")
         return sess
 
+    def list_council_sessions(self, limit: int = 50,
+                              newest_first: bool = True) -> List[Dict[str, Any]]:
+        order = "DESC" if newest_first else "ASC"
+        rows = self._sql(
+            f"SELECT * FROM council_sessions ORDER BY created_at {order} LIMIT ?",
+            (int(limit),),
+        )
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            s = {k: r[k] for k in r.keys()}
+            s["meta"] = json.loads(s.get("meta") or "{}")
+            out.append(s)
+        return out
+
+    def list_council_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        rows = self._sql(
+            "SELECT * FROM council_messages WHERE session_id = ? ORDER BY round, ts",
+            (session_id,),
+        )
+        out: List[Dict[str, Any]] = []
+        for m in rows:
+            d = {k: m[k] for k in m.keys()}
+            d["meta"] = json.loads(d.get("meta") or "{}")
+            out.append(d)
+        return out
+
+    def delete_council_session(self, session_id: str) -> bool:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM council_messages WHERE session_id = ?", (session_id,))
+            cur = conn.execute("DELETE FROM council_sessions WHERE id = ?", (session_id,))
+            return cur.rowcount > 0
+
     # ── time machine: traces (v1.5) ──────────────────────────────────────
     @staticmethod
     def _json_field(value: Any) -> str:

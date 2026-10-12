@@ -204,6 +204,39 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
 .toast.err{border-inline-start-color:var(--danger)}
 @keyframes slide{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 
+/* ── Living Council ─────────────────────────────────────────────── */
+.council-setup{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+.council-setup-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.council-setup-row label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim)}
+.rounds-num{width:56px;background:#1a1a1a;border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:7px 9px;font:inherit}
+.council-members{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.council-chip{font-size:12px;padding:4px 10px;border-radius:999px;background:#1a1a1a;
+  border:1px solid var(--border);color:var(--dim);transition:all .2s}
+.council-chip.speaking{border-color:var(--accent);color:var(--text);background:var(--hover);box-shadow:0 0 0 2px rgba(16,163,127,.15)}
+.council-stream{max-height:44vh;overflow:auto;display:flex;flex-direction:column;gap:9px;
+  padding:4px 2px}
+.council-round{align-self:center;font-size:11px;color:var(--faint);text-transform:uppercase;
+  letter-spacing:.08em;margin-top:6px}
+.council-msg{border:1px solid var(--border);border-radius:10px;padding:9px 12px;background:#1a1a1a}
+.council-msg .cm-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:4px}
+.council-msg .cm-name{font-size:13px;font-weight:600}
+.council-msg .cm-meta{font-size:10px;color:var(--faint)}
+.council-msg .cm-body{font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;color:var(--dim)}
+.council-consensus{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--faint)}
+.council-consensus .bar{flex:1;height:6px;border-radius:999px;background:#1a1a1a;overflow:hidden}
+.council-consensus .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .5s ease}
+.council-verdict{display:none;margin-top:14px;border:1px solid var(--accent);border-radius:12px;
+  padding:14px 16px;background:linear-gradient(180deg,rgba(16,163,127,.08),transparent)}
+.council-verdict.show{display:block}
+.council-verdict h4{margin:0 0 8px;font-size:14px}
+.council-verdict .v-body{font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.council-verdict .v-inf{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.inf{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--border);background:#1a1a1a}
+.inf.up{border-color:var(--accent);color:var(--accent)}
+.inf.down{border-color:var(--danger);color:var(--danger)}
+#councilHistoryList{margin-top:6px;max-height:38vh;overflow:auto}
+
 .menu-btn{display:none}
 @media (max-width:900px){
   .app{grid-template-columns:1fr}
@@ -262,6 +295,9 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
       </button>
       <button class="icon-btn" id="btnTraces" aria-label="time machine" title="Time Machine">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </button>
+      <button class="icon-btn" id="btnCouncil" aria-label="council" title="The Living Council">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 7l-3 6a3 3 0 0 0 6 0l-3-6zM19 7l-3 6a3 3 0 0 0 6 0l-3-6zM8 4h8M5 7h14M9 21h6"/></svg>
       </button>
       <button class="icon-btn" id="btnSearch" aria-label="search">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -345,6 +381,26 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
   <div class="trace-detail" id="traceDetail"></div>
 </div>
 
+<!-- Living Council modal -->
+<div class="modal wide" id="councilModal">
+  <div class="modal-head">
+    <h2 style="margin:0" data-i18n="council">⚖️ المجلس الحيّ</h2>
+    <button class="pill ghost" id="councilHistory" data-i18n="history">السجل</button>
+  </div>
+  <div class="council-setup">
+    <input class="search" id="councilTopic" autocomplete="off" placeholder="…" data-i18n-ph="councilTopicPh">
+    <div class="council-setup-row">
+      <label><span data-i18n="rounds">الجولات</span>
+        <input type="number" id="councilRounds" class="rounds-num" min="1" max="5" value="3"></label>
+      <button class="pill" id="councilStart" data-i18n="startDebate">ابدأ النقاش</button>
+    </div>
+  </div>
+  <div class="council-members" id="councilMembers"></div>
+  <div class="council-stream" id="councilStream"></div>
+  <div class="council-verdict" id="councilVerdict"></div>
+  <div id="councilHistoryList" style="display:none"></div>
+</div>
+
 <div class="toasts" id="toasts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -364,7 +420,11 @@ const I18N={
     noTraces:"لا توجد طلبات مسجّلة بعد",replay:"إعادة التشغيل",export:"تصدير",
     request:"الطلب",response:"الرد",latency:"الزمن",status:"الحالة",replayDone:"تمت الإعادة — أُضيف طلب جديد",
     pin:"تثبيت",pinned:"تم التثبيت 📌",unpinned:"أُلغي التثبيت",
-    exportAll:"تصدير كل المحادثات",importConvs:"استيراد محادثات",imported:"تم الاستيراد"},
+    exportAll:"تصدير كل المحادثات",importConvs:"استيراد محادثات",imported:"تم الاستيراد",
+    council:"⚖️ المجلس الحيّ",history:"السجل",councilTopicPh:"ما الموضوع الذي يناقشه المجلس؟",
+    rounds:"الجولات",startDebate:"ابدأ النقاش",verdict:"الحكم النهائي",consensus:"الإجماع",
+    round:"الجولة",councilOpening:"انعقد المجلس…",councilNeedTopic:"اكتب الموضوع أولاً",
+    noCouncil:"لا جلسات بعد",councilDone:"انتهى المجلس ⚖️",influence:"التأثير"},
   en:{newChat:"New chat",settings:"Settings",language:"Language",online:"Online",offline:"Offline",
     placeholder:"Type your message…",enterSend:"to send",shiftNewline:"new line",curAgent:"Current agent",
     tools:"Available tools",stats:"Stats",msgCount:"Messages",lastUpdate:"Last update",conn:"Connection",
@@ -377,9 +437,13 @@ const I18N={
     noTraces:"No requests logged yet",replay:"Replay",export:"Export",
     request:"Request",response:"Response",latency:"Latency",status:"Status",replayDone:"Replayed — new request logged",
     pin:"Pin",pinned:"Pinned 📌",unpinned:"Unpinned",
-    exportAll:"Export all conversations",importConvs:"Import conversations",imported:"Imported"}
+    exportAll:"Export all conversations",importConvs:"Import conversations",imported:"Imported",
+    council:"⚖️ The Living Council",history:"History",councilTopicPh:"What should the council debate?",
+    rounds:"Rounds",startDebate:"Start debate",verdict:"Final verdict",consensus:"Consensus",
+    round:"Round",councilOpening:"Council convened…",councilNeedTopic:"Enter a topic first",
+    noCouncil:"No sessions yet",councilDone:"Council concluded ⚖️",influence:"Influence"}
 };
-const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces"};
+const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces",council:"/api/council"};
 const LS={conv:"nm_convs",cur:"nm_cur",lang:"nm_lang",migrated:"nm_migrated"};
 const MAX_CONV=200;
 let useDB=true;              // false = localStorage fallback (API unreachable)
@@ -736,7 +800,7 @@ function renderAgents(){
 /* ============================ overlays ============================ */
 function closeAll(){$("sidebar").classList.remove("open");$("info").classList.remove("open");
   $("backdrop").classList.remove("show");$("searchModal").classList.remove("show");$("settingsModal").classList.remove("show");
-  $("tracesModal").classList.remove("show");}
+  $("tracesModal").classList.remove("show");$("councilModal").classList.remove("show");}
 function openSearch(){closeAll();$("searchModal").classList.add("show");$("backdrop").classList.add("show");
   const inp=$("searchInput");inp.value="";searchRender("");inp.focus();}
 async function searchRender(q){
@@ -813,6 +877,124 @@ async function replayTrace(tid){
   await renderTraces($("traceSearch").value);
   openTraceDetail(r.trace.id);
 }
+/* ============================ living council ============================ */
+function openCouncil(){
+  closeAll();
+  $("councilModal").classList.add("show");$("backdrop").classList.add("show");
+  $("councilHistoryList").style.display="none";$("councilHistoryList").innerHTML="";
+  $("councilTopic").focus();
+}
+async function startCouncil(){
+  const topic=($("councilTopic").value||"").trim();
+  if(!topic){toast(t("councilNeedTopic"),1);return;}
+  const rounds=Math.max(1,Math.min(5,parseInt($("councilRounds").value||"3",10)||3));
+  const btn=$("councilStart");btn.disabled=true;
+  const stream=$("councilStream");stream.innerHTML="";
+  $("councilMembers").innerHTML="";
+  const verdict=$("councilVerdict");verdict.classList.remove("show");verdict.innerHTML="";
+  $("councilHistoryList").style.display="none";
+  try{
+    const r=await fetch(API.council+"/stream",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({topic,rounds})});
+    if(!r.ok||!r.body){toast(t("err"),1);btn.disabled=false;return;}
+    const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
+    while(true){
+      const {value,done}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const parts=buf.split("\n\n");buf=parts.pop();
+      for(const p of parts){const line=p.trim();if(!line.startsWith("data:"))continue;
+        const data=line.slice(5).trim();if(data==="[DONE]")continue;
+        try{councilEvent(JSON.parse(data));}catch(e){}}
+    }
+    toast(t("councilDone"));
+  }catch(e){toast(t("err"),1);}
+  btn.disabled=false;
+}
+function councilEvent(ev){
+  const stream=$("councilStream");
+  if(ev.type==="session"){
+    const m=$("councilMembers");m.innerHTML="";
+    (ev.members||[]).forEach(mm=>{const c=document.createElement("span");
+      c.className="council-chip";c.id="chip-"+mm.id;
+      c.textContent=(mm.emoji||"")+" "+(mm.name||mm.id);m.appendChild(c);});
+    const note=document.createElement("div");note.className="council-round";
+    note.textContent=t("councilOpening");stream.appendChild(note);
+  }else if(ev.type==="round"){
+    const d=document.createElement("div");d.className="council-round";
+    d.textContent="— "+t("round")+" "+ev.round+" / "+ev.total+" —";stream.appendChild(d);
+  }else if(ev.type==="member_start"){
+    const c=$("chip-"+ev.agent);if(c)c.classList.add("speaking");
+  }else if(ev.type==="member_message"){
+    const c=$("chip-"+ev.agent);if(c)c.classList.remove("speaking");
+    const el=document.createElement("div");el.className="council-msg";
+    el.innerHTML='<div class="cm-head"><span class="cm-name"></span><span class="cm-meta"></span></div><div class="cm-body"></div>';
+    el.querySelector(".cm-name").textContent=(ev.emoji||"")+" "+(ev.name||ev.agent);
+    el.querySelector(".cm-meta").textContent=(ev.provider||"")+(ev.elapsed?(" · "+Math.round(ev.elapsed*1000)+"ms"):"");
+    el.querySelector(".cm-body").textContent=ev.content||"";
+    stream.appendChild(el);stream.scrollTop=stream.scrollHeight;
+  }else if(ev.type==="consensus"){
+    const el=document.createElement("div");el.className="council-consensus";
+    el.innerHTML='<span></span><div class="bar"><i></i></div>';
+    el.children[0].textContent=t("consensus")+" "+Math.round((ev.score||0)*100)+"%";
+    stream.appendChild(el);stream.scrollTop=stream.scrollHeight;
+    requestAnimationFrame(()=>{el.querySelector("i").style.width=Math.round((ev.score||0)*100)+"%";});
+  }else if(ev.type==="verdict"){
+    const v=$("councilVerdict");v.classList.add("show");
+    v.innerHTML='<h4></h4><div class="v-body"></div><div class="v-inf"></div>';
+    v.querySelector("h4").textContent="⚖️ "+t("verdict")+" · "+t("consensus")+" "+Math.round((ev.consensus||0)*100)+"%";
+    v.querySelector(".v-body").textContent=ev.verdict||"";
+    const inf=ev.influence||{},box=v.querySelector(".v-inf");
+    Object.keys(inf).forEach(k=>{const d=inf[k]||{};const up=d.standing_delta>0;
+      const s=document.createElement("span");s.className="inf "+(up?"up":"down");
+      s.textContent=k+" "+(up?"▲":"▼")+" "+Math.round((d.alignment||0)*100)+"%";box.appendChild(s);});
+    v.scrollIntoView({behavior:"smooth",block:"nearest"});
+  }else if(ev.type==="error"){toast(ev.message||t("err"),1);}
+}
+async function toggleCouncilHistory(){
+  const box=$("councilHistoryList");
+  if(box.style.display!=="none"){box.style.display="none";return;}
+  box.style.display="block";box.innerHTML='<div style="color:var(--faint);padding:10px;text-align:center">…</div>';
+  let list=[];try{list=(await apiGet(API.council+"/sessions")).sessions||[];}catch(e){list=[];}
+  box.innerHTML="";
+  if(!list.length){box.innerHTML='<div style="color:var(--faint);padding:10px;text-align:center">'+t("noCouncil")+'</div>';return;}
+  list.forEach(s=>{const el=document.createElement("div");el.className="trace-item";
+    el.innerHTML='<div class="t"></div><div class="d"></div>';
+    el.children[0].textContent=(s.topic||"").slice(0,90)||"—";
+    el.children[1].textContent=fmt(s.created_at)+" · "+Math.round((s.consensus||0)*100)+"% · "+t("rounds")+" "+(s.rounds||0);
+    el.onclick=()=>loadCouncilSession(s.id);box.appendChild(el);});
+}
+async function loadCouncilSession(sid){
+  let s;try{s=await apiGet(API.council+"/sessions/"+sid);}catch(e){toast(t("err"),1);return;}
+  $("councilStream").innerHTML="";$("councilVerdict").classList.remove("show");$("councilVerdict").innerHTML="";
+  const info={};const meta=(s.meta&&s.meta.members)||[];
+  const m=$("councilMembers");m.innerHTML="";
+  meta.forEach(mm=>{
+    const id=(typeof mm==="object")?(mm.id||""):mm;
+    const nm=(typeof mm==="object")?(mm.name||id):id;
+    const em=(typeof mm==="object")?(mm.emoji||""):"";
+    if(id)info[id]={name:nm,emoji:em};
+    const c=document.createElement("span");c.className="council-chip";c.textContent=em+" "+nm;m.appendChild(c);
+  });
+  $("councilTopic").value=s.topic||"";
+  const stream=$("councilStream");let curRound=0;
+  (s.messages||[]).forEach(msg=>{
+    if(msg.round!==curRound){curRound=msg.round;
+      const d=document.createElement("div");d.className="council-round";
+      d.textContent="— "+t("round")+" "+curRound+" —";stream.appendChild(d);}
+    const inf=info[msg.agent]||{name:msg.agent,emoji:""};
+    const el=document.createElement("div");el.className="council-msg";
+    el.innerHTML='<div class="cm-head"><span class="cm-name"></span><span class="cm-meta"></span></div><div class="cm-body"></div>';
+    el.querySelector(".cm-name").textContent=inf.emoji+" "+inf.name;
+    el.querySelector(".cm-meta").textContent=(msg.meta&&msg.meta.provider)||"";
+    el.querySelector(".cm-body").textContent=msg.content||"";
+    stream.appendChild(el);
+  });
+  if(s.verdict){const v=$("councilVerdict");v.classList.add("show");
+    v.innerHTML='<h4></h4><div class="v-body"></div>';
+    v.querySelector("h4").textContent="⚖️ "+t("verdict")+" · "+t("consensus")+" "+Math.round((s.consensus||0)*100)+"%";
+    v.querySelector(".v-body").textContent=s.verdict;}
+  $("councilHistoryList").style.display="none";stream.scrollTop=0;
+}
 function toast(msg,isErr){
   const el=document.createElement("div");el.className="toast"+(isErr?" err":"");el.textContent=msg;
   $("toasts").appendChild(el);setTimeout(()=>{el.style.opacity="0";el.style.transition="opacity .3s";setTimeout(()=>el.remove(),300)},2200);
@@ -841,6 +1023,10 @@ function bind(){
     $("backdrop").classList.toggle("show",$("info").classList.contains("open")&&window.innerWidth<=900);};
   $("btnSearch").onclick=openSearch;
   $("btnTraces").onclick=openTraces;
+  $("btnCouncil").onclick=openCouncil;
+  $("councilStart").onclick=startCouncil;
+  $("councilHistory").onclick=toggleCouncilHistory;
+  $("councilTopic").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();startCouncil();}});
   $("traceClear").onclick=()=>{if(confirm(t("clearTracesQ"))){apiSend("DELETE",API.traces);
     state.curTrace=null;const det=$("traceDetail");det.classList.remove("show");det.innerHTML="";
     renderTraces("");toast(t("del"));}};

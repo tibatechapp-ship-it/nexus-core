@@ -75,6 +75,26 @@ PYTHONPATH=src/novamind:src:. python unified_agent.py   # http://localhost:8000
 - **API** — `/api/chat` (SSE stream), `/api/conversations[...]`,
   `/api/traces[...]`, `/api/export/conversations`, `/api/db/stats`.
 
+## The Living Council (v2.0 — المجلس الحيّ)
+
+Three to five specialised agents debate a topic **live** (streamed to the UI),
+a chief synthesises a **verdict**, and each member's *standing* rises or falls
+by how well it agreed with the final decision.
+
+- **Engine** — `src/novamind/council/council.py`: 5 members (analyst, critic,
+  visionary, pragmatist, expert) debate over 1–5 rounds; per-round consensus
+  (largest agreeing fraction by token-Jaccard); early stop at ≥ 0.8.
+- **Works offline** — with no live provider it runs a deterministic local
+  simulation, so tests and the phone gate never need the network. A live
+  failure flips the run to offline for 60 s (self-healing); each call is
+  bounded so a hung provider can't stall a debate.
+- **API** — `POST /api/council/stream` (SSE: `session`, `round`,
+  `member_start`, `member_message`, `consensus`, `verdict`, `done`),
+  `POST /api/council/debate`, `GET /api/council/sessions`,
+  `GET|DELETE /api/council/sessions/{id}`.
+- **UI** — the ⚖️ topbar button opens the council panel: topic + rounds, live
+  member bubbles, consensus bars, verdict card with influence, and history.
+
 ## Verify before shipping (must all pass)
 
 ```bash

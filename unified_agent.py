@@ -44,6 +44,7 @@ from pydantic import BaseModel
 # NovaMind core
 from novamind.core.llm_router import LLMRouter
 from novamind.core.orchestrator import Orchestrator
+from novamind.council import Council
 TASK_TEMPLATES = {}
 from novamind.core.observability import metrics
 from novamind.core.mcp_server import NovaMindMCP
@@ -804,6 +805,93 @@ async def replay_trace(tid: str):
         latency_ms=int((time.time() - t0) * 1000), meta={"replay_of": tid},
     )
     return {"trace": new, "answer": answer, "replay_of": tid}
+
+
+# ═══════════════════════════════════════════════════════════
+# The Living Council (المجلس الحيّ) — v2.0
+# ═══════════════════════════════════════════════════════════
+class CouncilRequest(BaseModel):
+    topic: str
+    rounds: int = 3
+
+
+_council: Optional[Council] = None
+
+
+def get_council() -> Council:
+    """Process-wide council, sharing the chat router + the SQLite store."""
+    global _council
+    if _council is None:
+        _council = Council(router=unified.router, store=store)
+    return _council
+
+
+@app.post("/api/council/debate")
+async def council_debate(req: CouncilRequest):
+    """Run a full council debate and return the synthesised result."""
+    import asyncio as _aio
+
+    loop = _aio.get_event_loop()
+    return await loop.run_in_executor(
+        None, lambda: get_council().debate(req.topic, rounds=req.rounds)
+    )
+
+
+@app.post("/api/council/stream")
+async def council_stream(req: CouncilRequest):
+    """Stream a live council debate as Server-Sent Events."""
+    import asyncio as _aio
+    import queue as _queue
+    import threading as _threading
+
+    q: "_queue.Queue" = _queue.Queue()
+
+    def _work() -> None:
+        try:
+            for ev in get_council().debate_stream(req.topic, rounds=req.rounds):
+                q.put(ev)
+        except Exception as e:  # pragma: no cover - defensive
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    _threading.Thread(target=_work, daemon=True).start()
+
+    async def event_gen():
+        loop = _aio.get_event_loop()
+        while True:
+            ev = await loop.run_in_executor(None, q.get)
+            if ev is None:
+                break
+            yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/council/sessions")
+async def council_sessions(limit: int = 50):
+    return {"sessions": store.list_council_sessions(limit=limit)}
+
+
+@app.get("/api/council/sessions/{sid}")
+async def council_session_get(sid: str):
+    s = store.get_council_session(sid)
+    if s is None:
+        raise HTTPException(status_code=404, detail="council session not found")
+    return s
+
+
+@app.delete("/api/council/sessions/{sid}")
+async def council_session_delete(sid: str):
+    ok = store.delete_council_session(sid)
+    if not ok:
+        raise HTTPException(status_code=404, detail="council session not found")
+    return {"deleted": True, "id": sid}
 
 
 if __name__ == "__main__":

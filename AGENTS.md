@@ -81,6 +81,30 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   export+import, Markdown tables + images, copy/regenerate/edit, agent picker.
 - Run: `PYTHONPATH=src/novamind:src:. python unified_agent.py` → :8000.
 
+## v2.0 — The Living Council (المجلس الحيّ)
+- `src/novamind/council/council.py` (+ `__init__.py`, RELATIVE imports so
+  `novamind` and `src.novamind` don't double-import under pytest's
+  `pythonpath`): 5 specialised members (analyst, critic, visionary,
+  pragmatist, expert) debate a topic over 1–5 rounds with LIVE SSE streaming,
+  per-round consensus (largest agreeing fraction by token-Jaccard), early stop
+  at ≥ 0.8, and a chief verdict; each member's standing rises/falls by
+  alignment with the verdict (`influence`).
+- Pure helpers (unit-tested, no deps): `jaccard/position/consensus/influence`.
+- Tunables: `CONSENSUS_SIM=0.45`, `CONSENSUS_THRESHOLD=0.8`, `EARLY_MIN_ROUND=2`,
+  `MAX_ROUNDS=5`, `MAX_MEMBERS=7`, `GENERATE_TIMEOUT=60.0`, `OFFLINE_CACHE=60.0`.
+- Works OFFLINE: no live provider → deterministic local simulation (tests + the
+  phone gate never need the network). A live failure flips the run to offline
+  for OFFLINE_CACHE=60s (self-healing); each live call is bounded by
+  GENERATE_TIMEOUT so a hung provider can't stall a debate. NOTE: a live
+  `zai_glm` call can take 15–48s → a full live debate is ~1–3 min.
+- Store: `council_sessions`/`council_messages` tables (already in the v1.5
+  schema). API: `POST /api/council/stream` (SSE events session/round/
+  member_start/member_message/consensus/verdict/done), `POST /api/council/debate`
+  (sync), `GET /api/council/sessions`, `GET|DELETE /api/council/sessions/{sid}`.
+- UI: ⚖️ topbar button → council modal (topic, rounds, live member chips +
+  bubbles, consensus bars, verdict card + influence, history).
+- Tests: `tests/test_council.py` (27).
+
 ## Decisions
 - 2026-10-12: unified as nexus-core v1.0.0 (merge, coexistence layout). Both old
   repos archived after release. Framework keeps its 99% gate; novamind layer
@@ -96,6 +120,13 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 - Adversarial suite: 92 vectors / 8 categories, HELD = pass. Stdlib-only
   invariants in tests/adversarial scan FRAMEWORK_FILES (novamind excluded by
   design). Do NOT widen to src/novamind.
+- 2026-10-12: Council lives in `src/novamind/council` (excluded from framework
+  gates) but its tests (`tests/test_council.py`) are stdlib-only so they run on
+  the phone gate too — pure helpers + the offline-simulation path, never a live
+  provider.
+- 2026-10-12: Council offline-fallback is FAILURE-DRIVEN (a live error flips a
+  process-wide 60s offline window), NOT a pre-flight probe. A probe on slow-but-
+  live `zai_glm` calls (15–48s) misclassified them as dead and forced offline.
 
 ## Lessons
 - `git ls-files` only copies TRACKED files — new uncommitted work (Phase 11) was
