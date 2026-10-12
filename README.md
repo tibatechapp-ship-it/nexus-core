@@ -118,6 +118,23 @@ probation and can be re-trained.
   🥇🥈🥉 badges, standing bars, status pills; click one for stats, its editable
   persona, re-train, and its evolution timeline.
 
+## PWA + offline (v2.0)
+
+The web UI is an installable progressive web app (Arabic, RTL) that keeps
+working when the network drops.
+
+- **Installable** — `web/manifest.json` (name, RTL, theme, shortcuts) +
+  generated icons (192 / 512 / maskable-512, drawn by
+  `stdlib`-only PNG writer) + a "تثبيت التطبيق" button when the browser offers
+  install (`.web/` serves them all at `/manifest.json`, `/sw.js`,
+  `/icon-*.png`, `/offline.html`).
+- **Service worker** — `web/sw.js` precaches the app shell, is network-first
+  for GET `/api/*` with a cache fallback, and serves a friendly offline page
+  for navigations.
+- **Offline queue** — when you send a message while offline it is queued in
+  IndexedDB (badge `⏳ n` in the composer), and replayed automatically the
+  moment the connection returns.
+
 ## Verify before shipping (must all pass)
 
 ```bash

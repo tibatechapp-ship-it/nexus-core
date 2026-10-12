@@ -1,13 +1,27 @@
 """Novamind-layer test configuration.
 
 The former novamind package depends on the optional ``novamind`` extras
-(fastapi, uvicorn, ...). When those are not installed the whole tree is
-skipped (pytest.importorskip) so the stdlib-only framework gate stays green
-on the phone; CI installs the extras and runs the real suite.
+(fastapi, uvicorn, pydantic-settings, sqlalchemy, ...). When ANY of them is
+missing the whole tree is skipped (pytest.importorskip per extras module) so
+the stdlib-only framework gate stays green on the phone; CI installs the
+extras wholesale and runs the real suite.
 """
 import pytest
 
-pytest.importorskip("fastapi", reason="novamind extras not installed")
+_NOVAMIND_EXTRAS = (
+    "fastapi",
+    "uvicorn",
+    "pydantic_settings",
+    "sqlalchemy",
+    "aiosqlite",
+    "aiofiles",
+    "jinja2",
+    "yaml",
+    "httpx",
+)
+for _mod in _NOVAMIND_EXTRAS:
+    pytest.importorskip(_mod, reason="novamind extras not installed")
+del _mod, _NOVAMIND_EXTRAS
 
 """Pytest configuration — adds src/ to sys.path."""
 import sys

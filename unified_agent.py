@@ -39,6 +39,7 @@ from fastapi import FastAPI
 from fastapi import HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # NovaMind core
@@ -373,6 +374,53 @@ async def serve_ui():
     if ui_path.exists():
         return ui_path.read_text(encoding="utf-8")
     return "<h1>NovaMind Unified</h1><p>UI not found. Create web/unified_ui.html</p>"
+
+
+# ── PWA assets (v2.0) ────────────────────────────────────────────────
+def _web_file(name: str) -> Path:
+    return ROOT / "web" / name
+
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    path = _web_file("manifest.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="manifest.json not found")
+    return FileResponse(str(path), media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def pwa_service_worker():
+    path = _web_file("sw.js")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="sw.js not found")
+    return FileResponse(
+        str(path), media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/offline.html")
+async def pwa_offline():
+    path = _web_file("offline.html")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="offline.html not found")
+    return FileResponse(str(path), media_type="text/html")
+
+
+@app.get("/icon-{size}.png")
+async def pwa_icon(size: str):
+    # Only the three published icons; reject anything else.
+    name = {
+        "192": "icon-192.png",
+        "512": "icon-512.png",
+        "maskable-512": "icon-maskable-512.png",
+    }.get(size)
+    path = _web_file(name) if name else None
+    if path is None or not path.exists():
+        raise HTTPException(status_code=404, detail="icon not found")
+    return FileResponse(str(path), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/health")

@@ -128,6 +128,18 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   status pills; detail = stats + editable persona + re-train + timeline).
 - Tests: `tests/test_genome.py` (31, incl. the council↔genome loop).
 
+## v2.0 — PWA + offline
+- `web/manifest.json` (ar RTL, theme #212121, shortcuts for council/genome),
+  `web/sw.js` (precache shell, network-first GET /api/* + cache fallback,
+  offline.html navigation fallback), `web/offline.html`.
+- Icons drawn by a stdlib-only PNG writer (no Pillow on the phone):
+  `icon-192/512` + `icon-maskable-512`.
+- Server routes: `/manifest.json`, `/sw.js` (Service-Worker-Allowed: /),
+  `/offline.html`, `/icon-{192|512|maskable-512}.png` (FileResponse).
+- Offline message queue lives CLIENT-SIDE (IndexedDB `nexus_queue`): `send()`
+  enqueues when `!navigator.onLine`; `flushQueue()` replays on `online`; badge
+  `#qBadge` shows pending count. The SW never queues POSTs (keeps SSE intact).
+
 ## Decisions
 - 2026-10-12: unified as nexus-core v1.0.0 (merge, coexistence layout). Both old
   repos archived after release. Framework keeps its 99% gate; novamind layer

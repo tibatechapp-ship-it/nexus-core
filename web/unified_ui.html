@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#212121">
 <title>NovaMind Chat</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="nexus-core">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310a37f'/><text x='50' y='70' font-size='62' text-anchor='middle' fill='white' font-family='sans-serif'>N</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <style>
@@ -356,6 +363,7 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
       <div class="composer-foot">
         <span><kbd>Enter</kbd> <span data-i18n="enterSend">للإرسال</span> · <kbd>Shift</kbd>+<kbd>Enter</kbd> <span data-i18n="shiftNewline">سطر جديد</span></span>
         <span id="charCount">0</span>
+        <span id="qBadge" style="display:none;color:#e0a106;margin-inline-start:8px"></span>
       </div>
     </div>
   </main>
@@ -403,6 +411,8 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
     <input type="file" id="importFile" accept="application/json" style="display:none"></span></div>
   <div class="switch"><span data-i18n="confirmClear">حذف كل المحادثات</span>
     <button class="pill" id="setClear" style="background:var(--danger)">🗑</button></div>
+  <div class="switch" id="installRow" style="display:none"><span data-i18n="installApp">تثبيت التطبيق</span>
+    <button class="pill" id="setInstall">⬇</button></div>
   <div style="margin-top:14px;text-align:end">
     <button class="pill ghost" id="setClose" data-i18n="close">إغلاق</button>
   </div>
@@ -483,7 +493,8 @@ const I18N={
     standings:"المكانة",runs:"التشغيلات",successRate:"نسبة النجاح",avgLatency:"متوسط الزمن",
     generation:"الجيل",persona:"الشخصية",retrain:"إعادة تدريب",retrainQ:"إعادة تدريب هذا الوكيل؟ (تُصفَّر إحصاءاته)",
     noAgents:"لا يوجد وكلاء بعد",agentSaved:"تم الحفظ ✅",genomeImported:"تم استيراد الجينوم",
-    import:"استيراد",timeline:"الخط الزمني"},
+    import:"استيراد",timeline:"الخط الزمني",
+    offlineQueued:"لا اتصال — ستُرسل عند العودة",synced:"تمت المزامنة ☁",installApp:"تثبيت التطبيق",queued:"قيد الانتظار"},
   en:{newChat:"New chat",settings:"Settings",language:"Language",online:"Online",offline:"Offline",
     placeholder:"Type your message…",enterSend:"to send",shiftNewline:"new line",curAgent:"Current agent",
     tools:"Available tools",stats:"Stats",msgCount:"Messages",lastUpdate:"Last update",conn:"Connection",
@@ -505,7 +516,8 @@ const I18N={
     standings:"Standing",runs:"Runs",successRate:"Success",avgLatency:"Avg latency",
     generation:"Generation",persona:"Persona",retrain:"Retrain",retrainQ:"Retrain this agent? (stats reset)",
     noAgents:"No agents yet",agentSaved:"Saved ✅",genomeImported:"Genome imported",
-    import:"Import",timeline:"Timeline"}
+    import:"Import",timeline:"Timeline",
+    offlineQueued:"Offline — will send later",synced:"Synced ☁",installApp:"Install app",queued:"queued"}
 };
 const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces",council:"/api/council",genome:"/api/genome"};
 const LS={conv:"nm_convs",cur:"nm_cur",lang:"nm_lang",migrated:"nm_migrated"};
@@ -778,6 +790,7 @@ function send(){
   let c=curConv();if(!c)c=newChat();
   box.value="";autoGrow();$("charCount").textContent="0";
   pushUser(c,text);renderSidebar();renderMessages();
+  if(!navigator.onLine){qAdd({conv:c.id,text,ts:Date.now()});toast(t("offlineQueued"),1);return;}
   streamReply(c,text);
 }
 async function streamReply(c,text){
@@ -826,6 +839,8 @@ async function streamReply(c,text){
     }
   }catch(err){
     if(err&&err.name==="AbortError"){am.content=acc||t("stopped");}
+    else if(!navigator.onLine){qAdd({conv:c.id,text:last,ts:Date.now()});
+      am.error=true;am.content=acc||("⏳ "+t("offlineQueued"));toast(t("offlineQueued"),1);}
     else{am.error=true;am.content=acc||("⚠️ "+t("err")+" ("+err.message+")");toast(t("err"),1);}
   }finally{
     if(am.content!==""||acc)am.content=acc;
@@ -1160,6 +1175,53 @@ function toast(msg,isErr){
   $("toasts").appendChild(el);setTimeout(()=>{el.style.opacity="0";el.style.transition="opacity .3s";setTimeout(()=>el.remove(),300)},2200);
 }
 
+/* ============================ offline queue ============================ */
+let qdb=null,deferredInstall=null;
+function qOpen(){return new Promise(res=>{
+  if(typeof indexedDB==="undefined")return res(null);
+  if(qdb)return res(qdb);
+  const r=indexedDB.open("nexus_queue",1);
+  r.onupgradeneeded=()=>{r.result.createObjectStore("q",{keyPath:"id",autoIncrement:true});};
+  r.onsuccess=()=>{qdb=r.result;res(qdb);};
+  r.onerror=()=>res(null);
+});}
+async function qAdd(item){const db=await qOpen();if(!db)return;
+  await new Promise(res=>{const t=db.transaction("q","readwrite");t.objectStore("q").add(item);
+    t.oncomplete=res;t.onerror=res;});await qRefresh();}
+async function qAll(){const db=await qOpen();if(!db)return[];
+  return await new Promise(res=>{const t=db.transaction("q","readonly");
+    const rq=t.objectStore("q").getAll();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>res([]);});}
+async function qClear(){const db=await qOpen();if(!db)return;
+  await new Promise(res=>{const t=db.transaction("q","readwrite");t.objectStore("q").clear();
+    t.oncomplete=res;t.onerror=res;});}
+async function qRefresh(){const n=(await qAll()).length;
+  const el=$("qBadge");if(el){el.textContent=n?("⏳ "+n):"";el.style.display=n?"inline":"none";}}
+async function flushQueue(){
+  if(!navigator.onLine)return;
+  const items=await qAll();if(!items.length)return;
+  await qClear();await qRefresh();
+  for(const it of items){
+    let c=state.convs.find(x=>x.id===it.conv);
+    if(!c){c={id:it.conv,title:(it.text||"").slice(0,40),messages:[],date:Date.now()};
+      state.convs.unshift(c);pushUser(c,it.text);}
+    state.cur=c.id;renderSidebar();
+    await streamReply(c,it.text);
+  }
+  toast(t("synced"));
+}
+function registerSW(){
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("/sw.js").catch(()=>{});
+    window.addEventListener("beforeinstallprompt",e=>{
+      e.preventDefault();deferredInstall=e;
+      const row=$("installRow");if(row)row.style.display="flex";
+    });
+    window.addEventListener("appinstalled",()=>{
+      const row=$("installRow");if(row)row.style.display="none";toast("✅");
+    });
+  }
+}
+
 /* ============================ input ============================ */
 function autoGrow(){const el=$("input");el.style.height="auto";el.style.height=Math.min(el.scrollHeight,200)+"px";}
 
@@ -1219,6 +1281,8 @@ function bind(){
   $("setClear").onclick=()=>{if(confirm(t("confirmClearQ"))){if(useDB)apiSend("DELETE",API.convs);
     state.convs=[];state.cur=null;saveCache();
     renderSidebar();renderMessages();renderInfo();closeAll();toast(t("del"));}};
+  $("setInstall").onclick=async()=>{if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;
+      deferredInstall=null;const row=$("installRow");if(row)row.style.display="none";}};
   $("setInfo").onclick=()=>{$("app").classList.toggle("no-info");renderInfo();};
   $("tglInfo").onclick=()=>{$("app").classList.toggle("no-info");};
   $("tglStream").onclick=()=>{state.stream=!state.stream;$("tglStream").classList.toggle("on",state.stream);};
@@ -1236,14 +1300,14 @@ function bind(){
   });
   document.addEventListener("click",e=>{const cp=e.target.closest(".code-copy");
     if(cp){const c=codes[+cp.dataset.idx];if(c){navigator.clipboard.writeText(c.raw).then(()=>toast(t("copied"))).catch(()=>toast(t("err"),1));}}});
-  window.addEventListener("online",()=>{renderInfo();toast("🟢 "+t("online"));});
+  window.addEventListener("online",()=>{renderInfo();toast("🟢 "+t("online"));flushQueue();});
   window.addEventListener("offline",()=>{renderInfo();toast("🔴 "+t("offline"),1);});
   const dot=$("statusDot");
   const sync=()=>{const on=navigator.onLine;dot.classList.toggle("off",!on);$("statusText").textContent=on?t("online"):t("offline");};
   window.addEventListener("online",sync);window.addEventListener("offline",sync);
 }
 async function boot(){
-  bind();await load();applyLang();sync();
+  bind();registerSW();qRefresh();await load();applyLang();sync();
   if(!state.convs.length)await newChat();
   else{state.cur=state.cur||state.convs[0].id;renderSidebar();await renderMessages();renderInfo();}
   try{
