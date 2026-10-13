@@ -120,7 +120,13 @@ def main(argv: list[str]) -> int:
     logger = setup_json_logging(LOG_PATH, logger="zyvo.health", also_stderr=True)
     env = load_env_file()
     token = env.get("TELEGRAM_BOT_TOKEN", os.environ.get("TELEGRAM_BOT_TOKEN", ""))
-    chat_id = env.get("ZYVO_TELEGRAM_CHAT_ID", os.environ.get("ZYVO_TELEGRAM_CHAT_ID", ""))
+    chat_id = (
+        env.get("ZYVO_TELEGRAM_CHAT_ID")
+        or env.get("TELEGRAM_CHAT_ID")
+        or os.environ.get("ZYVO_TELEGRAM_CHAT_ID")
+        or os.environ.get("TELEGRAM_CHAT_ID")
+        or ""
+    )
     send = make_sender(token, chat_id) if token and chat_id else (lambda _text: None)
 
     heartbeat = Heartbeat(

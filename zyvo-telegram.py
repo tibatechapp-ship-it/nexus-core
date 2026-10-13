@@ -79,10 +79,25 @@ def load_env() -> dict[str, str]:
     return cfg
 
 
+def _resolve_allowed_chat(cfg: dict[str, str]) -> str:
+    """Resolve the single authorised chat id for the poll-loop filter.
+
+    The app-specific ``ZYVO_TELEGRAM_CHAT_ID`` wins over the generic
+    ``TELEGRAM_CHAT_ID``; within the same key the environment wins over the env
+    file. An empty result disables the filter (see :func:`poll_loop`), so a
+    missing id must never be silently returned as a usable value.
+    """
+    return str(
+        os.environ.get("ZYVO_TELEGRAM_CHAT_ID")
+        or cfg.get("ZYVO_TELEGRAM_CHAT_ID", "")
+        or os.environ.get("TELEGRAM_CHAT_ID")
+        or cfg.get("TELEGRAM_CHAT_ID", "")
+    ).strip()
+
+
 CFG: dict[str, str] = load_env()
 TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN") or CFG.get("TELEGRAM_BOT_TOKEN", "")
-ALLOWED_CHAT: str = str(os.environ.get("ZYVO_TELEGRAM_CHAT_ID")
-                        or CFG.get("ZYVO_TELEGRAM_CHAT_ID", "")).strip()
+ALLOWED_CHAT: str = _resolve_allowed_chat(CFG)
 API: str = f"https://api.telegram.org/bot{TOKEN}"
 
 # Modes

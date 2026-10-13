@@ -45,6 +45,28 @@ def test_load_env_missing_file_returns_empty(tg, monkeypatch):
     assert tg.load_env() == {}
 
 
+def test_resolve_allowed_chat_precedence(tg, monkeypatch):
+    for var in ("ZYVO_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(var, raising=False)
+    # file-only: the generic key in the env file is accepted (the original bug
+    # was that only ZYVO_TELEGRAM_CHAT_ID was ever read here).
+    assert tg._resolve_allowed_chat({"TELEGRAM_CHAT_ID": "99"}) == "99"
+    # generic env wins over the generic file value
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "77")
+    assert tg._resolve_allowed_chat({"TELEGRAM_CHAT_ID": "99"}) == "77"
+    # app-specific file key beats the generic env key
+    assert tg._resolve_allowed_chat(
+        {"ZYVO_TELEGRAM_CHAT_ID": "55", "TELEGRAM_CHAT_ID": "99"}
+    ) == "55"
+    # app-specific env has the highest precedence (and is stripped)
+    monkeypatch.setenv("ZYVO_TELEGRAM_CHAT_ID", " 11 ")
+    assert tg._resolve_allowed_chat({"ZYVO_TELEGRAM_CHAT_ID": "55"}) == "11"
+    # nothing anywhere -> empty (the chat filter would be disabled)
+    monkeypatch.delenv("ZYVO_TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    assert tg._resolve_allowed_chat({}) == ""
+
+
 # --------------------------------------------------------------------------- #
 # Low-level HTTP: _request / tg / _multipart / tg_upload
 # --------------------------------------------------------------------------- #
