@@ -9,6 +9,7 @@ differences are absorbed here.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Optional
 from urllib.parse import quote
 
@@ -26,6 +27,8 @@ from .exceptions import TransientError, error_for_status
 from .transport import UrllibTransport
 
 __all__ = ["GitLabSCM", "GITLAB_BASE"]
+
+logger = logging.getLogger("novamind.autopilot.scm")
 
 GITLAB_BASE = "https://gitlab.com"
 _API = "/api/v4"
@@ -75,6 +78,7 @@ class GitLabSCM:
         return f"{self.base_url}{_API}/projects/{self._project_id()}"
 
     def _send(self, url: str) -> Response:
+        logger.debug("GET %s", self.base_url + url)
         return self._transport.request(
             "GET", self.base_url + url, headers=self._headers(), timeout=self.timeout
         )
@@ -84,6 +88,7 @@ class GitLabSCM:
         if 200 <= resp.status < 300:
             return resp
         detail = resp.body.decode("utf-8", "replace")[:300] if resp.body else ""
+        logger.warning("gitlab request failed: HTTP %s", resp.status)
         raise error_for_status(
             resp.status, detail, retry_after=retry_after_seconds(resp.headers)
         )

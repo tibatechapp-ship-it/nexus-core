@@ -8,6 +8,7 @@ raises typed errors instead of ``{"ok": False}`` result dicts.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Optional
 
@@ -25,6 +26,8 @@ from .exceptions import TransientError, error_for_status
 from .transport import UrllibTransport
 
 __all__ = ["GitHubSCM", "GITHUB_API"]
+
+logger = logging.getLogger("novamind.autopilot.scm")
 
 GITHUB_API = "https://api.github.com"
 _API_VERSION = "2022-11-28"
@@ -82,6 +85,7 @@ class GitHubSCM:
         return self.base_url + path
 
     def _send(self, url: str) -> Response:
+        logger.debug("GET %s", self._url(url))
         return self._transport.request(
             "GET", self._url(url), headers=self._headers(), timeout=self.timeout
         )
@@ -91,6 +95,7 @@ class GitHubSCM:
         if 200 <= resp.status < 300:
             return resp
         detail = resp.body.decode("utf-8", "replace")[:300] if resp.body else ""
+        logger.warning("github request failed: HTTP %s", resp.status)
         raise error_for_status(
             resp.status, detail, retry_after=retry_after_seconds(resp.headers)
         )

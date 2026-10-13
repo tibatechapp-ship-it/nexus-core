@@ -8,6 +8,8 @@ seam, and the two concrete adapters :class:`GitHubSCM` / :class:`GitLabSCM`.
 
 from __future__ import annotations
 
+import logging
+
 from .base import (
     Change,
     Issue,
@@ -30,7 +32,19 @@ from .exceptions import (
 )
 from .github import GitHubSCM
 from .gitlab import GitLabSCM
-from .transport import RecordedRequest, RecordingTransport, UrllibTransport
+from .transport import (
+    CacheStats,
+    CachingTransport,
+    RateLimitedTransport,
+    RateLimiter,
+    RecordedRequest,
+    RecordingTransport,
+    UrllibTransport,
+)
+
+# Library best practice: attach a NullHandler so importing this package never
+# emits "No handler found" warnings; the host application decides on handlers.
+logging.getLogger("novamind.autopilot.scm").addHandler(logging.NullHandler())
 
 __all__ = [
     # value objects
@@ -48,6 +62,10 @@ __all__ = [
     "UrllibTransport",
     "RecordingTransport",
     "RecordedRequest",
+    "RateLimiter",
+    "RateLimitedTransport",
+    "CachingTransport",
+    "CacheStats",
     # errors
     "SCMError",
     "AuthError",

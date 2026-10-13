@@ -167,6 +167,22 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   were breaking `ruff check .`). All framework gates green: ruff check . clean,
   mypy 95 files, check_annotations 95 files, pytest 1382 passed @ 98.78%.
 
+### Slice 1 improvements (2026-10-13): resilience + docs
+- `scm/transport.py` grew a stackable resilience layer (all stdlib, all
+  offline-testable): `RateLimiter` (token bucket, injectable clock),
+  `RateLimitedTransport` (throttle + honors 429 `Retry-After` → `penalize`),
+  `CachingTransport` (bounded+TTL GET cache, `stats()`/`CacheStats.hit_rate`).
+  Stack: `RateLimitedTransport(CachingTransport(UrllibTransport()))`.
+- Logging basics: package logger `novamind.autopilot.scm` (NullHandler in
+  `scm/__init__.py`), DEBUG on requests/cache, WARNING on HTTP failures.
+- README per module: `autopilot/README.md` + `scm/README.md` (ASCII diagrams,
+  API tables, provider-difference table, error model).
+- MEASURED numbers (deterministic fake-clock tests, NOT claims):
+  rate=5/s burst=1 → 11 calls span exactly 2.00s; 10 identical GETs → 1 upstream
+  call, 9 saved, hit_rate 0.90. Marketing "80%/90%" figures are NOT used.
+- Tests: `tests/test_autopilot_scm_resilience.py` (+20) → 90 autopilot tests,
+  100% coverage. Full framework suite: 1402 passed @ 98.78%.
+
 ## Current blocker (2026-10-13)
 - CI + Tests are RED but NOT for code reasons: the repo is PRIVATE and the
   free account's Actions minutes / spending limit are exhausted → GitHub
