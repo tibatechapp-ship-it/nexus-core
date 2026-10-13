@@ -9,9 +9,15 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import MAX_FIX_ATTEMPTS
-from hooks.manager import hooks
-from tools import registry
+from novamind.config import MAX_FIX_ATTEMPTS
+try:
+    from hooks.manager import hooks
+except ImportError:
+    from novamind.core.hooks.manager import hooks
+try:
+    from tools import registry
+except ImportError:
+    from novamind.core.tools import registry
 from novamind.core.git_manager import git_manager
 from novamind.agents.tester import tester
 

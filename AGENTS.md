@@ -211,6 +211,21 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 - Full repo gates green after Slice 2: ruff check . clean, mypy framework 95
   files, check_annotations 95 files, `pytest --cov` 1498 passed @ 98.78%.
 
+## Live test finding — agents + git tools (2026-10-13, real LLM)
+- Smoke test on commit 1045b54 (real ZYVO brain :4141, Big Pickle): direct git_tools
+  PASS 4/4; MCP echo plumbing PASS (5 git tools registered). BUT **real-LLM agents
+  executed ZERO tools**: analyst emitted `<tool-call name="git_status"></tool-call>`
+  (no `args=` attr) and `<tool-call name="git_log">\n{...}\n</tool-call>` (args as
+  child text); reporter answered WITHOUT any markers. Root cause =
+  `src/tools/executor.py::_TOOL_CALL_RE` requires `name="..." args="..."` — the
+  model's alternate dialect is ignored silently (loop breaks, 0 outcomes, ok=True).
+- Results JSON: `tests/_intelligence_results/{git_tools_smoke,git_tools_agents}.json`.
+  FIX OPTIONS (await tyba): (a) harden `parse_tool_calls` — accept missing args→{}
+  + child-text JSON args + `<name></name>` pair form; (b) strengthen the
+  build_messages tool syntax instructions. Unfixed: `parse_tool_calls` stays strict.
+- The brain for these runs: `zyvo --port 4141` (PID noted in session), killed on
+  request; the runit telegram service (4142) is separate.
+
 ## Ops fix — telegram chat-filter fallback (2026-10-13)
 - Commit `f09a41a` (pushed origin + gitlab): `zyvo-telegram.py` only ever read
   `ZYVO_TELEGRAM_CHAT_ID`; a `telegram.env` carrying the generic
@@ -344,6 +359,13 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   (`MCPToolExecutor`) + `src/mcp/git_tools.py` (read-only git) + framework
   surface 25→30. Full repo gates after: ruff clean, mypy 103 files,
   check_annotations 103, `pytest --cov` 1644 passed @ ~98.9%.
+- COMMITTED 2026-10-13 as **1045b54** "feat(mcp): add read-only Git tool surface
+  (5 tools, 30 total) with sandboxing + 144 MCP tests @ 100% coverage" — pushed
+  to BOTH remotes (now gitlab + origin both at 1045b54; note 3a7683c security
+  commit rode along to origin, which was behind at f09a41a). Working tree: only
+  `reports/` + `src/novamind/.gitignore` untracked (by design — reports/ is the
+  report system, not MCP; novamind/.gitignore is off-topic). No Slice 3, no main
+  merge, no write tools — per tyba's mission gates.
 
 ## Current blocker (2026-10-13)
 - CI + Tests are RED but NOT for code reasons: the repo is PRIVATE and the
