@@ -100,6 +100,9 @@ line-length = 100
 extend-exclude = [
     ".git",
     "__pycache__",
+    # Archived historical files (docs/legacy) are kept for reference only and
+    # are never maintained — they must not gate the lint job.
+    "docs/legacy",
     "src/novamind",
     "tests/novamind",
     "scripts/novamind",

@@ -140,6 +140,42 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   enqueues when `!navigator.onLine`; `flushQueue()` replays on `online`; badge
   `#qBadge` shows pending count. The SW never queues POSTs (keeps SSE intact).
 
+## v2.0 — autopilot SCM layer (Slice 1, read-only) — 2026-10-13
+- `src/novamind/autopilot/scm/`: provider-agnostic source-control access.
+  `base.py` (Issue/Change/Response + `SCM`/`SCMWriter`/`Transport` protocols +
+  helpers normalize_state/label_names/as_int/retry_after_seconds),
+  `exceptions.py` (`SCMError`→Auth/NotFound/RateLimit/Transient + `error_for_status`),
+  `transport.py` (`UrllibTransport` stdlib + `RecordingTransport` test double),
+  `github.py`/`gitlab.py` (read adapters).
+- Slice 1 is READ-ONLY: `GitHubSCM`/`GitLabSCM` implement `SCM` but NOT
+  `SCMWriter` (contract tests assert this). Methods: whoami/list_issues/
+  get_issue/list_changes/get_change. `_json` wraps malformed bodies as
+  TransientError (never leaks JSONDecodeError).
+- Provider quirks absorbed: GitHub filters `pull_request` items out of issues
+  and paginates via the `Link` rel="next" header; GitLab uses `iid` as the
+  per-project number, `description`, `author.username`, encodes `group/proj`
+  as `group%2Fproj`, maps state open→opened, paginates via `X-Next-Page`.
+- Tests: `tests/test_autopilot_scm_{base,github,gitlab,contract}.py` (70 tests)
+  + `tests/fixtures/scm/*.json`; fully offline (RecordingTransport).
+- GATE (autopilot measured separately — repo coverage omits src/novamind/*):
+  `COVERAGE_RCFILE=coverage-autopilot.ini python -m pytest
+  tests/test_autopilot_scm_*.py --cov=src/novamind/autopilot
+  --cov-report=term-missing --cov-fail-under=95` → 100%. `coverage-autopilot.ini`
+  is the dedicated profile. mypy: pass explicit FILES (config excludes
+  src/novamind, so a directory arg reports "no .py files").
+- pyproject ruff `extend-exclude` also excludes `docs/legacy` (archived files
+  were breaking `ruff check .`). All framework gates green: ruff check . clean,
+  mypy 95 files, check_annotations 95 files, pytest 1382 passed @ 98.78%.
+
+## Current blocker (2026-10-13)
+- CI + Tests are RED but NOT for code reasons: the repo is PRIVATE and the
+  free account's Actions minutes / spending limit are exhausted → GitHub
+  refuses to start every job ("recent account payments have failed or your
+  spending limit needs to be increased", run 38321114248, all jobs fail in
+  2-5s). Fix = make repo public (Actions free+unlimited; verified NO secrets
+  tracked, .env gitignored + never in history) OR set a billing payment
+  method. Local gates still run on the phone (`pytest --cov`, ruff, mypy).
+
 ## Decisions
 - 2026-10-12: unified as nexus-core v1.0.0 (merge, coexistence layout). Both old
   repos archived after release. Framework keeps its 99% gate; novamind layer
@@ -199,6 +235,13 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 3. Archive old repos: `gh repo archive tibatechapp-ship-it/novamind-core` +
   `gh repo archive tibatechapp-ship-it/tyb-zyv-ai` (after both have a README
   pointer to nexus-core).
+
+## Archive (docs/legacy/)
+- `docs/legacy/` (commit e528b54): historical files recovered from git —
+  unified_agent_v10.py (970 lines, LangGraph/LSP/MCP/A2A),
+  unified_ui_v0.html (49KB ar UI), registry_v3.1_arabic.py
+  (`git show bcce802:src/novamind/core/hive/factory/registry.py.old`),
+  + README. Rule: never delete a file without saving it in git first.
 
 ## Sessions note
 - Full session notes: vault `04 Sessions/2026-10-12 nexus-core merge*.md`.
