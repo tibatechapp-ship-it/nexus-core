@@ -120,7 +120,7 @@ class StateStore:
         """Save loop state."""
         path = self._path(loop_id)
         try:
-            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         except Exception as e:
             logger.warning(f"failed to save state: {e}")
 
@@ -252,6 +252,7 @@ class LoopEngine:
                 result=result,
                 elapsed=iter_elapsed,
                 success=success,
+                error=result.get("error") if isinstance(result, dict) and result.get("error") else None,
             )
             history.append(iter_result.to_dict())
 
