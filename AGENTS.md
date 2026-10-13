@@ -266,6 +266,85 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   the patterns, real embeddings + vector backend (replace lexical hash
   embeddings), async runtime, OTel export/cost-budget enforcement.
 
+## MCP — inventory (2026-10-13, READ-ONLY recon)
+- **An existing MCP server lives at `src/novamind/core/mcp_server.py`** — do NOT
+  build a second one from scratch. `NovaMindMCP` (JSON-RPC 2.0 over stdio,
+  protocol "2024-11-05" — OUTDATED for 2026), `run_stdio_server()`,
+  `MCP_VERSION` constant. It exposes the novamind `AgentFactory` (~79 tools —
+  docstring says 52, stale) as code-analysis tools (DEFAULT_SCHEMA requires
+  `code`). IMPORTS OK, initialize handshake OK, list_tools returns 79. ZERO
+  tests (nothing in tests/ references mcp).
+- Tool surfaces are FRAGMENTED across 3 layers: (1) framework
+  `LocalToolExecutor` — read/list/grep only, stdlib, tested;
+  (2) novamind legacy `tools.base.registry` (web/file/shell/git tools) —
+  importable ONLY in the novamind layout, e.g. `git_tools.py` uses
+  `core.git_manager.GitManager` (exists, imports OK); (3) autopilot SCM
+  (GitHub/GitLab read adapters, 186 tests).
+- The framework's REAL surface for MCP = 20 agents + security scanner +
+  LocalToolExecutor + autopilot SCM. MCP plan = CONSOLIDATE/harden the existing
+  server (fix protocol version/docstring/schema per-agent, add tests), add a
+  framework-surface server + MCP client for agents, then a Git tool backed by
+  SCM/git_manager.
+- Gotcha: repo root has a legacy `tools.py` module → `import tools` from root
+  resolves to it ('tools' is not a package); the framework always imports via
+  `src.tools` (src on sys.path).
+
+## MCP — Slice 3 (SHIPPED 2026-10-13) — first-class `src.mcp`
+- `src/mcp/` (framework layer, stdlib-only, phone-runnable, in coverage scope):
+  - `protocol.py` — wire primitives. `MCP_PROTOCOL_VERSION = "2026-07-28"` (the
+    CURRENT stateless revision: no initialize handshake; version+capabilities
+    ride in `_meta`; `server/discover` advertises). `SUPPORTED_PROTOCOL_VERSIONS`
+    = 2026-07-28 + 4 older. Error model (`MCPError` + JSON-RPC/MCP codes incl.
+    `UNSUPPORTED_PROTOCOL_VERSION=-32022`), `TextContent`, `ToolSpec`, builders
+    (`text_content`/`error_content`/`jsonrpc_result`/`jsonrpc_error`/`server_meta`),
+    `request_protocol_version`/`request_client_info`.
+  - `server.py` — `MCPServer` (register/add_tool/`@server.tool`/remove_tool),
+    `discover()`/`list_tools()`(ttlMs+cacheScope)/`call_tool()`(handler error →
+    `isError` content, never a crash)/`ping()`, JSON-RPC `handle_request`
+    (notifications → None), `handle_line`, `serve(instream,outstream)`,
+    `run_stdio`. Legacy `initialize` still answered. `schema_from_signature` +
+    `tool_from_callable` (signature→JSON-schema; extra kwargs ignored).
+  - `client.py` — `InProcessClient` (wrap a live MCPServer object) + `StdioClient`
+    (spawn a subprocess, line-delimited JSON-RPC, lazy start/respawn, ctx mgr) +
+    `content_text` + `to_tool_schemas` (MCP tools → framework `ToolSchema`, so
+    agents consume remote tools via existing machinery) + `default_server_command`.
+  - `framework.py` — `build_framework_server(backend=, root=, include_agents/
+    security/local_tools/git=)` exposes **30 tools**: 20 `agent_<name>`
+    (EchoBackend default), `security_scan`/`security_scan_text` (confined to
+    root; profiles full/secrets/dependencies/web/apk), `read_file`/`list_dir`/
+    `grep` (delegating to `LocalToolExecutor`), and `git_status`/`git_log`/
+    `git_branches`/`git_diff`/`git_show` (see `git_tools.py`). Heavy imports are
+    lazy; `serve_framework`.
+  - `git_tools.py` — read-only git inspection (`git_available`, `git_status`,
+    `git_log`, `git_branches`, `git_diff`, `git_show`) via `subprocess` with a
+    15s timeout and `cwd` pinned to root; the optional `path` arg is confined
+    (`_safe_path`) and `limit` clamped 1..200. Reporting commands ONLY — nothing
+    mutates a repo. `GitError` carries the git stderr.
+  - `bridge.py` — `MCPToolExecutor`: a drop-in sibling of `LocalToolExecutor`
+    (same `execute`/`run` surface + the identical bounded ReAct loop) that
+    resolves `<tool-call>` markers against a live MCP server instead of local
+    files. `from_server(MCPServer)` (in-process) / `from_stdio(cmd)` (subprocess)
+    build it; `tool_names()`/`tool_schemas(prefix=…)` introspect; `execute()`
+    never raises (client errors → `ToolOutcome(ok=False)`). **No framework file
+    changed** — patterns/BaseAgent untouched (back-compat).
+  - `__main__.py` — `python -m src.mcp [root]` serves the framework surface.
+- Tests (all in tests/, stdlib-only → run in the phone gate): `test_mcp_protocol.py`,
+  `test_mcp_server.py` (incl. stdio loop via monkeypatched sys.stdin/stdout),
+  `test_mcp_client.py` (incl. a real subprocess end-to-end), `test_mcp_framework.py`,
+  `test_mcp_bridge.py`, `test_mcp_git_tools.py`, `test_novamind_mcp_server.py`
+  (the legacy server's first tests, 11). **144 MCP tests** in total; `--cov=src/mcp`
+  = **100%** (689 stmts / 180 branches). bridge + git tests gate real git via
+  `pytest.mark.skipif(which("git") is None)`.
+- novamind legacy `src/novamind/core/mcp_server.py`: `MCP_VERSION` 2024-11-05 →
+  **2025-11-25** (newest handshake-based revision; 2026-07-28 removed initialize),
+  stale "52 agents" docstrings fixed, note added pointing to `src.mcp`.
+- NOT done (next MCP step, if wanted): exposing autopilot SCM as MCP tools, and a
+  novamind-layout Git tool backed by `core.git_manager`.
+- Slice 3b (agents over MCP) SHIPPED 2026-10-13: `src/mcp/bridge.py`
+  (`MCPToolExecutor`) + `src/mcp/git_tools.py` (read-only git) + framework
+  surface 25→30. Full repo gates after: ruff clean, mypy 103 files,
+  check_annotations 103, `pytest --cov` 1644 passed @ ~98.9%.
+
 ## Current blocker (2026-10-13)
 - CI + Tests are RED but NOT for code reasons: the repo is PRIVATE and the
   free account's Actions minutes / spending limit are exhausted → GitHub

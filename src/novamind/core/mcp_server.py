@@ -1,5 +1,5 @@
 """
-MCP Server — Expose NovaMind's 52 agents as MCP tools.
+MCP Server — Expose NovaMind's agent factory as MCP tools.
 
 MCP (Model Context Protocol) is the 2026 standard for connecting
 AI agents to tools and data sources.
@@ -15,6 +15,12 @@ Usage:
     result = mcp.call_tool("crypto", {"code": "..."})
 
 Protocol: JSON-RPC 2.0 over stdio.
+
+NOTE (2026-10-13): this is the LEGACY handshake-based server (it still relies on
+``initialize``). The current MCP revision, 2026-07-28, removed the handshake and
+is implemented — with the framework's own 20-agent/security/tool surface — by the
+first-class ``src.mcp`` package. This module is kept for compatibility; new
+integrations should use ``python -m src.mcp``.
 """
 import sys
 import json
@@ -30,7 +36,7 @@ logger = logging.getLogger("core.mcp_server")
 # ═══════════════════════════════════════════════════════════
 # MCP Protocol Constants
 # ═══════════════════════════════════════════════════════════
-MCP_VERSION = "2024-11-05"
+MCP_VERSION = "2025-11-25"  # newest revision that still uses the initialize handshake
 SERVER_NAME = "novamind"
 SERVER_VERSION = "8.0.0"
 
@@ -151,7 +157,7 @@ class NovaMindMCP:
         }
 
     def list_tools(self) -> Dict:
-        """MCP tools/list — return all 52 agents as tools."""
+        """MCP tools/list — return every agent-factory tool."""
         tools = []
         for name in sorted(self.factory.list_all()):
             description = self.CATEGORIES.get(name, f"NovaMind agent: {name}")
@@ -261,7 +267,7 @@ class NovaMindMCP:
 def run_stdio_server():
     """Run MCP server over stdio (for Claude Desktop, Cursor, etc.)."""
     mcp = NovaMindMCP()
-    logger.info("MCP server ready (52 agents)")
+    logger.info("MCP server ready (%d tools)", len(mcp.list_tools()["tools"]))
 
     for line in sys.stdin:
         line = line.strip()
