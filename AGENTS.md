@@ -211,6 +211,61 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 - Full repo gates green after Slice 2: ruff check . clean, mypy framework 95
   files, check_annotations 95 files, `pytest --cov` 1498 passed @ 98.78%.
 
+## Ops fix — telegram chat-filter fallback (2026-10-13)
+- Commit `f09a41a` (pushed origin + gitlab): `zyvo-telegram.py` only ever read
+  `ZYVO_TELEGRAM_CHAT_ID`; a `telegram.env` carrying the generic
+  `TELEGRAM_CHAT_ID` left `ALLOWED_CHAT=""` → the poll loop accepted ANY chat.
+  New tested `_resolve_allowed_chat(cfg)` — precedence ZYVO env → ZYVO file →
+  TELEGRAM env → TELEGRAM file (app-specific key beats generic; env beats file);
+  the same fallback mirrored in `scripts/health_monitor.py main()`. Test
+  `test_resolve_allowed_chat_precedence` in `tests/test_zyvo_telegram.py`
+  (+1 → 96 in that file). Gates after: framework 1499 passed, autopilot 186 @
+  100%, ruff/mypy/check_annotations clean.
+- NOTE: the running copy is `~/bin/zyvo-telegram.py` (runit service), NOT the
+  repo file — keep the two byte-identical; `~/bin` copy was edited too. The
+  service was DOWN (`sv status` → "runsv not running"); start via
+  `sv up zyvo-telegram`.
+- Audit (read-only, 2026-10-13): tracked-file secret scan CLEAN (all hits were
+  scanner regex + test fixtures; `.env` untracked). `src/security` scanner
+  verdict on `src/` is dominated by self-referential false positives (the
+  scanner's own detector regexes/training-task strings). Two files with
+  `subprocess(..., shell=True)` at root — `hive_agent_smart.py:46`,
+  `hive_security_scanner.py:84` — are standalone leftovers NOT imported
+  anywhere; cmd is internally built with guards (blocks force-push/reset
+  --hard/rm -rf). `scan_path` single-FILE bug FIXED 2026-10-13 (see below).
+
+## Security audit + hardening (2026-10-13)
+- Scope: bandit + pip-audit + ruff + mypy + dangerous-pattern/secret grep over
+  src/, then fix the critical findings, then low-risk improvements. No new
+  side files (no SECURITY.md/Dependabot). `safety` is unusable on Termux
+  (its `cryptography` wheel fails to dlopen on Python 3.14) → used `pip-audit`
+  instead: `pip-audit -r requirements.txt` → no known vulnerabilities.
+- Bandit BEFORE: 6 High / 38 Medium. AFTER: 0 High. All 6 High were B324 —
+  `hashlib.md5(...)` used for NON-cryptographic IDs (dedup keys, fingerprints,
+  cache hashes) in reflective_rag, immune_network, loop_engine, waste_detector,
+  watcher → fixed by adding `usedforsecurity=False` (identical digest, marks
+  intent, silences the scanner). The 38 Medium are false positives / by-design:
+  B608 SQL (static table names + allowlisted columns, values parameterized),
+  B105/B107 "password" (severity/label strings + empty token defaults),
+  B310 urlopen (FetchURLTool already guards the scheme; the rest hit fixed
+  configured endpoints), B104 bind-all + B108 /tmp (design/portability).
+- FUNCTIONAL BUG FIXED: `src/security/orchestrator.py::SecurityScanner.scan_path`
+  used `root.rglob("*")`, so a single FILE target returned 0 files although the
+  CLI advertises "files or directories". Now: `root.is_file()` → scan_file
+  directly → ScanResult(files=1). +test `test_scan_path_single_file`.
+- PERF: added idempotent indexes for the three un-indexed hot sorts —
+  `idx_conversations_updated` (conversations.updated_at DESC; chat sidebar),
+  `idx_council_sessions_created` (council_sessions.created_at; history),
+  `idx_agent_genome_rank` (agent_genome standing/runs/name; genome panel).
+  `init_schema` runs `executescript(_SCHEMA)` on every connect, so existing DBs
+  pick them up automatically (CREATE INDEX IF NOT EXISTS).
+- Gates after: ruff clean, mypy 95 files, check_annotations 95, `pytest --cov`
+  1500 passed @ 98.78%, autopilot 186 @ 100%.
+- HIGH-RISK proposals (NOT implemented — await tyba's go): MCP client/server
+  (2026 de-facto tool standard), human-in-the-loop interrupt/approval gates in
+  the patterns, real embeddings + vector backend (replace lexical hash
+  embeddings), async runtime, OTel export/cost-budget enforcement.
+
 ## Current blocker (2026-10-13)
 - CI + Tests are RED but NOT for code reasons: the repo is PRIVATE and the
   free account's Actions minutes / spending limit are exhausted → GitHub

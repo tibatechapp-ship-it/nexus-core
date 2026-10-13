@@ -214,6 +214,21 @@ def test_scan_path_missing_target(tmp_path: Path) -> None:
         SecurityScanner().scan_path(tmp_path / "also-missing")
 
 
+def test_scan_path_single_file(tmp_path: Path) -> None:
+    target = tmp_path / "app.py"
+    target.write_text("password = 'abc123456'\n", encoding="utf-8")
+    result = SecurityScanner().scan_path(target)
+    assert result.scanned_files == 1
+    assert result.root == str(target)
+    assert any(finding.path.endswith("app.py") for finding in result.findings)
+
+    clean = tmp_path / "clean.py"
+    clean.write_text("x = 1\n", encoding="utf-8")
+    result = SecurityScanner().scan_path(clean)
+    assert result.scanned_files == 1
+    assert result.findings == ()
+
+
 def test_scan_file_oserror_returns_empty(tmp_path: Path) -> None:
     scanner = SecurityScanner()
     assert scanner.scan_file(tmp_path / "missing.py") == []

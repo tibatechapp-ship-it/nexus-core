@@ -114,7 +114,7 @@ class ImmuneNetwork:
         """ولّد جسم مضاد من ثغرة"""
         # بصمة فريدة للتهديد
         signature = hashlib.md5(
-            f"{threat_category}:{threat_payload[:100]}".encode()
+            f"{threat_category}:{threat_payload[:100]}".encode(), usedforsecurity=False
         ).hexdigest()[:12]
 
         # إذا كان موجوداً، قوّيه

@@ -333,7 +333,7 @@ class LoopEngine:
     def _generate_id(self, goal: str) -> str:
         """Generate a loop ID from goal description."""
         import hashlib
-        h = hashlib.md5(goal.encode("utf-8")).hexdigest()[:8]
+        h = hashlib.md5(goal.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"loop_{ts}_{h}"
 

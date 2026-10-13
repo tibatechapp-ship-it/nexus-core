@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     updated_at  INTEGER NOT NULL,
     meta        TEXT NOT NULL DEFAULT '{}'
 );
+CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS messages (
     id              TEXT PRIMARY KEY,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS council_sessions (
     updated_at  INTEGER NOT NULL,
     meta        TEXT NOT NULL DEFAULT '{}'
 );
+CREATE INDEX IF NOT EXISTS idx_council_sessions_created ON council_sessions(created_at);
 
 CREATE TABLE IF NOT EXISTS council_messages (
     id          TEXT PRIMARY KEY,
@@ -108,6 +110,7 @@ CREATE TABLE IF NOT EXISTS agent_genome (
     updated_at      INTEGER NOT NULL,
     meta            TEXT NOT NULL DEFAULT '{}'
 );
+CREATE INDEX IF NOT EXISTS idx_agent_genome_rank ON agent_genome(standing DESC, runs DESC, name);
 
 CREATE TABLE IF NOT EXISTS genome_events (
     id       TEXT PRIMARY KEY,

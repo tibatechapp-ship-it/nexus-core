@@ -47,7 +47,7 @@ class LocalVectorStore:
         vec = [0.0] * dim
         words = re.findall(r'\w+', text.lower())
         for w in words:
-            h = int(hashlib.md5(w.encode()).hexdigest()[:8], 16)
+            h = int(hashlib.md5(w.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             vec[h % dim] += 1.0
         # تطبيع
         norm = math.sqrt(sum(x * x for x in vec)) or 1.0
@@ -63,7 +63,7 @@ class LocalVectorStore:
     
     def store(self, specialty: str, task: str, response: str, success: bool, score: float = 1.0):
         emb = self._embed(task)
-        task_hash = hashlib.md5(task[:200].encode()).hexdigest()[:16]
+        task_hash = hashlib.md5(task[:200].encode(), usedforsecurity=False).hexdigest()[:16]
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO vectors (specialty, task, task_hash, response, embedding, success, score, timestamp) "
