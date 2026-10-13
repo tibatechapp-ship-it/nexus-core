@@ -183,6 +183,34 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 - Tests: `tests/test_autopilot_scm_resilience.py` (+20) → 90 autopilot tests,
   100% coverage. Full framework suite: 1402 passed @ 98.78%.
 
+## v2.0 — autopilot readers (Slice 2, read-only) — 2026-10-13
+- `src/novamind/autopilot/readers/`: turn provider issues into structured,
+  ranked work. `task.py` (frozen `Task` + KINDS/PRIORITIES + `normalize_title`/
+  `fingerprint`/`priority_rank`/`kind_rank`), `classify.py` (pure:
+  classify_kind/priority, extract_areas/criteria/references, needs_more_info,
+  word_count), `reader.py` (`IssueReader(scm, min_body_words=8)` with
+  read/read_one/to_task/collect + pure `dedupe`/`rank`/`select`), `__init__.py`
+  (surface + NullHandler "novamind.autopilot.readers").
+- Mapping: kind from labels (bug/feature/docs/question/chore; `type:`/`kind/`
+  prefixes stripped, keyword fallback) → priority from labels (p0..p3/none;
+  `priority:high`, bare `priority:2`) → areas (`area:auth`, `component-ui`,
+  file paths) → criteria (checkboxes, else bullets under an "acceptance
+  criteria"/"definition of done" heading) → references (URLs + `#NNN`) →
+  needs_info (triage label, or no criteria AND body < min_body_words) →
+  fingerprint (sha256 of normalised title+kind, ignores platform/number → dedup).
+- `collect()` composes read→dedupe→select→rank. `select` filters kind /
+  priority_max (ceiling) / areas / include_needs_info. `rank` sorts priority,
+  kind, title. All read-only; no write surface.
+- Tests: `tests/test_autopilot_readers_{parse,reader}.py` (+96). GATE (autopilot
+  profile): `COVERAGE_RCFILE=coverage-autopilot.ini python -m pytest
+  tests/test_autopilot_*.py --cov=src/novamind/autopilot` → **186 tests, 100%**.
+  mypy on autopilot = pass explicit FILES (`mypy src/novamind/autopilot/readers/*.py
+  src/novamind/autopilot/scm/*.py`) — explicit args override the config exclude.
+- README per module: `readers/README.md` (API table, mapping rules); autopilot
+  README slice table now shows 2 = shipped, 3 = next.
+- Full repo gates green after Slice 2: ruff check . clean, mypy framework 95
+  files, check_annotations 95 files, `pytest --cov` 1498 passed @ 98.78%.
+
 ## Current blocker (2026-10-13)
 - CI + Tests are RED but NOT for code reasons: the repo is PRIVATE and the
   free account's Actions minutes / spending limit are exhausted → GitHub

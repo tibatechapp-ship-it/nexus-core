@@ -15,8 +15,7 @@ Everything here is **standard library only** and runs on a phone (Termux).
    │   scm/        provider-agnostic read/write access  ◀── Slice 1 │
    │    ▲            GitHubSCM · GitLabSCM · transports             │
    │    │                                                           │
-   │   readers/    turn raw issues into structured work ◀── Slice 2 │
-   │    ▲                                                           │
+   │   readers/    turn raw issues into structured work ◀── Slice 2 │   │    ▲                                                           │
    │   council bridge   debate + consensus on a task     ◀── Slice 3 │
    │    ▲                                                           │
    │   … writing, reviewing, tasks, training            ◀── later   │
@@ -33,14 +32,16 @@ deliberately add that capability.
 | Slice | Scope | Status |
 |---|---|---|
 | 1 | SCM abstraction (GitHub + GitLab, read-only) | ✅ shipped |
-| 2 | Issue reader (fetch → parse → structured task) | ⏳ next |
-| 3 | Council bridge (debate + consensus on a task) | planned |
+| 2 | Issue reader (fetch → parse → structured task) | ✅ shipped |
+| 3 | Council bridge (debate + consensus on a task) | ⏳ next |
 | 4 | Licensing (ranks, certificates, permissions) | planned |
 | 5 | Writer (comment / open change) | planned |
 
 ## Modules
 
 - **`scm/`** — provider-agnostic source control. See [`scm/README.md`](scm/README.md).
+- **`readers/`** — issues → structured, ranked tasks. See
+  [`readers/README.md`](readers/README.md).
 
 ## Principles
 
@@ -53,9 +54,9 @@ deliberately add that capability.
 
 ```bash
 COVERAGE_RCFILE=coverage-autopilot.ini \
-  python -m pytest tests/test_autopilot_scm_*.py \
+  python -m pytest tests/test_autopilot_*.py \
   --cov=src/novamind/autopilot --cov-report=term-missing --cov-fail-under=95
 ```
 
-Current: **90 tests, 100% coverage** on `src/novamind/autopilot`; repo-wide
+Current: **186 tests, 100% coverage** on `src/novamind/autopilot`; repo-wide
 `ruff check .`, `mypy`, and the annotation check stay green.
