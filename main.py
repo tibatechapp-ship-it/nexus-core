@@ -1,4 +1,4 @@
-import os, sys, json, threading, asyncio
+import os, sys, json, re, threading, asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
@@ -86,12 +86,20 @@ async def deliberate_stream(request: Request):
                 bridge = get_council_bridge()
                 on_event("status", {"phase": "council_start", "message": "بدء المداولة الحية..."})
                 result = bridge.deliberate_streaming(query, on_event)
+                recommendation = ""
+                for entry in reversed(_get(result, "transcript", []) or []):
+                    txt = entry.get("response", "") if isinstance(entry, dict) else str(entry)
+                    m = re.search(r"\[التوصية:\s*([^\]]+)\]", txt)
+                    if m:
+                        recommendation = m.group(1).strip()
+                        break
                 on_event("final_verdict", {
                     "verdict": _get(result, "verdict", "unknown"),
                     "score": float(_get(result, "score", 0) or 0),
                     "rounds": _get(result, "rounds", 0) or 0,
                     "elapsed": round(float(_get(result, "elapsed", 0) or 0), 1),
                     "consensus": bool(_get(result, "consensus", False)),
+                    "recommendation": recommendation,
                 })
             except Exception as e:
                 on_event("error", {"message": type(e).__name__ + ": " + str(e)})
