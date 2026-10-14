@@ -1,14 +1,18 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# nexus — Unified CLI for 79-agent system
-export NOVAMIND_HOME=~/nexus-core
-export PYTHONPATH=src:$PYTHONPATH
-cd ~/nexus-core
+# nexus — Unified CLI (79 agents + RAG)
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:$PYTHONPATH"
+export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+cd "$HOME/nexus-core"
 
-case "$1" in
+CMD="$1"
+shift
+
+case "$CMD" in
   list)
     python3 -c "
-from nova.registry import REGISTRY, agents_by_category
-for cat in ['code', 'security', 'quality', 'infra', 'data', 'ui', 'research', 'meta']:
+from nova.registry import agents_by_category
+for cat in ['code','security','quality','infra','data','ui','research','meta']:
     agents = agents_by_category(cat)
     print(f'\n📁 {cat.upper()} ({len(agents)}):')
     for a in agents: print(f'   • {a}')
@@ -16,26 +20,11 @@ for cat in ['code', 'security', 'quality', 'infra', 'data', 'ui', 'research', 'm
     ;;
   stats)
     python3 -c "
-from nova.registry import REGISTRY
-import json
-print(json.dumps(REGISTRY.stats(), indent=2, ensure_ascii=False))
+from nova.registry import REGISTRY, agents_by_category
+print(f'📊 {len(REGISTRY)} agents | 8 categories')
+for cat in ['code','security','quality','infra','data','ui','research','meta']:
+    print(f'   • {cat:10} {len(agents_by_category(cat)):2} agents')
 "
-    ;;
-  run)
-    shift
-    python3 -c "
-import sys
-from nova.registry import REGISTRY
-agent_name = sys.argv[1]
-prompt = ' '.join(sys.argv[2:])
-agent = REGISTRY.load_agent(agent_name)
-method = 'build' if hasattr(agent, 'build') else 'run' if hasattr(agent, 'run') else None
-if not method:
-    print(f'❌ لا توجد طريقة قابلة للتنفيذ')
-    sys.exit(1)
-result = getattr(agent, method)(prompt)
-print(result)
-" "$@"
     ;;
   core)
     python3 -c "
@@ -45,16 +34,36 @@ for n in REGISTRY.list_core():
     print(f'  {n:25} | {spec.category.value:10}')
 "
     ;;
+  doctor)
+    ./scripts/nexus-doctor
+    ;;
+  rag)
+    ./scripts/nexus-rag "${@}"
+    ;;
+  offline)
+    ./scripts/nexus-offline "${@}"
+    ;;
+  run)
+    ./scripts/nexus-offline "${@}"
+    ;;
   *)
-    echo "nexus — Unified CLI (79 agents)"
+    echo "╔══════════════════════════════════════════════════╗"
+    echo "║  nexus — Unified CLI (79 agents + RAG)          ║"
+    echo "╚══════════════════════════════════════════════════╝"
     echo ""
     echo "الأوامر:"
-    echo "  nexus list       عرض كل الوكلاء"
-    echo "  nexus stats      إحصائيات"
-    echo "  nexus core       الوكلاء الأساسيون"
-    echo "  nexus run NAME PROMPT"
+    echo "  nexus list                  عرض كل الوكلاء"
+    echo "  nexus stats                 إحصائيات"
+    echo "  nexus core                  الوكلاء الأساسيون"
+    echo "  nexus doctor                فحص شامل"
+    echo "  nexus rag add TEXT          إضافة للذاكرة"
+    echo "  nexus rag query Q           بحث دلالي"
+    echo "  nexus rag ask Q             سؤال + سياق"
+    echo "  nexus run NAME PROMPT       تشغيل وكيل"
     echo ""
-    echo "مثال:"
-    echo "  nexus run coder 'اكتب دالة Python'"
+    echo "أمثلة:"
+    echo "  nexus stats"
+    echo "  nexus rag ask 'ما هي Python؟'"
+    echo "  nexus run coder 'اكتب دالة'"
     ;;
 esac
