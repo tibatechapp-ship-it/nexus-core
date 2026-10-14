@@ -53,7 +53,10 @@ class Supervisor:
         return None
 
     def _run_single(self, agent_name: str, prompt: str) -> dict:
-        """يشغّل وكيلاً واحداً."""
+        """يشغّل وكيلاً واحداً (يدعم sync + async)."""
+        import asyncio
+        import inspect
+
         start = time.time()
         try:
             agent = self._get_registry().load_agent(agent_name)
@@ -68,17 +71,63 @@ class Supervisor:
             return {"ok": False, "agent": agent_name,
                     "error": f"لا طريقة. المتاح: {available[:5]}", "elapsed": 0.0}
 
-        try:
-            result = getattr(agent, method)(prompt)
-        except TypeError:
+        fn = getattr(agent, method)
+        result = None
+        last_error = None
+
+        # ═══ dict غني بكل المفاتيح المحتملة ═══
+        rich_dict = {
+            "action": "plan",
+            "params": {
+                "request": prompt,
+                "content": prompt,
+                "input": prompt,
+                "task": prompt,
+                "prompt": prompt,
+            },
+            "task": prompt,
+            "prompt": prompt,
+            "input": prompt,
+            "request": prompt,
+            "content": prompt,
+        }
+
+        # ═══ محاولات متعددة (4 أنماط) ═══
+        ATTEMPTS = [
+            lambda f: f(prompt),                # (str) — الأكثر شيوعاً
+            lambda f: f(rich_dict),             # (dict) — مع كل المفاتيح
+            lambda f: f(prompt, {}),            # (str, dict)
+            lambda f: f(),                      # ()
+        ]
+
+        for i, attempt in enumerate(ATTEMPTS):
             try:
-                result = getattr(agent, method)()
+                if inspect.iscoroutinefunction(fn):
+                    result = asyncio.run(attempt(fn))
+                else:
+                    result = attempt(fn)
+                break  # نجح — أوقف المحاولات
+            except (TypeError, AttributeError, KeyError) as e:
+                # فشل النمط — جرّب التالي
+                last_error = e
+                continue
+            except Exception as e:
+                # خطأ آخر (ValueError, RuntimeError...)
+                return {"ok": False, "agent": agent_name, "error": str(e),
+                        "elapsed": round(time.time() - start, 3)}
+
+        if result is None:
+            return {"ok": False, "agent": agent_name,
+                    "error": f"كل الأنماط فشلت: {last_error}",
+                    "elapsed": round(time.time() - start, 3)}
+
+        # ═══ إذا كانت النتيجة coroutine لم تُنتظر ═══
+        if inspect.iscoroutine(result):
+            try:
+                result = asyncio.run(result)
             except Exception as e:
                 return {"ok": False, "agent": agent_name, "error": str(e),
                         "elapsed": round(time.time() - start, 3)}
-        except Exception as e:
-            return {"ok": False, "agent": agent_name, "error": str(e),
-                    "elapsed": round(time.time() - start, 3)}
 
         return {
             "ok": True,
