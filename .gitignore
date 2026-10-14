@@ -110,3 +110,18 @@ reports/failed/*
 !reports/sent/.gitkeep
 !reports/failed/.gitkeep
 reports/certification/*.tmp
+
+# Runtime data
+memory.db
+memory.db-*
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Nexus runtime
+.nexus/
+*.nexus.db
+
+# Symlinks / duplicates (Termux-specific)
+src/novamind/novamind
+src/nova
