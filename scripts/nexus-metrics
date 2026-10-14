@@ -1,0 +1,54 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_CMD="${1:-today}"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys, json
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+
+from src.nexus.monitoring import get_monitor
+
+mon = get_monitor()
+cmd = os.environ.get("NEXUS_CMD", "today")
+
+def print_stats(title, stats):
+    print("=" * 60)
+    print(title)
+    print("=" * 60)
+    print(f"   📞 استدعاءات:     {stats['total_calls']}")
+    print(f"   ✅ نجح:           {stats['successes']}")
+    print(f"   ❌ فشل:           {stats['failures']}")
+    print(f"   📊 نسبة النجاح:   {stats['success_rate']}%")
+    print(f"   ⏱️  وقت كلي:      {stats['total_time_s']}ث")
+    print(f"   ⏱️  متوسط:        {stats['avg_time_s']}ث/استدعاء")
+    print(f"   🔤 توكن (in):     {stats['total_tokens_in']}")
+    print(f"   🔤 توكن (out):    {stats['total_tokens_out']}")
+    print(f"   🔤 توكن (كلي):    {stats['total_tokens']}")
+    print(f"   💰 تكلفة:         ${stats['total_cost_usd']:.6f}")
+
+    if stats.get("by_provider"):
+        print()
+        print("   📦 حسب المزود:")
+        for p, s in stats["by_provider"].items():
+            print(f"      • {p:15} | {s['calls']:3} calls | {s['time']:.1f}ث | ${s['cost']:.6f}")
+
+if cmd == "today":
+    print_stats("📊 إحصائيات اليوم", mon.get_today_stats())
+elif cmd == "session":
+    print_stats("📊 إحصائيات الجلسة", mon.get_session_stats())
+elif cmd == "all":
+    # دمج الجلسة + اليوم
+    s1 = mon.get_session_stats()
+    s2 = mon.get_today_stats()
+    print_stats("📊 الجلسة الحالية", s1)
+    print()
+    print_stats("📊 اليوم كامل", s2)
+elif cmd == "clear":
+    c = mon.clear_today()
+    print(f"✅ حُذف {c} استدعاء من سجل اليوم")
+else:
+    print("الأوامر: today | session | all | clear")
+PYEOF
