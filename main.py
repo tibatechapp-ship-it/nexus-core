@@ -1,4 +1,4 @@
-import os, sys, json, re, threading, asyncio
+import os, sys, json, threading, asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
@@ -27,6 +27,11 @@ try:
     from src.council.topics import search_topics, get_topic
 except Exception:
     search_topics = get_topic = None
+
+try:
+    from src.council.recommend import extract_recommendation
+except Exception:
+    extract_recommendation = None
 
 app = FastAPI(title="Nexus Real Workbench")
 
@@ -86,26 +91,10 @@ async def deliberate_stream(request: Request):
                 bridge = get_council_bridge()
                 on_event("status", {"phase": "council_start", "message": "بدء المداولة الحية..."})
                 result = bridge.deliberate_streaming(query, on_event)
-                recommendation = ""
-                try:
-                    from collections import Counter
-                    _AG = {"profiler", "analyst", "critic", "judge", "cache", "agent"}
-                    _recs = []
-                    for entry in (_get(result, "transcript", []) or []):
-                        txt = entry.get("response", "") if isinstance(entry, dict) else str(entry)
-                        m = re.search(r"\[التوصية:\s*([^\]]+)\]", txt)
-                        if not m:
-                            continue
-                        r = m.group(1).strip().strip(".").strip("<>").strip()
-                        _bad = ("اقصر", "أقصر", "خلاصة جوابك", "جوابك", "السؤال",
-                                "التوجيه", "المطلوب", "المباشر", "ضع هنا", "اكتب")
-                        if r and r.lower() not in _AG and len(r) >= 2 \
-                                and not any(b in r for b in _bad):
-                            _recs.append(r)
-                    if _recs:
-                        recommendation = Counter(_recs).most_common(1)[0][0]
-                except Exception:
-                    pass
+                if extract_recommendation is not None:
+                    recommendation = extract_recommendation(_get(result, "transcript", []))
+                else:
+                    recommendation = ""
                 on_event("final_verdict", {
                     "verdict": _get(result, "verdict", "unknown"),
                     "score": float(_get(result, "score", 0) or 0),

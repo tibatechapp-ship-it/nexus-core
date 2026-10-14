@@ -12,6 +12,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src'))
 
+# ═══ نسخة الكاش: ارفعها عند تغيير البرومبت/المنطق ليتجاهل كل الكاش القديم ═══
+CACHE_VERSION = "v1"
+
 
 @dataclass
 class CachedVerdict:
@@ -24,6 +27,9 @@ class CachedVerdict:
     transcript_summary: str
     timestamp: float
     expires_at: float
+    transcript: Optional[list] = None
+    consensus: Optional[bool] = None
+    cache_version: str = ""
     hits: int = 0
 
 
@@ -66,6 +72,10 @@ class CouncilCache:
 
             cached = CachedVerdict(**data)
 
+            # ═══ فحص نسخة الكاش: أي إدخال بنسخة قديمة يُتجاهل (البند ⑤) ═══
+            if cached.cache_version != CACHE_VERSION:
+                return None
+
             # فحص انتهاء الصلاحية
             if time.time() > cached.expires_at:
                 os.remove(path)
@@ -95,6 +105,14 @@ class CouncilCache:
         except Exception:
             pass
 
+        # ═══ احفظ الـ transcript الكامل + الإجماع ليعطي cache-hit توصية كاملة (البند ①②) ═══
+        try:
+            full_transcript = list(getattr(result, "transcript", None) or [])
+        except Exception:
+            full_transcript = []
+        _cons = getattr(result, "consensus", None)
+        consensus_val = None if _cons is None else bool(_cons)
+
         cached = CachedVerdict(
             question_hash=q_hash,
             question=question,
@@ -102,6 +120,9 @@ class CouncilCache:
             score=result.score,
             rounds=result.rounds,
             transcript_summary=summary,
+            transcript=full_transcript,
+            consensus=consensus_val,
+            cache_version=CACHE_VERSION,
             timestamp=time.time(),
             expires_at=time.time() + self.ttl,
         )
@@ -126,6 +147,7 @@ class CouncilCache:
         total_hits = 0
         valid = 0
         expired = 0
+        stale = 0
         now = time.time()
 
         for fname in files:
@@ -133,7 +155,9 @@ class CouncilCache:
                 with open(os.path.join(self.cache_dir, fname), encoding="utf-8") as f:
                     data = json.load(f)
                 total_hits += data.get("hits", 0)
-                if now > data.get("expires_at", 0):
+                if data.get("cache_version", "") != CACHE_VERSION:
+                    stale += 1
+                elif now > data.get("expires_at", 0):
                     expired += 1
                 else:
                     valid += 1
@@ -144,6 +168,8 @@ class CouncilCache:
             "total_entries": len(files),
             "valid_entries": valid,
             "expired_entries": expired,
+            "stale_entries": stale,
+            "cache_version": CACHE_VERSION,
             "total_hits": total_hits,
             "ttl_hours": self.ttl / 3600,
         }
