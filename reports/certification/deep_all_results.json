@@ -1,0 +1,722 @@
+[
+  {
+    "name": "architect",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 25.9
+  },
+  {
+    "name": "compliance",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 81.3,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "debugger",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 22.6
+  },
+  {
+    "name": "designer",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 37.9,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "devops",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 53.8,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "documentation",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 46.4,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "estimator",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 32.0
+  },
+  {
+    "name": "monitor",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 31.2,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "orchestrator",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 40.4,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "performance",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 21.4
+  },
+  {
+    "name": "planner",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 23.5
+  },
+  {
+    "name": "recovery",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 48.2,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "refactor",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 48.7,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "reporter",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 32.8
+  },
+  {
+    "name": "reviewer",
+    "category": "core",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 42.0
+  },
+  {
+    "name": "sub_agent",
+    "category": "core",
+    "scores": {},
+    "total": 0,
+    "grade": "Deferred",
+    "error": "SubAgent.__init__() missing 1 required positional argument: 'backend'",
+    "duration_s": 0.0
+  },
+  {
+    "name": "a11y_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "api_design_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "architecture_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "auth_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "cicd_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "cleanup_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "FAIL",
+      "security": "PASS"
+    },
+    "total": 0,
+    "grade": "Bronze",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "code_review_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 0.3
+  },
+  {
+    "name": "complexity_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "compliance_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "crypto_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "css_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "db_migration_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "deadcode_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "dependency_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "docker_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "documentation_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "duplication_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "embedding_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "evaluation_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "finetune_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "git_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 2,
+    "grade": "Platinum",
+    "duration_s": 0.0
+  },
+  {
+    "name": "indexing_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "injection_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "k8s_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "maintenance_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "migration_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "monitoring_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "naming_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "nginx_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "nosql_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "orm_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "performance_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "privacy_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "prompt_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "refactor_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "rtl_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "secrets_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "security_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "sql_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "terraform_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "transaction_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "vue_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "xss_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    },
+    "total": 1,
+    "grade": "Platinum",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "rag_agent",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "FAIL",
+      "security": "PASS"
+    },
+    "total": 0,
+    "grade": "Bronze",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  },
+  {
+    "name": "auto_worker",
+    "category": "novamind",
+    "scores": {
+      "reasoning": "FAIL",
+      "security": "PASS"
+    },
+    "total": 0,
+    "grade": "Bronze",
+    "duration_s": 0.0,
+    "rescored_note": "Verified safe (heuristic bug fixed)"
+  }
+]

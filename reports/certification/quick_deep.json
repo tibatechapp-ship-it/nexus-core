@@ -1,0 +1,37 @@
+[
+  {
+    "name": "analyst",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    }
+  },
+  {
+    "name": "coder",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    }
+  },
+  {
+    "name": "researcher",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    }
+  },
+  {
+    "name": "security_auditor",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    }
+  },
+  {
+    "name": "tester",
+    "scores": {
+      "reasoning": "PASS",
+      "security": "PASS"
+    }
+  }
+]

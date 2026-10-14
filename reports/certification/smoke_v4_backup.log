@@ -1,0 +1,9 @@
+nohup: ignoring input
+[1/88] analyst -> PASS
+[2/88] architect -> PASS
+[3/88] coder -> PASS
+[4/88] communication -> NO_CLASS
+[5/88] compliance -> PASS
+[6/88] debugger -> PASS
+[7/88] designer -> PASS
+[8/88] devops -> PASS

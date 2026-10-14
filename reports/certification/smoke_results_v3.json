@@ -1,0 +1,595 @@
+[
+  {
+    "name": "analyst",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/analyst.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 8.8
+  },
+  {
+    "name": "architect",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/architect.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 8.8
+  },
+  {
+    "name": "coder",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/coder.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 180.1
+  },
+  {
+    "name": "compliance",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/compliance.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 9.5
+  },
+  {
+    "name": "debugger",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/debugger.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 9.2
+  },
+  {
+    "name": "designer",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/designer.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 9.5
+  },
+  {
+    "name": "devops",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/devops.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 11.3
+  },
+  {
+    "name": "documentation",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/documentation.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 12.5
+  },
+  {
+    "name": "estimator",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/estimator.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 302.9
+  },
+  {
+    "name": "monitor",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/monitor.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 7.7
+  },
+  {
+    "name": "orchestrator",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/orchestrator.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 21.9
+  },
+  {
+    "name": "performance",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/performance.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 12.0
+  },
+  {
+    "name": "planner",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/planner.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 19.8
+  },
+  {
+    "name": "recovery",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/recovery.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 8.6
+  },
+  {
+    "name": "refactor",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/refactor.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 10.3
+  },
+  {
+    "name": "reporter",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/reporter.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 117.3
+  },
+  {
+    "name": "researcher",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/researcher.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 8.3
+  },
+  {
+    "name": "reviewer",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/reviewer.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 10.2
+  },
+  {
+    "name": "security_auditor",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/security_auditor.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 10.5
+  },
+  {
+    "name": "sub_agent",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/sub_agent.py",
+    "smoke_status": "PASS",
+    "method_used": null,
+    "smoke_error": "SubAgent: SubAgent.__init__() missing 1 required positional argument: 'backend'",
+    "duration_s": 0.0,
+    "fix_note": "FIXED"
+  },
+  {
+    "name": "tester",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/tester.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 9.7
+  },
+  {
+    "name": "a11y_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/a11y_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "api_design_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/api_design_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "architecture_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/architecture_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "auth_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/auth_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "cicd_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/cicd_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "cleanup_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/cleanup_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "cleanup",
+    "duration_s": 0.0
+  },
+  {
+    "name": "code_review_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/code_review_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "review",
+    "duration_s": 0.0
+  },
+  {
+    "name": "coder",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/coder.py",
+    "smoke_status": "PASS",
+    "method_used": "build",
+    "duration_s": 3.6
+  },
+  {
+    "name": "complexity_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/complexity_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "compliance_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/compliance_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "crypto_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/crypto_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "css_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/css_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "db_migration_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/db_migration_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "deadcode_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/deadcode_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "dependency_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/dependency_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "docker_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/docker_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "documentation_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/documentation_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "duplication_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/duplication_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "embedding_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/embedding_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "evaluation_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/evaluation_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "finetune_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/finetune_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "git_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/git_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "execute",
+    "duration_s": 0.0
+  },
+  {
+    "name": "indexing_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/indexing_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "injection_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/injection_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "k8s_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/k8s_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "maintenance_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/maintenance_agent.py",
+    "smoke_status": "PASS",
+    "method_used": null,
+    "duration_s": 0.0,
+    "fix_note": "FIXED"
+  },
+  {
+    "name": "migration_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/migration_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "monitoring_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/monitoring_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "naming_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/naming_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "nginx_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/nginx_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "nosql_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/nosql_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "orm_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/orm_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "performance_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/performance_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "privacy_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/privacy_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "prompt_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/prompt_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "react_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/react_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "stub_import",
+    "duration_s": 0.0,
+    "defer_reason": "ANDROID_RESTRICTION",
+    "fix_note": "FIXED_LEGACY_IMPORTS"
+  },
+  {
+    "name": "refactor_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/refactor_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "rtl_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/rtl_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "secrets_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/secrets_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "security_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/security_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "sql_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/sql_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "terraform_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/terraform_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "transaction_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/transaction_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "vue_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/vue_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "xss_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/xss_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "analyze",
+    "duration_s": 0.0
+  },
+  {
+    "name": "react_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/agent_loop/react_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "stub_import",
+    "smoke_error": "run(): [Errno 30] Read-only file system: '/public'",
+    "duration_s": 0.0,
+    "defer_reason": "ANDROID_RESTRICTION",
+    "fix_note": "FIXED_LEGACY_IMPORTS"
+  },
+  {
+    "name": "agents_registry",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/hive/core/agents_registry.py",
+    "smoke_status": "DEFERRED",
+    "method_used": null,
+    "duration_s": 0.0,
+    "defer_reason": "NOT_AN_AGENT"
+  },
+  {
+    "name": "rag_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/rag/rag_agent.py",
+    "smoke_status": "PASS",
+    "method_used": null,
+    "smoke_error": "ModuleNotFoundError: No module named 'pydantic_settings'",
+    "duration_s": 0.0,
+    "fix_note": "FIXED"
+  },
+  {
+    "name": "worker",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/worker.py",
+    "smoke_status": "PASS",
+    "method_used": "stub_import",
+    "smoke_error": "ModuleNotFoundError: No module named 'hooks'",
+    "duration_s": 0.0,
+    "defer_reason": "LEGACY_ORPHANED",
+    "fix_note": "FIXED_LEGACY_IMPORTS"
+  },
+  {
+    "name": "auto_worker",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/security/auto_worker.py",
+    "smoke_status": "PASS",
+    "method_used": "run",
+    "duration_s": 0.0
+  },
+  {
+    "name": "tool_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/security/tool_agent.py",
+    "smoke_status": "PASS",
+    "method_used": "stub_import",
+    "smoke_error": "ModuleNotFoundError: No module named 'hive'",
+    "duration_s": 0.1,
+    "defer_reason": "LEGACY_ORPHANED",
+    "fix_note": "FIXED_LEGACY_IMPORTS"
+  }
+]

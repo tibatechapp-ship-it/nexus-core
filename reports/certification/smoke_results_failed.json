@@ -1,0 +1,706 @@
+[
+  {
+    "name": "analyst",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/analyst.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "architect",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/architect.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "coder",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/coder.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "communication",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/communication.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "compliance",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/compliance.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "debugger",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/debugger.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "designer",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/designer.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "devops",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/devops.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "documentation",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/documentation.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "estimator",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/estimator.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "metrics",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/metrics.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "monitor",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/monitor.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "orchestrator",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/orchestrator.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "performance",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/performance.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "planner",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/planner.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "recovery",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/recovery.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "refactor",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/refactor.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "registry",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/registry.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "reporter",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/reporter.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "researcher",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/researcher.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "reviewer",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/reviewer.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "security_auditor",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/security_auditor.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "state",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/state.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "sub_agent",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/sub_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "tester",
+    "category": "core",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/agents/tester.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_alias",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/adapters/agent_alias.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "a11y_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/a11y_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_builder",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/agent_builder.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "api_design_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/api_design_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "architecture_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/architecture_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "auth_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/auth_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "cicd_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/cicd_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "cleanup_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/cleanup_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "code_review_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/code_review_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "complexity_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/complexity_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "compliance_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/compliance_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "crypto_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/crypto_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "css_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/css_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "db_migration_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/db_migration_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "deadcode_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/deadcode_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "dependency_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/dependency_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "docker_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/docker_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "documentation_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/documentation_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "duplication_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/duplication_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "embedding_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/embedding_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "evaluation_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/evaluation_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "finetune_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/finetune_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "git_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/git_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "indexing_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/indexing_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "injection_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/injection_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "k8s_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/k8s_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "maintenance_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/maintenance_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "migration_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/migration_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "monitoring_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/monitoring_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "naming_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/naming_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "nginx_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/nginx_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "nosql_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/nosql_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "orm_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/orm_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "parallel_agents",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/parallel_agents.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "performance_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/performance_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "privacy_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/privacy_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "prompt_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/prompt_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "react_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/react_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "refactor_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/refactor_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "rtl_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/rtl_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "secrets_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/secrets_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "security_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/security_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "sql_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/sql_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "terraform_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/terraform_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "transaction_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/transaction_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "vue_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/vue_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "xss_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/agents/xss_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/cli/entries/agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_card",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/a2a/agent_card.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "react_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/agent_loop/react_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_orchestrator",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/agent_orchestrator.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agents_registry",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/hive/core/agents_registry.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_monitor",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/operations/agent_monitor.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "rag_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/rag/rag_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_adapters",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/training/agent_adapters.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_real_runner",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/training/agent_real_runner.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "worker",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/core/worker.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "agent_router",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/interface/agent_router.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "auto_worker",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/security/auto_worker.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "tool_agent",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/security/tool_agent.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "isolated_agents_report",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/tools/isolated_agents_report.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "scan_all_agents",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/tools/scan_all_agents.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  },
+  {
+    "name": "scan_all_agents_v2",
+    "category": "novamind",
+    "path": "/data/data/com.termux/files/home/nexus-core/src/novamind/tools/scan_all_agents_v2.py",
+    "smoke_status": "ERROR",
+    "smoke_response": null,
+    "smoke_error": "cannot import name 'ZyvoBackend' from 'src.core.backend' (/data/data/com.termux/files/home/nexus-core/src/core/backend.py)"
+  }
+]

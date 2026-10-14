@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-10-13T10:30:29.873867+00:00",
+  "commit": "1045b54",
+  "branch": "feature/landing-page",
+  "engine": "real-LLM (ZYVO brain :4141, model Big Pickle) + auwal marra real agent",
+  "git_tools_direct": {
+    "status": "PASS",
+    "asserts": "4/4 (status, branches, log, escape-refused)"
+  },
+  "mcp_executor_echo": {
+    "status": "PASS",
+    "note": "tools registered (5 git), loop runs; Echo emits no tool-calls by design"
+  },
+  "agent_analyst_real_llm": {
+    "status": "PARTIAL",
+    "ok": true,
+    "steps": 1,
+    "tool_calls_executed": 0,
+    "note": "emitted <tool-call> markers but dialect mismatch (no args= attr / child-text args) -> parser ignored them"
+  },
+  "agent_reporter_real_llm": {
+    "status": "PARTIAL",
+    "ok": true,
+    "steps": 1,
+    "tool_calls_executed": 0,
+    "note": "answered directly WITHOUT calling tools (hallucinated report)"
+  },
+  "finding": "src/tools/executor.py:_TOOL_CALL_RE requires name=\"...\" args=\"...\" — real models emit <tool-call name=\"x\"></tool-call> or child-text JSON -> ZERO executes. Needs dialect tolerance.",
+  "next": "await tyba: harden parse_tool_calls (children-text args + missing args->{}) or strengthen prompt, then re-run"
+}
