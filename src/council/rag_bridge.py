@@ -70,7 +70,7 @@ class CouncilRAGBridge:
         # ═══ SAVE HISTORY ═══
         try:
             from src.council.history import get_history
-            rec_id = get_history().save(result, category="auto")
+            rec_id = get_history().save(result, category="auto", query=question)
             result._record_id = rec_id
         except Exception:
             pass
@@ -144,7 +144,7 @@ class CouncilRAGBridge:
         # SAVE HISTORY (مرة واحدة فقط)
         try:
             from src.council.history import get_history
-            rec_id = get_history().save(result, category="web_ui")
+            rec_id = get_history().save(result, category="web_ui", query=question)
             result._record_id = rec_id
             emit("log", {"message": "تم الحفظ في السجل: " + rec_id})
         except Exception:

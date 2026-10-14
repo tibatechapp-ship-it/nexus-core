@@ -59,16 +59,22 @@ class CouncilEngine:
         full = f"{member.system_prompt}\n\n━━━ السياق ━━━\n{context}\n\n━━━ المطلوب ━━━\n{prompt}"
         if self.llm:
             try:
-                # ═══ استخدم مفتاح مخصص لكل عضو ═══
-                provider_name = self.PROVIDER_MAP.get(member.name)
+                # ═══ نترك Router يختار تلقائياً ═══
                 result = self.llm.generate(
                     prompt=full,
                     system=member.system_prompt,
-                    provider=provider_name,  # ← مفتاح مخصص
                     temperature=0.3,
                     max_tokens=member.max_output_length,
                 )
-                text = result.get("text", "") if isinstance(result, dict) else str(result)
+                # ═══ إظهار الأخطاء بدلاً من إخفائها ═══
+                if isinstance(result, dict):
+                    if result.get("ok"):
+                        text = result.get("text", "")
+                    else:
+                        err = str(result.get("error", "unknown"))[:150]
+                        text = f"[فشل LLM: {err}]"
+                else:
+                    text = str(result)
             except Exception as e:
                 text = f"[خطأ LLM: {e}]"
         else:

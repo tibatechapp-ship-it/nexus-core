@@ -1,4 +1,4 @@
-"""Council History — سجل قرارات."""
+"""Council History — سجل قرارات مع محتوى كامل."""
 import os, sys, json, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,37 +23,67 @@ class CouncilHistory:
 
     _counter = 0
 
-    def save(self, result, topic_id="", category=""):
-        import uuid
-        # ═══ معرف فريد: microsecond + counter ═══
+    def save(self, result, topic_id="", category="", query=""):
+        """يحفظ قراراً كاملاً مع السؤال والـ transcript."""
         CouncilHistory._counter += 1
         rec_id = f"decision_{int(time.time() * 1_000_000)}_{CouncilHistory._counter}"
+
+        # استخراج دفاعي
+        def _get(name, default=None):
+            v = getattr(result, name, None)
+            if v is None and isinstance(result, dict):
+                v = result.get(name)
+            return v if v is not None else default
+
         record = {
-            "id": rec_id, "verdict": result.verdict,
-            "score": result.score, "rounds": result.rounds,
-            "timestamp": time.time(), "topic_id": topic_id,
-            "category": category, "security_events": result.security_events,
+            "id": rec_id,
+            "query": query or _get("_query", "") or _get("query", ""),
+            "verdict": _get("verdict", "unknown"),
+            "score": float(_get("score", 0) or 0),
+            "rounds": int(_get("rounds", 0) or 0),
+            "consensus": bool(_get("consensus", False)),
+            "reasoning": _get("reasoning", ""),
+            "transcript": _get("transcript", []) or [],
+            "topic_id": topic_id or _get("topic_id", ""),
+            "category": category,
+            "security_events": _get("security_events", []) or [],
+            "timestamp": time.time(),
         }
+
         try:
             with open(os.path.join(self.history_dir, rec_id + ".json"),
                       "w", encoding="utf-8") as f:
                 json.dump(record, f, ensure_ascii=False, indent=2, default=str)
-        except Exception:
-            pass
+        except Exception as e:
+            print("[History] خطأ الحفظ: " + str(e))
 
+        # RAG summary
         rag = self._get_rag()
         if rag:
-            summary = "[Council " + result.verdict.upper() + "] " + \
-                      (topic_id or category or "decision") + \
-                      ": score=" + str(round(result.score, 2))
+            q_preview = (record["query"] or "")[:80]
+            summary = "[Council " + record["verdict"].upper() + "] " + q_preview + " score=" + str(round(record["score"], 2))
             try:
                 rag.remember(summary, doc_id=rec_id)
             except Exception:
                 pass
         return rec_id
 
+    def get_full(self, rec_id):
+        """استرجاع قرار كامل (مع transcript)."""
+        path = os.path.join(self.history_dir, rec_id + ".json")
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
     def stats(self):
-        files = [f for f in os.listdir(self.history_dir) if f.endswith(".json")]
+        try:
+            files = [f for f in os.listdir(self.history_dir) if f.endswith(".json")]
+        except FileNotFoundError:
+            return {"total": 0}
         if not files:
             return {"total": 0}
         verdicts = {"approve": 0, "reject": 0, "human_review": 0}
@@ -70,21 +100,33 @@ class CouncilHistory:
             except Exception:
                 pass
         return {
-            "total": len(files), "by_verdict": verdicts,
+            "total": len(files),
+            "by_verdict": verdicts,
             "avg_score": sum(scores) / len(scores) if scores else 0,
             "avg_rounds": sum(rounds) / len(rounds) if rounds else 0,
         }
 
     def list_recent(self, n=10):
-        files = sorted(
-            [f for f in os.listdir(self.history_dir) if f.endswith(".json")],
-            reverse=True
-        )[:n]
+        try:
+            files = sorted(
+                [f for f in os.listdir(self.history_dir) if f.endswith(".json")],
+                reverse=True
+            )[:n]
+        except FileNotFoundError:
+            return []
         result = []
         for fn in files:
             try:
                 with open(os.path.join(self.history_dir, fn), encoding="utf-8") as f:
-                    result.append(json.load(f))
+                    r = json.load(f)
+                    result.append({
+                        "id": r.get("id"),
+                        "query": (r.get("query") or "")[:100],
+                        "verdict": r.get("verdict"),
+                        "score": r.get("score"),
+                        "topic_id": r.get("topic_id", ""),
+                        "timestamp": r.get("timestamp", 0),
+                    })
             except Exception:
                 pass
         return result

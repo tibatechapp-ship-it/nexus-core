@@ -7,6 +7,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+# ═══ اضبط NOVAMIND_HOME قبل أي استيراد ═══
+os.environ["NOVAMIND_HOME"] = BASE_DIR
+
+# ═══ حمّل .env أولاً ═══
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, ".env"))
+except Exception:
+    pass
+
 try:
     from src.council.rag_bridge import get_council_bridge
     _bridge_err = None
@@ -111,6 +121,24 @@ async def health():
         "topics": search_topics is not None,
         "bridge_error": str(_bridge_err) if _bridge_err else None,
     }
+
+
+@app.get("/api/history")
+async def api_history():
+    try:
+        from src.council.history import get_history
+        return get_history().list_recent(10)
+    except Exception as e:
+        return {"error": str(e), "items": []}
+
+
+@app.get("/api/stats")
+async def api_stats():
+    try:
+        from src.council.history import get_history
+        return get_history().stats()
+    except Exception as e:
+        return {"total": 0, "error": str(e)}
 
 
 if __name__ == "__main__":
