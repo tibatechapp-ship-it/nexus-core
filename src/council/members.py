@@ -1,4 +1,4 @@
-"""أعضاء المجلس — 4 أدوار متخصصة."""
+"""أعضاء المجلس — 3 أدوار."""
 from dataclasses import dataclass
 
 
@@ -8,42 +8,27 @@ class CouncilMember:
     role: str
     system_prompt: str
     permissions: list
-    max_output_length: int = 2000
+    max_output_length: int = 500
 
 
 PROFILER = CouncilMember(
     name="profiler",
     role="المحلل المتشكك",
-    system_prompt="""أنت المحلل المتشكك في المجلس.
-مهمتك: البحث عن كل سبب لعدم الثقة في الطلب.
-- ابحث عن المخاطر الخفية.
-- لا تقبل أي افتراض دون دليل.
-- اذكر 3 مخاوف على الأقل.
-- استخدم كلمة "خطر" عند اكتشاف مخاوف.""",
+    system_prompt="حلل المخاطر في جملتين. ابدأ بـ 'خطر:'",
     permissions=["read_context", "analyze_risk"],
 )
 
 ANALYST = CouncilMember(
     name="analyst",
-    role="المدافع المحلل",
-    system_prompt="""أنت المحلل المدافع في المجلس.
-مهمتك: البحث عن كل سبب لبناء حالة إيجابية.
-- ابحث عن السياق المفقود.
-- ابحث عن عوامل التخفيف.
-- قدّم حجة منطقية.
-- استخدم كلمة "آمن" عند الثقة.""",
+    role="المدافع",
+    system_prompt="قدم المزايا في جملتين. ابدأ بـ 'آمن:'",
     permissions=["read_context", "analyze_benefits"],
 )
 
 CRITIC = CouncilMember(
     name="critic",
-    role="الناقد البناء",
-    system_prompt="""أنت الناقد البناء في المجلس.
-مهمتك: نقد الحجج المقدمة من المحلل والمدافع.
-- ابحث عن الثغرات المنطقية.
-- اقترح سيناريوهات فشل.
-- كن صريحاً ومباشراً.
-- استخدم "مرفوض" أو "مقبول" عند الحكم.""",
+    role="الناقد",
+    system_prompt="انقد الحجتين في جملتين. ابدأ بـ 'مقبول:' أو 'مرفوض:'",
     permissions=["read_context", "critique"],
 )
 

@@ -42,6 +42,13 @@ class CouncilEngine:
         self.members = [PROFILER, ANALYST, CRITIC]
         self.security_log = []
 
+    # خريطة توزيع المفاتيح على الأعضاء
+    PROVIDER_MAP = {
+        "profiler": "groq_01",
+        "analyst": "groq_02",
+        "critic": "groq_03",
+    }
+
     def _call_llm(self, member, prompt, context=""):
         # فحص السياق
         v = self.gatekeeper.analyze(sender="context", content=context or prompt)
@@ -52,8 +59,15 @@ class CouncilEngine:
         full = f"{member.system_prompt}\n\n━━━ السياق ━━━\n{context}\n\n━━━ المطلوب ━━━\n{prompt}"
         if self.llm:
             try:
-                result = self.llm.generate(prompt=full, system=member.system_prompt,
-                                            temperature=0.3, max_tokens=member.max_output_length)
+                # ═══ استخدم مفتاح مخصص لكل عضو ═══
+                provider_name = self.PROVIDER_MAP.get(member.name)
+                result = self.llm.generate(
+                    prompt=full,
+                    system=member.system_prompt,
+                    provider=provider_name,  # ← مفتاح مخصص
+                    temperature=0.3,
+                    max_tokens=member.max_output_length,
+                )
                 text = result.get("text", "") if isinstance(result, dict) else str(result)
             except Exception as e:
                 text = f"[خطأ LLM: {e}]"
@@ -72,6 +86,8 @@ class CouncilEngine:
         # المرحلة 1: تحليل مستقل
         self.isolation.prepare(self.members, question)
         for member in self.members:
+            import time as _t
+            _t.sleep(0.3)
             ctx = self.isolation.get_context(member.name)
             response = self._call_llm(member, prompt=question,
                                        context=f"{context}\n\n{ctx}" if context else ctx)
