@@ -38,3 +38,10 @@ src/novamind/core/hive/data/
 src/council/*.pre_*
 src/**/*.pre_*
 *.py.tmp
+
+# temp patch files
+patch_*.py
+clean_mock.py
+clean2.py
+chk.py
+chk.sh
