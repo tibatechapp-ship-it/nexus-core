@@ -21,8 +21,13 @@ class CouncilHistory:
                 pass
         return self._rag
 
+    _counter = 0
+
     def save(self, result, topic_id="", category=""):
-        rec_id = "decision_" + str(int(time.time() * 1000))
+        import uuid
+        # ═══ معرف فريد: microsecond + counter ═══
+        CouncilHistory._counter += 1
+        rec_id = f"decision_{int(time.time() * 1_000_000)}_{CouncilHistory._counter}"
         record = {
             "id": rec_id, "verdict": result.verdict,
             "score": result.score, "rounds": result.rounds,
