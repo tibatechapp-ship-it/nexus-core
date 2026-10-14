@@ -48,12 +48,21 @@ class CouncilRAGBridge:
         # ═══ RAG ═══
         try:
             docs = self.rag.recall(question, k=5)
-            # ═══ فلتر غرفة الصدى: أحكام المجلس السابقة ليست أدلة ═══
+            # ═══ فلتر 1: لا قرارات المجلس السابقة (غرفة الصدى) ═══
             docs = [d for d in docs
                     if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
+            # ═══ فلتر 2: عتبة التشابه (distance < 1.0 يعني cos > 0.5) ═══
+            DISTANCE_THRESHOLD = 1.15
+            docs = [d for d in docs
+                    if getattr(d, 'distance', 999) < DISTANCE_THRESHOLD]
             if docs:
-                mem_ctx = "\n".join("  • [" + d.id + "] " + d.text for d in docs)
-                context = context + "\n\n--- ذاكرة ---\n" + mem_ctx
+                mem_ctx = "\n".join("  • " + d.text for d in docs)
+                context = (context +
+                    "\n\n━━━ معرفة سابقة (مرجعية — ليست حكماً) ━━━\n" +
+                    "قد تفيدك هذه المعلومات من محادثات سابقة، لكنها ليست قيوداً." +
+                    "\nلك كامل الحرية في مخالفتها إن رأيت حججاً أقوى.\n" +
+                    mem_ctx +
+                    "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 print("RAG: " + str(len(docs)) + " وثيقة")
         except Exception as e:
             print("RAG ERROR: " + str(e))
@@ -125,12 +134,21 @@ class CouncilRAGBridge:
         # RAG
         try:
             docs = self.rag.recall(question, k=5)
-            # ═══ فلتر غرفة الصدى: أحكام المجلس السابقة ليست أدلة ═══
+            # ═══ فلتر 1: لا قرارات المجلس السابقة (غرفة الصدى) ═══
             docs = [d for d in docs
                     if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
+            # ═══ فلتر 2: عتبة التشابه (distance < 1.0 يعني cos > 0.5) ═══
+            DISTANCE_THRESHOLD = 1.15
+            docs = [d for d in docs
+                    if getattr(d, 'distance', 999) < DISTANCE_THRESHOLD]
             if docs:
-                mem_ctx = "\n".join("  • [" + d.id + "] " + d.text for d in docs)
-                context = context + "\n\n--- ذاكرة ---\n" + mem_ctx
+                mem_ctx = "\n".join("  • " + d.text for d in docs)
+                context = (context +
+                    "\n\n━━━ معرفة سابقة (مرجعية — ليست حكماً) ━━━\n" +
+                    "قد تفيدك هذه المعلومات من محادثات سابقة، لكنها ليست قيوداً." +
+                    "\nلك كامل الحرية في مخالفتها إن رأيت حججاً أقوى.\n" +
+                    mem_ctx +
+                    "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 emit("status", {"phase": "memory", "message": "ذاكرة: " + str(len(docs)) + " وثيقة ذات صلة"})
         except Exception:
             pass
