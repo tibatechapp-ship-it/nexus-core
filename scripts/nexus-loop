@@ -1,0 +1,58 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nexus-loop — Loop + RAG (ذاتي التعلم)
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+export NEXUS_GOAL="$1"
+export NEXUS_AGENT="${2:-coder}"
+export NEXUS_MAX_ITER="${3:-3}"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+
+# Mock LLM (بدون مفاتيح)
+from novamind.core.llm_router import LLMRouter
+def mock_gen(self, prompt="", system="", **kw):
+    return {"ok": True, "text": f"# Mock: {str(prompt)[:80]}", "provider": "mock", "elapsed": 0.01}
+LLMRouter.generate = mock_gen
+LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
+LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
+LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
+LLMRouter._is_cooled_down = lambda self, n: True
+
+from src.novamind.core.loop_rag_bridge import get_loop_bridge
+
+bridge = get_loop_bridge()
+goal = os.environ.get("NEXUS_GOAL", "")
+agent = os.environ.get("NEXUS_AGENT", "coder")
+max_iter = int(os.environ.get("NEXUS_MAX_ITER", "3"))
+
+print("=" * 60)
+print("🔄 nexus-loop — حلقة ذاتية التعلم")
+print("=" * 60)
+print(f"🎯 الهدف: {goal}")
+print(f"🤖 الوكيل: {agent}")
+print(f"🔁 الدورات: {max_iter}")
+print("=" * 60)
+print()
+
+result = bridge.run_with_memory(
+    goal=goal,
+    agent_name=agent,
+    max_iterations=max_iter,
+)
+
+print("\n" + "=" * 60)
+print(f"📊 النتيجة: {result['status']}")
+print(f"   دورات: {result['iterations']}")
+print(f"   وقت: {result['elapsed']:.2f}ث")
+print("=" * 60)
+
+print("\n📈 إحصائيات التعلم:")
+stats = bridge.get_learning_stats()
+for k, v in stats.items():
+    print(f"   • {k}: {v}")
+PYEOF
