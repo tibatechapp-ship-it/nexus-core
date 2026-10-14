@@ -1,0 +1,67 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_PROMPT="$*"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys, json
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+os.environ["NOVAMIND_HOME"] = os.path.expanduser("~/nexus-core")
+
+import src.nexus
+from src.orchestrator.hybrid_router import HybridRouter, classify
+
+prompt = os.environ.get("NEXUS_PROMPT", "").strip()
+
+if not prompt:
+    print("الاستخدام: nexus-hybrid 'طلبك'")
+    print()
+    print("أمثلة:")
+    print("  nexus-hybrid 'اكتب دالة Python'")
+    print("  nexus-hybrid 'اعرض الوقت الحالي'")
+    print("  nexus-hybrid 'هل نستخدم SQLite أم PostgreSQL؟'")
+    sys.exit(1)
+
+# عرض التصنيف
+route = classify(prompt)
+
+print("=" * 60)
+print("🧭 Nexus Hybrid Router")
+print("=" * 60)
+print(f"📝 الطلب: {prompt[:100]}")
+print(f"🎯 المسار: {route}")
+print("=" * 60)
+print()
+
+router = HybridRouter(use_rag=True, verbose=False)
+result = router.run(prompt)
+
+print()
+print("=" * 60)
+print(f"📊 النتيجة ({result.get('method', '?')})")
+print(f"   ⏱️  الوقت: {result.get('total_elapsed', 0)}ث")
+print("=" * 60)
+print()
+
+# الإجابة
+answer = result.get("answer", "")
+if answer:
+    print(answer[:2000])
+
+# تفاصيل حسب الطريقة
+if result.get("method") == "agent_loop":
+    trace = result.get("trace", [])
+    print(f"\n🔧 الأدوات المستخدمة ({len([t for t in trace if t.get('icon') == '🔧'])}):")
+    for t in trace:
+        if t.get("icon") == "🔧":
+            print(f"   • {t['text']}")
+
+elif result.get("method") == "council":
+    print(f"\n💬 القرار: {result.get('verdict', '?')} ({result.get('score', 0):.2f})")
+
+elif result.get("method") == "smart_router":
+    agents = [r.get("agent") for r in result.get("results", [])]
+    print(f"\n👥 الوكلاء: {', '.join(agents)}")
+PYEOF
