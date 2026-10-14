@@ -181,7 +181,59 @@ __all__ = [
     # backward compat
     "load_registry", "agent", "list_agents",
     "has_permission", "can_use_tool",
-    "all_pipeline_ids", "all_pipelines", "pipeline",
+    "all_pipeline_ids", "all_pipelines", "pipeline", "agents_by_category", "agents_by_criticality", "all_agent_names_with_aliases",
 ]
+
+
+# ═══════════════════════════════════════════════════════════════
+# Backward-compatible aliases (required by _registry shim)
+# ═══════════════════════════════════════════════════════════════
+
+def agents_by_category(category) -> list:
+    """كل الوكلاء في فئة معينة.
+    
+    Args:
+        category: Category enum أو str مثل "code", "security"
+    
+    Returns:
+        قائمة بأسماء الوكلاء
+    """
+    from novamind.registry.v2 import Category
+    if isinstance(category, str):
+        try:
+            category = Category(category)
+        except ValueError:
+            return []
+    return REGISTRY.list_by_category(category)
+
+
+def agents_by_criticality(criticality) -> list:
+    """كل الوكلاء حسب مستوى الأهمية.
+    
+    Args:
+        criticality: Criticality enum أو str مثل "core", "standard", "optional"
+    
+    Returns:
+        قائمة بأسماء الوكلاء
+    """
+    from novamind.registry.v2 import Criticality
+    if isinstance(criticality, str):
+        try:
+            criticality = Criticality(criticality)
+        except ValueError:
+            return []
+    return REGISTRY.list_by_criticality(criticality)
+
+
+def all_agent_names_with_aliases() -> list:
+    """كل أسماء الوكلاء + aliases.
+    
+    Returns:
+        قائمة موحدة من الأسماء الرسمية + المرادفات
+    """
+    names = all_agent_names()
+    aliases = alias_index()
+    return names + [k for k in aliases.keys() if k not in names]
+
 
 __version__ = "3.4.0"
