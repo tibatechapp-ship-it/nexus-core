@@ -1,4 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
+# nexus-offline — 79 agents, Mock LLM, no internet needed
 export NOVAMIND_HOME="$HOME/nexus-core"
 export PYTHONPATH="src:$PYTHONPATH"
 export WORKSPACE_DIR="$HOME/nexus-core/workspace"
@@ -14,15 +15,25 @@ sys.path.insert(0, 'src')
 # ═══ Mock LLM ═══
 from novamind.core.llm_router import LLMRouter
 
-def mock_generate(self, prompt, system="", **kwargs):
-    return {"ok": True, "text": f"# Mock: {prompt[:80]}\n", "provider": "mock", "model": "mock", "elapsed": 0.01}
+def mock_generate(self, prompt="", system="", **kwargs):
+    return {
+        "ok": True,
+        "text": f"# Mock code for: {str(prompt)[:80]}\n\ndef solution():\n    return 42\n",
+        "provider": "mock",
+        "model": "mock",
+        "elapsed": 0.01,
+    }
+
+def mock_generate_for_task(self, task_type="", prompt="", system="", **kwargs):
+    return mock_generate(self, prompt, system, **kwargs)
 
 LLMRouter.generate = mock_generate
-LLMRouter.generate_for_task = lambda self, t, p, s="", **kw: mock_generate(self, p, s, **kw)
+LLMRouter.generate_for_task = mock_generate_for_task
 LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
 LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
 LLMRouter._is_cooled_down = lambda self, n: True
 
+# ═══ تشغيل الوكيل ═══
 from nova.registry import REGISTRY
 
 agent_name = os.environ.get("NEXUS_AGENT", "")
@@ -35,31 +46,29 @@ if not agent_name:
 try:
     agent = REGISTRY.load_agent(agent_name)
     print(f"✅ محمّل: {type(agent).__name__}")
-    
-    # ═══ كشف تلقائي للطريقة ═══
+
     CANDIDATE_METHODS = [
         "build", "run", "execute", "analyze", "fix", "review",
         "generate", "process", "handle", "check", "scan",
         "learn", "test", "audit", "validate", "improve",
     ]
-    
+
     method = None
     for m in CANDIDATE_METHODS:
         if hasattr(agent, m) and callable(getattr(agent, m)):
             method = m
             break
-    
+
     if not method:
-        # عرض الطرق المتاحة للمساعدة
         methods = [m for m in dir(agent) if not m.startswith("_") and callable(getattr(agent, m, None))]
         print(f"❌ لا توجد طريقة معروفة")
         print(f"🔍 الطرق المتاحة: {methods}")
         sys.exit(1)
-    
+
     print(f"🔧 الطريقة: {method}")
     print(f"📝 الطلب: {prompt[:80]}")
     print("─" * 60)
-    
+
     result = getattr(agent, method)(prompt)
     print(str(result)[:1500])
     print("─" * 60)
