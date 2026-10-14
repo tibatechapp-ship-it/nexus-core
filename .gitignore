@@ -37,3 +37,4 @@ src/novamind/core/hive/data/
 .coverage
 src/council/*.pre_*
 src/**/*.pre_*
+*.py.tmp
