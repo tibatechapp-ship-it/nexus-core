@@ -156,4 +156,62 @@ def build_default_registry():
     def get_time():
         return time.strftime("%Y-%m-%d %H:%M:%S")
 
+    # ═══ 7. write_file ═══
+    @reg.register(
+        "write_file",
+        "يكتب محتوى إلى ملف (يُنشئ المجلدات تلقائياً)",
+        {"type": "object",
+         "properties": {
+             "path": {"type": "string"},
+             "content": {"type": "string"}
+         },
+         "required": ["path", "content"]})
+    def write_file(path, content):
+        try:
+            p = os.path.expanduser(path)
+            os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(content)
+            return f"تم الكتابة: {p} ({len(content)} حرف)"
+        except Exception as e:
+            return f"خطأ: {e}"
+
+    # ═══ 8. list_files ═══
+    @reg.register(
+        "list_files",
+        "يعرض ملفات مجلد",
+        {"type": "object",
+         "properties": {"directory": {"type": "string"}},
+         "required": ["directory"]})
+    def list_files(directory):
+        try:
+            p = os.path.expanduser(directory)
+            if not os.path.isdir(p):
+                return f"مجلد غير موجود: {p}"
+            files = os.listdir(p)[:30]
+            return "\n".join(files)
+        except Exception as e:
+            return f"خطأ: {e}"
+
+    # ═══ 9. run_shell ═══
+    @reg.register(
+        "run_shell",
+        "يشغّل أمر shell بسيط (مقيد بقائمة بيضاء)",
+        {"type": "object",
+         "properties": {"command": {"type": "string"}},
+         "required": ["command"]})
+    def run_shell(command):
+        import subprocess
+        # قائمة بيضاء
+        allowed = ["ls", "pwd", "whoami", "date", "echo", "cat",
+                   "git status", "git log", "python --version", "df"]
+        if not any(command.strip().startswith(a) for a in allowed):
+            return f"الأمر غير مسموح: {command}"
+        try:
+            r = subprocess.run(command, shell=True, capture_output=True,
+                              text=True, timeout=10)
+            return (r.stdout or r.stderr)[:500]
+        except Exception as e:
+            return f"خطأ: {e}"
+
     return reg
