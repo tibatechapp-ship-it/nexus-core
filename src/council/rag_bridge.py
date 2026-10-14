@@ -24,6 +24,47 @@ class CouncilRAGBridge:
         self.history_dir = os.path.expanduser("~/.nexus/data/council")
         os.makedirs(self.history_dir, exist_ok=True)
 
+    def _past_hint(self, question):
+        """قرارات سابقة مشابهة (بعد إزالة كلمات التوقف) — مرجعية فقط، ليست حكماً."""
+        try:
+            from src.council.history import get_history
+            STOP = {"هل", "نستخدم", "نضيف", "نعتمد", "نحذف", "نستبدل", "نرفع", "ندفع",
+                    "نعطّل", "أم", "او", "أو", "في", "من", "على", "عن", "ما", "هو", "هي",
+                    "لا", "أن", "ان", "إن", "إلى", "الى", "هذا", "هذه", "ذلك", "تلك",
+                    "استخدام", "يفضل", "افضل", "الأفضل", "الافضل", "نعم", "كيف",
+                    "لماذا", "متى", "ايهما", "أيهما", "لمشروعنا", "المشروع", "؟"}
+            q_words = {w for w in question.lower().split() if w not in STOP}
+            if len(q_words) < 2:
+                return ""
+            recent = get_history().list_recent(n=30) or []
+
+            def _fld(rec, name, default=None):
+                if isinstance(rec, dict):
+                    return rec.get(name, default)
+                return getattr(rec, name, default)
+
+            scored = []
+            for rec in recent:
+                rq = (_fld(rec, "query", "") or "").lower()
+                r_words = {w for w in rq.split() if w not in STOP}
+                overlap = len(q_words & r_words)
+                if overlap >= 2:
+                    scored.append((overlap, rec))
+            scored.sort(key=lambda x: -x[0])
+            top = scored[:3]
+            if not top:
+                return ""
+            lines = ["--- قرارات سابقة مشابهة (مرجعية فقط - ليست حكماً) ---",
+                     "ابدأ منها إن كانت حججها أقوى، وخالفها صراحة بحجة أقوى إن وُجدت."]
+            for _, rec in top:
+                v = str(_fld(rec, "verdict", "?") or "?").upper()
+                s = float(_fld(rec, "score", 0) or 0)
+                rq = (_fld(rec, "query", "") or "")[:80]
+                lines.append("- %s (ثقة %.0f%%): %s" % (v, s * 100, rq))
+            return "\n" + "\n".join(lines) + "\n----------------------"
+        except Exception:
+            return ""
+
     def deliberate_with_memory(self, question, context="", use_cache=True):
         # ═══ احفظ الحالة الأصلية قبل RAG ═══
         original_context_empty = not context
@@ -67,37 +108,7 @@ class CouncilRAGBridge:
         except Exception as e:
             print("RAG ERROR: " + str(e))
 
-        # RECALL PAST SIMILAR DECISIONS (v1.5.3)
-        past_hint = ""
-        try:
-            from src.council.history import get_history
-            def _fld(rec, name, default=None):
-                if isinstance(rec, dict):
-                    return rec.get(name, default)
-                return getattr(rec, name, default)
-            recent = get_history().list_recent(n=30) or []
-            q_words = set(question.lower().split())
-            scored = []
-            for rec in recent:
-                rq = (_fld(rec, "query", "") or "").lower()
-                if not rq:
-                    continue
-                overlap = len(q_words & set(rq.split()))
-                if overlap >= 2:
-                    scored.append((overlap, rec))
-            scored.sort(key=lambda x: -x[0])
-            top = scored[:3]
-            if top:
-                lines = ["== similar past decisions =="]
-                for _, rec in top:
-                    v = str(_fld(rec, "verdict", "?") or "?").upper()
-                    s = float(_fld(rec, "score", 0) or 0)
-                    rq = (_fld(rec, "query", "") or "")[:100]
-                    lines.append("- %s (%.0f%%): %s" % (v, s*100, rq))
-                past_hint = "\n".join(lines)
-        except Exception:
-            pass
-
+        past_hint = self._past_hint(question)
         aug_context = (context + "\n\n" + past_hint).strip() if past_hint else context
         # ═══ DELIBERATE ═══
         result = self.engine.deliberate(question, aug_context)
@@ -187,6 +198,12 @@ class CouncilRAGBridge:
             pass
 
         # DELIBERATE (بث حي)
+        # تعلّم دائري في مسار الويب (v1.5.4)
+        past_hint = self._past_hint(question)
+        if past_hint:
+            context = context + chr(10) + past_hint
+            emit("status", {"phase": "past", "message": "قرارات سابقة مشابهة: حُقنت"})
+
         result = self.engine.deliberate(question, context, on_event=emit)
 
         # SAVE TO RAG
