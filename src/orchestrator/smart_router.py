@@ -51,9 +51,9 @@ CATEGORY_PATTERNS = {
         r"\b(جودة|quality|clean)\b",
     ],
     "security": [
-        r"\b(أمن|security|secure|حماية|protect)\b",
-        r"\b(ثغرة|vulnerability|exploit|attack|هجوم|اختراق)\b",
-        r"\b(password|كلمة السر|token|secret)\b",
+        r"\b(أمني|أمنية|أمن|security|secure|حماية|protect)\w*",
+        r"\b(ثغرة|ثغرات|vulnerability|vulnerabilities|exploit|attack|هجوم|اختراق)\w*",
+        r"\b(password|كلمة السر|token|secret|secrets)\w*",
     ],
     "devops": [
         r"\b(نشر|deploy|docker|k8s|kubernetes|terraform|nginx|CI|CD|pipeline)\b",
@@ -143,6 +143,12 @@ class SmartRouter:
 
     def _detect_category(self, text: str) -> str:
         """يكتشف الفئة من النص."""
+        # أولوية خاصة للأمان
+        security_strong = ["ثغرة", "ثغرات", "اختراق", "exploit", "vulnerability",
+                           "injection", "xss", "csrf", "malware", "hack"]
+        if sum(1 for k in security_strong if k in text) >= 1:
+            return "security"
+        
         scores = {}
         for cat, patterns in CATEGORY_PATTERNS.items():
             score = 0
