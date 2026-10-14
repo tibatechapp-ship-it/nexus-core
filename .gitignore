@@ -25,3 +25,13 @@ memory.db
 # OS
 .DS_Store
 Thumbs.db
+
+# Certification reports
+reports/certification/
+reports/reports.db
+data/
+memory/
+security_audit_report.json
+tests/_intelligence_results/
+src/novamind/core/hive/data/
+.coverage
