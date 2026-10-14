@@ -1,6 +1,5 @@
 """Agent-RAG Bridge — يجعل كل وكيل يستخدم RAG تلقائياً."""
 from __future__ import annotations
-import os
 from typing import Optional
 from src.memory.rag_engine import RAGEngine
 
@@ -19,8 +18,17 @@ class AgentRAGBridge:
     def __init__(self):
         if self._initialized:
             return
+        # ═══ اختيار المزوّد من NEXUS_EMBEDDINGS (افتراضي: hashing → rag.db) ═══
+        from src.memory.embedding_config import resolve_rag
+        resolved = resolve_rag()
+        self.embedding_spec = resolved.spec
+        self.embedding_fallback = resolved.fallback_reason
+        if resolved.fallback_reason:
+            print("[RAG] " + resolved.fallback_reason)
         self.rag = RAGEngine(
-            vector_store_path=os.path.expanduser("~/.nexus/data/rag.db")
+            vector_store_path=resolved.path,
+            embedder=resolved.embedder,
+            dim=resolved.dim,
         )
         self._initialized = True
 

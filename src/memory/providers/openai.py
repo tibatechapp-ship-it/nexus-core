@@ -1,7 +1,8 @@
 """OpenAI Embeddings Provider."""
 from __future__ import annotations
-import os
 from typing import Sequence
+
+from .base import resolve_api_key
 
 try:
     from openai import OpenAI
@@ -13,10 +14,13 @@ except ImportError:
 class OpenAIEmbeddings:
     """مزود embeddings عبر OpenAI."""
 
+    # بُعد text-embedding-3-small
+    dim = 1536
+
     def __init__(self, api_key: str = None, model: str = "text-embedding-3-small"):
         if not HAS_OPENAI:
             raise ImportError("openai غير مثبت")
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        self.api_key = api_key or resolve_api_key("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY مطلوب")
         self.client = OpenAI(api_key=self.api_key)
