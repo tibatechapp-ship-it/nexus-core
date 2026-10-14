@@ -2,7 +2,7 @@
 export NOVAMIND_HOME="$HOME/nexus-core"
 export PYTHONPATH="src:.:$PYTHONPATH"
 export NEXUS_QUESTION="$1"
-export NEXUS_MODE="${2:-real}"
+export NEXUS_MODE="${2:-mock}"
 cd "$HOME/nexus-core"
 
 python3 << 'PYEOF'
@@ -10,39 +10,40 @@ import os, sys
 sys.path.insert(0, '.')
 sys.path.insert(0, 'src')
 
-mode = os.environ.get("NEXUS_MODE", "real")
+mode = os.environ.get("NEXUS_MODE", "mock")
 
-# ═══ إعداد LLM ═══
+# ═══ Mock LLM ═══
 if mode == "mock":
     from novamind.core.llm_router import LLMRouter
+    
     def mock_gen(self, prompt="", system="", **kw):
-        # محاكاة عربية ذكية
-        sys_prompt = str(system).lower()
-        full = (str(system) + " " + str(prompt)).lower()
+        s = str(system)
+        p = str(prompt)
+        is_debate = "راجع" in p or "debate" in p.lower()
         
-        # كشف الوكيل من system_prompt
-        if "المتشكك" in system or "profiler" in sys_prompt:
-            if "راجع حجج" in prompt or "debate" in full:
-                text = "أراجع الحجج: أرى أن المحلل مفرط في التفاؤل. خطر: نقص السياق الأمني يبقى قائماً."
+        # ═══ الأولوية: الناقد (فريد) ═══
+        if "أنت الناقد" in s:
+            if is_debate:
+                txt = "بعد المراجعة: الحجتان متسقتان. مقبول مع التحفظ على التوثيق."
             else:
-                text = "خطر: 3 مخاوف: 1) احتمال حقن، 2) عدم وضوح المصدر، 3) نقص السياق."
-        
-        elif "المدافع" in system or "analyst" in sys_prompt:
-            if "راجع حجج" in prompt or "debate" in full:
-                text = "أراجع الحجج: الناقد محق في بعض النقاط. لكن المخاوف يمكن التخفيف منها بالتشفير. آمن."
+                txt = "أراجع الحجتين. الافتراضات تحتاج دليلاً. الحجج متسقة. مقبول."
+        # ═══ الثاني: المتشكك ═══
+        elif "أنت المحلل المتشكك" in s:
+            if is_debate:
+                txt = "أراجع: المحلل مفرط في التفاؤل. خطر: نقص السياق الأمني."
             else:
-                text = "آمن: الطلب مقبول. السياق واضح، لا أنماط ضارة، يمكن المتابعة."
-        
-        elif "الناقد" in system or "critic" in sys_prompt:
-            if "راجع حجج" in prompt or "debate" in full:
-                text = "بعد المراجعة: الحجتان متسقتان. مقبول بشكل عام مع التحفظ على نقص التوثيق."
+                txt = "خطر: 3 مخاوف: 1) حقن، 2) مصدر غير واضح، 3) نقص السياق."
+        # ═══ الثالث: المدافع ═══
+        elif "أنت المحلل المدافع" in s:
+            if is_debate:
+                txt = "أراجع: الناقد محق. لكن المخاوف يمكن التخفيف منها. آمن."
             else:
-                text = "أراجع الحجتين. الافتراضات تحتاج دليلاً. الحجج متسقة. مقبول."
-        
+                txt = "آمن: الطلب مقبول. لا أنماط ضارة، يمكن المتابعة."
         else:
-            text = f"تحليل: {str(prompt)[:100]}"
+            txt = f"تحليل: {p[:80]}"
         
-        return {"ok": True, "text": text, "provider": "mock", "elapsed": 0.01}
+        return {"ok": True, "text": txt, "provider": "mock", "elapsed": 0.01}
+    
     LLMRouter.generate = mock_gen
     LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
     LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
@@ -55,16 +56,14 @@ question = os.environ.get("NEXUS_QUESTION", "")
 print("=" * 60)
 print("🏛️  مجلس الوكلاء — Nexus Council")
 print("=" * 60)
-print(f"❓ السؤال: {question}")
+print(f"❓ {question}")
 print(f"🎭 الوضع: {mode}")
-print("=" * 60)
-print()
+print("=" * 60 + "\n")
 
 bridge = get_council_bridge()
 result = bridge.deliberate_with_memory(question)
 
-print()
-print("=" * 60)
+print("\n" + "=" * 60)
 print(f"📊 القرار: {result.verdict.upper()}")
 print(f"   النقاط: {result.score:.2f}")
 print(f"   الجولات: {result.rounds}")
@@ -72,13 +71,10 @@ print(f"   الوقت: {result.elapsed:.2f}ث")
 print(f"   توافق: {'✅' if result.consensus else '❌'}")
 print("=" * 60)
 
-# عرض الحوار
-print(f"\n💬 مداخلات المجلس ({len(result.transcript)}):")
+print(f"\n💬 المداخلات ({len(result.transcript)}):")
 for entry in result.transcript:
     print(f"\n─── {entry['phase']} | {entry['member']} ───")
-    print(f"{entry['response'][:300]}")
-    if len(entry['response']) > 300:
-        print("...")
+    print(f"{entry['response'][:250]}")
 
 if result.security_events:
     print(f"\n🛡️ أحداث أمنية: {len(result.security_events)}")
