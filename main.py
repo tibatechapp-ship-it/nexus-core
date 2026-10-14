@@ -47,7 +47,7 @@ def _get(obj, name, default=None):
 @app.post("/api/deliberate")
 async def deliberate_stream(request: Request):
     body = await request.json()
-    query = (body.get("query") or "").strip()[:1000]
+    query = ((body.get("query") or body.get("question") or "")).strip()[:1000]
     if not query:
         return {"error": "الاستعلام فارغ"}
 
@@ -87,12 +87,25 @@ async def deliberate_stream(request: Request):
                 on_event("status", {"phase": "council_start", "message": "بدء المداولة الحية..."})
                 result = bridge.deliberate_streaming(query, on_event)
                 recommendation = ""
-                for entry in reversed(_get(result, "transcript", []) or []):
-                    txt = entry.get("response", "") if isinstance(entry, dict) else str(entry)
-                    m = re.search(r"\[التوصية:\s*([^\]]+)\]", txt)
-                    if m:
-                        recommendation = m.group(1).strip()
-                        break
+                try:
+                    from collections import Counter
+                    _AG = {"profiler", "analyst", "critic", "judge", "cache", "agent"}
+                    _recs = []
+                    for entry in (_get(result, "transcript", []) or []):
+                        txt = entry.get("response", "") if isinstance(entry, dict) else str(entry)
+                        m = re.search(r"\[التوصية:\s*([^\]]+)\]", txt)
+                        if not m:
+                            continue
+                        r = m.group(1).strip().strip(".").strip("<>").strip()
+                        _bad = ("اقصر", "أقصر", "خلاصة جوابك", "جوابك", "السؤال",
+                                "التوجيه", "المطلوب", "المباشر", "ضع هنا", "اكتب")
+                        if r and r.lower() not in _AG and len(r) >= 2 \
+                                and not any(b in r for b in _bad):
+                            _recs.append(r)
+                    if _recs:
+                        recommendation = Counter(_recs).most_common(1)[0][0]
+                except Exception:
+                    pass
                 on_event("final_verdict", {
                     "verdict": _get(result, "verdict", "unknown"),
                     "score": float(_get(result, "score", 0) or 0),
@@ -139,6 +152,24 @@ async def api_history():
     except Exception as e:
         return {"error": str(e), "items": []}
 
+
+@app.get("/api/history/{rec_id}")
+async def api_history_detail(rec_id: str):
+    try:
+        from src.council.history import get_history
+        return get_history().get_full(rec_id) or {"error": "not found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/topics")
+async def api_topics():
+    try:
+        from src.council.topics import TOPICS
+        return [{"id": tid, "title": t.title, "category": t.category,
+                 "question": t.question, "risk": t.risk_level}
+                for tid, t in TOPICS.items()]
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/api/stats")
 async def api_stats():

@@ -103,11 +103,25 @@ class CouncilEngine:
         for member in self.members:
             import time as _t; _t.sleep(0.3)
             ctx = self.isolation.get_context(member.name)
-            response = self._call_llm(member, prompt=question,
-                                      context=(context + "\n\n" + ctx) if context else ctx)
+            response = self._call_llm(member,
+                prompt=question + "\n\nاختم ردك بسطرين بالضبط:\n[الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n[التوصية: <خلاصة جوابك في ≤5 كلمات>]",
+                context=(context + "\n\n" + ctx) if context else ctx)
             self.isolation.commit(member.name, response)
             transcript.append({"phase": "independent", "member": member.name, "response": response})
             _emit("agent_action", {"actor": member.name, "phase": "independent", "text": response})
+
+        # ═══ إجماع مبكر: اتجاه واضح بعد التحليل المستقل → تخطي النقاش (v1.9) ═══
+        _ind = {e.get("member"): e.get("response", "")
+                for e in transcript if e.get("phase") == "independent"}
+        if len(_ind) >= 2 and self._consensus(_ind):
+            _emit("phase", {"name": "early_consensus",
+                            "label": "إجماع مبكر — تم تخطي جولة النقاش"})
+            verdict, score = self._judge(transcript)
+            return CouncilResult(
+                verdict=verdict, score=score, consensus=True,
+                rounds=0, transcript=transcript,
+                elapsed=time.time() - start, security_events=self.security_log,
+            )
 
         current_round = 0
         last_consensus = False
