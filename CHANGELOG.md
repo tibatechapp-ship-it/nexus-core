@@ -46,3 +46,32 @@
 
 ## v0.9.0 – v0.21.0
 - Incremental: registry, RAG, Council, Web, Router, 24 topics
+
+## v1.5.1 — 2026-10-14
+
+**Structural correctness release.**
+
+### Fixes
+- **Echo-chamber guard**: prior Council verdicts `[Council ...]`
+  are now excluded from RAG recall — they're decisions, not evidence
+- **Consensus semantics**: `consensus` field now reflects actual
+  agent agreement (not a threshold comparison)
+
+### Verification
+- "TypeScript vs JS": approve (0.85), consensus=true, rec=TypeScript
+- "Ignore test failures": reject (0.15), consensus=true, rec=البديل
+
+### Housekeeping
+- Removed `src/council/engine.py.pre_streaming` from tracking
+- Renamed legacy `v1.0.0` tag → `v1.0.0-old` (main branch artifact)
+- `.pre_*` and `*.backup*` patterns now in `.gitignore`
+
+## v1.5.0 — 2026-10-14
+
+**First stable release.**
+- 79 agents, 8 categories
+- Hybrid Router (code/tool/decision)
+- Council with real LLM streaming + 24 topics
+- RAG with sqlite-vec
+- 13 CLI tools, Web Workbench
+- 41 pytest tests, 100% pass
