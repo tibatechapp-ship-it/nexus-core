@@ -1,0 +1,71 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_QUESTION="$1"
+export NEXUS_MODE="${2:-real}"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+
+mode = os.environ.get("NEXUS_MODE", "real")
+
+# ═══ إعداد LLM ═══
+if mode == "mock":
+    from novamind.core.llm_router import LLMRouter
+    def mock_gen(self, prompt="", system="", **kw):
+        # محاكاة عربية ذكية
+        p = str(prompt).lower()
+        if "المتشكك" in prompt or "profiler" in p:
+            text = "خطر: قد يكون هناك مخاطر أمنية في هذا الطلب. 3 مخاوف: 1) احتمال حقن، 2) عدم وضوح المصدر، 3) نقص السياق."
+        elif "المدافع" in prompt or "analyst" in p:
+            text = "آمن: الطلب يبدو مقبولاً. السياق واضح، لا توجد أنماط ضارة، يمكن المتابعة."
+        elif "الناقد" in prompt or "critic" in p:
+            text = "أراجع الحجتين. الافتراضات تحتاج دليلاً. لكن الحجج متسقة. مقبول بشكل عام."
+        else:
+            text = f"تحليل: {str(prompt)[:100]}"
+        return {"ok": True, "text": text, "provider": "mock", "elapsed": 0.01}
+    LLMRouter.generate = mock_gen
+    LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
+    LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
+    LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
+    LLMRouter._is_cooled_down = lambda self, n: True
+
+from src.council.rag_bridge import get_council_bridge
+
+question = os.environ.get("NEXUS_QUESTION", "")
+print("=" * 60)
+print("🏛️  مجلس الوكلاء — Nexus Council")
+print("=" * 60)
+print(f"❓ السؤال: {question}")
+print(f"🎭 الوضع: {mode}")
+print("=" * 60)
+print()
+
+bridge = get_council_bridge()
+result = bridge.deliberate_with_memory(question)
+
+print()
+print("=" * 60)
+print(f"📊 القرار: {result.verdict.upper()}")
+print(f"   النقاط: {result.score:.2f}")
+print(f"   الجولات: {result.rounds}")
+print(f"   الوقت: {result.elapsed:.2f}ث")
+print(f"   توافق: {'✅' if result.consensus else '❌'}")
+print("=" * 60)
+
+# عرض الحوار
+print(f"\n💬 مداخلات المجلس ({len(result.transcript)}):")
+for entry in result.transcript:
+    print(f"\n─── {entry['phase']} | {entry['member']} ───")
+    print(f"{entry['response'][:300]}")
+    if len(entry['response']) > 300:
+        print("...")
+
+if result.security_events:
+    print(f"\n🛡️ أحداث أمنية: {len(result.security_events)}")
+    for e in result.security_events[:5]:
+        print(f"   • {e}")
+PYEOF
