@@ -24,6 +24,15 @@ class CouncilRAGBridge:
         self.history_dir = os.path.expanduser("~/.nexus/data/council")
         os.makedirs(self.history_dir, exist_ok=True)
 
+    # ── مراقبة إعدادات التضمين (تمرير شفّاف من طبقة الذاكرة) ──
+    @property
+    def embedding_spec(self):
+        return getattr(self.rag, "embedding_spec", None)
+
+    @property
+    def embedding_fallback(self):
+        return getattr(self.rag, "embedding_fallback", None)
+
     def _past_hint(self, question):
         """قرارات سابقة مشابهة (بعد إزالة كلمات التوقف) — مرجعية فقط، ليست حكماً."""
         try:

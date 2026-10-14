@@ -14,14 +14,18 @@ class RAGEngine:
     """محرك RAG: يجمع السياق من vector store ويمرره للـ LLM."""
 
     def __init__(self, vector_store_path: str = None,
-                 embedder=None, llm_router=None):
+                 embedder=None, llm_router=None, dim: int = None):
         self.vector_store_path = vector_store_path or os.path.join(
             os.path.expanduser("~"), ".nexus", "data", "vectors.db"
         )
-        os.makedirs(os.path.dirname(self.vector_store_path), exist_ok=True)
+        parent = os.path.dirname(self.vector_store_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
 
         self.embedder = embedder or HashingEmbedder(dim=512)
-        self.store = SQLiteVecStore(self.vector_store_path, dim=512)
+        # بُعد المتجه: صريح → من الـ embedder → 512
+        self.dim = dim or getattr(self.embedder, "dim", 512)
+        self.store = SQLiteVecStore(self.vector_store_path, dim=self.dim)
         self.llm = llm_router
 
     def add_document(self, doc_id: str, text: str, metadata: dict = None) -> None:
