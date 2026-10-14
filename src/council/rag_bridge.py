@@ -93,7 +93,7 @@ class CouncilRAGBridge:
             docs = [d for d in docs
                     if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
             # ═══ فلتر 2: عتبة التشابه (distance < 1.0 يعني cos > 0.5) ═══
-            DISTANCE_THRESHOLD = 0.5  # v1.6.1 — re-calibrated for Hashing v2
+            DISTANCE_THRESHOLD = 0.9  # v1.6.2 — L2 units (≈ cos>0.60)؛ sqlite-vec يستخدم L2 وليس cosine
             docs = [d for d in docs
                     if getattr(d, 'distance', 999) < DISTANCE_THRESHOLD]
             if docs:
@@ -182,7 +182,7 @@ class CouncilRAGBridge:
             docs = [d for d in docs
                     if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
             # ═══ فلتر 2: عتبة التشابه (distance < 1.0 يعني cos > 0.5) ═══
-            DISTANCE_THRESHOLD = 0.5  # v1.6.1 — re-calibrated for Hashing v2
+            DISTANCE_THRESHOLD = 0.9  # v1.6.2 — L2 units (≈ cos>0.60)؛ sqlite-vec يستخدم L2 وليس cosine
             docs = [d for d in docs
                     if getattr(d, 'distance', 999) < DISTANCE_THRESHOLD]
             if docs:
