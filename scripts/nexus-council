@@ -17,15 +17,31 @@ if mode == "mock":
     from novamind.core.llm_router import LLMRouter
     def mock_gen(self, prompt="", system="", **kw):
         # محاكاة عربية ذكية
-        p = str(prompt).lower()
-        if "المتشكك" in prompt or "profiler" in p:
-            text = "خطر: قد يكون هناك مخاطر أمنية في هذا الطلب. 3 مخاوف: 1) احتمال حقن، 2) عدم وضوح المصدر، 3) نقص السياق."
-        elif "المدافع" in prompt or "analyst" in p:
-            text = "آمن: الطلب يبدو مقبولاً. السياق واضح، لا توجد أنماط ضارة، يمكن المتابعة."
-        elif "الناقد" in prompt or "critic" in p:
-            text = "أراجع الحجتين. الافتراضات تحتاج دليلاً. لكن الحجج متسقة. مقبول بشكل عام."
+        sys_prompt = str(system).lower()
+        full = (str(system) + " " + str(prompt)).lower()
+        
+        # كشف الوكيل من system_prompt
+        if "المتشكك" in system or "profiler" in sys_prompt:
+            if "راجع حجج" in prompt or "debate" in full:
+                text = "أراجع الحجج: أرى أن المحلل مفرط في التفاؤل. خطر: نقص السياق الأمني يبقى قائماً."
+            else:
+                text = "خطر: 3 مخاوف: 1) احتمال حقن، 2) عدم وضوح المصدر، 3) نقص السياق."
+        
+        elif "المدافع" in system or "analyst" in sys_prompt:
+            if "راجع حجج" in prompt or "debate" in full:
+                text = "أراجع الحجج: الناقد محق في بعض النقاط. لكن المخاوف يمكن التخفيف منها بالتشفير. آمن."
+            else:
+                text = "آمن: الطلب مقبول. السياق واضح، لا أنماط ضارة، يمكن المتابعة."
+        
+        elif "الناقد" in system or "critic" in sys_prompt:
+            if "راجع حجج" in prompt or "debate" in full:
+                text = "بعد المراجعة: الحجتان متسقتان. مقبول بشكل عام مع التحفظ على نقص التوثيق."
+            else:
+                text = "أراجع الحجتين. الافتراضات تحتاج دليلاً. الحجج متسقة. مقبول."
+        
         else:
             text = f"تحليل: {str(prompt)[:100]}"
+        
         return {"ok": True, "text": text, "provider": "mock", "elapsed": 0.01}
     LLMRouter.generate = mock_gen
     LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)

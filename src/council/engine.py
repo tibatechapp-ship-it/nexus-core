@@ -101,11 +101,27 @@ class CouncilEngine:
         )
 
     def _consensus(self, responses):
+        """يفحص التوافق — عتبة مخففة."""
         if len(responses) < 2:
             return True
-        all_words = [set(r.lower().split()) for r in responses.values()]
-        common = all_words[0].intersection(*all_words[1:])
-        return len(common) > 30
+        # كلمات أساسية للتحقق من التوافق
+        positive = ["مقبول", "آمن", "موافق", "approve", "safe"]
+        negative = ["مرفوض", "خطر", "reject", "danger"]
+        
+        verdicts = []
+        for r in responses.values():
+            r_lower = r.lower()
+            pos = sum(1 for w in positive if w in r_lower)
+            neg = sum(1 for w in negative if w in r_lower)
+            if pos > neg:
+                verdicts.append("yes")
+            elif neg > pos:
+                verdicts.append("no")
+            else:
+                verdicts.append("mid")
+        
+        # توافق إذا كانت كل الآراء في نفس الاتجاه
+        return len(set(verdicts)) == 1
 
     def _judge(self, transcript):
         scores = {"profiler": 0.5, "analyst": 0.5, "critic": 0.5}
