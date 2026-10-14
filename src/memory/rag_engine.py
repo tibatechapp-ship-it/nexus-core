@@ -16,7 +16,7 @@ class RAGEngine:
     def __init__(self, vector_store_path: str = None,
                  embedder=None, llm_router=None):
         self.vector_store_path = vector_store_path or os.path.join(
-            os.path.expanduser("~"), ".nexus", "vectors.db"
+            os.path.expanduser("~"), ".nexus", "data", "vectors.db"
         )
         os.makedirs(os.path.dirname(self.vector_store_path), exist_ok=True)
 

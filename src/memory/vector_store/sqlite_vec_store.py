@@ -1,6 +1,7 @@
 """SQLite-vec implementation of VectorStore."""
 from __future__ import annotations
 import json
+import os
 import sqlite3
 import struct
 from pathlib import Path
@@ -24,6 +25,10 @@ class SQLiteVecStore(VectorStore):
         self.path = path
         self.dim = dim
         self.table = table
+        # أنشئ المجلد الأب تلقائياً
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         self._conn = sqlite3.connect(path)
         self._conn.enable_load_extension(True)
         self._load_vec()
