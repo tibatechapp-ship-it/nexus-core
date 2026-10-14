@@ -126,6 +126,10 @@ class HashingEmbedder:
             return vector
         return [value / norm for value in vector]
 
+    def embed(self, text: str) -> list[float]:
+        """Alias of ``__call__`` — satisfies the ``EmbeddingProvider`` protocol."""
+        return self(text)
+
 
 def make_embedder(spec: Embedder | str | None) -> Embedder | None:
     """Resolve an embedder spec into a callable.

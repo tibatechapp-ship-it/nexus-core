@@ -2,6 +2,16 @@
 
 All notable changes to this project. Newest first.
 
+## v1.9.3 — 2026-10-15
+**Embedding-provider correctness (prep for real embeddings).**
+- `src/memory/providers/openai.py` was a byte-for-byte copy of `gemini.py`
+  (carried a stray `GeminiEmbeddings` class + the wrong module docstring) —
+  the duplicate was removed and the docstring fixed.
+- `HashingEmbedder` now exposes `.embed()` (alias of `__call__`) so it
+  actually satisfies the `EmbeddingProvider` protocol that
+  `src/memory/providers/base.py::get_provider` returns.
+- First tests for the provider registry (`tests/test_memory_providers.py`).
+
 ## v1.9.2 — 2026-10-15
 **Cache safety + full cache-hit (items ①②⑤).**
 - The council cache now persists the **full transcript** and the
