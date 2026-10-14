@@ -29,8 +29,10 @@ Thumbs.db
 # Certification reports
 reports/certification/
 reports/reports.db
-data/
-memory/
+# Runtime data dirs — anchored to the repo root so they do NOT shadow the
+# source packages src/memory/ and src/**/data/ (e.g. src/novamind/registry/data).
+/data/
+/memory/
 security_audit_report.json
 tests/_intelligence_results/
 src/novamind/core/hive/data/
