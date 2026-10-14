@@ -1,0 +1,157 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys, time, json
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+os.environ["NOVAMIND_HOME"] = os.path.expanduser("~/nexus-core")
+
+import src.nexus
+
+# ═══ المهام ═══
+TASKS = [
+    {"id": 1, "prompt": "اعرض عدد الوكلاء", "type": "info"},
+    {"id": 2, "prompt": "اكتب دالة Python لجمع رقمين", "type": "code"},
+    {"id": 3, "prompt": "احفظ أن Termux يعمل على Android", "type": "memory"},
+    {"id": 4, "prompt": "اعرض الوقت الحالي", "type": "tool"},
+]
+
+def run_smart_router(prompt):
+    """الطريقة 1: Smart Router + Supervisor."""
+    try:
+        from src.orchestrator.supervisor import Supervisor
+        sup = Supervisor(use_rag=False, verbose=False)
+        t0 = time.time()
+        r = sup.execute(prompt)
+        elapsed = time.time() - t0
+        return {
+            "ok": r.get("ok", False),
+            "time": elapsed,
+            "agents": r.get("decision", {}).get("agents", []),
+            "strategy": r.get("decision", {}).get("strategy", "?"),
+            "output": str(r.get("results", [{}])[0].get("result", ""))[:200] if r.get("results") else "",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:100], "time": 0}
+
+def run_agent_loop(prompt):
+    """الطريقة 2: Agent Loop (ReAct)."""
+    try:
+        from src.agent_loop.loop import AgentLoop
+        loop = AgentLoop(max_iterations=8, verbose=False)
+        t0 = time.time()
+        r = loop.run(prompt)
+        elapsed = time.time() - t0
+        tools_used = [
+            t["text"] for t in r.get("trace", [])
+            if t.get("icon") == "🔧"
+        ]
+        return {
+            "ok": r.get("ok", False),
+            "time": elapsed,
+            "iterations": r.get("iterations", 0),
+            "tools": tools_used,
+            "output": str(r.get("answer", ""))[:200],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:100], "time": 0}
+
+# ═══ التشغيل ═══
+print("=" * 70)
+print("⚔️  مقارنة: Smart Router vs Agent Loop")
+print("=" * 70)
+
+results = []
+
+for task in TASKS:
+    print()
+    print(f"🎯 المهمة {task['id']}: {task['prompt']}")
+    print("-" * 70)
+
+    # الطريقة 1
+    print("📍 Smart Router:")
+    r1 = run_smart_router(task["prompt"])
+    if r1["ok"]:
+        print(f"   ✅ {r1['time']:.1f}ث | strategy={r1['strategy']} | agents={r1['agents']}")
+    else:
+        print(f"   ❌ {r1.get('error', 'error')[:80]} | {r1['time']:.1f}ث")
+
+    # الطريقة 2
+    print("📍 Agent Loop:")
+    r2 = run_agent_loop(task["prompt"])
+    if r2["ok"]:
+        tools = r2.get("tools", [])
+        print(f"   ✅ {r2['time']:.1f}ث | iterations={r2['iterations']} | tools={len(tools)}")
+    else:
+        print(f"   ❌ {r2.get('error', 'error')[:80]} | {r2['time']:.1f}ث")
+
+    results.append({
+        "task": task["prompt"],
+        "smart": r1,
+        "loop": r2,
+    })
+
+# ═══ الملخص ═══
+print()
+print("=" * 70)
+print("📊 الملخص")
+print("=" * 70)
+
+smart_wins = 0
+loop_wins = 0
+smart_time = 0
+loop_time = 0
+smart_ok = 0
+loop_ok = 0
+
+for r in results:
+    if r["smart"]["ok"]: smart_ok += 1
+    if r["loop"]["ok"]: loop_ok += 1
+    smart_time += r["smart"]["time"]
+    loop_time += r["loop"]["time"]
+
+    s_t = r["smart"]["time"] if r["smart"]["ok"] else 999
+    l_t = r["loop"]["time"] if r["loop"]["ok"] else 999
+
+    if s_t < l_t:
+        smart_wins += 1
+    elif l_t < s_t:
+        loop_wins += 1
+
+print(f"\n✅ نجاح:")
+print(f"   Smart Router:  {smart_ok}/{len(results)}")
+print(f"   Agent Loop:    {loop_ok}/{len(results)}")
+
+print(f"\n⏱️  الوقت الكلي:")
+print(f"   Smart Router:  {smart_time:.1f}ث (متوسط {smart_time/max(smart_ok,1):.1f}ث)")
+print(f"   Agent Loop:    {loop_time:.1f}ث (متوسط {loop_time/max(loop_ok,1):.1f}ث)")
+
+print(f"\n🏆 سرعة:")
+print(f"   Smart Router أسرع: {smart_wins}/{len(results)}")
+print(f"   Agent Loop أسرع:   {loop_wins}/{len(results)}")
+
+# ═══ الحكم ═══
+print()
+print("=" * 70)
+print("🏆 الحكم النهائي")
+print("=" * 70)
+
+if smart_ok > loop_ok or smart_time < loop_time:
+    print("✅ Smart Router يتفوق في: السرعة + موثوقية")
+    print("   مناسب لـ: مهام معروفة، سريعة")
+else:
+    print("✅ Agent Loop يتفوق في: الذكاء + المرونة")
+    print("   مناسب لـ: مهام معقدة، متعددة الخطوات")
+
+if smart_ok == loop_ok:
+    print("\n🤝 تعادل في النجاح — الفرق في الأسلوب")
+
+print()
+print("💡 الخلاصة:")
+print("   • Smart Router = 🏎️ Ferrari (سريع، محدد)")
+print("   • Agent Loop   = 🚙 Jeep (مرن، يصل لأي مكان)")
+print("   • الأفضل = استخدام كلاهما حسب المهمة")
+PYEOF

@@ -238,6 +238,46 @@ def metrics_clear():
         return {"ok": False, "error": str(e)}
 
 
+
+
+# ═══ Hybrid Router Endpoint ═══
+class HybridRequest(BaseModel):
+    prompt: str
+    force: str = None
+
+
+@app.post("/api/hybrid/run")
+def hybrid_run(req: HybridRequest):
+    """يستخدم Hybrid Router (code/tool/decision)."""
+    try:
+        import src.nexus
+        from src.orchestrator.hybrid_router import HybridRouter, classify
+
+        route = req.force or classify(req.prompt)
+        router = HybridRouter(use_rag=True, verbose=False)
+        result = router.run(req.prompt, force=req.force)
+
+        return {
+            "ok": result.get("ok", False),
+            "route": route,
+            "method": result.get("method", "?"),
+            "elapsed": result.get("total_elapsed", 0),
+            "answer": result.get("answer", "")[:2000],
+            "iterations": result.get("iterations", 0),
+            "trace": [
+                {"icon": t.get("icon"), "text": t.get("text", "")[:200]}
+                for t in result.get("trace", [])
+            ],
+            "verdict": result.get("verdict"),
+            "score": result.get("score"),
+            "transcript": result.get("transcript", []),
+            "agents": [r.get("agent") for r in result.get("results", [])],
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()[:500]}
+
+
 DASHBOARD = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 
 

@@ -99,7 +99,7 @@ class CoderAgent:
             prompt=prompt,
             system=BUILD_PROMPT,
             temperature=0.2,
-            max_tokens=2000,
+            max_tokens=500,
         )
 
         if not result.get("ok"):
@@ -130,7 +130,7 @@ class CoderAgent:
                           "\n\nOutput ONLY the fixed Python code:")
             fix_result = self.router.generate_for_task(
                 task_type="code", prompt=fix_prompt, system=FIX_PROMPT,
-                temperature=0.1, max_tokens=2000,
+                temperature=0.1, max_tokens=500,
             )
             if not fix_result.get("ok"):
                 break

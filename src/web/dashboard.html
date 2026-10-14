@@ -285,7 +285,7 @@ async function send(){
 
   // Start council
   try{
-    const r=await fetch('/api/smart/run',{
+    const r=await fetch('/api/hybrid/run',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt:text})
@@ -348,7 +348,7 @@ function addTheater(id){
 
 async function finishTheater(id,d){
   const theater=$('theater_'+id.split('_')[1]);
-  if(!theater)return;
+  if(!theater){ if(d.ok) renderHybridResult('', d); return; }
 
   // Mark agents done
   theater.querySelectorAll('.agent').forEach(a=>{
@@ -358,50 +358,101 @@ async function finishTheater(id,d){
   theater.querySelector('.loading-dots')?.remove();
 
   if(!d.ok){
-    finishTheaterError(id,d.error||'unknown error');
+    theater.innerHTML=`
+      <div class="bubble" style="border-color:var(--red)">
+        <b style="color:var(--red)">❌ خطأ</b><br>
+        <span style="color:var(--text-dim)">${escapeHtml(String(d.error||'unknown'))}</span>
+      </div>`;
+    scrollDown();
     return;
   }
 
-  const verdictClass=d.verdict;
-  const verdictEmoji=d.verdict==='approve'?'✅':d.verdict==='reject'?'❌':'⚠️';
+  // احذف theater الأولي وأرسم النتيجة حسب الطريقة
+  theater.parentElement.removeChild(theater);
+  renderHybridResult('', d);
+}
 
-  let transcriptHTML='';
-  (d.transcript||[]).forEach(e=>{
-    transcriptHTML+=`
-      <div class="speak ${e.member}">
-        <div class="speak-head">
-          <span class="speak-badge ${e.member}">${e.member}</span>
-          <span class="speak-phase">${e.phase}</span>
+function renderHybridResult(text, d) {
+  if (d.method === 'agent_loop') {
+    // ═══ Agent Loop: عرض الأدوات ═══
+    let traceHTML = '';
+    (d.trace || []).forEach(t => {
+      if (t.icon === '🔧' || t.icon === '📊' || t.icon === '✅') {
+        traceHTML += `<div style="padding:6px 0;color:var(--text-dim);font-size:.85em">
+          ${t.icon} ${escapeHtml(t.text.substring(0, 150))}
+        </div>`;
+      }
+    });
+    messages.innerHTML += `
+      <div class="msg msg-system">
+        <div class="bubble">
+          <div class="theater">
+            <div class="theater-head">
+              <span>🔧 <b>Agent Loop</b> (${d.iterations} جولة · ${d.elapsed.toFixed(1)}ث)</span>
+            </div>
+            <div style="margin:10px 0">${escapeHtml(d.answer || '')}</div>
+            <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px">
+              <div style="color:var(--accent);font-size:.85em;margin-bottom:6px">📋 سجل التنفيذ:</div>
+              ${traceHTML}
+            </div>
+          </div>
         </div>
-        <div>${escapeHtml(e.response)}</div>
       </div>`;
-  });
-
-  theater.innerHTML=`
-    <div class="bubble">
-      <div class="theater">
-        <div class="theater-head">
-          <span>🏛️ <b>مجلس الوكلاء</b> — اكتمل</span>
-          <span style="color:var(--text-dim)">${d.rounds} جولة · ${d.elapsed.toFixed(1)}ث</span>
-        </div>
-        <div class="agents">
-          <div class="agent profiler done"><div class="agent-icon">🔴</div><div class="agent-name">Profiler</div><div class="agent-role">✅ اكتمل</div></div>
-          <div class="agent analyst done"><div class="agent-icon">🟢</div><div class="agent-name">Analyst</div><div class="agent-role">✅ اكتمل</div></div>
-          <div class="agent critic done"><div class="agent-icon">🟡</div><div class="agent-name">Critic</div><div class="agent-role">✅ اكتمل</div></div>
-        </div>
-        <div class="verdict-card">
-          <div>
-            <div class="verdict-label">القرار النهائي</div>
-            <div class="verdict-value ${verdictClass}">${verdictEmoji} ${d.verdict.toUpperCase()}</div>
+  } else if (d.method === 'council') {
+    // ═══ Council: عرض الحوار ═══
+    let transcriptHTML = '';
+    (d.transcript || []).forEach(e => {
+      transcriptHTML += `
+        <div class="speak ${e.member}">
+          <div class="speak-head">
+            <span class="speak-badge ${e.member}">${e.member}</span>
+            <span class="speak-phase">${e.phase}</span>
           </div>
-          <div style="text-align:left">
-            <div class="verdict-label">النقاط</div>
-            <div class="verdict-value">${d.score.toFixed(2)}</div>
+          <div>${escapeHtml(e.response)}</div>
+        </div>`;
+    });
+    const vc = d.verdict || 'human_review';
+    const vEmoji = vc === 'approve' ? '✅' : vc === 'reject' ? '❌' : '⚠️';
+    messages.innerHTML += `
+      <div class="msg msg-system">
+        <div class="bubble">
+          <div class="theater">
+            <div class="theater-head">
+              <span>🏛️ <b>مجلس الوكلاء</b> · ${d.elapsed.toFixed(1)}ث</span>
+            </div>
+            <div class="verdict-card">
+              <div>
+                <div class="verdict-label">القرار</div>
+                <div class="verdict-value ${vc}">${vEmoji} ${vc.toUpperCase()}</div>
+              </div>
+              <div style="text-align:left">
+                <div class="verdict-label">النقاط</div>
+                <div class="verdict-value">${(d.score || 0).toFixed(2)}</div>
+              </div>
+            </div>
+            <div class="transcript">${transcriptHTML}</div>
           </div>
         </div>
-        <div class="transcript">${transcriptHTML}</div>
-      </div>
-    </div>`;
+      </div>`;
+  } else {
+    // ═══ Smart Router: عرض الوكلاء ═══
+    let agentHTML = '';
+    (d.agents || []).forEach(a => {
+      agentHTML += `<span class="badge badge-critic" style="margin:4px">${a}</span>`;
+    });
+    messages.innerHTML += `
+      <div class="msg msg-system">
+        <div class="bubble">
+          <div class="theater">
+            <div class="theater-head">
+              <span>💻 <b>Smart Router</b> · ${d.elapsed.toFixed(1)}ث</span>
+            </div>
+            <div style="margin:8px 0">${agentHTML}</div>
+            <div style="background:var(--bg);padding:12px;border-radius:8px;font-family:monospace;font-size:.85em;white-space:pre-wrap">${escapeHtml(d.answer || '')}</div>
+          </div>
+        </div>
+      </div>`;
+  }
   scrollDown();
 }
 
