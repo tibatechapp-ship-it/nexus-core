@@ -93,7 +93,7 @@ class CouncilRAGBridge:
             docs = [d for d in docs
                     if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
             # ═══ فلتر 2: عتبة التشابه (distance < 1.0 يعني cos > 0.5) ═══
-            DISTANCE_THRESHOLD = 1.15
+            DISTANCE_THRESHOLD = 0.5  # v1.6.1 — re-calibrated for Hashing v2
             docs = [d for d in docs
                     if getattr(d, 'distance', 999) < DISTANCE_THRESHOLD]
             if docs:
@@ -182,7 +182,7 @@ class CouncilRAGBridge:
             docs = [d for d in docs
                     if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
             # ═══ فلتر 2: عتبة التشابه (distance < 1.0 يعني cos > 0.5) ═══
-            DISTANCE_THRESHOLD = 1.15
+            DISTANCE_THRESHOLD = 0.5  # v1.6.1 — re-calibrated for Hashing v2
             docs = [d for d in docs
                     if getattr(d, 'distance', 999) < DISTANCE_THRESHOLD]
             if docs:
