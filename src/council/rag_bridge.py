@@ -78,9 +78,8 @@ class CouncilRAGBridge:
                     print("CACHE HIT hits=" + str(cached.hits))
                     return CouncilResult(
                         verdict=cached.verdict, score=cached.score,
-                        consensus=cached.score >= 0.7, rounds=cached.rounds,
-                        transcript=[{"phase": "cached", "member": "cache",
-                                     "response": cached.transcript_summary}],
+                        consensus=(getattr(cached, "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,
+                        transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
                     )
             except Exception as e:
@@ -160,9 +159,8 @@ class CouncilRAGBridge:
                          "text": cached.transcript_summary})
                     return CouncilResult(
                         verdict=cached.verdict, score=cached.score,
-                        consensus=cached.score >= 0.7, rounds=cached.rounds,
-                        transcript=[{"phase": "cached", "member": "cache",
-                                     "response": cached.transcript_summary}],
+                        consensus=(getattr(cached, "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,
+                        transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
                     )
             except Exception:
