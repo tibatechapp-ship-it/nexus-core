@@ -1,0 +1,45 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_TASK="$*"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+os.environ["NOVAMIND_HOME"] = os.path.expanduser("~/nexus-core")
+
+import src.nexus
+from src.agent_loop.loop import AgentLoop
+
+task = os.environ.get("NEXUS_TASK", "").strip()
+
+if not task:
+    print("الاستخدام: nexus-agent 'المهمة'")
+    print()
+    print("أمثلة:")
+    print("  nexus-agent 'احفظ أن Python 3.14 يعمل على Termux'")
+    print("  nexus-agent 'ابحث في الذاكرة عن Python'")
+    print("  nexus-agent 'اعرض كل وكلاء الأمان'")
+    print("  nexus-agent 'شغّل coder لكتابة دالة جمع'")
+    sys.exit(1)
+
+print("=" * 60)
+print("🤖 Nexus Agent Loop (ReAct)")
+print("=" * 60)
+print()
+
+loop = AgentLoop(max_iterations=8, verbose=True)
+result = loop.run(task)
+
+print()
+print("=" * 60)
+if result.get("ok"):
+    print(f"📊 النتيجة ({result['iterations']} جولة):")
+    print()
+    print(result.get("answer", ""))
+else:
+    print(f"❌ فشل: {result.get('error', 'unknown')}")
+print("=" * 60)
+PYEOF
