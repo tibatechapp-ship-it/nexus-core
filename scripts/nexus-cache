@@ -1,0 +1,43 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_CMD="${1:-stats}"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+
+from src.council.cache import get_cache
+
+cache = get_cache()
+cmd = os.environ.get("NEXUS_CMD", "stats")
+
+if cmd == "stats":
+    s = cache.stats()
+    print("=" * 60)
+    print("📦 إحصائيات Cache")
+    print("=" * 60)
+    for k, v in s.items():
+        print(f"   • {k}: {v}")
+
+elif cmd == "clear":
+    count = cache.clear()
+    print(f"✅ حُذف {count} مدخل من الكاش")
+
+elif cmd == "list":
+    import json
+    files = [f for f in os.listdir(cache.cache_dir) if f.endswith(".json")]
+    print(f"📋 {len(files)} مدخل في الكاش:\n")
+    for fname in files[:20]:
+        try:
+            with open(os.path.join(cache.cache_dir, fname), encoding="utf-8") as f:
+                d = json.load(f)
+            print(f"   • [{d['verdict']}] {d['question'][:50]} (hits={d.get('hits', 0)})")
+        except Exception:
+            pass
+
+else:
+    print("الأوامر: stats | clear | list")
+PYEOF

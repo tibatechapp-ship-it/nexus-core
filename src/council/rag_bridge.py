@@ -1,4 +1,4 @@
-"""Council + RAG — كل مداولة تُثري الذاكرة."""
+"""Council + RAG with Cache."""
 from __future__ import annotations
 import os, sys, json, time
 
@@ -6,7 +6,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src'))
 
-from src.council.engine import CouncilEngine
+from src.council.engine import CouncilEngine, CouncilResult
 
 
 class CouncilRAGBridge:
@@ -15,7 +15,6 @@ class CouncilRAGBridge:
             from src.memory.agent_rag_bridge import get_bridge
             rag_bridge = get_bridge()
         self.rag = rag_bridge
-        # ═══ إنشاء engine مع LLM ═══
         try:
             from novamind.core.llm_router import LLMRouter
             llm = LLMRouter()
@@ -25,37 +24,66 @@ class CouncilRAGBridge:
         self.history_dir = os.path.expanduser("~/.nexus/data/council")
         os.makedirs(self.history_dir, exist_ok=True)
 
-    def deliberate_with_memory(self, question, context=""):
-        # استرجاع
+    def deliberate_with_memory(self, question, context="", use_cache=True):
+        # ═══ احفظ الحالة الأصلية قبل RAG ═══
+        original_context_empty = not context
+
+        # ═══ CACHE GET ═══
+        if use_cache and original_context_empty:
+            try:
+                from src.council.cache import get_cache
+                cached = get_cache().get(question)
+                if cached:
+                    print("CACHE HIT hits=" + str(cached.hits))
+                    return CouncilResult(
+                        verdict=cached.verdict, score=cached.score,
+                        consensus=cached.score >= 0.7, rounds=cached.rounds,
+                        transcript=[{"phase": "cached", "member": "cache",
+                                     "response": cached.transcript_summary}],
+                        elapsed=0.05, security_events=[],
+                    )
+            except Exception as e:
+                print("CACHE GET ERROR: " + str(e))
+
+        # ═══ RAG ═══
         try:
             docs = self.rag.recall(question, k=5)
             if docs:
-                mem_ctx = "\n".join(f"  • [{d.id}] {d.text}" for d in docs)
-                context = f"{context}\n\n━━━ ذاكرة سابقة ━━━\n{mem_ctx}"
-                print(f"🧠 استرجع {len(docs)} وثيقة")
+                mem_ctx = "\n".join("  • [" + d.id + "] " + d.text for d in docs)
+                context = context + "\n\n--- ذاكرة ---\n" + mem_ctx
+                print("RAG: " + str(len(docs)) + " وثيقة")
         except Exception as e:
-            print(f"⚠️ RAG: {e}")
-        # مداولة
+            print("RAG ERROR: " + str(e))
+
+        # ═══ DELIBERATE ═══
         result = self.engine.deliberate(question, context)
-        # حفظ
+
+        # ═══ SAVE TO RAG ═══
         try:
             if result.verdict == "approve":
-                self.rag.remember(f"[Council APPROVED] {question[:100]}: score={result.score:.2f}")
+                self.rag.remember("[Council APPROVED] " + question[:100])
             elif result.verdict == "reject":
-                self.rag.remember(f"[Council REJECTED] {question[:100]}: score={result.score:.2f}")
+                self.rag.remember("[Council REJECTED] " + question[:100])
         except Exception:
             pass
-        # سجل
-        log_id = f"council_{int(time.time())}"
+
+        # ═══ SAVE HISTORY ═══
         try:
-            with open(os.path.join(self.history_dir, f"{log_id}.json"), "w", encoding="utf-8") as f:
-                json.dump({
-                    "question": question, "verdict": result.verdict, "score": result.score,
-                    "rounds": result.rounds, "transcript": result.transcript,
-                    "security_events": result.security_events,
-                }, f, ensure_ascii=False, indent=2, default=str)
+            from src.council.history import get_history
+            rec_id = get_history().save(result, category="auto")
+            result._record_id = rec_id
         except Exception:
             pass
+
+        # ═══ CACHE SET ═══
+        if use_cache and original_context_empty:
+            try:
+                from src.council.cache import get_cache
+                get_cache().set(question, result)
+                print("CACHE SAVED: " + question[:40])
+            except Exception as e:
+                print("CACHE SET ERROR: " + str(e))
+
         return result
 
 
