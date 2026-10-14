@@ -90,3 +90,23 @@ Thumbs.db
 src/novamind/core/hive/data/
 *.db-wal
 *.db-shm
+reports/certification/
+tests/_intelligence_results/
+*.safe_*
+
+# Secrets — NEVER commit
+.env
+*.env
+.env.*
+
+# Reports (generated dynamically)
+reports/*.db
+reports/*.db-journal
+reports/__pycache__/
+reports/pending/*
+reports/sent/*
+reports/failed/*
+!reports/pending/.gitkeep
+!reports/sent/.gitkeep
+!reports/failed/.gitkeep
+reports/certification/*.tmp
