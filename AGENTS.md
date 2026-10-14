@@ -445,3 +445,67 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 
 ## Sessions note
 - Full session notes: vault `04 Sessions/2026-10-12 nexus-core merge*.md`.
+
+## Council workbench era (v1.5.2 → v1.9.3) — 2026-10-14/15
+A SECOND, separate layer on top of the merged framework: a live Council
+workbench served by `main.py` (FastAPI, port 8000) with `index.html` UI.
+Do NOT confuse with `src/novamind/council` (the 5-member "Living Council"
+from the v2.0 notes) — this one is `src/council/` (3 members: Profiler /
+Analyst / Critic) using Groq via `novamind.core.llm_router`.
+
+### Layout
+- `main.py` — FastAPI: `/` (index.html), `POST /api/deliberate` (SSE),
+  `/api/health|history|topics|stats`. Recommendation comes from
+  `src/council/recommend.py::extract_recommendation` (pure, tested).
+- `src/council/` — `engine.py` (deliberate + early-consensus v1.9.0),
+  `cache.py` (TTL cache + CACHE_VERSION), `history.py` (full transcript →
+  RAG summary), `rag_bridge.py` (RAG + cache + closed-loop), `topics.py`,
+  `members.py`, `gatekeeper.py`, `trust.py`, `isolation.py`, `recommend.py`.
+- `src/memory/` — `rag_engine.py` (HashingEmbedder dim=512, sqlite-vec),
+  `embeddings.py` (HashingEmbedder v2: arabic norm + stopwords + bigrams),
+  `agent_rag_bridge.py`, `providers/{base,gemini,openai}.py`.
+- Runtime data: `~/.nexus/data/rag.db` (vec0 `float[512]`),
+  `~/.nexus/data/council_history/*.json`, `~/.nexus/data/council_cache/*.json`.
+
+### v1.9.2 (2026-10-15) — cache safety + full cache-hit
+- `CachedVerdict` now stores `transcript` (full) + `consensus` + `cache_version`.
+  A cache hit returns the real transcript, so `/api/deliberate`'s
+  recommendation is no longer empty on repeats (items ①②).
+- `CACHE_VERSION = "v1"` in `src/council/cache.py`: entries lacking/mismatching
+  it are ignored on read; `stats()` reports `stale_entries` (item ⑤).
+  Bump CACHE_VERSION whenever the prompt/logic changes.
+- Recommendation logic lifted out of `main.py` into `src/council/recommend.py`.
+
+### v1.9.3 (2026-10-15) — embedder provider fixes
+- `src/memory/providers/openai.py` was a byte-copy of `gemini.py` (stray
+  `GeminiEmbeddings` + wrong docstring) → de-duplicated.
+- `HashingEmbedder.embed()` added (alias of `__call__`) so it satisfies the
+  `EmbeddingProvider` protocol (`get_provider` in `providers/base.py`).
+- NOTE: `get_provider()` is NOT wired into the RAG path — `RAGEngine` builds
+  `HashingEmbedder(dim=512)` directly, and `rag.db` is a fixed `float[512]`.
+  Switching to Gemini/OpenAI embeddings = change `RAGEngine` dim + REBUILD
+  rag.db (re-embed all docs). Not a drop-in. (Handoff item ④, open.)
+
+### Gate reality (this era)
+- Real CI gate = `pytest --cov --cov-fail-under=95 --ignore=tests/novamind`.
+- BUT the repo is currently at ~78% coverage (src/web/app.py 0%, much of
+  src/council untested) → the coverage gate FAILS as-is. `ruff`/`mypy`/
+  `check_annotations` in `.github/workflows/ci.yml` are the STALE merge-era
+  gate — `check_annotations` fails (104 funcs) and ruff isn't installed here.
+- Known pre-existing failure: `tests/adversarial/test_security.py::
+  test_supply_chain_imports_are_stdlib_only` flags fastapi/dotenv/openai/etc.
+  in FRAMEWORK_FILES (stale stdlib-only assumption). Not caused by recent work.
+- `pytest --ignore=tests/novamind` = 1731 tests, 1730 pass (2026-10-15).
+
+### .gitignore fix (2026-10-15)
+- `memory/` and `data/` were UNANCHORED → silently ignored the `src/memory`
+  source package and `src/**/data/` (git add on new files there refused).
+  Anchored to `/memory/` and `/data/` (root runtime only). Root `logs/`,
+  `workspace/` left unanchored on purpose (`src/logs` runtime log dir).
+
+### Build/run (phone)
+- Run server: `PYTHONPATH=src:. python3 main.py` → http://127.0.0.1:8000
+  (`NOVAMIND_HOME` + `.env` Groq/Gemini keys set by `main.py`).
+- council tests: `pytest tests/council/ -q` (53).
+- NOTE: a live `/api/deliberate` is slow (real Groq calls, 4-15s+); a full
+  A/B run can take minutes.
