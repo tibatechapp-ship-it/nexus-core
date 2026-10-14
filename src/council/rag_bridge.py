@@ -48,6 +48,9 @@ class CouncilRAGBridge:
         # ═══ RAG ═══
         try:
             docs = self.rag.recall(question, k=5)
+            # ═══ فلتر غرفة الصدى: أحكام المجلس السابقة ليست أدلة ═══
+            docs = [d for d in docs
+                    if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
             if docs:
                 mem_ctx = "\n".join("  • [" + d.id + "] " + d.text for d in docs)
                 context = context + "\n\n--- ذاكرة ---\n" + mem_ctx
@@ -122,6 +125,9 @@ class CouncilRAGBridge:
         # RAG
         try:
             docs = self.rag.recall(question, k=5)
+            # ═══ فلتر غرفة الصدى: أحكام المجلس السابقة ليست أدلة ═══
+            docs = [d for d in docs
+                    if not (getattr(d, 'text', '') or '').lstrip().startswith('[Council')]
             if docs:
                 mem_ctx = "\n".join("  • [" + d.id + "] " + d.text for d in docs)
                 context = context + "\n\n--- ذاكرة ---\n" + mem_ctx

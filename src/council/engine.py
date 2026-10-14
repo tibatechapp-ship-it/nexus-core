@@ -110,6 +110,7 @@ class CouncilEngine:
             _emit("agent_action", {"actor": member.name, "phase": "independent", "text": response})
 
         current_round = 0
+        last_consensus = False
         for round_num in range(self.MAX_ROUNDS):
             current_round = round_num + 1
             _emit("phase", {"name": "debate_" + str(current_round),
@@ -134,13 +135,14 @@ class CouncilEngine:
                 _emit("agent_action", {"actor": member.name,
                                        "phase": "debate_" + str(round_num+1), "text": resp})
             if self._consensus(new_resp):
+                last_consensus = True
                 break
 
         _emit("phase", {"name": "judging", "label": "المرحلة النهائية: الحكم"})
         verdict, score = self._judge(transcript)
         return CouncilResult(
             verdict=verdict, score=score,
-            consensus=(score >= JUDGE_CONFIG["thresholds"]["approve"]),
+            consensus=last_consensus,
             rounds=current_round, transcript=transcript,
             elapsed=time.time() - start, security_events=self.security_log,
         )
