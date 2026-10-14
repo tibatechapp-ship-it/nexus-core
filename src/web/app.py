@@ -7,6 +7,14 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+# ═══ تحميل .env ═══
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
+except Exception:
+    pass
+
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -46,11 +54,20 @@ def _setup_mock():
     LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
     LLMRouter._is_cooled_down = lambda self, n: True
 
-_setup_mock()
+# _setup_mock()  # ═══ مُعطّل — نستخدم LLM حقيقي
 
+
+# ═══ Cache للحالة ═══
+_status_cache = {"data": None, "ts": 0}
 
 @app.get("/api/status")
 def status():
+    import time
+    now = time.time()
+    # ═══ استخدام cache إذا مر أقل من 30 ثانية ═══
+    if _status_cache["data"] and (now - _status_cache["ts"] < 30):
+        return _status_cache["data"]
+
     from nova.registry import REGISTRY
     try:
         from src.memory.agent_rag_bridge import get_bridge
@@ -58,7 +75,11 @@ def status():
         total = len(b.rag.store._conn.execute(f"SELECT * FROM {b.rag.store.table}_meta").fetchall())
     except Exception:
         total = 0
-    return {"version": "0.12.0", "agents": len(REGISTRY), "rag_docs": total}
+
+    result = {"version": "0.12.0", "agents": len(REGISTRY), "rag_docs": total}
+    _status_cache["data"] = result
+    _status_cache["ts"] = now
+    return result
 
 
 @app.get("/api/agents")
@@ -114,8 +135,10 @@ def rag_query(q: str, k: int = 5):
 @app.post("/api/council/deliberate")
 def council_deliberate(req: CouncilRequest):
     try:
+        import src.nexus
         from src.council.rag_bridge import get_council_bridge
         b = get_council_bridge()
+        b.engine.MAX_ROUNDS = 1
         result = b.deliberate_with_memory(req.question)
         return {"ok": True, "verdict": result.verdict, "score": result.score,
                 "rounds": result.rounds, "consensus": result.consensus,
@@ -126,229 +149,136 @@ def council_deliberate(req: CouncilRequest):
         return {"ok": False, "error": str(e)}
 
 
-DASHBOARD = """<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nexus-Core Dashboard</title>
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system,"Segoe UI",system-ui,sans-serif;
-  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%); color:#e2e8f0;
-  min-height:100vh; padding:20px; }
-.container { max-width:1200px; margin:0 auto; }
-header { text-align:center; padding:30px 0; border-bottom:2px solid #334155; margin-bottom:30px; }
-h1 { font-size:2.2em; background:linear-gradient(90deg,#60a5fa,#a78bfa,#f472b6);
-  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-  background-clip:text; margin-bottom:10px; }
-.subtitle { color:#94a3b8; font-size:1.1em; }
-.stats-bar { display:flex; justify-content:center; gap:20px; margin-top:20px; flex-wrap:wrap; }
-.stat { background:rgba(51,65,85,0.5); padding:15px 25px; border-radius:12px;
-  border:1px solid #475569; text-align:center; }
-.stat-value { font-size:1.8em; font-weight:bold; color:#60a5fa; }
-.stat-label { color:#94a3b8; font-size:0.9em; margin-top:5px; }
-.tabs { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; justify-content:center; }
-.tab { padding:12px 24px; background:rgba(51,65,85,0.5); border:1px solid #475569;
-  border-radius:10px; cursor:pointer; transition:all 0.2s; color:#cbd5e1; font-size:1em; font-weight:500; }
-.tab:hover { background:rgba(71,85,105,0.7); }
-.tab.active { background:linear-gradient(135deg,#3b82f6,#8b5cf6); color:white; border-color:transparent; }
-.panel { background:rgba(30,41,59,0.7); border:1px solid #334155; border-radius:16px;
-  padding:25px; display:none; }
-.panel.active { display:block; }
-.panel h2 { color:#60a5fa; margin-bottom:20px; font-size:1.4em; }
-label { display:block; margin-bottom:8px; color:#94a3b8; font-size:0.95em; }
-input, textarea, select { width:100%; padding:12px; background:rgba(15,23,42,0.8);
-  border:1px solid #334155; border-radius:10px; color:#e2e8f0; font-size:1em;
-  margin-bottom:15px; font-family:inherit; }
-input:focus, textarea:focus, select:focus { outline:none; border-color:#3b82f6;
-  box-shadow:0 0 0 3px rgba(59,130,246,0.2); }
-textarea { min-height:100px; resize:vertical; }
-button { padding:12px 30px; background:linear-gradient(135deg,#3b82f6,#8b5cf6);
-  color:white; border:none; border-radius:10px; cursor:pointer; font-size:1em;
-  font-weight:600; transition:all 0.2s; font-family:inherit; }
-button:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(59,130,246,0.3); }
-button:disabled { opacity:0.5; cursor:not-allowed; }
-.output { background:rgba(15,23,42,0.9); border:1px solid #334155; border-radius:12px;
-  padding:20px; margin-top:20px; font-family:'Courier New',monospace; font-size:0.9em;
-  white-space:pre-wrap; max-height:500px; overflow-y:auto; color:#cbd5e1; line-height:1.6; }
-.verdict { display:inline-block; padding:8px 20px; border-radius:8px; font-weight:bold; margin:10px 0; }
-.verdict.approve { background:#10b981; }
-.verdict.reject { background:#ef4444; }
-.verdict.human_review { background:#f59e0b; color:#000; }
-.badge { padding:3px 10px; border-radius:6px; font-size:0.85em; font-weight:600; }
-.badge-profiler { background:#ef4444; }
-.badge-analyst { background:#10b981; }
-.badge-critic { background:#f59e0b; color:#000; }
-.phase { color:#94a3b8; font-size:0.85em; margin-left:8px; }
-</style>
-</head>
-<body>
-<div class="container">
-<header>
-  <h1>Nexus-Core Dashboard</h1>
-  <div class="subtitle">79 وكيل + RAG + Council — v0.12.0</div>
-  <div class="stats-bar">
-    <div class="stat"><div class="stat-value" id="sAgents">—</div><div class="stat-label">وكيل</div></div>
-    <div class="stat"><div class="stat-value" id="sDocs">—</div><div class="stat-label">وثيقة RAG</div></div>
-    <div class="stat"><div class="stat-value">8</div><div class="stat-label">فئات</div></div>
-    <div class="stat"><div class="stat-value">3</div><div class="stat-label">أعضاء Council</div></div>
-  </div>
-</header>
+# ═══ Topics ═══
+@app.get("/api/council/topics")
+def list_topics():
+    try:
+        from src.council.topics import list_categories
+        return {"ok": True, "categories": list_categories()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-<div class="tabs">
-  <div class="tab active" onclick="showTab('agents',this)">الوكلاء</div>
-  <div class="tab" onclick="showTab('rag',this)">RAG</div>
-  <div class="tab" onclick="showTab('council',this)">المجلس</div>
-</div>
 
-<div class="panel active" id="p-agents">
-  <h2>تشغيل وكيل</h2>
-  <label>اختر الوكيل:</label>
-  <select id="agentSel"></select>
-  <label>الطلب:</label>
-  <textarea id="agentPrompt">اكتب دالة Python لجمع رقمين</textarea>
-  <label><input type="checkbox" id="agentRag" checked style="width:auto;margin-left:8px;"> استخدم RAG</label>
-  <button onclick="runAgent()" id="agentBtn">تشغيل</button>
-  <div class="output" id="agentOut" style="display:none;"></div>
-</div>
+@app.post("/api/council/topic")
+def run_topic(req: CouncilRequest):
+    try:
+        from src.council.topics import get_topic
+        t = get_topic(req.question)  # نستخدم حقل question كـ topic_id
+        if not t:
+            return {"ok": False, "error": "topic not found"}
+        import src.nexus
+        from src.council.rag_bridge import get_council_bridge
+        b = get_council_bridge()
+        result = b.deliberate_with_memory(t.question)
+        return {
+            "ok": True,
+            "topic_id": t.id,
+            "title": t.title,
+            "verdict": result.verdict,
+            "score": result.score,
+            "rounds": result.rounds,
+            "elapsed": result.elapsed,
+            "transcript": [
+                {"phase": e["phase"], "member": e["member"],
+                 "response": e["response"][:500]}
+                for e in result.transcript
+            ],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-<div class="panel" id="p-rag">
-  <h2>الذاكرة الدلالية</h2>
-  <label>أضف:</label>
-  <input id="ragAdd" value="Python لغة برمجة قوية">
-  <button onclick="ragAdd()">إضافة</button>
-  <hr style="margin:20px 0;border-color:#334155;">
-  <label>ابحث:</label>
-  <input id="ragQuery" value="لغة برمجة">
-  <button onclick="doRagQuery()">بحث</button>
-  <div class="output" id="ragOut" style="display:none;"></div>
-</div>
 
-<div class="panel" id="p-council">
-  <h2>مجلس الوكلاء</h2>
-  <label>السؤال:</label>
-  <textarea id="councilQ">هل نعتمد هذا الكود في الإنتاج؟</textarea>
-  <button onclick="runCouncil()" id="councilBtn">مداولة</button>
-  <div class="output" id="councilOut" style="display:none;"></div>
-</div>
-</div>
+@app.get("/api/council/history")
+def council_history():
+    try:
+        from src.council.history import get_history
+        h = get_history()
+        return {"ok": True, "stats": h.stats(), "recent": h.list_recent(10)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-<script>
-function showTab(name, el) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('p-' + name).classList.add('active');
-}
 
-async function loadStats() {
-  try {
-    const r = await fetch('/api/status');
-    const d = await r.json();
-    document.getElementById('sAgents').textContent = d.agents;
-    document.getElementById('sDocs').textContent = d.rag_docs || 0;
-  } catch(e) {}
-}
+# ═══ Cache ═══
+@app.get("/api/cache/stats")
+def cache_stats():
+    try:
+        from src.council.cache import get_cache
+        return {"ok": True, "stats": get_cache().stats()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-async function loadAgents() {
-  const r = await fetch('/api/agents');
-  const d = await r.json();
-  const sel = document.getElementById('agentSel');
-  sel.innerHTML = '';
-  for (const [cat, list] of Object.entries(d.by_category)) {
-    const og = document.createElement('optgroup');
-    og.label = cat.toUpperCase() + ' (' + list.length + ')';
-    list.forEach(a => {
-      const opt = document.createElement('option');
-      opt.value = a; opt.textContent = a;
-      og.appendChild(opt);
-    });
-    sel.appendChild(og);
-  }
-}
 
-async function runAgent() {
-  const btn = document.getElementById('agentBtn');
-  const out = document.getElementById('agentOut');
-  btn.disabled = true;
-  btn.textContent = 'يعمل...';
-  out.style.display = 'block';
-  out.textContent = 'جاري التنفيذ...';
-  try {
-    const r = await fetch('/api/agent/run', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        agent: document.getElementById('agentSel').value,
-        prompt: document.getElementById('agentPrompt').value,
-        use_rag: document.getElementById('agentRag').checked,
-      })
-    });
-    const d = await r.json();
-    out.textContent = JSON.stringify(d, null, 2);
-    loadStats();
-  } catch(e) { out.textContent = 'خطأ: ' + e.message; }
-  btn.disabled = false;
-  btn.textContent = 'تشغيل';
-}
+@app.post("/api/cache/clear")
+def cache_clear():
+    try:
+        from src.council.cache import get_cache
+        count = get_cache().clear()
+        return {"ok": True, "cleared": count}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-async function ragAdd() {
-  const r = await fetch('/api/rag/add', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({text: document.getElementById('ragAdd').value})
-  });
-  const d = await r.json();
-  const out = document.getElementById('ragOut');
-  out.style.display = 'block';
-  out.textContent = JSON.stringify(d, null, 2);
-  loadStats();
-}
 
-async function doRagQuery() {
-  const q = document.getElementById('ragQuery').value;
-  const r = await fetch('/api/rag/query?q=' + encodeURIComponent(q) + '&k=5');
-  const d = await r.json();
-  const out = document.getElementById('ragOut');
-  out.style.display = 'block';
-  out.textContent = JSON.stringify(d, null, 2);
-}
+# ═══ Metrics ═══
+@app.get("/api/metrics/today")
+def metrics_today():
+    try:
+        from src.nexus.monitoring import get_monitor
+        return {"ok": True, "stats": get_monitor().get_today_stats()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-async function runCouncil() {
-  const btn = document.getElementById('councilBtn');
-  const out = document.getElementById('councilOut');
-  btn.disabled = true;
-  btn.textContent = 'مداولة...';
-  out.style.display = 'block';
-  out.textContent = 'المجلس يتحاور...';
-  try {
-    const r = await fetch('/api/council/deliberate', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({question: document.getElementById('councilQ').value})
-    });
-    const d = await r.json();
-    if (d.ok) {
-      let html = '<div class="verdict ' + d.verdict + '">القرار: ' + d.verdict.toUpperCase() + ' (' + d.score.toFixed(2) + ')</div><br>';
-      html += 'الجولات: ' + d.rounds + ' | الوقت: ' + d.elapsed.toFixed(2) + 'ث | توافق: ' + (d.consensus ? 'نعم' : 'لا') + '<br><br>';
-      d.transcript.forEach(e => {
-        html += '<span class="phase">[' + e.phase + ']</span> <span class="badge badge-' + e.member + '">' + e.member + '</span><br>';
-        html += e.response.replace(/</g, '&lt;') + '<br><br>';
-      });
-      out.innerHTML = html;
-    } else {
-      out.textContent = 'خطأ: ' + d.error;
-    }
-  } catch(e) { out.textContent = 'خطأ: ' + e.message; }
-  btn.disabled = false;
-  btn.textContent = 'مداولة';
-}
 
-loadStats();
-loadAgents();
-</script>
-</body>
-</html>"""
+@app.post("/api/metrics/clear")
+def metrics_clear():
+    try:
+        from src.nexus.monitoring import get_monitor
+        count = get_monitor().clear_today()
+        return {"ok": True, "cleared": count}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+DASHBOARD = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 
 
 @app.get("/", response_class=HTMLResponse)
 def index():
     return DASHBOARD
+
+
+# ═══ Smart Router Endpoint ═══
+class SmartRequest(BaseModel):
+    prompt: str
+    force_strategy: str = None
+
+
+@app.post("/api/smart/run")
+def smart_run(req: SmartRequest):
+    """يستخدم Smart Router لاختيار الاستراتيجية المثلى."""
+    try:
+        import src.nexus  # تفعيل monitoring
+        from src.orchestrator.supervisor import Supervisor
+        
+        sup = Supervisor(use_rag=True, verbose=False)
+        result = sup.execute(req.prompt, force_strategy=req.force_strategy)
+        
+        return {
+            "ok": result["ok"],
+            "decision": result["decision"],
+            "results": [
+                {
+                    "agent": r.get("agent", "?"),
+                    "ok": r.get("ok", False),
+                    "elapsed": r.get("elapsed", 0),
+                    "result": r.get("result", "")[:1000],
+                    "error": r.get("error", ""),
+                    "verdict": r.get("verdict"),
+                    "score": r.get("score"),
+                }
+                for r in result["results"]
+            ],
+            "elapsed": result["elapsed"],
+        }
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()[:500]}

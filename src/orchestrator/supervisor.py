@@ -53,9 +53,19 @@ class Supervisor:
         return None
 
     def _run_single(self, agent_name: str, prompt: str) -> dict:
-        """يشغّل وكيلاً واحداً (يدعم sync + async)."""
+        """يشغّل وكيلاً واحداً (يدعم sync + async) مع cache."""
         import asyncio
         import inspect
+
+        # ═══ CACHE GET ═══
+        try:
+            from src.orchestrator.agent_cache import get as cache_get
+            cached = cache_get(agent_name, prompt)
+            if cached:
+                return {"ok": True, "agent": agent_name, "method": "cached",
+                        "result": cached, "elapsed": 0.01}
+        except Exception:
+            pass
 
         start = time.time()
         try:
@@ -129,11 +139,20 @@ class Supervisor:
                 return {"ok": False, "agent": agent_name, "error": str(e),
                         "elapsed": round(time.time() - start, 3)}
 
+        result_str = str(result)[:2000]
+
+        # ═══ CACHE SET ═══
+        try:
+            from src.orchestrator.agent_cache import set as cache_set
+            cache_set(agent_name, prompt, result_str)
+        except Exception:
+            pass
+
         return {
             "ok": True,
             "agent": agent_name,
             "method": method,
-            "result": str(result)[:2000],
+            "result": result_str,
             "elapsed": round(time.time() - start, 3),
         }
 
