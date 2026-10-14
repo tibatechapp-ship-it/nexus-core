@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nexus Real Workbench</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif}
+  .scroll::-webkit-scrollbar{width:5px}
+  .scroll::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
+  .glass{background:rgba(30,41,59,0.6);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.05)}
+  .thinking{animation:pulse 1.5s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  .fade{animation:fade .3s}
+  @keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body class="h-screen flex overflow-hidden text-sm">
+
+<aside class="w-72 bg-slate-900 border-l border-slate-700 flex flex-col">
+  <div class="p-4 border-b border-slate-700">
+    <h1 class="text-lg font-bold text-blue-400">🏛️ Nexus Council</h1>
+    <p class="text-xs text-slate-500 mt-1">غرفة العمليات الحية</p>
+  </div>
+  <div id="history-list" class="flex-1 overflow-y-auto p-3 space-y-2 scroll">
+    <div class="text-xs text-slate-500 text-center p-4">لا توجد قرارات بعد</div>
+  </div>
+  <div class="p-3 border-t border-slate-700">
+    <a href="/api/health" target="_blank" class="text-xs text-slate-500 hover:text-blue-400">⚕️ فحص الحالة</a>
+  </div>
+</aside>
+
+<main class="flex-1 flex flex-col bg-slate-950 relative">
+  <div id="chat-area" class="flex-1 overflow-y-auto p-6 space-y-3 scroll pb-28">
+    <div class="text-center text-slate-500 mt-20">
+      <h2 class="text-xl font-bold text-slate-300 mb-2">🏛️ غرفة العمليات</h2>
+      <p class="text-xs">اطرح سؤالاً — الوكلاء سيتداولون مباشرة أمامك</p>
+      <div class="mt-6 flex flex-wrap gap-2 justify-center">
+        <button onclick="quick('هل نستخدم SQLite أم PostgreSQL؟')" class="glass px-3 py-1.5 rounded text-xs hover:border-blue-500">🗄️ SQLite vs PostgreSQL</button>
+        <button onclick="quick('هل نستخدم FastAPI أم Flask؟')" class="glass px-3 py-1.5 rounded text-xs hover:border-blue-500">⚡ FastAPI vs Flask</button>
+        <button onclick="quick('افحص ثغرات أمنية في production')" class="glass px-3 py-1.5 rounded text-xs hover:border-blue-500">🔒 فحص أمني</button>
+        <button onclick="quick('هل نستخدم Python أم Rust؟')" class="glass px-3 py-1.5 rounded text-xs hover:border-blue-500">🚀 Python vs Rust</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="absolute bottom-0 left-0 right-0 p-4 bg-slate-900/95 backdrop-blur border-t border-slate-700">
+    <form id="qform" class="flex gap-2 max-w-4xl mx-auto">
+      <input id="qinput" type="text" required placeholder="اكتب سؤالك..."
+        class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+      <button id="qbtn" type="submit" class="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white px-6 py-3 rounded-lg font-bold">إرسال 🚀</button>
+    </form>
+  </div>
+</main>
+
+<aside class="w-72 bg-slate-900 border-r border-slate-700 flex flex-col">
+  <div class="p-4 border-b border-slate-700">
+    <h3 class="font-bold text-slate-300">📊 إحصائيات المجلس</h3>
+  </div>
+  <div id="stats-panel" class="flex-1 overflow-y-auto p-4 space-y-3 scroll">
+    <div class="text-xs text-slate-500 text-center">لا توجد إحصائيات</div>
+  </div>
+  <div class="p-3 border-t border-slate-700 text-xs text-slate-500">
+    <div>v0.22.0 — SSE Live</div>
+  </div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const chat = $('chat-area');
+const form = $('qform');
+const input = $('qinput');
+const btn = $('qbtn');
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ICONS = { profiler:'🔴', analyst:'🟢', critic:'🟡', judge:'⚖️', cache:'💾' };
+
+function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
+
+function appendMessage(role, text){
+  const div = document.createElement('div');
+  div.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start') + ' fade';
+  let cls = 'bg-slate-800 text-slate-200 border-r-2 border-blue-500';
+  if(role === 'user') cls = 'bg-blue-600 text-white';
+  if(role === 'system') cls = 'bg-slate-800/70 text-slate-300 border-r-2 border-slate-500 text-xs';
+  if(role === 'error') cls = 'bg-red-900/50 text-red-200 border border-red-700';
+  div.innerHTML = `<div class="${cls} px-4 py-3 rounded-lg max-w-[85%] whitespace-pre-wrap">${esc(text)}</div>`;
+  chat.appendChild(div); scrollDown();
+}
+
+function appendPhase(label){
+  const wrap = document.createElement('div');
+  wrap.className = 'flex items-center gap-2 py-1';
+  wrap.innerHTML = `<div class="flex-1 h-px bg-slate-700"></div>
+    <span class="text-[11px] font-bold text-blue-400 tracking-wide">◆ ${esc(label || '')}</span>
+    <div class="flex-1 h-px bg-slate-700"></div>`;
+  chat.appendChild(wrap); scrollDown();
+}
+
+let lastAgentEl = null;
+
+function appendAgent(d){
+  const key = (d.actor || '').toLowerCase();
+  const name = (d.actor || '').charAt(0).toUpperCase() + (d.actor || '').slice(1);
+  const isThinking = d.text === '...' || (d.phase && d.phase.includes('thinking'));
+  const wrap = document.createElement('div');
+  wrap.className = 'w-full fade';
+  wrap.innerHTML = `
+    <div class="text-xs font-bold text-slate-400 mb-1 flex items-center gap-1">
+      ${ICONS[key] || '🤖'} ${esc(name)}
+      <span class="text-[10px] bg-slate-700 px-1.5 rounded">${esc(d.phase || '')}</span>
+    </div>
+    <div class="agent-body text-sm text-slate-200 bg-slate-800/50 p-3 rounded border border-slate-700/50 whitespace-pre-wrap ${isThinking ? 'thinking' : ''}">${esc(d.text)}</div>`;
+  chat.appendChild(wrap); scrollDown();
+  lastAgentEl = wrap;
+}
+
+function updateLastAgent(d){
+  if(!lastAgentEl) return appendAgent(d);
+  const key = (d.actor || '').toLowerCase();
+  const name = (d.actor || '').charAt(0).toUpperCase() + (d.actor || '').slice(1);
+  const body = lastAgentEl.querySelector('.agent-body');
+  if(body){ body.textContent = d.text; body.classList.remove('thinking'); }
+  scrollDown();
+}
+
+function appendVerdict(d){
+  const map = { approve:{c:'green',l:'موافقة ✅'}, reject:{c:'red',l:'رفض ❌'} };
+  const v = map[d.verdict] || {c:'yellow', l:'مراجعة بشرية ⚠️'};
+  const pct = ((Number(d.score)||0)*100).toFixed(0);
+  const wrap = document.createElement('div');
+  wrap.className = 'w-full fade';
+  wrap.innerHTML = `
+    <div class="glass p-4 rounded-lg border-r-4 border-${v.c}-500 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <span class="font-bold text-base">⚖️ القرار النهائي</span>
+        <span class="text-xs bg-slate-700 px-2 py-1 rounded text-${v.c}-400">${v.l} — ${pct}%</span>
+      </div>
+      <div class="text-xs text-slate-400 mb-3">
+        ${d.consensus ? '✅ إجماع بين الوكلاء' : '⚠️ تباين في الآراء'} 
+        ${d.rounds ? ' · ' + d.rounds + ' جولة' : ''}
+        ${d.elapsed ? ' · ⏱ ' + d.elapsed + 'ث' : ''}
+      </div>
+      <div class="flex gap-2 pt-3 border-t border-slate-700">
+        <button class="flex-1 bg-${v.c}-600 hover:bg-${v.c}-700 text-white text-xs py-2 rounded font-bold">اعتماد</button>
+        <button class="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-xs py-2 rounded">تعديل</button>
+      </div>
+    </div>`;
+  chat.appendChild(wrap); scrollDown();
+}
+
+// SSE parser يدوي (يدعم POST)
+let evType = 'message';
+let dataLines = [];
+
+function flushEvent(){
+  if(!dataLines.length){ evType = 'message'; return; }
+  const raw = dataLines.join('\n');
+  dataLines = [];
+  const t = evType; evType = 'message';
+  let data;
+  try { data = JSON.parse(raw); } catch { data = { raw }; }
+  handleEvent(t, data);
+}
+
+function processLine(line){
+  if(line.endsWith('\r')) line = line.slice(0, -1);
+  if(line === ''){ flushEvent(); return; }
+  if(line.startsWith(':')) return;
+  if(line.startsWith('event:')){ evType = line.slice(6).trim(); return; }
+  if(line.startsWith('data:')){ dataLines.push(line.slice(5).replace(/^ /, '')); return; }
+}
+
+function handleEvent(type, data){
+  if(type === 'status'){
+    const icon = { init:'⚙️', context:'🔎', council_start:'🏛️', cache:'⚡', memory:'🧠' }[data.phase] || '⚙️';
+    appendMessage('system', icon + ' ' + (data.message || ''));
+  }
+  else if(type === 'phase'){ appendPhase(data.label); }
+  else if(type === 'agent_action'){
+    if(data.text === '...' || (data.phase && data.phase.includes('thinking'))) appendAgent(data);
+    else updateLastAgent(data);
+  }
+  else if(type === 'final_verdict'){
+    appendVerdict(data);
+    setTimeout(loadHistory, 500);
+    setTimeout(loadStats, 500);
+  }
+  else if(type === 'log'){ appendMessage('system', '💾 ' + (data.message || '')); }
+  else if(type === 'error'){ appendMessage('error', '❌ ' + (data.message || '')); }
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const q = input.value.trim(); if(!q) return;
+  btn.disabled = true; btn.textContent = '⏳ جاري...';
+  chat.innerHTML = '';
+  appendMessage('user', q);
+  input.value = '';
+  lastAgentEl = null;
+  try {
+    const res = await fetch('/api/deliberate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q })
+    });
+    if(!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while(true){
+      const { done, value } = await reader.read();
+      if(done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for(const line of lines) processLine(line);
+    }
+    flushEvent();
+  } catch(err){
+    appendMessage('error', '❌ ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'إرسال 🚀';
+    input.focus();
+  }
+});
+
+function quick(t){ input.value = t; form.dispatchEvent(new Event('submit')); }
+
+async function loadHistory(){
+  try {
+    const r = await fetch('/api/history'); const items = await r.json();
+    if(!items.length) return;
+    const map = { approve:'green', reject:'red', human_review:'yellow' };
+    $('history-list').innerHTML = items.map(x => {
+      const c = map[x.verdict] || 'slate';
+      const ago = Math.floor((Date.now()/1000 - x.timestamp)/60);
+      const timeStr = ago < 60 ? ago + 'د' : Math.floor(ago/60) + 'س';
+      return `<div class="p-2 bg-slate-800 rounded hover:bg-slate-700 cursor-pointer border-r-2 border-${c}-500">
+        <div class="text-xs text-slate-300 line-clamp-2">${esc(x.query || '(بدون)')}</div>
+        <div class="flex justify-between mt-1 text-[10px]">
+          <span class="text-${c}-400">${esc(x.verdict || '')}</span>
+          <span class="text-slate-500">${timeStr}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e){}
+}
+
+async function loadStats(){
+  try {
+    const r = await fetch('/api/stats'); const s = await r.json();
+    if(!s.total) return;
+    const bv = s.by_verdict || {};
+    $('stats-panel').innerHTML = `
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="glass p-3 rounded"><div class="text-2xl font-bold text-blue-400">${s.total}</div><div class="text-[10px] text-slate-400">إجمالي</div></div>
+        <div class="glass p-3 rounded"><div class="text-2xl font-bold text-green-400">${((s.avg_score||0)*100).toFixed(0)}%</div><div class="text-[10px] text-slate-400">متوسط</div></div>
+        <div class="glass p-3 rounded"><div class="text-2xl font-bold text-green-400">${bv.approve||0}</div><div class="text-[10px] text-slate-400">موافقة</div></div>
+        <div class="glass p-3 rounded"><div class="text-2xl font-bold text-red-400">${bv.reject||0}</div><div class="text-[10px] text-slate-400">رفض</div></div>
+      </div>
+      <div class="glass p-3 rounded mt-3"><div class="text-[10px] text-slate-400 mb-1">مراجعة بشرية</div><div class="text-xl font-bold text-yellow-400">${bv.human_review||0}</div></div>`;
+  } catch(e){}
+}
+
+loadHistory();
+loadStats();
+</script>
+</body>
+</html>

@@ -80,38 +80,54 @@ class CouncilEngine:
             return f"[إجابة محجوبة: {out_v.reason}]"
         return text
 
-    def deliberate(self, question, context=""):
+    def deliberate(self, question, context="", on_event=None):
+        """مداولة كاملة — مع بث لحظي اختياري: on_event(event, payload)."""
         start = time.time()
         transcript = []
-        # المرحلة 1: تحليل مستقل
+
+        def _emit(event, payload):
+            if on_event:
+                try:
+                    on_event(event, payload)
+                except Exception:
+                    pass
+
         self.isolation.prepare(self.members, question)
+        _emit("phase", {"name": "independent", "label": "المرحلة 1: تحليل مستقل"})
         for member in self.members:
-            import time as _t
-            _t.sleep(0.3)
+            import time as _t; _t.sleep(0.3)
             ctx = self.isolation.get_context(member.name)
             response = self._call_llm(member, prompt=question,
-                                       context=f"{context}\n\n{ctx}" if context else ctx)
+                                      context=(context + "\n\n" + ctx) if context else ctx)
             self.isolation.commit(member.name, response)
             transcript.append({"phase": "independent", "member": member.name, "response": response})
-        # المرحلة 2: نقاش
+            _emit("agent_action", {"actor": member.name, "phase": "independent", "text": response})
+
         current_round = 0
         for round_num in range(self.MAX_ROUNDS):
             current_round = round_num + 1
+            _emit("phase", {"name": "debate_" + str(current_round),
+                            "label": "جولة النقاش " + str(current_round)})
             all_resp = self.isolation.reveal_for_debate()
-            debate_ctx = "\n\n".join(f"[{n}]: {r}" for n, r in all_resp.items())
+            debate_ctx = "\n\n".join("[" + n + "]: " + r for n, r in all_resp.items())
             new_resp = {}
             for member in self.members:
                 resp = self._call_llm(member,
-                    prompt=f"راجع حجج الآخرين وردّ عليها:\n\n{debate_ctx}\n\nقدّم: نقاط الاتفاق، الاختلاف، الردّ.",
-                    context=f"السؤال: {question}")
+                    prompt="راجع حجج الآخرين:\n\n" + debate_ctx + "\n\nقدّم ملاحظاتك.",
+                    context="السؤال: " + question)
                 new_resp[member.name] = resp
-                transcript.append({"phase": f"debate_{round_num+1}", "member": member.name, "response": resp})
+                transcript.append({"phase": "debate_" + str(round_num+1),
+                                   "member": member.name, "response": resp})
+                _emit("agent_action", {"actor": member.name,
+                                       "phase": "debate_" + str(round_num+1), "text": resp})
             if self._consensus(new_resp):
                 break
-        # المرحلة 3: الحكم (كود)
+
+        _emit("phase", {"name": "judging", "label": "المرحلة النهائية: الحكم"})
         verdict, score = self._judge(transcript)
         return CouncilResult(
-            verdict=verdict, score=score, consensus=(score >= JUDGE_CONFIG["thresholds"]["approve"]),
+            verdict=verdict, score=score,
+            consensus=(score >= JUDGE_CONFIG["thresholds"]["approve"]),
             rounds=current_round, transcript=transcript,
             elapsed=time.time() - start, security_events=self.security_log,
         )

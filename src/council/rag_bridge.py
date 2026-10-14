@@ -87,6 +87,79 @@ class CouncilRAGBridge:
         return result
 
 
+
+    def deliberate_streaming(self, question, on_event, context="", use_cache=True):
+        """نسخة بث حي: تستدعي on_event(event, payload) لحظة إنتاج كل مداخلة."""
+
+        def emit(event, payload):
+            try:
+                on_event(event, payload)
+            except Exception:
+                pass
+
+        original_context_empty = not context
+
+        # CACHE GET
+        if use_cache and original_context_empty:
+            try:
+                from src.council.cache import get_cache
+                cached = get_cache().get(question)
+                if cached:
+                    emit("status", {"phase": "cache",
+                         "message": "نتيجة من الذاكرة المؤقتة (hits=" + str(getattr(cached, 'hits', '?')) + ")"})
+                    emit("agent_action", {"actor": "cache", "phase": "cached",
+                         "text": cached.transcript_summary})
+                    return CouncilResult(
+                        verdict=cached.verdict, score=cached.score,
+                        consensus=cached.score >= 0.7, rounds=cached.rounds,
+                        transcript=[{"phase": "cached", "member": "cache",
+                                     "response": cached.transcript_summary}],
+                        elapsed=0.05, security_events=[],
+                    )
+            except Exception:
+                pass
+
+        # RAG
+        try:
+            docs = self.rag.recall(question, k=5)
+            if docs:
+                mem_ctx = "\n".join("  • [" + d.id + "] " + d.text for d in docs)
+                context = context + "\n\n--- ذاكرة ---\n" + mem_ctx
+                emit("status", {"phase": "memory", "message": "ذاكرة: " + str(len(docs)) + " وثيقة ذات صلة"})
+        except Exception:
+            pass
+
+        # DELIBERATE (بث حي)
+        result = self.engine.deliberate(question, context, on_event=emit)
+
+        # SAVE TO RAG
+        try:
+            if result.verdict == "approve":
+                self.rag.remember("[Council APPROVED] " + question[:100])
+            elif result.verdict == "reject":
+                self.rag.remember("[Council REJECTED] " + question[:100])
+        except Exception:
+            pass
+
+        # SAVE HISTORY (مرة واحدة فقط)
+        try:
+            from src.council.history import get_history
+            rec_id = get_history().save(result, category="web_ui")
+            result._record_id = rec_id
+            emit("log", {"message": "تم الحفظ في السجل: " + rec_id})
+        except Exception:
+            pass
+
+        # CACHE SET
+        if use_cache and original_context_empty:
+            try:
+                from src.council.cache import get_cache
+                get_cache().set(question, result)
+            except Exception:
+                pass
+
+        return result
+
 _bridge = None
 
 def get_council_bridge():
