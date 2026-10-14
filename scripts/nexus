@@ -1,0 +1,60 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nexus — Unified CLI for 79-agent system
+export NOVAMIND_HOME=~/nexus-core
+export PYTHONPATH=src:$PYTHONPATH
+cd ~/nexus-core
+
+case "$1" in
+  list)
+    python3 -c "
+from nova.registry import REGISTRY, agents_by_category
+for cat in ['code', 'security', 'quality', 'infra', 'data', 'ui', 'research', 'meta']:
+    agents = agents_by_category(cat)
+    print(f'\n📁 {cat.upper()} ({len(agents)}):')
+    for a in agents: print(f'   • {a}')
+"
+    ;;
+  stats)
+    python3 -c "
+from nova.registry import REGISTRY
+import json
+print(json.dumps(REGISTRY.stats(), indent=2, ensure_ascii=False))
+"
+    ;;
+  run)
+    shift
+    python3 -c "
+import sys
+from nova.registry import REGISTRY
+agent_name = sys.argv[1]
+prompt = ' '.join(sys.argv[2:])
+agent = REGISTRY.load_agent(agent_name)
+method = 'build' if hasattr(agent, 'build') else 'run' if hasattr(agent, 'run') else None
+if not method:
+    print(f'❌ لا توجد طريقة قابلة للتنفيذ')
+    sys.exit(1)
+result = getattr(agent, method)(prompt)
+print(result)
+" "$@"
+    ;;
+  core)
+    python3 -c "
+from nova.registry import REGISTRY
+for n in REGISTRY.list_core():
+    spec = REGISTRY.get(n)
+    print(f'  {n:25} | {spec.category.value:10}')
+"
+    ;;
+  *)
+    echo "nexus — Unified CLI (79 agents)"
+    echo ""
+    echo "الأوامر:"
+    echo "  nexus list       عرض كل الوكلاء"
+    echo "  nexus stats      إحصائيات"
+    echo "  nexus core       الوكلاء الأساسيون"
+    echo "  nexus run NAME PROMPT"
+    echo ""
+    echo "مثال:"
+    echo "  nexus run coder 'اكتب دالة Python'"
+    ;;
+esac

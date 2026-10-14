@@ -1,0 +1,70 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nexus-offline — يعمل بدون إنترنت
+export NOVAMIND_HOME=~/nexus-core
+export PYTHONPATH=src:$PYTHONPATH
+export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+export NEXUS_AGENT="$1"
+export NEXUS_PROMPT="${@:2}"
+cd ~/nexus-core
+
+python3 << 'PYEOF'
+import os
+import sys
+sys.path.insert(0, 'src')
+
+# ═══ استبدال كامل لدالة generate ═══
+from novamind.core.llm_router import LLMRouter
+
+def mock_generate(self, prompt, system="", **kwargs):
+    return {
+        "ok": True,
+        "text": f"""# كود Python وهمي (اختبار offline)
+# الطلب: {prompt[:100]}
+
+def hello():
+    print("مرحباً من nexus-core!")
+    return 42
+""",
+        "provider": "mock",
+        "model": "mock",
+        "elapsed": 0.01,
+    }
+
+def mock_generate_for_task(self, task_type, prompt, system="", **kwargs):
+    return mock_generate(self, prompt, system, **kwargs)
+
+LLMRouter.generate = mock_generate
+LLMRouter.generate_for_task = mock_generate_for_task
+LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
+LLMRouter._cooldown_provider = lambda self, name, seconds=300: None
+LLMRouter._is_cooled_down = lambda self, name: True
+
+# ═══ تشغيل الوكيل ═══
+from nova.registry import REGISTRY
+
+agent_name = os.environ.get("NEXUS_AGENT", "")
+prompt = os.environ.get("NEXUS_PROMPT", "اختبار")
+
+if not agent_name:
+    print("الاستخدام: nexus-offline NAME [PROMPT]")
+    sys.exit(1)
+
+try:
+    agent = REGISTRY.load_agent(agent_name)
+    method = 'build' if hasattr(agent, 'build') else 'run' if hasattr(agent, 'run') else None
+    if not method:
+        print(f"❌ الوكيل {agent_name} لا يملك طريقة قابلة للتنفيذ")
+        sys.exit(1)
+    
+    print(f"🤖 تشغيل {agent_name}...")
+    print(f"📝 الطلب: {prompt[:80]}")
+    print("─" * 60)
+    result = getattr(agent, method)(prompt)
+    print(str(result)[:1500])
+    print("─" * 60)
+    print("✅ اكتمل")
+except Exception as e:
+    print(f"❌ {type(e).__name__}: {e}")
+    import traceback
+    traceback.print_exc()
+PYEOF
