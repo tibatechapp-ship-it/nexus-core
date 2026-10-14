@@ -114,14 +114,7 @@ class CouncilRAGBridge:
         result = self.engine.deliberate(question, aug_context)
 
         # ═══ SAVE TO RAG ═══
-        try:
-            v = str(result.verdict or "unknown").upper()
-            s = float(result.score or 0)
-            consensus = " | consensus" if getattr(result, "consensus", False) else ""
-            summary = "[Council %s | score=%.0f%%%s] %s" % (v, s*100, consensus, question[:150])
-            self.rag.remember(summary)
-        except Exception:
-            pass
+        # (RAG write removed — single source is history.save, v1.7.0)
 
         # ═══ SAVE HISTORY ═══
         try:
@@ -207,13 +200,7 @@ class CouncilRAGBridge:
         result = self.engine.deliberate(question, context, on_event=emit)
 
         # SAVE TO RAG
-        try:
-            if result.verdict == "approve":
-                self.rag.remember("[Council APPROVED] " + question[:100])
-            elif result.verdict == "reject":
-                self.rag.remember("[Council REJECTED] " + question[:100])
-        except Exception:
-            pass
+        # (RAG write removed — single source is history.save, v1.7.0)
 
         # SAVE HISTORY (مرة واحدة فقط)
         try:

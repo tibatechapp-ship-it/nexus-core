@@ -57,11 +57,14 @@ class CouncilHistory:
         except Exception as e:
             print("[History] خطأ الحفظ: " + str(e))
 
-        # RAG summary
+        # RAG summary — single source of truth, rich format (v1.7.0)
         rag = self._get_rag()
         if rag:
-            q_preview = (record["query"] or "")[:80]
-            summary = "[Council " + record["verdict"].upper() + "] " + q_preview + " score=" + str(round(record["score"], 2))
+            v = str(record["verdict"] or "unknown").upper()
+            s = float(record.get("score", 0) or 0)
+            consensus = " | consensus" if record.get("consensus") else ""
+            q_preview = (record["query"] or "")[:150]
+            summary = "[Council %s | score=%.0f%%%s] %s" % (v, s * 100, consensus, q_preview)
             try:
                 rag.remember(summary, doc_id=rec_id)
             except Exception:
