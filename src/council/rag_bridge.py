@@ -67,15 +67,48 @@ class CouncilRAGBridge:
         except Exception as e:
             print("RAG ERROR: " + str(e))
 
+        # RECALL PAST SIMILAR DECISIONS (v1.5.3)
+        past_hint = ""
+        try:
+            from src.council.history import get_history
+            def _fld(rec, name, default=None):
+                if isinstance(rec, dict):
+                    return rec.get(name, default)
+                return getattr(rec, name, default)
+            recent = get_history().list_recent(n=30) or []
+            q_words = set(question.lower().split())
+            scored = []
+            for rec in recent:
+                rq = (_fld(rec, "query", "") or "").lower()
+                if not rq:
+                    continue
+                overlap = len(q_words & set(rq.split()))
+                if overlap >= 2:
+                    scored.append((overlap, rec))
+            scored.sort(key=lambda x: -x[0])
+            top = scored[:3]
+            if top:
+                lines = ["== similar past decisions =="]
+                for _, rec in top:
+                    v = str(_fld(rec, "verdict", "?") or "?").upper()
+                    s = float(_fld(rec, "score", 0) or 0)
+                    rq = (_fld(rec, "query", "") or "")[:100]
+                    lines.append("- %s (%.0f%%): %s" % (v, s*100, rq))
+                past_hint = "\n".join(lines)
+        except Exception:
+            pass
+
+        aug_context = (context + "\n\n" + past_hint).strip() if past_hint else context
         # ═══ DELIBERATE ═══
-        result = self.engine.deliberate(question, context)
+        result = self.engine.deliberate(question, aug_context)
 
         # ═══ SAVE TO RAG ═══
         try:
-            if result.verdict == "approve":
-                self.rag.remember("[Council APPROVED] " + question[:100])
-            elif result.verdict == "reject":
-                self.rag.remember("[Council REJECTED] " + question[:100])
+            v = str(result.verdict or "unknown").upper()
+            s = float(result.score or 0)
+            consensus = " | consensus" if getattr(result, "consensus", False) else ""
+            summary = "[Council %s | score=%.0f%%%s] %s" % (v, s*100, consensus, question[:150])
+            self.rag.remember(summary)
         except Exception:
             pass
 
