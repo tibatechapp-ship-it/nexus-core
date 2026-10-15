@@ -1,6 +1,6 @@
 import os, sys, json, threading, asyncio
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -244,10 +244,18 @@ def api_build_detail(build_id: str):
 
 
 @app.get("/api/history")
-async def api_history():
+async def api_history(q: str = "", limit: int = 10):
+    """آخر القرارات — أو بحث نصّي عند تمرير ``q`` (v1.11)."""
+    try:
+        limit = max(1, min(int(limit or 10), 200))
+    except (TypeError, ValueError):
+        limit = 10
     try:
         from src.council.history import get_history
-        return get_history().list_recent(10)
+        h = get_history()
+        if (q or "").strip():
+            return h.search(q.strip(), limit)
+        return h.list_recent(limit)
     except Exception as e:
         return {"error": str(e), "items": []}
 
@@ -277,6 +285,83 @@ async def api_stats():
         return get_history().stats()
     except Exception as e:
         return {"total": 0, "error": str(e)}
+
+
+# ═══ PWA assets (v1.11) — تُخدَم من هنا مباشرة، بلا ملفات خارجية ═══
+_MANIFEST = {
+    "name": "Nexus Council Console",
+    "short_name": "Nexus",
+    "description": "منصة مداولة الوكلاء الحيّة",
+    "lang": "ar",
+    "dir": "rtl",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#0a0e14",
+    "theme_color": "#0a0e14",
+    "icons": [
+        {"src": "/icon.svg", "sizes": "any",
+         "type": "image/svg+xml", "purpose": "any"},
+        {"src": "/icon.svg", "sizes": "any",
+         "type": "image/svg+xml", "purpose": "maskable"},
+    ],
+}
+
+_SW_JS = """// Nexus Console service worker (v1.11)
+const CACHE = 'nexus-console-v1.11';
+const SHELL = ['/', '/icon.svg', '/manifest.json'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys()
+    .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;      // لا تخزّن الـ API (SSE حيّ)
+  e.respondWith(
+    fetch(req).then(res => {
+      if (res && res.status === 200 && res.type === 'basic') {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match(req).then(hit => hit || caches.match('/')))
+  );
+});
+"""
+
+_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<rect width="128" height="128" rx="24" fill="#0a0e14"/>
+<path d="M64 40 L40 82 M64 40 L88 82 M40 82 L88 82" stroke="#21262d" stroke-width="4"/>
+<circle cx="64" cy="40" r="13" fill="#58a6ff"/>
+<circle cx="40" cy="82" r="13" fill="#3fb950"/>
+<circle cx="88" cy="82" r="13" fill="#d29922"/>
+</svg>
+"""
+
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    return Response(content=json.dumps(_MANIFEST, ensure_ascii=False),
+                    media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def pwa_service_worker():
+    return Response(content=_SW_JS, media_type="application/javascript",
+                    headers={"Service-Worker-Allowed": "/"})
+
+
+@app.get("/icon.svg")
+async def pwa_icon():
+    return Response(content=_ICON_SVG, media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 if __name__ == "__main__":

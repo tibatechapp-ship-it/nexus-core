@@ -2,6 +2,37 @@
 
 All notable changes to this project. Newest first.
 
+## v1.11.0 — 2026-10-15
+**Voice & modern UX (workbench console).**
+- **Server (`main.py`):**
+  - `/api/history` accepts `q` (text search) and `limit` (1–200). Empty `q`
+    keeps the previous "recent" behaviour. Backed by a new
+    `CouncilHistory.search()` (`src/council/history.py`) — case-insensitive
+    match over query/reasoning/topic/category, newest-first.
+  - **PWA routes**, served inline (no extra files): `/manifest.json`,
+    `/sw.js` (network-first for the shell, never caches `/api/*` so SSE stays
+    live), `/icon.svg` (theme-coloured council glyph).
+- **Console (`index.html`) — non-invasive v1.11 module** injected as a second
+  `<script>`; it **wraps** the existing `handleEvent` / `deliberate` /
+  `command` functions (all top-level `function` declarations → present on
+  `window`) and never edits the originals. If a wrap fails it emits a yellow
+  warning instead of breaking the console.
+  - 🎤 **Voice input** (Web Speech API `ar-SA`) → fills the query / runs the command.
+  - 🗣 **Voice output** — on a verdict, speaks the result + recommendation.
+  - 🔊 **Generated sound effects** (Web Audio, no audio files) for
+    verdict/error/tick; toggleable.
+  - 🔎 **`/search`**, ⤴ **share** (Web Share API → clipboard fallback),
+    ⬇ **`/export`** (downloads the console transcript).
+  - New commands: `/voice on|off`, `/say نص`, `/search كلمة`, `/share`,
+    `/export`, `/nx`. Settings persist in `localStorage` (`nx_*`).
+  - Registers the service worker + injects the manifest/theme-color on load.
+- Version single-source aligned to **1.11.0** (`pyproject.toml` +
+  `src/__init__.py`; `/api/health` reads it live).
+- Verified: `py_compile` clean, `/manifest.json` `/sw.js` `/icon.svg` →
+  HTTP 200, `/api/history?q=…&limit=…` (Arabic + English + no-match) correct,
+  headless Chromium renders the `✦ v1.11` banner with **no wrap warning** and
+  the service worker registered; `tests/council` 93 passed.
+
 ## v1.10.1 — 2026-10-15
 **Hygiene + suite repair (reported from a v1.10.0 review).**
 - Recommendation filter: **verdict words** (`آمن/امن/غير آمن/خطر/مقبول/مرفوض/محايد`)

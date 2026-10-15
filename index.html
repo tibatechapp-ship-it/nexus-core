@@ -356,5 +356,285 @@ out.addEventListener('click', e => {
   if (t) { line('<span class="p1">nexus❯</span> /show ' + esc(t.dataset.id), 'cmd'); command('show ' + t.dataset.id); }
 });
 </script>
+<script>
+/* v1.11 features module — صوت · أصول صوتية · بحث · مشاركة · تصدير · PWA
+   غير متطفّل: يلفّ handleEvent/deliberate/command القائمة بدل تعديلها. */
+(function(){
+  'use strict';
+  const V = 'v1.11';
+  const nxLine = (typeof line === 'function') ? line
+    : (h, c) => { const d = document.createElement('div'); d.className = 'ln ' + (c || '');
+                  d.innerHTML = h; document.getElementById('out').appendChild(d); };
+  const nxEsc = (typeof esc === 'function') ? esc
+    : (s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+
+  // ── الإعدادات (localStorage nx_*) ─────────────────────────────
+  const nxGet = (k, d) => { try { const v = localStorage.getItem('nx_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+  const nxSet = (k, v) => { try { localStorage.setItem('nx_' + k, JSON.stringify(v)); } catch (e) {} };
+  let soundOn = nxGet('sound', true);
+  let ttsOn = nxGet('tts', false);
+
+  // ── أصول صوتية مولّدة (Web Audio — بلا ملفات) ───────────────────
+  let actx = null;
+  function getAudio(){
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    return actx;
+  }
+  function beep(kind){
+    if (!soundOn) return;
+    const a = getAudio(); if (!a) return;
+    if (a.state === 'suspended') { try { a.resume(); } catch (e) {} }
+    const map = { ok:[660,880], warn:[440,330], err:[240,150], tick:[520,520] };
+    const f = map[kind] || map.tick;
+    const t0 = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f[0], t0);
+    o.frequency.exponentialRampToValueAtTime(f[1], t0 + 0.12);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o.connect(g).connect(a.destination);
+    o.start(t0); o.stop(t0 + 0.2);
+  }
+
+  // ── قراءة صوتية (TTS) ─────────────────────────────────────────
+  const HAS_TTS = 'speechSynthesis' in window;
+  function pickArVoice(){
+    if (!HAS_TTS) return null;
+    const vs = speechSynthesis.getVoices() || [];
+    return vs.find(x => /^ar/i.test(x.lang)) || null;
+  }
+  function speak(text){
+    if (!ttsOn || !text || !HAS_TTS) return;
+    try {
+      const u = new SpeechSynthesisUtterance(String(text).slice(0, 400));
+      const v = pickArVoice();
+      if (v) u.voice = v;
+      u.lang = (v && v.lang) || 'ar-SA';
+      u.rate = 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  if (HAS_TTS && 'onvoiceschanged' in speechSynthesis) {
+    speechSynthesis.onvoiceschanged = function(){ /* primed */ };
+  }
+
+  // ── إدخال صوتي (STT) ──────────────────────────────────────────
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false;
+  function toggleMic(){
+    if (!SR) { nxLine('[!] المتصفح لا يدعم الإدخال الصوتي (Web Speech API)', 'warn'); return; }
+    if (listening) { try { rec && rec.stop(); } catch (e) {} return; }
+    rec = new SR();
+    rec.lang = nxGet('sttLang', 'ar-SA');
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onstart = function(){ listening = true; nxToolbar(); nxLine('[🎤] استمع… تحدّث الآن', 'dim'); };
+    rec.onerror = function(ev){ listening = false; nxToolbar(); beep('err'); nxLine('[!] خطأ صوتي: ' + nxEsc(ev.error || '?'), 'err'); };
+    rec.onend = function(){ listening = false; nxToolbar(); };
+    rec.onresult = function(ev){
+      const r0 = ev.results && ev.results[0];
+      const txt = ((r0 && r0[0] && r0[0].transcript) || '').trim();
+      if (!txt) return;
+      if (txt.charAt(0) === '/' && typeof window.command === 'function') {
+        nxLine('<span class="p1">nexus❯</span> ' + nxEsc(txt), 'cmd');
+        window.command(txt);
+      } else {
+        nxLine('<span class="p1">nexus❯</span> ' + nxEsc(txt) + ' <span class="dim">(صوتي)</span>', 'cmd');
+        window.deliberate(txt, false);
+      }
+    };
+    try { rec.start(); } catch (e) { nxLine('[!] ' + nxEsc(e.message), 'err'); }
+  }
+
+  // ── بحث في السجل ──────────────────────────────────────────────
+  async function nxSearch(q){
+    if (!q) { const a = window.prompt('ابحث في السجل:'); if (!a) return; q = a; }
+    sep('بحث: ' + q);
+    try {
+      const r = await fetch('/api/history?q=' + encodeURIComponent(q) + '&limit=20');
+      const j = await r.json();
+      const arr = Array.isArray(j) ? j : (j.items || []);
+      if (!arr.length) { nxLine('لا نتائج.', 'dim'); return; }
+      arr.forEach(function(x){
+        const c = x.verdict === 'approve' ? 'ok' : x.verdict === 'reject' ? 'err' : 'warn';
+        nxLine('<span class="' + c + '">[' + nxEsc(x.verdict) + ']</span> ' +
+          Math.round((x.score || 0) * 100) + '% — ' +
+          '<span class="cmdlink" data-id="' + nxEsc(x.id) + '">' +
+          nxEsc((x.query || '').slice(0, 70)) + '</span>');
+      });
+    } catch (e) { nxLine('[!] ' + nxEsc(e.message), 'err'); }
+  }
+
+  // ── مشاركة ────────────────────────────────────────────────────
+  async function nxShare(){
+    const text = (document.getElementById('out').innerText || '').trim().slice(-2000);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title:'Nexus Council', text: text || 'Nexus Council Console', url: location.href });
+        nxLine('[↗] تمّت المشاركة', 'ok'); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(text); nxLine('[↗] نُسخ النص إلى الحافظة', 'ok'); }
+    catch (e) { nxLine('[!] تعذّرت المشاركة/النسخ', 'warn'); }
+  }
+
+  // ── تصدير ─────────────────────────────────────────────────────
+  function nxExport(){
+    const text = document.getElementById('out').innerText || '';
+    const blob = new Blob([text], { type:'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'nexus-console-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    nxLine('[⬇] تم تنزيل السجل', 'ok');
+  }
+
+  // ── شريط الأدوات ──────────────────────────────────────────────
+  function nxToolbar(){
+    let bar = document.getElementById('nx-tools');
+    if (!bar) {
+      const st = document.createElement('style');
+      st.textContent =
+        '#nx-tools{position:fixed;left:8px;bottom:64px;display:flex;gap:6px;z-index:50;flex-wrap:wrap;max-width:60vw}' +
+        '#nx-tools button{all:unset;cursor:pointer;font:12px ui-monospace,Menlo,monospace;color:var(--fg);' +
+        'background:var(--bar);border:1px solid var(--brd);border-radius:6px;padding:4px 8px;line-height:1}' +
+        '#nx-tools button:hover{border-color:var(--blue);color:var(--blue)}' +
+        '#nx-tools button.on{border-color:var(--green);color:var(--green)}' +
+        '#nx-tools button.live{border-color:var(--red);color:var(--red);animation:bl 1s steps(1) infinite}';
+      document.head.appendChild(st);
+      bar = document.createElement('div');
+      bar.id = 'nx-tools'; bar.dir = 'rtl';
+      document.body.appendChild(bar);
+    }
+    bar.innerHTML = '';
+    const mk = function(label, title, cls, fn){
+      const b = document.createElement('button');
+      b.textContent = label; if (title) b.title = title;
+      if (cls) b.className = cls;
+      b.addEventListener('click', fn);
+      bar.appendChild(b); return b;
+    };
+    mk(listening ? '● mic' : '🎤', 'إدخال صوتي', listening ? 'live' : '', toggleMic);
+    mk(soundOn ? '🔊' : '🔇', 'أصوات الواجهة', soundOn ? 'on' : '', function(){
+      soundOn = !soundOn; nxSet('sound', soundOn); beep('tick'); nxToolbar();
+    });
+    mk(ttsOn ? '🗣 on' : '🗣', 'القراءة الصوتية', ttsOn ? 'on' : '', function(){
+      ttsOn = !ttsOn; nxSet('tts', ttsOn); nxToolbar();
+      nxLine('[🔊] القراءة الصوتية: ' + (ttsOn ? 'مفعّلة' : 'موقوفة'), 'ok');
+      if (ttsOn) speak('القراءة الصوتية مفعّلة');
+    });
+    mk('🔎', 'بحث في السجل', '', function(){ nxSearch(); });
+    mk('⤴', 'مشاركة', '', nxShare);
+    mk('⬇', 'تصدير السجل', '', nxExport);
+    mk('✦ ' + V, 'Nexus Console ' + V, 'on', function(){
+      nxLine('✦ ' + V + ' — /voice on|off · /say نص · /search كلمة · /share · /export', 'dim');
+    });
+  }
+
+  // ── لفّ دوال النواة (غير متطفّل) ──────────────────────────────
+  const wrapped = { handleEvent:false, deliberate:false, command:false };
+  function nxWrap(){
+    const doWrap = function(name, make){
+      const orig = window[name];
+      if (typeof orig !== 'function') {
+        nxLine('[warn] تعذّر لفّ الدالة ' + name + ' — الخاصية غير موجودة على window', 'warn');
+        return false;
+      }
+      window[name] = make(orig);
+      return true;
+    };
+    wrapped.handleEvent = doWrap('handleEvent', function(orig){
+      return function(type, data){
+        orig.call(this, type, data);
+        try {
+          if (type === 'final_verdict') {
+            const v = (data && data.verdict) || '';
+            beep(v === 'approve' ? 'ok' : v === 'reject' ? 'err' : 'warn');
+            if (ttsOn) {
+              const word = v === 'approve' ? 'موافقة' : v === 'reject' ? 'رفض' : 'مراجعة';
+              speak(word + ' ' + Math.round(((data && data.score) || 0) * 100) + ' بالمئة' +
+                    (data && data.recommendation ? '. ' + data.recommendation : ''));
+            }
+          } else if (type === 'error') { beep('err'); }
+        } catch (e) {}
+      };
+    });
+    wrapped.deliberate = doWrap('deliberate', function(orig){
+      return async function(){
+        beep('tick');
+        try { return await orig.apply(this, arguments); }
+        finally { nxToolbar(); }
+      };
+    });
+    wrapped.command = doWrap('command', function(orig){
+      return async function(raw){
+        const s = String(raw || '').replace(/^\//, '').trim();
+        const parts = s.split(/\s+/);
+        const cmd = (parts[0] || '').toLowerCase();
+        const arg = parts.slice(1).join(' ').trim();
+        if (cmd === 'voice' || cmd === 'صوت') {
+          const a = arg.toLowerCase();
+          ttsOn = a === 'on' ? true : a === 'off' ? false : !ttsOn;
+          nxSet('tts', ttsOn); nxToolbar();
+          nxLine('[🔊] القراءة الصوتية: ' + (ttsOn ? 'مفعّلة' : 'موقوفة'), 'ok'); return;
+        }
+        if (cmd === 'say' || cmd === 'قل') {
+          const t = arg || 'مرحباً من نكسس';
+          ttsOn = true; nxSet('tts', ttsOn); speak(t); nxToolbar();
+          nxLine('[🗣] ' + nxEsc(t), 'ok'); return;
+        }
+        if (cmd === 'search' || cmd === 'ابحث') { await nxSearch(arg); return; }
+        if (cmd === 'share' || cmd === 'شارك') { await nxShare(); return; }
+        if (cmd === 'export' || cmd === 'صدّر') { nxExport(); return; }
+        if (cmd === 'nx') {
+          nxLine('✦ ' + V + ' — /voice on|off · /say نص · /search كلمة · /share · /export', 'dim'); return;
+        }
+        return orig.apply(this, arguments);
+      };
+    });
+  }
+
+  // ── PWA ───────────────────────────────────────────────────────
+  function nxPWA(){
+    try {
+      if (!document.querySelector('link[rel="manifest"]')) {
+        const l = document.createElement('link');
+        l.rel = 'manifest'; l.href = '/manifest.json';
+        document.head.appendChild(l);
+      }
+      if (!document.querySelector('meta[name="theme-color"]')) {
+        const m = document.createElement('meta');
+        m.name = 'theme-color'; m.content = '#0a0e14';
+        document.head.appendChild(m);
+      }
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(function(){ nxLine('[✓] PWA: service worker مسجّل', 'ok'); })
+          .catch(function(e){ nxLine('[warn] PWA: فشل تسجيل SW — ' + nxEsc(e && e.message || e), 'warn'); });
+      } else {
+        nxLine('[warn] PWA: المتصفح لا يدعم service worker', 'warn');
+      }
+    } catch (e) { nxLine('[warn] PWA: ' + nxEsc(e && e.message || e), 'warn'); }
+  }
+
+  // ── إقلاع ─────────────────────────────────────────────────────
+  try {
+    nxPWA();
+    nxWrap();
+    nxToolbar();
+    nxLine('✦ ' + V + ' — صوت · أصول · بحث · مشاركة · PWA  <span class="dim">(/nx للمساعدة)</span>', 'c-cyan');
+    if (!(wrapped.handleEvent && wrapped.deliberate && wrapped.command)) {
+      nxLine('[warn] بعض دوال النواة لم تُلفّ — أرسل أول 10 أسطر من آخر &lt;script&gt; للتحقّق', 'warn');
+    }
+  } catch (e) {
+    try { nxLine('[warn] فشل تحميل وحدة ' + V + ': ' + nxEsc(e && e.message || e), 'warn'); } catch (_) {}
+  }
+})();
+</script>
 </body>
 </html>

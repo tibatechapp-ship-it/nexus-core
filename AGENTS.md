@@ -509,3 +509,51 @@ Analyst / Critic) using Groq via `novamind.core.llm_router`.
 - council tests: `pytest tests/council/ -q` (53).
 - NOTE: a live `/api/deliberate` is slow (real Groq calls, 4-15s+); a full
   A/B run can take minutes.
+
+### v1.10.1 (2026-10-15) — hygiene + SUITE REPAIR (commit ebba9b4, tag v1.10.1)
+Pushed to BOTH remotes (origin=feature/landing-page, gitlab=feature/landing-page).
+Suite went from NOT COLLECTING (8 red) → **1965 passed / 2 failed**. Two REAL
+pre-existing bugs found + fixed (the earlier "1731 pass" claim was only true
+while fastapi was NOT installed → see below):
+1. CONFTEST SHADOWING: `tests/__init__.py` exists → `tests/conftest.py` imports
+   as `tests.conftest`, but `tests/novamind/conftest.py` (no __init__) imports as
+   top-level `conftest`. `tests/test_zyvo_{telegram,voice}.py` did
+   `from conftest import ...` → resolved to novamind's conftest → ImportError
+   aborted ALL collection. FIX: `from tests.conftest import ...`.
+   ROOT TRIGGER: installing fastapi (needed by main.py) un-skipped the novamind
+   tree (its conftest does importorskip on fastapi), exposing the shadowing.
+2. `sys.modules['main']` COLLISION: the novamind suite inserts `src/novamind`
+   onto sys.path, so `tests/test_build_api.py`'s bare `import main` grabbed
+   `src/novamind/main.py` (no `app`) → all 6 builder-API tests errored in the
+   full run but passed alone. FIX: load repo-root main.py via
+   `importlib.util.spec_from_file_location` (order-independent). Lesson: never
+   bare-`import main` in this repo — the name is taken by novamind.
+- VERSION SINGLE-SOURCE: `/api/health` now returns `version` read live from
+  `pyproject.toml` (verified: reports 1.10.1 without restart); `index.html`
+  header renders `h.version`. `pyproject.toml` + `src/__init__.py` aligned to
+  1.10.1. The MCP framework server reads `src.__version__` and
+  `tests/test_mcp_framework.py` had it PINNED to "1.5.0" → now asserts
+  `== src.__version__`.
+- REC FILTER (v1.10.1): `src/council/recommend.py` gained `_VERDICT_WORDS` =
+  (آمن, امن, غير آمن, خطر, مقبول, مرفوض, محايد) rejected via `startswith` (not
+  `in`, so نعم/لا and "سلامة" survive). The reviewed patch targeted `main.py`,
+  but v1.9.2 moved this logic to recommend.py — always check the file, not the
+  plan. Live exec test ("اكتب دالة تحقق من قوة كلمة المرور") → recommendation
+  "كتابة دالة تحقق" (clean, no verdict word).
+- Open cleanups after v1.10.1 (documented, NOT started):
+  * adversarial `test_supply_chain_imports_are_stdlib_only` STILL RED — stale
+    scope: FRAMEWORK_FILES = all src/*.py except novamind, but the workbench
+    layers (src/{web,council,orchestrator,nexus,agent_loop} + memory/providers)
+    import fastapi/dotenv/pydantic/openai/nova/novamind. Fix = declare those in
+    pyproject + read declared extras in the test, OR exclude opt-in layers
+    (mirror the existing novamind exclusion). DESIGN DECISION — awaiting tyba.
+  * novamind smoke `test_no_load_errors` RED on Android only — `architect`
+    loads a component using hardcoded `/var/log/novamind/...`
+    (`project_manager.py:24`) → read-only /var on Termux. novamind-layer
+    portability bug; novamind was never a hard gate.
+  * v1.11 next: `kind=code` — `Builder.detect_kind` already returns "code" for
+    code-hint questions ("دالة"/"function"/...), and `proof.py_compile` is the
+    empty dict waiting to be filled; today `/api/build` always writes PLAN.md +
+    decision.json (`kind=plan`). Design in handoff: LLM blueprint → path-safety
+    gate → py_compile per .py (fail = no write) → Critic reviews the generated
+    code into review.md.

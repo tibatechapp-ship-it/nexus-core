@@ -109,6 +109,18 @@ class CouncilHistory:
             "avg_rounds": sum(rounds) / len(rounds) if rounds else 0,
         }
 
+    @staticmethod
+    def _brief(r):
+        """حقول العرض المختصرة (نفس شكل list_recent)."""
+        return {
+            "id": r.get("id"),
+            "query": (r.get("query") or "")[:100],
+            "verdict": r.get("verdict"),
+            "score": r.get("score"),
+            "topic_id": r.get("topic_id", ""),
+            "timestamp": r.get("timestamp", 0),
+        }
+
     def list_recent(self, n=10):
         try:
             files = sorted(
@@ -121,18 +133,40 @@ class CouncilHistory:
         for fn in files:
             try:
                 with open(os.path.join(self.history_dir, fn), encoding="utf-8") as f:
-                    r = json.load(f)
-                    result.append({
-                        "id": r.get("id"),
-                        "query": (r.get("query") or "")[:100],
-                        "verdict": r.get("verdict"),
-                        "score": r.get("score"),
-                        "topic_id": r.get("topic_id", ""),
-                        "timestamp": r.get("timestamp", 0),
-                    })
+                    result.append(self._brief(json.load(f)))
             except Exception:
                 pass
         return result
+
+    def search(self, q="", n=10):
+        """بحث نصي غير حسّاس للحالة في السؤال/السبب/الموضوع.
+
+        ``q`` فارغ ⇒ يرجع لـ ``list_recent``. الترتيب: الأحدث أولاً.
+        """
+        needle = (q or "").strip().lower()
+        if not needle:
+            return self.list_recent(n)
+        try:
+            files = sorted(
+                [f for f in os.listdir(self.history_dir) if f.endswith(".json")],
+                reverse=True
+            )
+        except FileNotFoundError:
+            return []
+        out = []
+        for fn in files:
+            try:
+                with open(os.path.join(self.history_dir, fn), encoding="utf-8") as f:
+                    r = json.load(f)
+            except Exception:
+                continue
+            hay = " ".join(str(r.get(k, "")) for k in
+                           ("query", "reasoning", "topic_id", "category")).lower()
+            if needle in hay:
+                out.append(self._brief(r))
+                if len(out) >= n:
+                    break
+        return out
 
 
 _hist = None
