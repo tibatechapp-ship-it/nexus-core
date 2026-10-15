@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import json
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Any
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Relation:
 class KnowledgeGraph:
     """رسم بياني بسيط للمعرفة على SQLite."""
 
-    def __init__(self, path: str = ":memory:"):
+    def __init__(self: Any, path: str = ":memory:") -> None:
         self._conn = sqlite3.connect(path)
         self._init_schema()
 
@@ -68,7 +68,7 @@ class KnowledgeGraph:
         visited = set()
         frontier = {entity_id}
         for _ in range(depth):
-            next_frontier = set()
+            next_frontier: set[str] = set()
             for node in frontier:
                 if node in visited:
                     continue

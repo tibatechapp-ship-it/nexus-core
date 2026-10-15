@@ -29,7 +29,7 @@ class GeneratedPart:
     metadata: Dict = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
 
-    def add_file(self, path: str, content: str, template: str = None) -> "GeneratedPart":
+    def add_file(self, path: str, content: str, template: str | None = None) -> "GeneratedPart":
         self.files.append(GeneratedFile(path=path, content=content, template=template))
         return self
 

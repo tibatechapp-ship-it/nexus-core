@@ -62,8 +62,8 @@ def resolve_spec(name: Optional[str] = None, env: Optional[dict] = None) -> str:
     الأسبقية: ``name`` (وسيطة) → ``env[NEXUS_EMBEDDINGS]`` → الافتراضي.
     القيمة الفارغة أو ``auto`` تعني الافتراضي. اسم غير معروف يرفع ValueError.
     """
-    env = os.environ if env is None else env
-    raw = name if name is not None else env.get(ENV_VAR, "")
+    env = os.environ if env is None else env  # type: ignore[assignment]
+    raw = name if name is not None else env.get(ENV_VAR, "")  # type: ignore[union-attr]
     spec = (raw or "").strip().lower()
     if spec in ("", "auto"):
         spec = DEFAULT_PROVIDER
@@ -99,7 +99,7 @@ def store_path_for(spec: str, base_dir: Optional[str] = None,
     return os.path.join(base, store_filename(spec, dim))
 
 
-def build_embedder(spec: str, **kwargs: Any):
+def build_embedder(spec: str, **kwargs: Any) -> Any:
     """يبني الـ embedder للمزود.
 
     يُرجع ``(embedder, dim, fallback_reason)``. عند فشل مزوّد غير افتراضي

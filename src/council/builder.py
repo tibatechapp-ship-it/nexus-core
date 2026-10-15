@@ -275,7 +275,7 @@ class Builder:
         llm_files: dict = {}
         skipped: list = []
         raw_files = blueprint.get("files") if isinstance(blueprint.get("files"), list) else []
-        for item in raw_files:
+        for item in raw_files:  # type: ignore[union-attr]
             if isinstance(item, dict) and item.get("path"):
                 rel = _safe_rel_path(item["path"])
                 if rel is None:

@@ -1,5 +1,6 @@
 """Monkey-patch LLMRouter to add monitoring automatically."""
 from __future__ import annotations
+from typing import Any
 import time
 import functools
 
@@ -7,7 +8,7 @@ import functools
 _patched = False
 
 
-def patch_llm_router():
+def patch_llm_router() -> Any:
     """يلفّ LLMRouter.generate() ليتتبع الاستدعاءات."""
     global _patched
     if _patched:
@@ -23,7 +24,7 @@ def patch_llm_router():
     original_generate = LLMRouter.generate
 
     @functools.wraps(original_generate)
-    def monitored_generate(self, prompt="", system="", provider=None, **kwargs):
+    def monitored_generate(self: Any, prompt: Any ="", system: Any ="", provider: Any =None, **kwargs: Any) -> Any:
         _t0 = time.time()
         mon = get_monitor()
 

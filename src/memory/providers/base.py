@@ -1,7 +1,7 @@
 """Embedding providers — base interface + registry."""
 from __future__ import annotations
 import os
-from typing import Optional, Protocol, Sequence
+from typing import Optional, Protocol, Sequence, Any
 
 __all__ = ["EmbeddingProvider", "get_provider", "resolve_api_key"]
 
@@ -21,18 +21,18 @@ def resolve_api_key(prefix: str, env: Optional[dict] = None,
     المشاريع تضع المفاتيح إمّا بلا لاحقة أو مرقَّمة (``GEMINI_API_KEY_1`` …)؛
     هذه الدالة توحّد الحالتين حتى لا يفشل المزوّد بسبب فرق تسمية.
     """
-    env = os.environ if env is None else env
-    direct = env.get(prefix)
+    env = os.environ if env is None else env  # type: ignore[assignment]
+    direct = env.get(prefix)  # type: ignore[union-attr]
     if direct:
         return direct
     for i in range(1, max_suffix + 1):
-        value = env.get(f"{prefix}_{i}")
+        value = env.get(f"{prefix}_{i}")  # type: ignore[union-attr]
         if value:
             return value
     return ""
 
 
-def get_provider(name: str = "hashing", **kwargs) -> EmbeddingProvider:
+def get_provider(name: str = "hashing", **kwargs: Any) -> EmbeddingProvider:
     """يُرجع مزود embeddings بالاسم."""
     name = name.lower()
 

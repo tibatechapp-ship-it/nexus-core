@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import struct
-from typing import Sequence
+from typing import Sequence, Any
 
 from .base import VectorStore, SearchResult
 
@@ -20,7 +20,7 @@ class SQLiteVecStore(VectorStore):
     يتطلب: sqlite-vec مثبت (vec0.so).
     """
 
-    def __init__(self, path: str, dim: int = 512, table: str = "vectors"):
+    def __init__(self: Any, path: str, dim: int = 512, table: str = "vectors") -> None:
         self.path = path
         self.dim = dim
         self.table = table
@@ -64,7 +64,7 @@ class SQLiteVecStore(VectorStore):
         self._conn.commit()
 
     def add(self, id: str, text: str, embedding: Sequence[float],
-            metadata: dict = None) -> None:
+            metadata: dict | None = None) -> None:
         blob = _embedding_to_blob(embedding)
         cur = self._conn.execute(
             f"INSERT INTO {self.table}(embedding) VALUES (?)", (blob,)

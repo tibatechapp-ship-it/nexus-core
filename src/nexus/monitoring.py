@@ -1,5 +1,6 @@
 """Monitoring — تتبع استدعاءات LLM، التكلفة، التوكن، الوقت."""
 from __future__ import annotations
+from typing import Any
 import os
 import json
 import time
@@ -35,7 +36,7 @@ class LLMCall:
 class Monitor:
     """مراقب الإحصائيات."""
 
-    def __init__(self, log_dir: str = None):
+    def __init__(self: Any, log_dir: str | None = None) -> None:
         self.log_dir = log_dir or os.path.expanduser("~/.nexus/data/metrics")
         os.makedirs(self.log_dir, exist_ok=True)
         self._today_file = self._path_for_today()

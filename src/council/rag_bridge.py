@@ -1,5 +1,6 @@
 """Council + RAG with Cache."""
 from __future__ import annotations
+from typing import Any
 import os
 import sys
 
@@ -11,7 +12,7 @@ from src.council.engine import CouncilEngine, CouncilResult
 
 
 class CouncilRAGBridge:
-    def __init__(self, rag_bridge=None):
+    def __init__(self: Any, rag_bridge: Any =None) -> None:
         if rag_bridge is None:
             from src.memory.agent_rag_bridge import get_bridge
             rag_bridge = get_bridge()
@@ -27,14 +28,14 @@ class CouncilRAGBridge:
 
     # ── مراقبة إعدادات التضمين (تمرير شفّاف من طبقة الذاكرة) ──
     @property
-    def embedding_spec(self):
+    def embedding_spec(self: Any) -> Any:
         return getattr(self.rag, "embedding_spec", None)
 
     @property
-    def embedding_fallback(self):
+    def embedding_fallback(self: Any) -> Any:
         return getattr(self.rag, "embedding_fallback", None)
 
-    def _past_hint(self, question):
+    def _past_hint(self: Any, question: Any) -> Any:
         """قرارات سابقة مشابهة (بعد إزالة كلمات التوقف) — مرجعية فقط، ليست حكماً."""
         try:
             from src.council.history import get_history
@@ -48,7 +49,7 @@ class CouncilRAGBridge:
                 return ""
             recent = get_history().list_recent(n=30) or []
 
-            def _fld(rec, name, default=None):
+            def _fld(rec: Any, name: Any, default: Any =None) -> Any:
                 if isinstance(rec, dict):
                     return rec.get(name, default)
                 return getattr(rec, name, default)
@@ -75,7 +76,7 @@ class CouncilRAGBridge:
         except Exception:
             return ""
 
-    def deliberate_with_memory(self, question, context="", use_cache=True):
+    def deliberate_with_memory(self: Any, question: Any, context: Any ="", use_cache: Any =True) -> Any:
         # ═══ احفظ الحالة الأصلية قبل RAG ═══
         original_context_empty = not context
 
@@ -88,7 +89,7 @@ class CouncilRAGBridge:
                     print("CACHE HIT hits=" + str(cached.hits))
                     return CouncilResult(
                         verdict=cached.verdict, score=cached.score,
-                        consensus=(getattr(cached, "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,
+                        consensus=bool((getattr(cached), "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
                     )
@@ -129,7 +130,7 @@ class CouncilRAGBridge:
         try:
             from src.council.history import get_history
             rec_id = get_history().save(result, category="auto", query=question)
-            result._record_id = rec_id
+            result._record_id = rec_id  # type: ignore[attr-defined]
         except Exception:
             pass
 
@@ -146,10 +147,10 @@ class CouncilRAGBridge:
 
 
 
-    def deliberate_streaming(self, question, on_event, context="", use_cache=True):
+    def deliberate_streaming(self: Any, question: Any, on_event: Any, context: Any ="", use_cache: Any =True) -> Any:
         """نسخة بث حي: تستدعي on_event(event, payload) لحظة إنتاج كل مداخلة."""
 
-        def emit(event, payload):
+        def emit(event: Any, payload: Any) -> Any:
             try:
                 on_event(event, payload)
             except Exception:
@@ -169,7 +170,7 @@ class CouncilRAGBridge:
                          "text": cached.transcript_summary})
                     return CouncilResult(
                         verdict=cached.verdict, score=cached.score,
-                        consensus=(getattr(cached, "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,
+                        consensus=bool((getattr(cached), "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
                     )
@@ -214,7 +215,7 @@ class CouncilRAGBridge:
         try:
             from src.council.history import get_history
             rec_id = get_history().save(result, category="web_ui", query=question)
-            result._record_id = rec_id
+            result._record_id = rec_id  # type: ignore[attr-defined]
             emit("log", {"message": "تم الحفظ في السجل: " + rec_id})
         except Exception:
             pass
@@ -231,7 +232,7 @@ class CouncilRAGBridge:
 
 _bridge = None
 
-def get_council_bridge():
+def get_council_bridge() -> Any:
     global _bridge
     if _bridge is None:
         _bridge = CouncilRAGBridge()

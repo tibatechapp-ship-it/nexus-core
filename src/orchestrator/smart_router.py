@@ -160,7 +160,7 @@ class SmartRouter:
             if score > 0:
                 scores[cat] = score
         if scores:
-            return max(scores, key=scores.get)
+            return max(scores, key=scores.get)  # type: ignore[arg-type]
         return "code_generation"  # افتراضي
 
     def _detect_complexity(self, text: str, length: int) -> str:
@@ -192,7 +192,9 @@ class SmartRouter:
 
         return "low"
 
-    def _choose_strategy(self, category, complexity, risk, text):
+    def _choose_strategy(
+        self, category: str, complexity: str, risk: str, text: str
+    ) -> tuple[str, list[str], str]:
         """يختار الاستراتيجية والأعضاء."""
         candidates = CATEGORY_TO_AGENTS.get(category, ["coder", "analyzer"])
 

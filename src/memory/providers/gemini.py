@@ -1,6 +1,6 @@
 """Gemini Embeddings Provider."""
 from __future__ import annotations
-from typing import Sequence
+from typing import Sequence, Any
 
 from .base import resolve_api_key
 
@@ -17,7 +17,7 @@ class GeminiEmbeddings:
     # بُعد text-embedding-004
     dim = 768
 
-    def __init__(self, api_key: str = None, model: str = "text-embedding-004"):
+    def __init__(self: Any, api_key: str | None = None, model: str = "text-embedding-004") -> None:
         if not HAS_OPENAI:
             raise ImportError("openai غير مثبت")
         self.api_key = api_key or resolve_api_key("GEMINI_API_KEY")

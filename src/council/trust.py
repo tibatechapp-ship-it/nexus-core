@@ -1,5 +1,6 @@
 """Trust Boundary — لا نثق بأي رسالة بين الوكلاء."""
 from __future__ import annotations
+from typing import Any
 import hashlib
 import hmac
 import time
@@ -27,11 +28,11 @@ class SignedMessage:
 
 
 class TrustBoundary:
-    def __init__(self, secret: bytes = None):
+    def __init__(self: Any, secret: bytes | None = None) -> None:
         self.secret = secret or b"council-shared-secret-change-me"
         self.message_log: list[SignedMessage] = []
 
-    def send(self, sender, recipient, content, provenance=None):
+    def send(self: Any, sender: Any, recipient: Any, content: Any, provenance: Any =None) -> Any:
         import secrets as _s
         msg = SignedMessage(
             sender=sender, recipient=recipient, content=content,
@@ -41,7 +42,7 @@ class TrustBoundary:
         self.message_log.append(msg)
         return msg
 
-    def receive(self, msg):
+    def receive(self: Any, msg: Any) -> Any:
         if not msg.verify(self.secret):
             return False, "توقيع غير صالح"
         if time.time() - msg.timestamp > 300:

@@ -1,6 +1,7 @@
 """RAG Engine — دمج البحث الدلالي مع LLM."""
 from __future__ import annotations
 import os
+from typing import Any
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -12,8 +13,9 @@ from src.memory.vector_store import SQLiteVecStore
 class RAGEngine:
     """محرك RAG: يجمع السياق من vector store ويمرره للـ LLM."""
 
-    def __init__(self, vector_store_path: str = None,
-                 embedder=None, llm_router=None, dim: int = None):
+    def __init__(self, vector_store_path: str | None = None,
+                 embedder: Any = None, llm_router: Any = None,
+                 dim: int | None = None) -> None:
         self.vector_store_path = vector_store_path or os.path.join(
             os.path.expanduser("~"), ".nexus", "data", "vectors.db"
         )
@@ -24,10 +26,10 @@ class RAGEngine:
         self.embedder = embedder or HashingEmbedder(dim=512)
         # بُعد المتجه: صريح → من الـ embedder → 512
         self.dim = dim or getattr(self.embedder, "dim", 512)
-        self.store = SQLiteVecStore(self.vector_store_path, dim=self.dim)
+        self.store = SQLiteVecStore(self.vector_store_path, dim=self.dim)  # type: ignore[arg-type]
         self.llm = llm_router
 
-    def add_document(self, doc_id: str, text: str, metadata: dict = None) -> None:
+    def add_document(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         """يضيف وثيقة."""
         emb = self.embedder(text)
         self.store.add(doc_id, text, emb, metadata)
@@ -46,7 +48,7 @@ class RAGEngine:
         query_emb = self.embedder(query)
         return self.store.search(query_emb, k=k)
 
-    def generate(self, query: str, k: int = 5, **llm_kwargs) -> dict:
+    def generate(self, query: str, k: int = 5, **llm_kwargs: Any) -> dict:
         """يولّد إجابة مع سياق من RAG."""
         # 1. استرجاع
         docs = self.retrieve(query, k=k)
@@ -83,5 +85,5 @@ class RAGEngine:
             "elapsed": 0.0,
         }
 
-    def close(self):
+    def close(self: Any) -> Any:
         self.store.close()

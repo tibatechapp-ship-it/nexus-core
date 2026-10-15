@@ -11,14 +11,14 @@ class SearchResult:
     id: str
     text: str
     distance: float
-    metadata: dict = None
+    metadata: dict | None = None
 
 
 class VectorStore(ABC):
     """واجهة موحدة لمخازن vectors."""
 
     @abstractmethod
-    def add(self, id: str, text: str, embedding: Sequence[float], metadata: dict = None) -> None:
+    def add(self, id: str, text: str, embedding: Sequence[float], metadata: dict | None = None) -> None:
         """يضيف vector."""
         ...
 

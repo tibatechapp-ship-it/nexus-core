@@ -5,6 +5,7 @@ import sys
 import json
 import time
 import inspect
+from typing import Any, Callable
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -12,13 +13,13 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))
 
 
 class Tool:
-    def __init__(self, name, description, func, parameters):
+    def __init__(self: Any, name: Any, description: Any, func: Any, parameters: Any) -> None:
         self.name = name
         self.description = description
         self.func = func
         self.parameters = parameters
 
-    def to_openai(self):
+    def to_openai(self: Any) -> Any:
         return {
             "type": "function",
             "function": {
@@ -30,19 +31,19 @@ class Tool:
 
 
 class ToolRegistry:
-    def __init__(self):
-        self.tools = {}
+    def __init__(self: Any) -> None:
+        self.tools: dict[str, Any] = {}
 
-    def register(self, name, description, parameters):
-        def deco(fn):
+    def register(self: Any, name: Any, description: Any, parameters: Any) -> Any:
+        def deco(fn: Any) -> Any:
             self.tools[name] = Tool(name, description, fn, parameters)
             return fn
         return deco
 
-    def to_openai(self):
+    def to_openai(self: Any) -> Any:
         return [t.to_openai() for t in self.tools.values()]
 
-    def call(self, name, args):
+    def call(self: Any, name: Any, args: Any) -> Any:
         if name not in self.tools:
             return f"خطأ: أداة {name} غير موجودة"
         try:
@@ -52,7 +53,7 @@ class ToolRegistry:
             return f"خطأ في {name}: {e}"
 
 
-def build_default_registry():
+def build_default_registry() -> Any:
     """يبني السجل الافتراضي بالأدوات الست."""
     reg = ToolRegistry()
 
@@ -63,7 +64,7 @@ def build_default_registry():
         {"type": "object",
          "properties": {"query": {"type": "string"}},
          "required": ["query"]})
-    def search_memory(query):
+    def search_memory(query: Any) -> Any:
         try:
             from src.memory.agent_rag_bridge import get_bridge
             docs = get_bridge().recall(query, k=3)
@@ -80,7 +81,7 @@ def build_default_registry():
         {"type": "object",
          "properties": {"text": {"type": "string"}},
          "required": ["text"]})
-    def remember(text):
+    def remember(text: Any) -> Any:
         try:
             from src.memory.agent_rag_bridge import get_bridge
             doc_id = get_bridge().remember(text)
@@ -97,7 +98,7 @@ def build_default_registry():
              "category": {"type": "string",
                           "description": "code/security/quality/... أو فارغ للكل"}
          }})
-    def list_agents(category=""):
+    def list_agents(category: Any ="") -> Any:
         try:
             from nova.registry import REGISTRY, agents_by_category
             if category:
@@ -117,7 +118,7 @@ def build_default_registry():
              "prompt": {"type": "string"}
          },
          "required": ["agent", "prompt"]})
-    def run_agent(agent, prompt):
+    def run_agent(agent: Any, prompt: Any) -> Any:
         try:
             from nova.registry import REGISTRY
             ag = REGISTRY.load_agent(agent)
@@ -137,7 +138,7 @@ def build_default_registry():
         {"type": "object",
          "properties": {"path": {"type": "string"}},
          "required": ["path"]})
-    def read_file(path):
+    def read_file(path: Any) -> Any:
         try:
             if not os.path.exists(path):
                 return f"ملف غير موجود: {path}"
@@ -153,7 +154,7 @@ def build_default_registry():
         "get_time",
         "يُرجع الوقت والتاريخ الحالي",
         {"type": "object", "properties": {}})
-    def get_time():
+    def get_time() -> Any:
         return time.strftime("%Y-%m-%d %H:%M:%S")
 
     # ═══ 7. write_file ═══
@@ -166,7 +167,7 @@ def build_default_registry():
              "content": {"type": "string"}
          },
          "required": ["path", "content"]})
-    def write_file(path, content):
+    def write_file(path: Any, content: Any) -> Any:
         try:
             p = os.path.expanduser(path)
             os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
@@ -183,7 +184,7 @@ def build_default_registry():
         {"type": "object",
          "properties": {"directory": {"type": "string"}},
          "required": ["directory"]})
-    def list_files(directory):
+    def list_files(directory: Any) -> Any:
         try:
             p = os.path.expanduser(directory)
             if not os.path.isdir(p):
@@ -200,7 +201,7 @@ def build_default_registry():
         {"type": "object",
          "properties": {"command": {"type": "string"}},
          "required": ["command"]})
-    def run_shell(command):
+    def run_shell(command: Any) -> Any:
         import subprocess
         # قائمة بيضاء
         allowed = ["ls", "pwd", "whoami", "date", "echo", "cat",

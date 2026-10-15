@@ -6,7 +6,7 @@ import json
 import time
 import hashlib
 from dataclasses import dataclass, asdict
-from typing import Optional
+from typing import Optional, Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -39,7 +39,7 @@ class CouncilCache:
     DEFAULT_TTL = 86400  # 24 ساعة
     SIMILARITY_THRESHOLD = 0.92  # 92% تشابه
 
-    def __init__(self, cache_dir: str = None, ttl: int = None):
+    def __init__(self: Any, cache_dir: str | None = None, ttl: int | None = None) -> None:
         self.cache_dir = cache_dir or os.path.expanduser("~/.nexus/data/council_cache")
         os.makedirs(self.cache_dir, exist_ok=True)
         self.ttl = ttl or self.DEFAULT_TTL
@@ -90,7 +90,7 @@ class CouncilCache:
         except Exception:
             return None
 
-    def set(self, question: str, result) -> str:
+    def set(self, question: str, result: Any) -> str:
         """يخزّن نتيجة مداولة."""
         q_hash = self._hash_question(question)
 

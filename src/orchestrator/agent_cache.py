@@ -3,6 +3,7 @@ import os
 import hashlib
 import json
 import time
+from typing import Any
 
 
 _CACHE_DIR = os.path.expanduser("~/.nexus/data/agent_cache")
@@ -15,7 +16,7 @@ def _key(agent: str, prompt: str) -> str:
     return f"{agent}_{h}"
 
 
-def get(agent: str, prompt: str):
+def get(agent: str, prompt: str) -> Any:
     """جلب من الكاش."""
     path = os.path.join(_CACHE_DIR, _key(agent, prompt) + ".json")
     if not os.path.exists(path):
@@ -31,7 +32,7 @@ def get(agent: str, prompt: str):
         return None
 
 
-def set(agent: str, prompt: str, result):
+def set(agent: str, prompt: str, result: Any) -> Any:
     """حفظ في الكاش."""
     path = os.path.join(_CACHE_DIR, _key(agent, prompt) + ".json")
     try:

@@ -1,4 +1,5 @@
 """Router Integration — متى نحوّل للمجلس؟"""
+from typing import Any
 import re
 
 COUNCIL_SIGNALS = [
@@ -29,7 +30,7 @@ HIGH_RISK = [
 ]
 
 
-def should_use_council(question):
+def should_use_council(question: Any) -> Any:
     q = question.lower()
     for p in HIGH_RISK:
         if re.search(p, q, re.IGNORECASE):
@@ -40,7 +41,7 @@ def should_use_council(question):
     return False
 
 
-def get_council_reason(question):
+def get_council_reason(question: Any) -> Any:
     q = question.lower()
     for p in HIGH_RISK:
         if re.search(p, q, re.IGNORECASE):

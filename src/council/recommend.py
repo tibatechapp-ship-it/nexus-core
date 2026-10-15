@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 from collections import Counter
 
 _REC_RE = re.compile(r"\[التوصية:\s*([^\]]+)\]")
@@ -18,7 +19,7 @@ _BAD_FRAGMENTS = ("اقصر", "أقصر", "خلاصة جوابك", "جوابك",
                   "التوجيه", "المطلوب", "المباشر", "ضع هنا", "اكتب")
 
 
-def extract_recommendation(transcript) -> str:
+def extract_recommendation(transcript: Any) -> str:
     """تصويت بالأغلبية على سطور ``[التوصية: ...]`` داخل الـ transcript.
 
     يُرجع التوصية الأكثر تكراراً، أو ``""`` إن لم توجد توصية صالحة.

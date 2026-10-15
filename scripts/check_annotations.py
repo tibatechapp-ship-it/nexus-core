@@ -19,29 +19,10 @@ from pathlib import Path
 
 DEFAULT_FILES: tuple[str, ...] = ("zyvo-telegram.py", "zyvo-voice.py", "src")
 SKIP_ARGS: frozenset[str] = frozenset({"self", "cls"})
-# The annotation gate covers the MAINTAINED framework surface only. The opt-in
-# novamind package and the workbench/web layers (v1.5+) keep their own typing
-# legacy and are verified by their own test suites — mirroring the ruff / mypy
-# exclusions so every gate has the same scope.
-SKIP_DIR_NAMES: frozenset[str] = frozenset(
-    {"novamind", "council", "web", "nexus", "orchestrator", "agent_loop", "nova"}
-)
-# Workbench-era modules that live inside otherwise-gated framework packages.
-WORKBENCH_SRC_PREFIXES: tuple[str, ...] = (
-    "src/memory/agent_rag_bridge.py",
-    "src/memory/embedding_config.py",
-    "src/memory/embeddings.py",
-    "src/memory/rag_engine.py",
-    "src/memory/providers/",
-    "src/memory/vector_store/",
-    "src/memory/knowledge_graph/",
-)
-
-
-def _is_workbench(path: Path) -> bool:
-    """True if ``path`` is an opt-in workbench module (excluded from the gate)."""
-    posix = path.as_posix()
-    return any(posix == p or posix.startswith(p) for p in WORKBENCH_SRC_PREFIXES)
+# Scope: the whole gated surface (framework + workbench layers under src/).
+# Only the novamind layer keeps its own typing legacy — mirrors the ruff /
+# mypy / coverage scope so every gate covers the same files.
+SKIP_DIR_NAMES: frozenset[str] = frozenset({"novamind"})
 
 
 def missing_hints(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
@@ -84,9 +65,7 @@ def expand(paths: list[Path]) -> list[Path]:
                 sorted(
                     p
                     for p in path.rglob("*.py")
-                    if p.is_file()
-                    and not any(part in SKIP_DIR_NAMES for part in p.parts)
-                    and not _is_workbench(p)
+                    if p.is_file() and not any(part in SKIP_DIR_NAMES for part in p.parts)
                 )
             )
         else:

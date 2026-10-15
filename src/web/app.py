@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
@@ -35,10 +36,11 @@ class CouncilRequest(BaseModel):
     question: str
 
 
-def _setup_mock():
+def _setup_mock() -> None:
     from novamind.core.llm_router import LLMRouter
-    def mock_gen(self, prompt="", system="", **kw):
-        s = str(system); p = str(prompt)
+    def mock_gen(self, prompt: str = "", system: str = "", **kw: Any) -> dict[str, Any]:
+        s = str(system)
+        p = str(prompt)
         is_debate = "راجع" in p
         if "أنت الناقد" in s:
             t = "بعد المراجعة: متسقتان. مقبول." if is_debate else "أراجع الحجتين. مقبول."
@@ -59,10 +61,10 @@ def _setup_mock():
 
 
 # ═══ Cache للحالة ═══
-_status_cache = {"data": None, "ts": 0}
+_status_cache: dict[str, Any] = {"data": None, "ts": 0}
 
 @app.get("/api/status")
-def status():
+def status() -> dict:
     import time
     now = time.time()
     # ═══ استخدام cache إذا مر أقل من 30 ثانية ═══
@@ -84,7 +86,7 @@ def status():
 
 
 @app.get("/api/agents")
-def list_agents():
+def list_agents() -> dict:
     from nova.registry import REGISTRY, agents_by_category
     r = {}
     for cat in ['code','security','quality','infra','data','ui','research','meta']:
@@ -93,7 +95,7 @@ def list_agents():
 
 
 @app.post("/api/agent/run")
-def run_agent(req: AgentRunRequest):
+def run_agent(req: AgentRunRequest) -> dict:
     try:
         from nova.registry import REGISTRY
         agent = REGISTRY.load_agent(req.agent)
@@ -107,8 +109,10 @@ def run_agent(req: AgentRunRequest):
                 from src.memory.agent_rag_bridge import get_bridge
                 b = get_bridge()
                 enriched = b.enrich_prompt(prompt, k=3)
-                if enriched != prompt: prompt = enriched
-            except Exception: pass
+                if enriched != prompt:
+                    prompt = enriched
+            except Exception:
+                pass
         start = time.time()
         result = getattr(agent, method)(prompt)
         return {"ok": True, "agent": req.agent, "method": method,
@@ -118,14 +122,14 @@ def run_agent(req: AgentRunRequest):
 
 
 @app.post("/api/rag/add")
-def rag_add(req: RAGAddRequest):
+def rag_add(req: RAGAddRequest) -> dict:
     from src.memory.agent_rag_bridge import get_bridge
     b = get_bridge()
     return {"ok": True, "doc_id": b.remember(req.text)}
 
 
 @app.get("/api/rag/query")
-def rag_query(q: str, k: int = 5):
+def rag_query(q: str, k: int = 5) -> dict:
     from src.memory.agent_rag_bridge import get_bridge
     b = get_bridge()
     results = b.recall(q, k=k)
@@ -134,7 +138,7 @@ def rag_query(q: str, k: int = 5):
 
 
 @app.post("/api/council/deliberate")
-def council_deliberate(req: CouncilRequest):
+def council_deliberate(req: CouncilRequest) -> dict:
     try:
         from src.council.rag_bridge import get_council_bridge
         b = get_council_bridge()
@@ -151,7 +155,7 @@ def council_deliberate(req: CouncilRequest):
 
 # ═══ Topics ═══
 @app.get("/api/council/topics")
-def list_topics():
+def list_topics() -> dict:
     try:
         from src.council.topics import list_categories
         return {"ok": True, "categories": list_categories()}
@@ -160,7 +164,7 @@ def list_topics():
 
 
 @app.post("/api/council/topic")
-def run_topic(req: CouncilRequest):
+def run_topic(req: CouncilRequest) -> dict:
     try:
         from src.council.topics import get_topic
         t = get_topic(req.question)  # نستخدم حقل question كـ topic_id
@@ -188,7 +192,7 @@ def run_topic(req: CouncilRequest):
 
 
 @app.get("/api/council/history")
-def council_history():
+def council_history() -> dict:
     try:
         from src.council.history import get_history
         h = get_history()
@@ -199,7 +203,7 @@ def council_history():
 
 # ═══ Cache ═══
 @app.get("/api/cache/stats")
-def cache_stats():
+def cache_stats() -> dict:
     try:
         from src.council.cache import get_cache
         return {"ok": True, "stats": get_cache().stats()}
@@ -208,7 +212,7 @@ def cache_stats():
 
 
 @app.post("/api/cache/clear")
-def cache_clear():
+def cache_clear() -> dict:
     try:
         from src.council.cache import get_cache
         count = get_cache().clear()
@@ -219,7 +223,7 @@ def cache_clear():
 
 # ═══ Metrics ═══
 @app.get("/api/metrics/today")
-def metrics_today():
+def metrics_today() -> dict:
     try:
         from src.nexus.monitoring import get_monitor
         return {"ok": True, "stats": get_monitor().get_today_stats()}
@@ -228,7 +232,7 @@ def metrics_today():
 
 
 @app.post("/api/metrics/clear")
-def metrics_clear():
+def metrics_clear() -> dict:
     try:
         from src.nexus.monitoring import get_monitor
         count = get_monitor().clear_today()
@@ -242,11 +246,11 @@ def metrics_clear():
 # ═══ Hybrid Router Endpoint ═══
 class HybridRequest(BaseModel):
     prompt: str
-    force: str = None
+    force: str | None = None
 
 
 @app.post("/api/hybrid/run")
-def hybrid_run(req: HybridRequest):
+def hybrid_run(req: HybridRequest) -> dict:
     """يستخدم Hybrid Router (code/tool/decision)."""
     try:
         from src.orchestrator.hybrid_router import HybridRouter, classify
@@ -280,18 +284,18 @@ DASHBOARD = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8
 
 
 @app.get("/", response_class=HTMLResponse)
-def index():
+def index() -> str:
     return DASHBOARD
 
 
 # ═══ Smart Router Endpoint ═══
 class SmartRequest(BaseModel):
     prompt: str
-    force_strategy: str = None
+    force_strategy: str | None = None
 
 
 @app.post("/api/smart/run")
-def smart_run(req: SmartRequest):
+def smart_run(req: SmartRequest) -> dict:
     """يستخدم Smart Router لاختيار الاستراتيجية المثلى."""
     try:
         from src.orchestrator.supervisor import Supervisor

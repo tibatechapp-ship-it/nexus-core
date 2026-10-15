@@ -1,4 +1,5 @@
 """Council History — سجل قرارات مع محتوى كامل."""
+from typing import Any
 import os
 import sys
 import json
@@ -10,12 +11,12 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))
 
 
 class CouncilHistory:
-    def __init__(self, history_dir=None):
+    def __init__(self: Any, history_dir: Any =None) -> None:
         self.history_dir = history_dir or os.path.expanduser("~/.nexus/data/council_history")
         os.makedirs(self.history_dir, exist_ok=True)
         self._rag = None
 
-    def _get_rag(self):
+    def _get_rag(self: Any) -> Any:
         if self._rag is None:
             try:
                 from src.memory.agent_rag_bridge import get_bridge
@@ -26,13 +27,13 @@ class CouncilHistory:
 
     _counter = 0
 
-    def save(self, result, topic_id="", category="", query=""):
+    def save(self: Any, result: Any, topic_id: Any ="", category: Any ="", query: Any ="") -> Any:
         """يحفظ قراراً كاملاً مع السؤال والـ transcript."""
         CouncilHistory._counter += 1
         rec_id = f"decision_{int(time.time() * 1_000_000)}_{CouncilHistory._counter}"
 
         # استخراج دفاعي
-        def _get(name, default=None):
+        def _get(name: Any, default: Any =None) -> Any:
             v = getattr(result, name, None)
             if v is None and isinstance(result, dict):
                 v = result.get(name)
@@ -74,7 +75,7 @@ class CouncilHistory:
                 pass
         return rec_id
 
-    def get_full(self, rec_id):
+    def get_full(self: Any, rec_id: Any) -> Any:
         """استرجاع قرار كامل (مع transcript)."""
         path = os.path.join(self.history_dir, rec_id + ".json")
         if not os.path.exists(path):
@@ -85,7 +86,7 @@ class CouncilHistory:
         except Exception:
             return None
 
-    def stats(self):
+    def stats(self: Any) -> Any:
         try:
             files = [f for f in os.listdir(self.history_dir) if f.endswith(".json")]
         except FileNotFoundError:
@@ -113,7 +114,7 @@ class CouncilHistory:
         }
 
     @staticmethod
-    def _brief(r):
+    def _brief(r: Any) -> Any:
         """حقول العرض المختصرة (نفس شكل list_recent)."""
         return {
             "id": r.get("id"),
@@ -124,7 +125,7 @@ class CouncilHistory:
             "timestamp": r.get("timestamp", 0),
         }
 
-    def list_recent(self, n=10):
+    def list_recent(self: Any, n: Any =10) -> Any:
         try:
             files = sorted(
                 [f for f in os.listdir(self.history_dir) if f.endswith(".json")],
@@ -141,7 +142,7 @@ class CouncilHistory:
                 pass
         return result
 
-    def search(self, q="", n=10):
+    def search(self: Any, q: Any ="", n: Any =10) -> Any:
         """بحث نصي غير حسّاس للحالة في السؤال/السبب/الموضوع.
 
         ``q`` فارغ ⇒ يرجع لـ ``list_recent``. الترتيب: الأحدث أولاً.
@@ -174,7 +175,7 @@ class CouncilHistory:
 
 _hist = None
 
-def get_history():
+def get_history() -> Any:
     global _hist
     if _hist is None:
         _hist = CouncilHistory()

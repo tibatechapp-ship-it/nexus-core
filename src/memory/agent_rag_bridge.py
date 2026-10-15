@@ -1,6 +1,6 @@
 """Agent-RAG Bridge — يجعل كل وكيل يستخدم RAG تلقائياً."""
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Any
 from src.memory.rag_engine import RAGEngine
 
 
@@ -9,14 +9,14 @@ class AgentRAGBridge:
 
     _instance: Optional["AgentRAGBridge"] = None
 
-    def __new__(cls):
+    def __new__(cls: Any) -> Any:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            cls._instance._initialized = False  # type: ignore[has-type]
         return cls._instance
 
-    def __init__(self):
-        if self._initialized:
+    def __init__(self: Any) -> None:
+        if self._initialized:  # type: ignore[has-type]
             return
         # ═══ اختيار المزوّد من NEXUS_EMBEDDINGS (افتراضي: hashing → rag.db) ═══
         from src.memory.embedding_config import resolve_rag
@@ -47,7 +47,7 @@ class AgentRAGBridge:
 {context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
-    def remember(self, text: str, doc_id: str = None) -> str:
+    def remember(self, text: str, doc_id: str | None = None) -> str:
         """يحفظ معلومة."""
         doc_id = doc_id or f"mem_{abs(hash(text)) & 0xFFFFFF:x}"
         self.rag.add_document(doc_id, text)
