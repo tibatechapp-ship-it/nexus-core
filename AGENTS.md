@@ -686,6 +686,15 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   `py_compile ok`, generated file is correct/functional; `/manifest.json` 200;
   `tests/council/test_craft.py` (23) + 2 `/api/craft` API tests. `pytest
   tests/adversarial` security vector now 9/9.
+- CI ALIGNMENT VERIFIED 2026-10-15 (post-c866c0f): re-ran the canonical gate on
+  the committed tree → ruff clean, annotations 103, mypy 103, `pytest --cov
+  --cov-fail-under=95 --ignore=tests/novamind` = 1848 passed @ 98.94% (45s).
+  The CI hard gate in `.github/workflows/test.yml` Layer 1 uses the EXACT same
+  command, and CI's thinner dep set is safe: `tests/test_build_api.py` guards
+  with `pytest.importorskip("fastapi"/"sse_starlette"/"httpx")` (skips cleanly),
+  no gated module imports fastapi/openai, and mypy has `ignore_missing_imports
+  = true`. `ci.yml` (ruff+mypy+annotations+compileall) mirrors the local scope.
+  So local green == CI green (CI red is billing/identity infra only).
 - NEXT: bring the workbench layers INTO the four gates (annotate + tests +
   coverage) so the exclusion can be removed; a real headless render test of the
   v1.12 console module; `/session` on-device voice check.
