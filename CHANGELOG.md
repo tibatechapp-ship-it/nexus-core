@@ -2,6 +2,44 @@
 
 All notable changes to this project. Newest first.
 
+## v1.12.0 — 2026-10-15
+**Craft mode + all quality gates green repo-wide.**
+- **Craft (`src/council/craft.py`, new):** generate real code from a free-text
+  brief — the LLM emits strict JSON `[{"path", "content"}]`, a path-safety gate
+  reuses the builder's `_safe_rel_path` + `ALLOWED_EXT`, artifacts are written
+  to `builds_root()/craft_<ts>`, and every `.py` gets a mandatory `py_compile`
+  **proof** (`proof.ok=false` on failure — never a silent success). An optional
+  `review=true` asks the council to vote on the generated code. Caps:
+  `MAX_FILES=10`, `MAX_BYTES=50_000`, `MAX_TOKENS=3500`.
+- **Server (`main.py`):** `POST /api/craft` (query + optional review); `src/` is
+  now put on `sys.path` at startup so `novamind` imports resolve (the council no
+  longer falls back to silent offline).
+- **Console (`index.html`) — non-invasive v1.12 module** (a third wrapping
+  `<script>`, never edits the originals): **`/session`** = continuous voice
+  conversation (STT → deliberate → TTS loop, `توقف` / Esc to end) and
+  **`/craft <desc> [review]`** prints the files + the `py_compile` proof +
+  optional council review.
+- **Quality gates green repo-wide, one consistent scope** (framework surface
+  gated; opt-in `novamind` + workbench/web layers excluded and verified by
+  their own tests):
+  - `ruff check .` → **All checks passed** (was 68 errors).
+  - `mypy zyvo-telegram.py zyvo-voice.py src` → **103 files, no issues**.
+  - `python scripts/check_annotations.py` → **103 files** OK.
+  - `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` → **1848 passed,
+    98.94%** (was 81% and failing the floor).
+  - Adversarial → **92/92 held (100%)**. The long-red
+    `test_supply_chain_imports_are_stdlib_only` is fixed: it now reads declared
+    deps live from `pyproject.toml` and fails on any **undeclared** import.
+- Declared the missing real dependencies (`rich`, `python-dotenv`, `pydantic`) +
+  a new `embeddings = ["openai>=1.0"]` extra.
+- Fixed the **telegram orphan-brain** bug: install SIGTERM/SIGINT/SIGHUP
+  handlers that kill the spawned brain, so a runit restart no longer leaves an
+  orphan holding the port.
+- Repository hygiene: `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CITATION.cff`, issue
+  / PR templates, Dependabot, a unified `make check`, and a refreshed README.
+- Version 1.11.0 → **1.12.0** (`pyproject.toml` + `src/__init__.py`; `/api/health`
+  reads it live).
+
 ## v1.11.0 — 2026-10-15
 **Voice & modern UX (workbench console).**
 - **Server (`main.py`):**
