@@ -1,77 +1,51 @@
-# ─── Secrets (NEVER commit) ────────────────────────────────────────────────
-.env
-*.env
-telegram.env
-secrets.*
-*.pem
-*.key
-# zyvo runtime state / credentials
-.config/zyvo/telegram.env
-.config/zyvo/*-session
-
-# ─── Python ────────────────────────────────────────────────────────────────
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-build/
-dist/
-*.egg-info/
-.eggs/
-.venv/
-venv/
-env/
-ENV/
-
-# ─── Tooling caches ────────────────────────────────────────────────────────
+.pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.pytest_cache/
-.coverage
-coverage.xml
-coverage.json
-# the published coverage badge is intentionally tracked:
-!.github/badges/coverage.json
-htmlcov/
-.tox/
 
-# ─── Generated audio / media (voice notes, transcripts) ────────────────────
-*.ogg
-*.opus
-*.mp3
-*.wav
-*.16k.wav
-voice-out/
+# Backups & pre-versions
+*.backup*
+*.bak
+*.bak-*
+*.pre_*
+*.old
 
-# ─── Runtime logs / pid ────────────────────────────────────────────────────
-*.log
-*.pid
-zyvo-*-server.log
+# Runtime data
+logs/
+workspace/
+/hive/
+*.db-journal
+memory.db
 
-# ─── Generated security reports (kept in ~/.local/share/tyb-zyv-ai/reports) ─
-security-report-*.md
+# Secrets
+.env
+.env.local
 
-# ─── Former novamind runtime state (never commit) ───────────────────────────
-/data/
-*.bundle
-.nova_memory*
-.bootstrap_state*
-.build-meta
-audit_*.json
-agent_hash*.json
-all_agents_signatures.json
-groq_pool.json
-benchmark_*.txt
-*.audit.json
-/exports/
-/memory/
-
-# ─── OS / editor junk ──────────────────────────────────────────────────────
+# OS
 .DS_Store
 Thumbs.db
-*.swp
-*.swo
-*~
-.idea/
-.vscode/
+
+# Certification reports
+reports/certification/
+reports/reports.db
+# Runtime data dirs — anchored to the repo root so they do NOT shadow the
+# source packages src/memory/ and src/**/data/ (e.g. src/novamind/registry/data).
+/data/
+/memory/
+security_audit_report.json
+tests/_intelligence_results/
+src/novamind/core/hive/data/
+.coverage
+src/council/*.pre_*
+src/**/*.pre_*
+*.py.tmp
+
+# temp patch files
+patch_*.py
+clean_mock.py
+clean2.py
+chk.py
+chk.sh

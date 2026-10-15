@@ -120,7 +120,7 @@ class StateStore:
         """Save loop state."""
         path = self._path(loop_id)
         try:
-            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         except Exception as e:
             logger.warning(f"failed to save state: {e}")
 
@@ -252,6 +252,7 @@ class LoopEngine:
                 result=result,
                 elapsed=iter_elapsed,
                 success=success,
+                error=result.get("error") if isinstance(result, dict) and result.get("error") else None,
             )
             history.append(iter_result.to_dict())
 
@@ -333,7 +334,7 @@ class LoopEngine:
     def _generate_id(self, goal: str) -> str:
         """Generate a loop ID from goal description."""
         import hashlib
-        h = hashlib.md5(goal.encode("utf-8")).hexdigest()[:8]
+        h = hashlib.md5(goal.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"loop_{ts}_{h}"
 

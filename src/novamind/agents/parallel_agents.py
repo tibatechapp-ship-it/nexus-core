@@ -64,7 +64,8 @@ class ParallelAgentPool:
     Fixed: uses asyncio.gather + timeout + error isolation.
     """
     
-    def __init__(self, agents: Dict[str, Callable], timeout: int = 60):
+    def __init__(self, agents: Dict[str, Callable] = None, timeout: int = 60):
+        self.agents = agents if agents is not None else {}
         self.agents = agents
         self.timeout = timeout
     

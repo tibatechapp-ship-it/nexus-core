@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible problem with nexus-core
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill this in so we can
+        reproduce it fast. For security issues use the **Security** tab instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `...`
+        2. Call `...`
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output / traceback
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `curl -s localhost:8000/api/health` or `git describe --tags`
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Which layer?
+      options:
+        - Framework (agents/core/patterns/memory/learning/security/tools/tui)
+        - Council workbench (main.py + src/council + index.html)
+        - novamind server layer
+        - MCP (src/mcp)
+        - Autopilot SCM
+        - Docs / tooling
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version (and "Termux/Android" if on a phone)
+      placeholder: "e.g. Python 3.12, Ubuntu 24.04  —  or  Termux on Android 14"
+    validations:
+      required: true

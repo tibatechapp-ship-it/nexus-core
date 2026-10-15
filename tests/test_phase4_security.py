@@ -132,12 +132,23 @@ def test_no_hardcoded_secrets_in_the_shipped_source() -> None:
 
 
 def test_no_env_or_credential_file_is_committed() -> None:
-    """Real secret files (``.env``/``telegram.env``) must never be in the tree."""
+    """Secret files (``.env``/``telegram.env``) must never be *tracked* by git.
+
+    Only committed files matter here (mirrors the CI ``secret-scan`` job): a
+    local, gitignored ``.env`` is expected and must not trip this gate.
+    """
     root = Path(__file__).resolve().parent.parent
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
     leaks = [
-        str(p.relative_to(root))
-        for p in root.rglob("*")
-        if p.is_file() and p.name in {".env", "telegram.env"} and ".git" not in p.parts
+        name
+        for name in tracked
+        if name == ".env" or name.endswith("/.env") or name.endswith("telegram.env")
     ]
     assert not leaks, f"credentials file committed: {leaks}"
 

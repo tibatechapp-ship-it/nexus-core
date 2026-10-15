@@ -1,0 +1,15 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+cd "$HOME/nexus-core"
+
+echo "════════════════════════════════════════"
+echo "🌐 Nexus-Core Web Dashboard"
+echo "════════════════════════════════════════"
+echo "📱 افتح: http://localhost:8000"
+echo "🛑 للإيقاف: Ctrl+C"
+echo "════════════════════════════════════════"
+echo ""
+
+python3 -m uvicorn src.web.app:app --host 127.0.0.1 --port 8000 --log-level warning

@@ -1,0 +1,33 @@
+[
+  {
+    "id": 111,
+    "number": 1,
+    "title": "Fix login timeout",
+    "body": "Users are logged out after 60s.",
+    "state": "open",
+    "labels": [{ "name": "bug" }, { "name": "p1" }],
+    "user": { "login": "alice" },
+    "html_url": "https://github.com/o/n/issues/1"
+  },
+  {
+    "id": 222,
+    "number": 2,
+    "title": "Add dark mode",
+    "body": "Please add a dark theme.",
+    "state": "open",
+    "labels": [{ "name": "enhancement" }],
+    "user": { "login": "bob" },
+    "html_url": "https://github.com/o/n/issues/2"
+  },
+  {
+    "id": 333,
+    "number": 3,
+    "title": "PR that must be filtered out",
+    "body": "I am a pull request, not an issue.",
+    "state": "open",
+    "labels": [],
+    "user": { "login": "carol" },
+    "html_url": "https://github.com/o/n/pull/3",
+    "pull_request": { "url": "https://api.github.com/repos/o/n/pulls/3" }
+  }
+]

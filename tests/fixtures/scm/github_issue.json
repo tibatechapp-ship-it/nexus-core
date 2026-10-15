@@ -1,0 +1,10 @@
+{
+  "id": 111,
+  "number": 1,
+  "title": "Fix login timeout",
+  "body": "Users are logged out after 60s.",
+  "state": "open",
+  "labels": [{ "name": "bug" }, { "name": "p1" }],
+  "user": { "login": "alice" },
+  "html_url": "https://github.com/o/n/issues/1"
+}

@@ -1,45 +1,69 @@
 # ═══════════════════════════════════════════════════════════════
-# NovaMind — Makefile
+# nexus-core — Makefile
+#
+# The framework surface (src/{agents,core,patterns,memory,learning,
+# security,tools,tui} + the zyvo scripts) is gated by ruff, mypy, the
+# annotation checker and coverage. The opt-in novamind + workbench/web
+# layers are excluded from those gates and verified by their own tests —
+# the scope is identical across pyproject.toml, scripts/check_annotations.py
+# and the coverage config. `make check` runs the whole gate.
 # ═══════════════════════════════════════════════════════════════
 
-.PHONY: help install test clean check sync push release tag
+PY ?= python3
+
+.PHONY: help install check lint type annotations test cov adversarial clean sync push release tag
 
 help:
-	@echo "NovaMind v3.4.0 — Available targets:"
+	@echo "nexus-core — available targets:"
 	@echo ""
-	@echo "  make install       — Install package (editable)"
-	@echo "  make test          — Run all tests"
-	@echo "  make test-unit     — Run unit tests only"
-	@echo "  make clean         — Clean temporary files"
-	@echo "  make check         — Quick health check"
-	@echo "  make sync          — Sync with origin/main"
-	@echo "  make push          — Commit + push current branch"
-	@echo "  make release       — Create release tag"
-	@echo "  make tag V=X.Y.Z   — Create custom tag"
+	@echo "  make check         — ALL gates: ruff + mypy + annotations + tests/coverage"
+	@echo "  make lint          — ruff check ."
+	@echo "  make type          — mypy on the framework surface"
+	@echo "  make annotations   — every function fully type-annotated"
+	@echo "  make test          — full pytest suite (no coverage)"
+	@echo "  make cov           — pytest with coverage (framework floor 95%)"
+	@echo "  make adversarial   — adversarial red-team suite"
+	@echo "  make install       — editable install with dev tooling"
+	@echo "  make clean         — remove caches and build artefacts"
+	@echo "  make sync          — fetch + fast-forward from origin"
+	@echo "  make push          — commit (m=) + push current branch"
+	@echo "  make release V=X.Y.Z — tag and push a release"
 
 install:
-	pip install -e ".[dev,observability]"
+	$(PY) -m pip install -e ".[dev,tui]"
+
+# ── the single definition of "green" ────────────────────────────────────────
+check: lint type annotations cov
+	@echo ""
+	@echo "✅ nexus-core: all gates green."
+
+lint:
+	ruff check .
+
+type:
+	mypy zyvo-telegram.py zyvo-voice.py src
+
+annotations:
+	$(PY) scripts/check_annotations.py
 
 test:
-	PYTHONPATH=src python3 -m pytest tests/ -v
+	$(PY) -m pytest tests/ -q --ignore=tests/novamind
 
-test-unit:
-	PYTHONPATH=src python3 -m pytest tests/unit/ -v
+cov:
+	$(PY) -m pytest --cov --cov-fail-under=95 --ignore=tests/novamind -q
+
+adversarial:
+	$(PY) -m pytest tests/adversarial -q
 
 clean:
 	find . -type d -name "__pycache__" -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	find . -type f -name "*.bak" -delete 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-
-check:
-	PYTHONPATH=src python3 -c "import novamind; print('✅ novamind OK')"
-	PYTHONPATH=src python3 -c "from novamind.registry import stats; print(f'✅ {stats()[\"agents_total\"]} agents')"
-	PYTHONPATH=src python3 -c "from novamind.agents.factory import factory; print('✅ factory OK')"
+	rm -rf .pytest_cache .mypy_cache .ruff_cache 2>/dev/null || true
 
 sync:
 	git fetch origin
-	git pull origin main
+	git pull --ff-only origin $$(git branch --show-current)
 
 push:
 	git add -A
@@ -47,11 +71,11 @@ push:
 	git push origin $$(git branch --show-current)
 
 release:
-	@if [ -z "$(V)" ]; then echo "Usage: make release V=3.5.0"; exit 1; fi
-	git tag -a "v$(V)" -m "Release v$(V)"
+	@if [ -z "$(V)" ]; then echo "Usage: make release V=X.Y.Z"; exit 1; fi
+	git tag -a "v$(V)" -m "nexus-core v$(V)"
 	git push origin "v$(V)"
-	@echo "✅ Released v$(V)"
+	@echo "✅ released v$(V)"
 
 tag:
-	@if [ -z "$(V)" ]; then echo "Usage: make tag V=3.5.0"; exit 1; fi
-	git tag -a "v$(V)" -m "Version v$(V)"
+	@if [ -z "$(V)" ]; then echo "Usage: make tag V=X.Y.Z"; exit 1; fi
+	git tag -a "v$(V)" -m "nexus-core v$(V)"

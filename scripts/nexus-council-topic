@@ -1,0 +1,123 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_CMD="$1"
+export NEXUS_ARG="$2"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+
+# ═══ Mock LLM ═══
+from novamind.core.llm_router import LLMRouter
+
+def mock_gen(self, prompt="", system="", **kw):
+    s = str(system); p = str(prompt)
+    is_debate = "راجع" in p
+    if "أنت الناقد" in s:
+        t = "بعد المراجعة: متسقتان. مقبول." if is_debate else "أراجع. الحجج مقبولة."
+    elif "أنت المحلل المتشكك" in s:
+        t = "أراجع: مخاوف قائمة." if is_debate else "خطر: تكلفة، تعلم، صيانة، أمان."
+    elif "أنت المحلل المدافع" in s:
+        t = "أراجع: مخاوف قابلة للتخفيف." if is_debate else "آمن: المزايا تفوق العيوب."
+    else:
+        t = "[Mock] " + p[:150]
+    return {"ok": True, "text": t, "provider": "mock", "elapsed": 0.01}
+
+LLMRouter.generate = mock_gen
+LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
+LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
+LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
+LLMRouter._is_cooled_down = lambda self, n: True
+
+from src.council.topics import get_topic, list_categories, search_topics
+from src.council.history import get_history
+
+cmd = os.environ.get("NEXUS_CMD", "list")
+arg = os.environ.get("NEXUS_ARG", "")
+
+if cmd == "list" or cmd == "":
+    print("=" * 70)
+    print("🏛️  مواضيع المجلس")
+    print("=" * 70)
+    for cat, topics in sorted(list_categories().items()):
+        print("\n📁 " + cat.upper() + " (" + str(len(topics)) + ")")
+        for t in topics:
+            r = "⚠️" if t["risk"] == "high" else "  "
+            print("   " + r + " " + t["id"].ljust(28) + " " + t["title"])
+
+elif cmd == "search":
+    for r in search_topics(arg):
+        print("   • " + r["id"].ljust(28) + " (" + r["category"] + ") " + r["title"])
+
+elif cmd == "show":
+    t = get_topic(arg)
+    if not t:
+        print("❌ غير موجود: " + arg)
+        sys.exit(1)
+    print("📌 " + t.title)
+    print("   ID: " + t.id)
+    print("   الفئة: " + t.category)
+    print("   الخطورة: " + t.risk_level)
+    print("   الخيارات: " + ", ".join(t.options))
+    print("\n❓ " + t.question)
+    print("📋 " + t.context)
+
+elif cmd == "run":
+    t = get_topic(arg)
+    if not t:
+        print("❌ غير موجود. جرّب: list")
+        sys.exit(1)
+    print("=" * 60)
+    print("🏛️  مجلس الوكلاء — " + t.title)
+    print("=" * 60)
+    print("❓ " + t.question)
+    print("📋 " + t.context)
+    print("=" * 60)
+    print()
+    from src.council.rag_bridge import get_council_bridge
+    bridge = get_council_bridge()
+    result = bridge.deliberate_with_memory(t.question)
+    print()
+    print("=" * 60)
+    print("📊 القرار: " + result.verdict.upper() + " (" + str(round(result.score, 2)) + ")")
+    print("   الجولات: " + str(result.rounds) + " | توافق: " + ("✅" if result.consensus else "❌"))
+    print("=" * 60)
+    try:
+        rec_id = get_history().save(result, topic_id=t.id, category=t.category)
+        print("\n💾 حُفظ: " + rec_id)
+    except Exception as e:
+        print("⚠️ " + str(e))
+    print("\n💬 المداخلات (" + str(len(result.transcript)) + "):")
+    for e in result.transcript[:6]:
+        print("\n─── " + e['phase'] + " | " + e['member'] + " ───")
+        print(e['response'][:200])
+
+elif cmd == "history":
+    h = get_history()
+    s = h.stats()
+    print("=" * 60)
+    print("📚 سجل قرارات المجلس")
+    print("=" * 60)
+    print("   المجموع: " + str(s.get("total", 0)))
+    if s.get("total", 0) > 0:
+        bv = s["by_verdict"]
+        print("   الموافق: " + str(bv.get("approve", 0)))
+        print("   المرفوض: " + str(bv.get("reject", 0)))
+        print("   المراجعة: " + str(bv.get("human_review", 0)))
+        print("   متوسط: " + str(round(s["avg_score"], 2)))
+    print("\n📋 آخر 5:")
+    for r in h.list_recent(5):
+        print("   • [" + r.get("verdict", "?") + "] " +
+              r.get("topic_id", "N/A") + " (" + str(round(r.get("score", 0), 2)) + ")")
+
+else:
+    print("الأوامر:")
+    print("  nexus-council-topic list")
+    print("  nexus-council-topic search QUERY")
+    print("  nexus-council-topic show TOPIC_ID")
+    print("  nexus-council-topic run TOPIC_ID")
+    print("  nexus-council-topic history")
+PYEOF

@@ -102,7 +102,7 @@ class WasteDetector:
                         src = ast.unparse(node)
                     except Exception:
                         continue
-                    h = hashlib.md5(src.encode()).hexdigest()
+                    h = hashlib.md5(src.encode(), usedforsecurity=False).hexdigest()
                     seen.setdefault(h, []).append((fp, node.lineno, node.name))
         for h, places in seen.items():
             if len(places) > 1:

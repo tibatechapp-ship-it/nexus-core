@@ -7,7 +7,10 @@ from typing import List, Dict, Any, Optional
 
 import httpx
 
-from hive.tools import get_registry, execute_tool_calls
+try:
+    from hive.tools import get_registry, execute_tool_calls
+except ImportError:
+    from novamind.core.hive.tools import get_registry, execute_tool_calls
 
 logger = logging.getLogger("ToolAgent")
 

@@ -49,9 +49,19 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     {".git", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "node_modules", ".venv"}
 )
 
-#: Matches ``<tool-call name="read" args='{"path": "x"}'/>`` (single or double quotes).
+#: Tolerant matcher for model tool-call markers (Postel's law). All of these
+#: forms are accepted:
+#:   <tool-call name="x" args='{"a": 1}'/>          (canonical, single/double quotes)
+#:   <tool-call name="x"/>                          (self-closing, no args)
+#:   <tool-call name="x"></tool-call>               (pair form, no args -> {})
+#:   <tool-call name="x">{"a": 1}</tool-call>       (pair form, args as child text)
+#: The two arms are mutually exclusive, so a self-closed tag never swallows a
+#: following marker into its body and a pair tag's child text never leaks into
+#: the next call.
 _TOOL_CALL_RE = re.compile(
-    r"<tool-call\s+name=[\"'](?P<name>[A-Za-z_][\w.\-]*)[\"']\s+args=[\"'](?P<args>.*?)[\"']\s*/?>",
+    r"<tool-call\s+name=[\"'](?P<name>[A-Za-z_][\w.\-]*)[\"']"
+    r"(?:\s+args=[\"'](?P<args_attr>.*?)[\"'])?"
+    r"(?:\s*/>|\s*>(?P<args_body>.*?)</tool-call\s*>)",
     re.DOTALL,
 )
 
@@ -122,15 +132,19 @@ class ToolPolicy:
 def parse_tool_calls(text: str) -> list[ToolCall]:
     """Extract every ``<tool-call …/>`` marker from ``text``, in order.
 
-    Tolerant by design: a marker whose ``args`` are not valid JSON still yields a
-    :class:`ToolCall` with empty arguments (the tool then reports the missing
-    argument itself) so a malformed call can never crash the loop.
+    Tolerant by design (Postel's law): ``args`` may arrive as a quoted JSON
+    attribute, as JSON child text, or not at all; a marker whose args are not
+    valid JSON still yields a :class:`ToolCall` with empty arguments (the tool
+    then reports the missing argument itself) so a malformed call can never
+    crash the loop.
     """
     calls: list[ToolCall] = []
     for match in _TOOL_CALL_RE.finditer(text):
-        raw_args = match.group("args")
+        raw_args = match.group("args_attr")
+        if raw_args is None:
+            raw_args = (match.group("args_body") or "").strip()
         try:
-            parsed = json.loads(raw_args)
+            parsed = json.loads(raw_args) if raw_args else {}
         except (json.JSONDecodeError, ValueError):
             parsed = {}
         arguments = parsed if isinstance(parsed, dict) else {}

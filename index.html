@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nexus Council Console</title>
+<style>
+:root{--bg:#0a0e14;--fg:#c9d1d9;--dim:#7d8590;--green:#3fb950;--red:#f85149;
+--yellow:#d29922;--cyan:#39c5cf;--blue:#58a6ff;--brd:#21262d;--bar:#161b22}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);
+font-family:'JetBrains Mono','Fira Code',ui-monospace,Menlo,Consolas,monospace;
+font-size:13px;line-height:1.6;display:flex;flex-direction:column;overflow:hidden}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9;
+background:repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px)}
+.bar{background:var(--bar);border-bottom:1px solid var(--brd);
+padding:4px 10px;display:flex;gap:8px;align-items:center;font-size:12px;flex:none}
+.bar .g{color:var(--green)} .bar .d{color:var(--dim)} .spacer{flex:1}
+#out{flex:1;overflow-y:auto;padding:12px 14px 92px}
+#out::-webkit-scrollbar{width:6px}
+#out::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+.ln{white-space:pre-wrap;word-break:break-word;margin:2px 0;max-width:110ch}
+.dim{color:var(--dim)} .ok{color:var(--green)} .err{color:var(--red)} .warn{color:var(--yellow)}
+.c-cyan{color:var(--cyan)} .c-blue{color:var(--blue)}
+.cmd .p1{color:var(--green);font-weight:700}
+.sep{color:var(--cyan);opacity:.85;margin:8px 0 2px}
+.blk{border-right:2px solid var(--ac,#58a6ff);padding:1px 10px;margin:4px 0;max-width:110ch}
+.blk .h{font-size:11px;font-weight:700}
+.b-red{--ac:#f85149;color:#ffb3ad} .b-green{--ac:#3fb950;color:#b8e6c0}
+.b-yellow{--ac:#d29922;color:#ffe1a8} .b-cyan{--ac:#39c5cf;color:#b8ecef}
+.b-blue{--ac:#58a6ff;color:#c9d8f5}
+.vbox{border:1px solid var(--vc);padding:10px 12px;margin:10px 0;max-width:110ch}
+.v-green{--vc:#3fb950;background:rgba(63,185,80,.05)}
+.v-red{--vc:#f85149;background:rgba(248,81,73,.05)}
+.v-yellow{--vc:#d29922;background:rgba(210,153,34,.05)}
+.vbox .t{font-weight:700;font-size:14px}
+.vbox .m{color:var(--dim);font-size:12px;margin-top:4px}
+.cmdlink{cursor:pointer;text-decoration:underline dotted;color:var(--blue)}
+.buildlink{cursor:pointer;text-decoration:underline dotted;color:var(--yellow)}
+.cursor{display:inline-block;width:8px;height:15px;background:var(--green);
+vertical-align:-2px;animation:bl 1.1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+.pane{position:fixed;bottom:0;left:0;right:0;background:rgba(13,17,23,.97);
+border-top:1px solid var(--brd);padding:10px 12px}
+.pform{display:flex;gap:8px;align-items:center;max-width:110ch;margin:0 auto}
+.pform .p1{color:var(--green);font-weight:700;flex:none}
+#q{flex:1;background:transparent;border:none;outline:none;color:var(--fg);font:inherit;caret-color:var(--green)}
+.pform .hint{color:var(--dim);font-size:11px;flex:none}
+@media(max-width:640px){.pform .hint{display:none}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <span class="g">■ nexus-council</span><span class="d">|</span>
+  <span id="hver">console</span><span class="d">|</span>
+  <span id="hstat" class="d">booting…</span>
+  <span class="spacer"></span><span class="d" id="clock"></span>
+</header>
+<div id="out"></div>
+<div class="pane">
+  <form id="pf" class="pform" autocomplete="off">
+    <span class="p1">nexus❯</span>
+    <input id="q" dir="auto" placeholder="اكتب سؤالاً… أو أمراً مثل /help" autofocus>
+    <span class="hint">/help · /topics · /history · /stats</span>
+  </form>
+</div>
+<script>
+const out = document.getElementById('out');
+const form = document.getElementById('pf');
+const input = document.getElementById('q');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function line(html, cls){
+  const d = document.createElement('div');
+  d.className = 'ln ' + (cls || '');
+  d.innerHTML = html;
+  out.appendChild(d);
+  out.scrollTop = out.scrollHeight;
+  return d;
+}
+function sep(t){ line('─── ' + esc(t) + ' ───', 'sep'); }
+
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
+}, 1000);
+
+(async () => {
+  line('NEXUS COUNCIL — CONSOLE', 'c-cyan');
+  line('──────────────────────────────', 'dim');
+  try {
+    const h = await (await fetch('/api/health')).json();
+    document.getElementById('hver').textContent = (h.version ? 'v' + h.version : 'v0.0.0');
+    line(h.bridge ? '[ ok ] engine : council bridge online' : '[FAIL] engine : bridge missing', h.bridge ? 'ok' : 'err');
+    line(h.topics ? '[ ok ] topics : loaded' : '[FAIL] topics : missing', h.topics ? 'ok' : 'err');
+    line(h.builder ? '[ ok ] builder : ready' : '[warn] builder : unavailable', h.builder ? 'ok' : 'warn');
+    line('[ ok ] embeddings : ' + esc(h.embeddings || 'hashing') +
+         (h.embeddings_fallback ? ' <span class="warn">(fallback: ' + esc(h.embeddings_fallback) + ')</span>' : ''),
+         h.embeddings_fallback ? 'warn' : 'ok');
+    document.getElementById('hstat').textContent = 'online';
+  } catch (e) {
+    line('[FAIL] server unreachable: ' + esc(e.message), 'err');
+    document.getElementById('hstat').textContent = 'offline';
+  }
+  try {
+    const s = await (await fetch('/api/stats')).json();
+    line('[ ok ] memory : ' + (s.total || 0) + ' decisions', 'ok');
+  } catch (e) {}
+  line('');
+  line('اكتب سؤالك مباشرة — أو /help لعرض الأوامر.', 'dim');
+  line('');
+})();
+
+const TOPICS = {};
+async function command(raw){
+  const parts = raw.slice(1).trim().split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const arg = parts.slice(1).join(' ').trim();
+
+  if (cmd === 'help') {
+    line('/help                هذه القائمة', 'dim');
+    line('/clear               تفريغ الشاشة', 'dim');
+    line('/topics              قائمة المواضيع الجاهزة', 'dim');
+    line('/ask &lt;id&gt;           سؤال عن موضوع جاهز', 'dim');
+    line('/history             آخر 10 قرارات', 'dim');
+    line('/show &lt;id&gt;           عرض transcript قرار', 'dim');
+    line('/build &lt;id&gt; [llm]    ابنِ مخرجات من قرار', 'dim');
+    line('/builds              الحِزم المبنية', 'dim');
+    line('/stats               إحصائيات المجلس', 'dim');
+    line('/health              حالة الخادم', 'dim');
+    line('أو اكتب أي سؤال تقني مباشرة.', 'dim');
+  }
+  else if (cmd === 'clear') { out.innerHTML = ''; }
+  else if (cmd === 'build') {
+    const parts2 = arg.split(/\s+/).filter(Boolean);
+    const id = parts2[0];
+    const useLlm = parts2.slice(1).some(p => p === 'llm' || p === '--llm');
+    if (!id) { line('استخدم: /build <id> [llm] — انظر /history', 'warn'); return; }
+    build(id, useLlm);
+  }
+  else if (cmd === 'builds') {
+    try {
+      const j = await (await fetch('/api/builds')).json();
+      const items = j.items || [];
+      if (j.error) { line(esc(j.error), 'err'); return; }
+      if (!items.length) { line('لا حِزم بناء بعد.', 'dim'); return; }
+      items.forEach(b => line(
+        (b.ok ? '<span class="ok">✓</span>' : '<span class="warn">•</span>') + ' ' +
+        '<span class="buildlink" data-build="' + esc(b.build_id) + '">' + esc(b.build_id) + '</span> ' +
+        esc(b.title || '') + ' <span class="dim">[' + esc(b.kind || '?') + ' · ' +
+        (b.files || 0) + ' ملف]</span>'));
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'health') {
+    try {
+      const h = await (await fetch('/api/health')).json();
+      line('bridge: ' + h.bridge + ' | topics: ' + h.topics +
+           ' | builder: ' + h.builder +
+           ' | embeddings: ' + esc(h.embeddings || 'hashing') +
+           (h.embeddings_fallback ? ' (fallback)' : '') +
+           (h.bridge_error ? ' | err: ' + esc(h.bridge_error) : ''), 'ok');
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'stats') {
+    try {
+      const s = await (await fetch('/api/stats')).json();
+      if (!s.total) { line('لا قرارات محفوظة بعد.', 'dim'); return; }
+      const bv = s.by_verdict || {};
+      line('إجمالي: ' + s.total, 'ok');
+      line('موافقة: ' + (bv.approve||0) + ' | رفض: ' + (bv.reject||0) +
+           ' | مراجعة: ' + (bv.human_review||0), 'dim');
+      line('متوسط الثقة: ' + Math.round((s.avg_score||0)*100) + '%' +
+           ' | متوسط الجولات: ' + (s.avg_rounds||0).toFixed(1), 'dim');
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'history') {
+    try {
+      const items = await (await fetch('/api/history')).json();
+      if (!items.length) { line('لا قرارات بعد.', 'dim'); return; }
+      items.forEach(x => {
+        const c = x.verdict === 'approve' ? 'ok' : x.verdict === 'reject' ? 'err' : 'warn';
+        line('<span class="' + c + '">[' + esc(x.verdict) + ']</span> ' +
+             Math.round((x.score||0)*100) + '% — ' +
+             '<span class="cmdlink" data-id="' + esc(x.id) + '">' +
+             esc((x.query || '(بدون سؤال)').slice(0, 70)) + '</span>');
+      });
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'show') {
+    if (!arg) { line('استخدم: /show <id> — انظر /history', 'warn'); return; }
+    try {
+      const r = await fetch('/api/history/' + encodeURIComponent(arg));
+      if (!r.ok) { line('السجل غير متاح (HTTP ' + r.status + ')', 'warn'); return; }
+      const d = await r.json();
+      if (d.error) { line(esc(d.error), 'err'); return; }
+      sep('سجل ' + d.id);
+      line('السؤال: ' + esc(d.query || '(بدون)'), 'dim');
+      if (!d.transcript || !d.transcript.length) { line('(لا transcript محفوظ)', 'dim'); return; }
+      d.transcript.forEach(t => {
+        line('▸ ' + esc(t.member || '?') + ' [' + esc(t.phase || '') + ']', 'c-blue');
+        line(esc(t.response || '').replace(/\n/g, '<br>'), 'blk b-blue');
+      });
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'topics') {
+    try {
+      const ts = await (await fetch('/api/topics')).json();
+      if (ts.error) { line(esc(ts.error), 'err'); return; }
+      ts.forEach(t => {
+        TOPICS[t.id] = t.question;
+        line('<span class="c-cyan">' + esc(t.id) + '</span> ' +
+             esc(t.title) + ' <span class="dim">[خطر: ' + esc(t.risk) + ']</span>');
+      });
+      line('للسؤال عن موضوع: /ask <المعرف>', 'dim');
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'ask') {
+    const q = TOPICS[arg];
+    if (!q) { line('معرف غير معروف — جرّب /topics أولاً', 'warn'); return; }
+    line('↳ ' + esc(q), 'dim');
+    deliberate(q);
+  }
+  else { line('أمر غير معروف: ' + esc(cmd) + ' — جرّب /help', 'err'); }
+}
+
+const AC = { profiler:'b-red', analyst:'b-green', critic:'b-yellow', cache:'b-cyan' };
+function agentBlock(d){
+  const key = (d.actor || '').toLowerCase();
+  const name = (d.actor || '').charAt(0).toUpperCase() + (d.actor || '').slice(1);
+  const cls = AC[key] || 'b-blue';
+  const w = document.createElement('div');
+  w.innerHTML = '<div class="blk ' + cls + '">' +
+    '<div class="h">▸ ' + esc(name) + ' <span class="dim">[' + esc(d.phase || '') + ']</span></div>' +
+    '<div>' + esc(d.text || '').replace(/\n/g, '<br>') + '</div></div>';
+  out.appendChild(w.firstElementChild);
+  out.scrollTop = out.scrollHeight;
+}
+function verdictBox(d){
+  const map = { approve:['v-green','موافقة ✅'], reject:['v-red','رفض ❌'] };
+  const v = map[d.verdict] || ['v-yellow','مراجعة بشرية ⚠️'];
+  const pct = Math.round((Number(d.score) || 0) * 100);
+  const el = document.createElement('div');
+  el.className = 'ln vbox ' + v[0];
+  el.innerHTML = '<div class="t">⚖ ' + v[1] + ' — ' + pct + '%</div>' +
+    (d.recommendation ? '<div>🎯 التوصية: <b>' + esc(d.recommendation) + '</b></div>' : '') +
+    '<div class="m">' + (d.consensus ? 'إجماع الوكلاء ✓' : 'تباين في الآراء') +
+    ' · ' + (d.rounds ? esc(String(d.rounds)) + ' جولة · ' : 'بدون نقاش · ') + esc(String(d.elapsed || '')) + 'ث' +
+    (d.record_id ? ' · <span class="buildlink" data-build="' + esc(d.record_id) + '">🔨 ابنِ</span>' : '') +
+    '</div>';
+  out.appendChild(el);
+  out.scrollTop = out.scrollHeight;
+}
+function handleEvent(type, data){
+  if (type === 'status') { line('[' + esc(data.phase || '*') + '] ' + esc(data.message || ''), 'dim'); }
+  else if (type === 'phase') { sep(data.label || ''); }
+  else if (type === 'agent_action') { agentBlock(data); }
+  else if (type === 'final_verdict') { verdictBox(data); }
+  else if (type === 'log') { line('[💾] ' + esc(data.message || ''), 'dim'); }
+  else if (type === 'error') { line('[!] ' + esc(data.message || ''), 'err'); }
+}
+
+let evType = 'message', dataLines = [], aliveEl = null;
+function flushEvent(){
+  if (!dataLines.length) { evType = 'message'; return; }
+  const raw = dataLines.join('\n'); dataLines = [];
+  const t = evType; evType = 'message';
+  let data; try { data = JSON.parse(raw); } catch { data = { raw }; }
+  if (aliveEl) { aliveEl.remove(); aliveEl = null; }
+  handleEvent(t, data);
+}
+function processLine(l){
+  if (l.endsWith('\r')) l = l.slice(0, -1);
+  if (l === '') { flushEvent(); return; }
+  if (l.startsWith(':')) return;
+  if (l.startsWith('event:')) { evType = l.slice(6).trim(); return; }
+  if (l.startsWith('data:')) { dataLines.push(l.slice(5).replace(/^ /, '')); return; }
+}
+
+async function build(id, useLlm){
+  sep('بناء مخرجات');
+  line('<span class="p1">nexus❯</span> /build ' + esc(id) + (useLlm ? ' llm' : ''), 'cmd');
+  aliveEl = line('<span class="cursor"></span>', 'dim');
+  try {
+    const r = await fetch('/api/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision_id: id, use_llm: !!useLlm })
+    });
+    const j = await r.json();
+    aliveEl && aliveEl.remove(); aliveEl = null;
+    if (!j.ok) { line('[!] ' + esc(j.error || 'فشل البناء'), 'err'); return; }
+    line('✓ ' + esc(j.title || '') + ' — النوع: ' + esc(j.kind || '?'), 'ok');
+    line('📁 ' + esc(j.dir || ''), 'dim');
+    (j.files || []).forEach(f => line('  • ' + esc(f.path) + ' <span class="dim">(' + (f.bytes || 0) + 'B)</span>', 'dim'));
+    const p = j.proof || {};
+    const pc = p.py_compile || {};
+    const pcs = Object.keys(pc).map(k => esc(k) + '=' + esc(pc[k])).join(', ');
+    line('📦 ملفات: ' + (p.files_written || 0) +
+         ' | الدليل: ' + (p.ok ? 'ناجح ✓' : 'فشل ✗') +
+         (pcs ? ' | py_compile: ' + pcs : ''), p.ok ? 'ok' : 'warn');
+  } catch (e) {
+    aliveEl && aliveEl.remove(); aliveEl = null;
+    line('[!] خطأ: ' + esc(e.message), 'err');
+  }
+}
+
+async function deliberate(q, echo){
+  if (echo !== false) line('<span class="p1">nexus❯</span> ' + esc(q), 'cmd');
+  sep('مداولة جديدة');
+  aliveEl = line('<span class="cursor"></span>', 'dim');
+  try {
+    const res = await fetch('/api/deliberate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q })
+    });
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const j = await res.json();
+      aliveEl && aliveEl.remove(); aliveEl = null;
+      line('[!] ' + esc(j.error || JSON.stringify(j)), 'err');
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const l of lines) processLine(l);
+    }
+    flushEvent();
+  } catch (err) {
+    aliveEl && aliveEl.remove(); aliveEl = null;
+    line('[!] خطأ: ' + esc(err.message), 'err');
+  }
+}
+
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  const v = input.value.trim();
+  if (!v) return;
+  input.value = '';
+  if (v.startsWith('/')) { line('<span class="p1">nexus❯</span> ' + esc(v), 'cmd'); command(v); }
+  else deliberate(v);
+});
+out.addEventListener('click', e => {
+  const b = e.target.closest('.buildlink');
+  if (b) { input.value = ''; build(b.dataset.build, false); return; }
+  const t = e.target.closest('.cmdlink');
+  if (t) { line('<span class="p1">nexus❯</span> /show ' + esc(t.dataset.id), 'cmd'); command('show ' + t.dataset.id); }
+});
+</script>
+<script>
+/* v1.11 features module — صوت · أصول صوتية · بحث · مشاركة · تصدير · PWA
+   غير متطفّل: يلفّ handleEvent/deliberate/command القائمة بدل تعديلها. */
+(function(){
+  'use strict';
+  const V = 'v1.11';
+  const nxLine = (typeof line === 'function') ? line
+    : (h, c) => { const d = document.createElement('div'); d.className = 'ln ' + (c || '');
+                  d.innerHTML = h; document.getElementById('out').appendChild(d); };
+  const nxEsc = (typeof esc === 'function') ? esc
+    : (s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+
+  // ── الإعدادات (localStorage nx_*) ─────────────────────────────
+  const nxGet = (k, d) => { try { const v = localStorage.getItem('nx_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+  const nxSet = (k, v) => { try { localStorage.setItem('nx_' + k, JSON.stringify(v)); } catch (e) {} };
+  let soundOn = nxGet('sound', true);
+  let ttsOn = nxGet('tts', false);
+
+  // ── أصول صوتية مولّدة (Web Audio — بلا ملفات) ───────────────────
+  let actx = null;
+  function getAudio(){
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    return actx;
+  }
+  function beep(kind){
+    if (!soundOn) return;
+    const a = getAudio(); if (!a) return;
+    if (a.state === 'suspended') { try { a.resume(); } catch (e) {} }
+    const map = { ok:[660,880], warn:[440,330], err:[240,150], tick:[520,520] };
+    const f = map[kind] || map.tick;
+    const t0 = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f[0], t0);
+    o.frequency.exponentialRampToValueAtTime(f[1], t0 + 0.12);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o.connect(g).connect(a.destination);
+    o.start(t0); o.stop(t0 + 0.2);
+  }
+
+  // ── قراءة صوتية (TTS) ─────────────────────────────────────────
+  const HAS_TTS = 'speechSynthesis' in window;
+  function pickArVoice(){
+    if (!HAS_TTS) return null;
+    const vs = speechSynthesis.getVoices() || [];
+    return vs.find(x => /^ar/i.test(x.lang)) || null;
+  }
+  function speak(text){
+    if (!ttsOn || !text || !HAS_TTS) return;
+    try {
+      const u = new SpeechSynthesisUtterance(String(text).slice(0, 400));
+      const v = pickArVoice();
+      if (v) u.voice = v;
+      u.lang = (v && v.lang) || 'ar-SA';
+      u.rate = 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  if (HAS_TTS && 'onvoiceschanged' in speechSynthesis) {
+    speechSynthesis.onvoiceschanged = function(){ /* primed */ };
+  }
+
+  // ── إدخال صوتي (STT) ──────────────────────────────────────────
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false;
+  function toggleMic(){
+    if (!SR) { nxLine('[!] المتصفح لا يدعم الإدخال الصوتي (Web Speech API)', 'warn'); return; }
+    if (listening) { try { rec && rec.stop(); } catch (e) {} return; }
+    rec = new SR();
+    rec.lang = nxGet('sttLang', 'ar-SA');
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onstart = function(){ listening = true; nxToolbar(); nxLine('[🎤] استمع… تحدّث الآن', 'dim'); };
+    rec.onerror = function(ev){ listening = false; nxToolbar(); beep('err'); nxLine('[!] خطأ صوتي: ' + nxEsc(ev.error || '?'), 'err'); };
+    rec.onend = function(){ listening = false; nxToolbar(); };
+    rec.onresult = function(ev){
+      const r0 = ev.results && ev.results[0];
+      const txt = ((r0 && r0[0] && r0[0].transcript) || '').trim();
+      if (!txt) return;
+      if (txt.charAt(0) === '/' && typeof window.command === 'function') {
+        nxLine('<span class="p1">nexus❯</span> ' + nxEsc(txt), 'cmd');
+        window.command(txt);
+      } else {
+        nxLine('<span class="p1">nexus❯</span> ' + nxEsc(txt) + ' <span class="dim">(صوتي)</span>', 'cmd');
+        window.deliberate(txt, false);
+      }
+    };
+    try { rec.start(); } catch (e) { nxLine('[!] ' + nxEsc(e.message), 'err'); }
+  }
+
+  // ── بحث في السجل ──────────────────────────────────────────────
+  async function nxSearch(q){
+    if (!q) { const a = window.prompt('ابحث في السجل:'); if (!a) return; q = a; }
+    sep('بحث: ' + q);
+    try {
+      const r = await fetch('/api/history?q=' + encodeURIComponent(q) + '&limit=20');
+      const j = await r.json();
+      const arr = Array.isArray(j) ? j : (j.items || []);
+      if (!arr.length) { nxLine('لا نتائج.', 'dim'); return; }
+      arr.forEach(function(x){
+        const c = x.verdict === 'approve' ? 'ok' : x.verdict === 'reject' ? 'err' : 'warn';
+        nxLine('<span class="' + c + '">[' + nxEsc(x.verdict) + ']</span> ' +
+          Math.round((x.score || 0) * 100) + '% — ' +
+          '<span class="cmdlink" data-id="' + nxEsc(x.id) + '">' +
+          nxEsc((x.query || '').slice(0, 70)) + '</span>');
+      });
+    } catch (e) { nxLine('[!] ' + nxEsc(e.message), 'err'); }
+  }
+
+  // ── مشاركة ────────────────────────────────────────────────────
+  async function nxShare(){
+    const text = (document.getElementById('out').innerText || '').trim().slice(-2000);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title:'Nexus Council', text: text || 'Nexus Council Console', url: location.href });
+        nxLine('[↗] تمّت المشاركة', 'ok'); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(text); nxLine('[↗] نُسخ النص إلى الحافظة', 'ok'); }
+    catch (e) { nxLine('[!] تعذّرت المشاركة/النسخ', 'warn'); }
+  }
+
+  // ── تصدير ─────────────────────────────────────────────────────
+  function nxExport(){
+    const text = document.getElementById('out').innerText || '';
+    const blob = new Blob([text], { type:'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'nexus-console-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    nxLine('[⬇] تم تنزيل السجل', 'ok');
+  }
+
+  // ── شريط الأدوات ──────────────────────────────────────────────
+  function nxToolbar(){
+    let bar = document.getElementById('nx-tools');
+    if (!bar) {
+      const st = document.createElement('style');
+      st.textContent =
+        '#nx-tools{position:fixed;left:8px;bottom:64px;display:flex;gap:6px;z-index:50;flex-wrap:wrap;max-width:60vw}' +
+        '#nx-tools button{all:unset;cursor:pointer;font:12px ui-monospace,Menlo,monospace;color:var(--fg);' +
+        'background:var(--bar);border:1px solid var(--brd);border-radius:6px;padding:4px 8px;line-height:1}' +
+        '#nx-tools button:hover{border-color:var(--blue);color:var(--blue)}' +
+        '#nx-tools button.on{border-color:var(--green);color:var(--green)}' +
+        '#nx-tools button.live{border-color:var(--red);color:var(--red);animation:bl 1s steps(1) infinite}';
+      document.head.appendChild(st);
+      bar = document.createElement('div');
+      bar.id = 'nx-tools'; bar.dir = 'rtl';
+      document.body.appendChild(bar);
+    }
+    bar.innerHTML = '';
+    const mk = function(label, title, cls, fn){
+      const b = document.createElement('button');
+      b.textContent = label; if (title) b.title = title;
+      if (cls) b.className = cls;
+      b.addEventListener('click', fn);
+      bar.appendChild(b); return b;
+    };
+    mk(listening ? '● mic' : '🎤', 'إدخال صوتي', listening ? 'live' : '', toggleMic);
+    mk(soundOn ? '🔊' : '🔇', 'أصوات الواجهة', soundOn ? 'on' : '', function(){
+      soundOn = !soundOn; nxSet('sound', soundOn); beep('tick'); nxToolbar();
+    });
+    mk(ttsOn ? '🗣 on' : '🗣', 'القراءة الصوتية', ttsOn ? 'on' : '', function(){
+      ttsOn = !ttsOn; nxSet('tts', ttsOn); nxToolbar();
+      nxLine('[🔊] القراءة الصوتية: ' + (ttsOn ? 'مفعّلة' : 'موقوفة'), 'ok');
+      if (ttsOn) speak('القراءة الصوتية مفعّلة');
+    });
+    mk('🔎', 'بحث في السجل', '', function(){ nxSearch(); });
+    mk('⤴', 'مشاركة', '', nxShare);
+    mk('⬇', 'تصدير السجل', '', nxExport);
+    mk('✦ ' + V, 'Nexus Console ' + V, 'on', function(){
+      nxLine('✦ ' + V + ' — /voice on|off · /say نص · /search كلمة · /share · /export', 'dim');
+    });
+  }
+
+  // ── لفّ دوال النواة (غير متطفّل) ──────────────────────────────
+  const wrapped = { handleEvent:false, deliberate:false, command:false };
+  function nxWrap(){
+    const doWrap = function(name, make){
+      const orig = window[name];
+      if (typeof orig !== 'function') {
+        nxLine('[warn] تعذّر لفّ الدالة ' + name + ' — الخاصية غير موجودة على window', 'warn');
+        return false;
+      }
+      window[name] = make(orig);
+      return true;
+    };
+    wrapped.handleEvent = doWrap('handleEvent', function(orig){
+      return function(type, data){
+        orig.call(this, type, data);
+        try {
+          if (type === 'final_verdict') {
+            const v = (data && data.verdict) || '';
+            beep(v === 'approve' ? 'ok' : v === 'reject' ? 'err' : 'warn');
+            if (ttsOn) {
+              const word = v === 'approve' ? 'موافقة' : v === 'reject' ? 'رفض' : 'مراجعة';
+              speak(word + ' ' + Math.round(((data && data.score) || 0) * 100) + ' بالمئة' +
+                    (data && data.recommendation ? '. ' + data.recommendation : ''));
+            }
+          } else if (type === 'error') { beep('err'); }
+        } catch (e) {}
+      };
+    });
+    wrapped.deliberate = doWrap('deliberate', function(orig){
+      return async function(){
+        beep('tick');
+        try { return await orig.apply(this, arguments); }
+        finally { nxToolbar(); }
+      };
+    });
+    wrapped.command = doWrap('command', function(orig){
+      return async function(raw){
+        const s = String(raw || '').replace(/^\//, '').trim();
+        const parts = s.split(/\s+/);
+        const cmd = (parts[0] || '').toLowerCase();
+        const arg = parts.slice(1).join(' ').trim();
+        if (cmd === 'voice' || cmd === 'صوت') {
+          const a = arg.toLowerCase();
+          ttsOn = a === 'on' ? true : a === 'off' ? false : !ttsOn;
+          nxSet('tts', ttsOn); nxToolbar();
+          nxLine('[🔊] القراءة الصوتية: ' + (ttsOn ? 'مفعّلة' : 'موقوفة'), 'ok'); return;
+        }
+        if (cmd === 'say' || cmd === 'قل') {
+          const t = arg || 'مرحباً من نكسس';
+          ttsOn = true; nxSet('tts', ttsOn); speak(t); nxToolbar();
+          nxLine('[🗣] ' + nxEsc(t), 'ok'); return;
+        }
+        if (cmd === 'search' || cmd === 'ابحث') { await nxSearch(arg); return; }
+        if (cmd === 'share' || cmd === 'شارك') { await nxShare(); return; }
+        if (cmd === 'export' || cmd === 'صدّر') { nxExport(); return; }
+        if (cmd === 'nx') {
+          nxLine('✦ ' + V + ' — /voice on|off · /say نص · /search كلمة · /share · /export', 'dim'); return;
+        }
+        return orig.apply(this, arguments);
+      };
+    });
+  }
+
+  // ── PWA ───────────────────────────────────────────────────────
+  function nxPWA(){
+    try {
+      if (!document.querySelector('link[rel="manifest"]')) {
+        const l = document.createElement('link');
+        l.rel = 'manifest'; l.href = '/manifest.json';
+        document.head.appendChild(l);
+      }
+      if (!document.querySelector('meta[name="theme-color"]')) {
+        const m = document.createElement('meta');
+        m.name = 'theme-color'; m.content = '#0a0e14';
+        document.head.appendChild(m);
+      }
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(function(){ nxLine('[✓] PWA: service worker مسجّل', 'ok'); })
+          .catch(function(e){ nxLine('[warn] PWA: فشل تسجيل SW — ' + nxEsc(e && e.message || e), 'warn'); });
+      } else {
+        nxLine('[warn] PWA: المتصفح لا يدعم service worker', 'warn');
+      }
+    } catch (e) { nxLine('[warn] PWA: ' + nxEsc(e && e.message || e), 'warn'); }
+  }
+
+  // ── إقلاع ─────────────────────────────────────────────────────
+  try {
+    nxPWA();
+    nxWrap();
+    nxToolbar();
+    nxLine('✦ ' + V + ' — صوت · أصول · بحث · مشاركة · PWA  <span class="dim">(/nx للمساعدة)</span>', 'c-cyan');
+    if (!(wrapped.handleEvent && wrapped.deliberate && wrapped.command)) {
+      nxLine('[warn] بعض دوال النواة لم تُلفّ — أرسل أول 10 أسطر من آخر &lt;script&gt; للتحقّق', 'warn');
+    }
+  } catch (e) {
+    try { nxLine('[warn] فشل تحميل وحدة ' + V + ': ' + nxEsc(e && e.message || e), 'warn'); } catch (_) {}
+  }
+})();
+</script>
+<script>
+/* ═══ Nexus v1.12: voice session + /craft ═══ */
+(function(){
+'use strict';
+const out=document.getElementById('out');
+function sys(t,cls){const d=document.createElement('div');d.className='ln '+(cls||'dim');d.textContent=t;out.appendChild(d);out.scrollTop=out.scrollHeight;}
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const vs={on:false,busy:false,last:null};let rec=null;
+
+if(typeof window.handleEvent==='function'){
+  const _he=window.handleEvent;
+  window.handleEvent=function(t,d){ if(t==='final_verdict') vs.last=d; return _he.apply(this,arguments); };
+}
+
+function vsSay(t){return new Promise(function(res){try{
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);
+  u.lang='ar-SA';u.onend=res;u.onerror=res;speechSynthesis.speak(u);}catch(e){res();}});}
+
+async function vsRun(q){
+  vs.busy=true; const hs=document.getElementById('hstat'); if(hs)hs.textContent='🎧 يعالج…';
+  vs.last=null;
+  try{ await Promise.resolve(window.deliberate(q)); }catch(e){}
+  const d=vs.last;
+  let t = d ? ('القرار: '+(d.verdict==='approve'?'موافقة':d.verdict==='reject'?'رفض':'مراجعة بشرية')
+    +' بنسبة '+Math.round((Number(d.score)||0)*100)+' بالمئة.'
+    +(d.recommendation?' التوصية: '+d.recommendation+'.':'')) : 'لم يصل قرار، حاول مجدداً.';
+  await vsSay(t);
+  vs.busy=false;
+}
+
+function vsListen(){
+  if(!vs.on||vs.busy||!SR) return;
+  rec=new SR(); rec.lang='ar-SA'; rec.interimResults=false; rec.maxAlternatives=1;
+  rec.onresult=function(e){ const t=(e.results[0][0].transcript||'').trim();
+    if(/^(توقف|إيقاف|كفى|إنهاء الجلسة|انهاء الجلسة)$/.test(t)){ vsStop(); return; }
+    if(t.length<3) return;
+    vsRun(t).then(vsListen); };
+  rec.onerror=function(e){ if(e.error==='not-allowed'){ sys('🎙 رُفض إذن الميكروفون — انتهت الجلسة','warn'); vs.on=false; } };
+  rec.onend=function(){ if(vs.on&&!vs.busy) setTimeout(vsListen,700); };
+  try{ rec.start(); const hs=document.getElementById('hstat'); if(hs)hs.textContent='🎤 أسمعك…'; }catch(e){}
+}
+
+function vsStop(){ vs.on=false; try{rec&&rec.stop()}catch(e){}
+  try{speechSynthesis.cancel()}catch(e){}
+  const hs=document.getElementById('hstat'); if(hs)hs.textContent='online';
+  sys('⏹ انتهت الجلسة الصوتية','ok'); }
+
+function vsStart(){
+  if(!SR){ sys('المتصفح لا يدعم التعرف الصوتي — استخدم Chrome','warn'); return; }
+  vs.on=true;
+  sys('🎙 الجلسة الصوتية بدأت — تحدث وسأرد صوتياً. قل "توقف" أو اضغط Esc للإنهاء.','ok');
+  vsListen();
+}
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&vs.on) vsStop(); });
+
+async function craft(arg){
+  let review=false,q=arg||'';
+  const m=q.match(/\s+review$/i); if(m){review=true;q=q.slice(0,m.index);}
+  if(!q){ sys('استخدم: /craft <وصف المطلوب> [review]','warn'); return; }
+  sys('⚙️ توليد كود…');
+  try{
+    const r=await fetch('/api/craft',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q,review:review})});
+    const d=await r.json();
+    if(!d.ok){ sys('❌ '+(d.error||'فشل'),'err'); return; }
+    sys('📦 '+(d.build_id||''),'ok');
+    (d.files||[]).forEach(function(f){ sys('  • '+f.path+' ('+f.bytes+'B)'); });
+    const p=d.proof||{}; const pc=Object.keys(p.py_compile||{});
+    sys('  proof: ملفات='+(p.files_written||0)+' | py_compile: '+
+      (pc.length?pc.map(function(k){return k+'='+(p.py_compile[k]==='ok'?'✅':'❌');}).join('، '):'لا ملفات بايثون'),
+      p.ok?'ok':'err');
+    if(d.review&&d.review.verdict){
+      const v=d.review.verdict;
+      sys('  🔎 مراجعة المجلس: '+v+' ('+Math.round((d.review.score||0)*100)+'%)',
+          v==='approve'?'ok':v==='reject'?'err':'warn');
+    }
+  }catch(e){ sys('❌ '+e.message,'err'); }
+}
+
+if(typeof window.command==='function'){
+  const _cmd=window.command;
+  window.command=async function(raw){
+    const p=String(raw).slice(1).trim().split(/\s+/);
+    const c=(p[0]||'').toLowerCase();
+    if(c==='session'||c==='talk'){ if(vs.on) vsStop(); else vsStart(); return; }
+    if(c==='craft'){ await craft(p.slice(1).join(' ').trim()); return; }
+    return _cmd.apply(this,arguments);
+  };
+  sys('✦ v1.12: /session جلسة صوتية متصلة · /craft توليد كود مُراجَع','dim');
+}else{
+  sys('⚠️ v1.12: لم أجد window.command — أرسل أول أسطر آخر <script>','warn');
+}
+})();
+</script>
+</body>
+</html>

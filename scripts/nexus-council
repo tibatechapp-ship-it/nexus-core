@@ -1,0 +1,83 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:.:$PYTHONPATH"
+export NEXUS_QUESTION="$1"
+export NEXUS_MODE="${2:-mock}"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, '.')
+sys.path.insert(0, 'src')
+
+mode = os.environ.get("NEXUS_MODE", "mock")
+
+# ═══ Mock LLM ═══
+if mode == "mock":
+    from novamind.core.llm_router import LLMRouter
+    
+    def mock_gen(self, prompt="", system="", **kw):
+        s = str(system)
+        p = str(prompt)
+        is_debate = "راجع" in p or "debate" in p.lower()
+        
+        # ═══ الأولوية: الناقد (فريد) ═══
+        if "أنت الناقد" in s:
+            if is_debate:
+                txt = "بعد المراجعة: الحجتان متسقتان. مقبول مع التحفظ على التوثيق."
+            else:
+                txt = "أراجع الحجتين. الافتراضات تحتاج دليلاً. الحجج متسقة. مقبول."
+        # ═══ الثاني: المتشكك ═══
+        elif "أنت المحلل المتشكك" in s:
+            if is_debate:
+                txt = "أراجع: المحلل مفرط في التفاؤل. خطر: نقص السياق الأمني."
+            else:
+                txt = "خطر: 3 مخاوف: 1) حقن، 2) مصدر غير واضح، 3) نقص السياق."
+        # ═══ الثالث: المدافع ═══
+        elif "أنت المحلل المدافع" in s:
+            if is_debate:
+                txt = "أراجع: الناقد محق. لكن المخاوف يمكن التخفيف منها. آمن."
+            else:
+                txt = "آمن: الطلب مقبول. لا أنماط ضارة، يمكن المتابعة."
+        else:
+            txt = f"تحليل: {p[:80]}"
+        
+        return {"ok": True, "text": txt, "provider": "mock", "elapsed": 0.01}
+    
+    LLMRouter.generate = mock_gen
+    LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
+    LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
+    LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
+    LLMRouter._is_cooled_down = lambda self, n: True
+
+from src.council.rag_bridge import get_council_bridge
+
+question = os.environ.get("NEXUS_QUESTION", "")
+print("=" * 60)
+print("🏛️  مجلس الوكلاء — Nexus Council")
+print("=" * 60)
+print(f"❓ {question}")
+print(f"🎭 الوضع: {mode}")
+print("=" * 60 + "\n")
+
+bridge = get_council_bridge()
+result = bridge.deliberate_with_memory(question)
+
+print("\n" + "=" * 60)
+print(f"📊 القرار: {result.verdict.upper()}")
+print(f"   النقاط: {result.score:.2f}")
+print(f"   الجولات: {result.rounds}")
+print(f"   الوقت: {result.elapsed:.2f}ث")
+print(f"   توافق: {'✅' if result.consensus else '❌'}")
+print("=" * 60)
+
+print(f"\n💬 المداخلات ({len(result.transcript)}):")
+for entry in result.transcript:
+    print(f"\n─── {entry['phase']} | {entry['member']} ───")
+    print(f"{entry['response'][:250]}")
+
+if result.security_events:
+    print(f"\n🛡️ أحداث أمنية: {len(result.security_events)}")
+    for e in result.security_events[:5]:
+        print(f"   • {e}")
+PYEOF

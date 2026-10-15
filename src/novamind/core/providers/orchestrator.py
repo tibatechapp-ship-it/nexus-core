@@ -48,14 +48,14 @@ class LLMOrchestrator:
                 )
 
         # ═══ GLM / Zhipu (multi-key) ═══
-        for i in range(1, 5):
+        for i in range(1, 14):
             key = os.environ.get(f"ZAI_API_KEY_{i}", "").strip()
             if key and len(key) > 10:
                 self.apps[f"glm-{i}"] = ProviderApp(
                     name=f"glm-{i}",
                     api_key=key,
-                    base_url="https://open.bigmodel.cn/api/paas/v4",
-                    models={"fast": "glm-4-flash", "smart": "glm-4-plus"},
+                    base_url="https://api.z.ai/api/paas/v4",
+                    models={"fast": "glm-4.5-flash", "smart": "glm-4.5-flash"},
                     provider_type="openai",
                     priority=15 + i,
                 )

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nexus-Core — Unified AI Agent System</title>
+<meta name="description" content="Unified AI Agent System: Memory + Learning + Security + 20 Agents. Pure Python stdlib-only, 1218 tests @ 99%.">
+<meta property="og:title" content="Nexus-Core — Unified AI Agent System">
+<meta property="og:description" content="Memory + Learning + Security + 20 Agents.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0b1f1b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#061312;--surface:rgba(255,255,255,.08);--text-1:#e8fffc;--text-2:#9fb9b6;
+  --accent:#3fbfa5;--on-accent:#04110e;--line:rgba(255,255,255,.12);
+  --radius:18px;--radius-sm:12px;--container:1120px;
+  --space-3:16px;--space-4:24px;--space-5:48px;--space-6:96px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,sans-serif;background:radial-gradient(1200px 800px at 50% 0%,#0c1f1c,#061312);color:var(--text-1);line-height:1.65}
+header{position:sticky;top:0;z-index:10;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);background:rgba(6,19,18,.7);border-bottom:1px solid var(--line)}
+nav{max-width:var(--container);margin:0 auto;padding:10px 20px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:Space Grotesk,system-ui;font-size:1.1rem;font-weight:700;letter-spacing:-.02em}
+nav a{color:var(--text-2);text-decoration:none;margin:0 10px;font-size:.98rem}
+nav a.cta{background:linear-gradient(145deg,#4fcfb0,#3fbfa5);color:var(--on-accent);padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);box-shadow:0 8px 20px rgba(63,191,165,.25);transition:transform .25s ease,box-shadow .25s ease}
+nav a.cta:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(63,191,165,.3)}
+section{padding-block:var(--space-6)}.container{max-width:var(--container);margin:0 auto;padding:0 20px}
+.hero{text-align:center;padding-block:96px}.eyebrow{color:var(--accent);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px;font-weight:600}
+h1{font-family:Space Grotesk,system-ui;font-size:clamp(2.6rem,7vw,5rem);line-height:1.05;margin-bottom:18px;letter-spacing:-.02em}
+.sub{color:var(--text-2);max-width:720px;margin:0 auto 32px;font-size:1.05rem}
+.btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn{padding:10px 16px;border-radius:999px;text-decoration:none;border:1px solid var(--line);background:var(--surface);color:var(--text-1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .2s ease,border-color .2s ease}
+.btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.25)}
+.btn.primary{background:linear-gradient(145deg,#4fcfb0,#3fbfa5);color:var(--on-accent);box-shadow:0 10px 30px rgba(63,191,165,.25)}
+.terminal{max-width:860px;margin:40px auto 0;border:1px solid var(--line);border-radius:var(--radius);background:rgba(0,10,9,.6);box-shadow:0 30px 80px rgba(0,0,0,.4);overflow:hidden}
+.terminal-header{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.05)}
+.dot{width:10px;height:10px;border-radius:50%}.d1{background:#ff5f56}.d2{background:#ffbd2e}.d3{background:#27c93f}
+.terminal-body{padding:18px 20px;font-family:'JetBrains Mono',monospace;color:#c6fff5;font-size:.98rem;white-space:pre-wrap;text-align:left;line-height:1.8}
+h2{font-family:Space Grotesk,system-ui;font-size:clamp(1.6rem,4vw,2.6rem);margin-bottom:18px;letter-spacing:-.02em}
+.grid{display:grid;gap:18px}.features{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.card h3{margin-bottom:8px;font-size:1.15rem}
+.muted{color:var(--text-2)}
+.code{border:1px solid var(--line);border-radius:var(--radius-sm);background:rgba(0,10,9,.6);padding:16px;overflow:auto}
+pre{font-family:'JetBrains Mono',monospace;font-size:.98rem;line-height:1.8}
+.links{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+footer{padding:40px 0;border-top:1px solid var(--line);text-align:center;color:var(--text-2)}
+@media (max-width:640px){section{padding-block:64px}.hero{padding-block:72px}nav a{margin:0 6px}}
+</style>
+<script src="i18n.js"></script>
+</head>
+<body>
+<header>
+  <nav>
+    <div class="logo">nexus-core</div>
+    <div>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#docs">Docs</a>
+      <a href="#" onclick="nexusSwitchLang('ar');return false;" title="العربية">AR</a>
+      <a class="cta" href="https://github.com/tibatechapp-ship-it/nexus-core">GitHub</a>
+    </div>
+  </nav>
+</header>
+<section class="hero">
+  <div class="container">
+    <p class="eyebrow">Unified AI Agent System</p>
+    <h1>Memory + Learning + Security + 20 Agents</h1>
+    <p class="sub">One repo, two layers. Framework is pure Python stdlib-only (phone-safe). 1218 tests @ 99% coverage. Every feature kept.</p>
+    <div class="btns">
+      <a class="btn primary" href="#install">Get Started</a>
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core">View on GitHub</a>
+    </div>
+    <div class="terminal">
+      <div class="terminal-header"><div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div></div>
+      <div class="terminal-body">$ python -m pytest --cov
+1218 passed, 1 skipped, 99% coverage
+$ ruff check . && echo "OK"
+All checks passed
+$ python -m src.security . --fail-on high
+Security scan: 0 high issues</div>
+    </div>
+  </div>
+</section>
+<section id="features">
+  <div class="container">
+    <h2>Core Features</h2>
+    <div class="grid features">
+      <div class="card"><h3>20 AI Agents</h3><p class="muted">Core/planning/quality/ops + registry/sub-agent with depth limits and tool scoping.</p></div>
+      <div class="card"><h3>4-Type Memory</h3><p class="muted">Episodic, semantic, procedural, emotional — SQLite stores with recall/forget and retention.</p></div>
+      <div class="card"><h3>Continual Learning</h3><p class="muted">Experience → lessons, anti-forgetting, consolidation and a learning orchestrator.</p></div>
+      <div class="card"><h3>Offline Security</h3><p class="muted">8 regex agents + orchestrator, CLI with <code>--fail-on</code> (low/medium/high/critical).</p></div>
+      <div class="card"><h3>Workflows</h3><p class="muted">Supervisor, Pipeline (resumable checkpoints), Fanout, Delegation, Blackboard.</p></div>
+      <div class="card"><h3>TUI + Tool Traces</h3><p class="muted">ToolRuns, Lessons screens, streaming, checkpoints and security export.</p></div>
+    </div>
+  </div>
+</section>
+<section id="architecture">
+  <div class="container">
+    <h2>Architecture</h2>
+    <div class="card">
+      <pre style="white-space:pre-wrap">src/
+  agents/       20 built-in agents
+  core/         types, backend, streaming, context, resilience
+  patterns/     Supervisor, Pipeline (resumable), Fanout, Delegation, Blackboard
+  memory/       4 SQLite stores
+  learning/     experience collector → lessons → anti-forgetting
+  security/     offline scanner (8 agents) + CLI
+  tools/        read-only ReAct loop
+  tui/          Textual UI (tool traces, lessons)
+  novamind/     opt-in extras (server/RAG/observability)</pre>
+    </div>
+  </div>
+</section>
+<section id="install">
+  <div class="container">
+    <h2>Quick Start</h2>
+    <div class="code"><pre># Framework (stdlib-only)
+python -c "from src.core.backend import EchoBackend; print('OK')"
+
+# TUI (Echo backend offline)
+python -c "from src.core.backend import EchoBackend; from src.tui.app import run_app; run_app(backend=EchoBackend())"
+
+# Install extras
+python -m pip install -e ".[dev]"           # tests/tooling
+python -m pip install -e ".[voice,tui]"     # voice + TUI
+python -m pip install -e ".[novamind]"      # opt-in server layer</pre></div>
+    <h3 style="margin-top:32px">Verify before shipping</h3>
+    <div class="code"><pre>ruff check .
+mypy zyvo-telegram.py zyvo-voice.py src
+python scripts/check_annotations.py
+python -m pytest --cov  # 1218 tests @ 99%</pre></div>
+  </div>
+</section>
+<section id="docs">
+  <div class="container">
+    <h2>Documentation</h2>
+    <div class="grid features">
+      <div class="card"><h3>README</h3><p class="muted">Overview, install, run.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core#readme">Read on GitHub</a></div></div>
+      <div class="card"><h3>AGENTS.md</h3><p class="muted">Project memory, decisions, gates.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/AGENTS.md">Read on GitHub</a></div></div>
+      <div class="card"><h3>ARCHITECTURE</h3><p class="muted">Key modules &amp; design.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/ARCHITECTURE.md">Read on GitHub</a></div></div>
+      <div class="card"><h3>SECURITY</h3><p class="muted">Scanner, levels, usage.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/SECURITY.md">Read on GitHub</a></div></div>
+    </div>
+  </div>
+</section>
+<section id="demo">
+  <div class="container">
+    <h2>Demo</h2>
+    <div class="card"><p class="muted">Terminal-first TUI with ToolRuns + Lessons screens, streaming, resumable pipelines and checkpoints. Pure stdlib backend works offline.</p></div>
+  </div>
+</section>
+<section id="community">
+  <div class="container">
+    <h2>Community</h2>
+    <div class="links">
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core">GitHub</a>
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/issues">Issues</a>
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/discussions">Discussions</a>
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/LICENSE">License (MIT)</a>
+    </div>
+  </div>
+</section>
+<footer><div class="container">MIT License — © 2026 nexus-core</div></footer>
+</body>
+</html>

@@ -1,0 +1,45 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nexus-rag — RAG CLI for semantic search
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:$PYTHONPATH"
+export NEXUS_ACTION="$1"
+export NEXUS_ARG="${@:2}"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import os, sys
+sys.path.insert(0, 'src')
+from src.memory.rag_engine import RAGEngine
+
+rag = RAGEngine(vector_store_path=os.path.expanduser("~/.nexus/data/rag.db"))
+action = os.environ.get("NEXUS_ACTION", "")
+arg = os.environ.get("NEXUS_ARG", "")
+
+if action == "add":
+    doc_id = f"doc_{abs(hash(arg)) & 0xFFFFFF:x}"
+    rag.add_document(doc_id, arg)
+    print(f"✅ أُضيفت وثيقة: {doc_id}")
+
+elif action == "query":
+    results = rag.retrieve(arg, k=5)
+    print(f"🔍 {len(results)} نتيجة:")
+    for i, r in enumerate(results, 1):
+        print(f"   {i}. {r.text[:80]}  (d={r.distance:.3f})")
+
+elif action == "ask":
+    result = rag.generate(arg)
+    print(result.get("text", result))
+
+elif action == "list":
+    results = rag.retrieve("test", k=100)
+    print(f"📚 {len(results)} وثيقة")
+
+else:
+    print("الاستخدام:")
+    print("  nexus-rag add TEXT       إضافة وثيقة")
+    print("  nexus-rag query Q        بحث دلالي")
+    print("  nexus-rag ask Q          سؤال + سياق")
+    print("  nexus-rag list           عرض الكل")
+
+rag.close()
+PYEOF

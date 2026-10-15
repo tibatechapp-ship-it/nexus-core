@@ -95,13 +95,21 @@ class SecurityScanner:
         exclude: set[str] | frozenset[str] | None = None,
         max_bytes: int = 2_000_000,
     ) -> ScanResult:
-        """Scan a whole tree (recursively) and return a :class:`ScanResult`."""
+        """Scan ``path`` — a single file or a whole tree — into a :class:`ScanResult`.
+
+        A single explicit file is scanned directly (its own bytes are the whole
+        target); the directory-name ``exclude`` set only governs which subtrees
+        are skipped while walking a directory. A directory is scanned recursively.
+        """
         root = Path(path)
         if not root.exists():
             raise FileNotFoundError(f"scan target does not exist: {root}")
         skipped = DEFAULT_EXCLUDE | frozenset(exclude or ())
         findings: list[Finding] = []
         files = 0
+        if root.is_file():
+            findings.extend(self.scan_file(root, max_bytes=max_bytes))
+            return ScanResult(findings, 1, str(root))
         for candidate in sorted(root.rglob("*")):
             if not candidate.is_file():
                 continue

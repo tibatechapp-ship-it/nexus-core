@@ -1,0 +1,21 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME=~/nexus-core
+export PYTHONPATH=src:$PYTHONPATH
+cd ~/nexus-core
+
+python3 -c "
+import sys
+sys.path.insert(0, 'src')
+
+# Force Mock
+from novamind.core.llm_router import LLMRouter, MockProvider
+LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [MockProvider()])
+
+from nova.registry import REGISTRY
+agent_name = sys.argv[1]
+prompt = ' '.join(sys.argv[2:])
+agent = REGISTRY.load_agent(agent_name)
+method = 'build' if hasattr(agent, 'build') else 'run'
+result = getattr(agent, method)(prompt)
+print(result)
+" "$@"

@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/bash
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:$PYTHONPATH"
+export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+export NEXUS_AGENT="$1"
+export NEXUS_PROMPT="${@:2}"
+export NEXUS_RAG="1"
+cd "$HOME/nexus-core"
+python3 scripts/_run_agent_with_rag.py

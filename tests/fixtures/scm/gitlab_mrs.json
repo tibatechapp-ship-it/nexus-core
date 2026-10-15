@@ -1,0 +1,13 @@
+[
+  {
+    "id": 900,
+    "iid": 5,
+    "title": "Fix login timeout",
+    "description": "Fixes the 60s logout.",
+    "state": "opened",
+    "source_branch": "fix/timeout",
+    "target_branch": "main",
+    "author": { "username": "alice" },
+    "web_url": "https://gitlab.com/g/n/-/merge_requests/5"
+  }
+]

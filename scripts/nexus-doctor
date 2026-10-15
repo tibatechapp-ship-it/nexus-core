@@ -1,0 +1,103 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nexus-doctor — فحص شامل للنظام
+
+export NOVAMIND_HOME="$HOME/nexus-core"
+export PYTHONPATH="src:$PYTHONPATH"
+export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+cd "$HOME/nexus-core"
+
+python3 << 'PYEOF'
+import sys, os, importlib
+sys.path.insert(0, 'src')
+
+print("=" * 60)
+print("🏥 nexus-doctor — فحص شامل")
+print("=" * 60)
+
+# ═══ 1. Registry ═══
+print("\n📚 [1] Registry")
+try:
+    from nova.registry import REGISTRY, agents_by_category
+    print(f"   ✅ الوكلاء: {len(REGISTRY)}")
+    for cat in ['code', 'security', 'quality', 'infra', 'data', 'ui', 'research', 'meta']:
+        agents = agents_by_category(cat)
+        print(f"      • {cat:10}: {len(agents)}")
+except Exception as e:
+    print(f"   ❌ {e}")
+
+# ═══ 2. تحميل الوكلاء ═══
+print("\n🤖 [2] تحميل الوكلاء")
+ok = fail = 0
+failed_names = []
+for name in REGISTRY.list_all():
+    try:
+        REGISTRY.load_agent(name)
+        ok += 1
+    except Exception as e:
+        fail += 1
+        failed_names.append((name, str(e)[:60]))
+print(f"   ✅ نجح: {ok}")
+print(f"   ❌ فشل: {fail}")
+for n, e in failed_names[:5]:
+    print(f"      • {n}: {e}")
+
+# ═══ 3. Mock LLM ═══
+print("\n🧪 [3] Mock LLM")
+try:
+    from novamind.core.llm_router import LLMRouter
+    print(f"   ✅ LLMRouter محمّل")
+    r = LLMRouter()
+    print(f"   📊 Providers: {len(r.providers)}")
+except Exception as e:
+    print(f"   ❌ {e}")
+
+# ═══ 4. Memory ═══
+print("\n💾 [4] Memory Systems")
+for mod in ['src.memory', 'src.memory.vector_store',
+            'src.memory.knowledge_graph', 'src.memory.providers']:
+    try:
+        importlib.import_module(mod)
+        print(f"   ✅ {mod}")
+    except Exception as e:
+        print(f"   ❌ {mod}: {str(e)[:60]}")
+
+# ═══ 5. sqlite-vec ═══
+print("\n🔍 [5] sqlite-vec")
+try:
+    import sqlite3
+    c = sqlite3.connect(':memory:')
+    c.enable_load_extension(True)
+    c.load_extension('vec0')
+    v = c.execute('SELECT vec_version()').fetchone()[0]
+    print(f"   ✅ vec0 v{v}")
+except Exception as e:
+    print(f"   ❌ {e}")
+
+# ═══ 6. Redis ═══
+print("\n🔴 [6] Redis")
+try:
+    import redis
+    print(f"   ✅ redis Python client")
+except Exception as e:
+    print(f"   ❌ {e}")
+
+# ═══ 7. Workspace ═══
+print("\n📁 [7] Workspace")
+ws = os.environ.get("WORKSPACE_DIR", "")
+print(f"   📂 {ws}")
+print(f"   {'✅ موجود' if os.path.isdir(ws) else '❌ غير موجود'}")
+
+# ═══ 8. Git ═══
+print("\n🔀 [8] Git")
+import subprocess
+try:
+    r = subprocess.run(["git", "log", "--oneline", "-1"],
+                       capture_output=True, text=True, timeout=5)
+    print(f"   ✅ {r.stdout.strip()}")
+except Exception as e:
+    print(f"   ⚠️ {e}")
+
+print("\n" + "=" * 60)
+print("🏥 اكتمل الفحص")
+print("=" * 60)
+PYEOF

@@ -25,6 +25,7 @@ from typing import List, Dict, Optional
 # ═══════════════════════════════════════════════════════════
 ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 # Load .env
 try:
@@ -38,14 +39,18 @@ from fastapi import FastAPI
 from fastapi import HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # NovaMind core
-from core.llm_router import LLMRouter
-from core.orchestrator import Orchestrator, TASK_TEMPLATES
-from core.observability import metrics
-from core.mcp_server import NovaMindMCP
-from core.loop_engine import LoopEngine, Goal
+from novamind.core.llm_router import LLMRouter
+from novamind.core.orchestrator import Orchestrator
+from novamind.council import COUNCIL_MEMBERS, Council
+from novamind.genome import Genome
+TASK_TEMPLATES = {}
+from novamind.core.observability import metrics
+from novamind.core.mcp_server import NovaMindMCP
+from novamind.core.loop_engine import LoopEngine, Goal
 
 # ═══════════════════════════════════════════════════════════
 # Config
@@ -139,14 +144,30 @@ class UnifiedChat:
     def get_history(self, thread_id: str) -> List[Dict]:
         return self.conversations.setdefault(thread_id, [])
 
-    async def chat_stream(self, message: str, thread_id: str):
+    async def chat_stream(self, message: str, thread_id: str,
+                          conversation_id: str = "", agent: str = ""):
         """Stream via Proactive Pipeline: Gatekeeper -> Planner -> ReAct -> PreCheck."""
         import asyncio as _aio
         import json as _json
 
+        t0 = time.time()
+        cid = conversation_id or thread_id
+
+        def _trace(status: str, answer: str, plan=None, gate=None, pc=None) -> None:
+            """Best-effort Time-Machine log; never break the stream on failure."""
+            try:
+                store.add_trace(
+                    conversation_id=cid, message=message, response=answer or "",
+                    agent=agent or "", status=status,
+                    latency_ms=int((time.time() - t0) * 1000),
+                    plan=plan or {}, gatekeeper=gate or {}, pre_check=pc or {},
+                )
+            except Exception:
+                pass
+
         try:
             if not hasattr(self, "_react_loop"):
-                from core.react_loop import ReactLoop
+                from novamind.core.react_loop import ReactLoop
                 self._react_loop = ReactLoop(
                     router=self.router,
                     tools=REACT_TOOLS if "REACT_TOOLS" in globals() else {},
@@ -154,6 +175,7 @@ class UnifiedChat:
                 )
             proactive_pipeline.set_react_loop(self._react_loop)
         except Exception as e:
+            _trace("error", "Init error: " + str(e))
             yield "data: " + _json.dumps({"type": "error", "content": "Init error: " + str(e)}, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
             return
@@ -164,12 +186,15 @@ class UnifiedChat:
                 None, lambda: proactive_pipeline.execute(message)
             )
         except Exception as e:
+            _trace("error", "Pipeline error: " + str(e))
             yield "data: " + _json.dumps({"type": "error", "content": "Pipeline error: " + str(e)}, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
             return
 
         gate = result.gatekeeper if isinstance(result.gatekeeper, dict) else {}
         if result.status == "blocked" or gate.get("decision") == "block":
+            _trace("blocked", result.answer or "Blocked",
+                   plan=result.plan if isinstance(result.plan, dict) else {}, gate=gate)
             yield "data: " + _json.dumps({"type": "error", "content": result.answer or "Blocked"}, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
             return
@@ -188,6 +213,7 @@ class UnifiedChat:
         if pc and pc.get("decision") and pc["decision"] != "clean":
             yield "data: " + _json.dumps({"type": "pre_check", "decision": pc["decision"]}, ensure_ascii=False) + chr(10) + chr(10)
 
+        _trace("ok", answer, plan=plan, gate=gate, pc=pc)
         yield "data: [DONE]" + chr(10) + chr(10)
 
     def analyze(self, task: str, code: str) -> Dict:
@@ -314,8 +340,8 @@ REACT_TOOLS = {
     "git_command": tool_git_command,
 }
 
-from core.orchestrator import Orchestrator as _Orch
-from core.proactive_pipeline import proactive_pipeline
+from novamind.core.orchestrator import Orchestrator as _Orch
+from novamind.core.proactive_pipeline import proactive_pipeline
 unified_orch = _Orch()
 
 
@@ -328,6 +354,8 @@ unified = UnifiedChat()
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "default"
+    conversation_id: str = ""
+    agent: str = ""
 
 
 class FileRequest(BaseModel):
@@ -346,6 +374,53 @@ async def serve_ui():
     if ui_path.exists():
         return ui_path.read_text(encoding="utf-8")
     return "<h1>NovaMind Unified</h1><p>UI not found. Create web/unified_ui.html</p>"
+
+
+# ── PWA assets (v2.0) ────────────────────────────────────────────────
+def _web_file(name: str) -> Path:
+    return ROOT / "web" / name
+
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    path = _web_file("manifest.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="manifest.json not found")
+    return FileResponse(str(path), media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def pwa_service_worker():
+    path = _web_file("sw.js")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="sw.js not found")
+    return FileResponse(
+        str(path), media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/offline.html")
+async def pwa_offline():
+    path = _web_file("offline.html")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="offline.html not found")
+    return FileResponse(str(path), media_type="text/html")
+
+
+@app.get("/icon-{size}.png")
+async def pwa_icon(size: str):
+    # Only the three published icons; reject anything else.
+    name = {
+        "192": "icon-192.png",
+        "512": "icon-512.png",
+        "maskable-512": "icon-maskable-512.png",
+    }.get(size)
+    path = _web_file(name) if name else None
+    if path is None or not path.exists():
+        raise HTTPException(status_code=404, detail="icon not found")
+    return FileResponse(str(path), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/health")
@@ -389,7 +464,10 @@ async def write_file(req: FileRequest):
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     async def event_gen():
-        async for event in unified.chat_stream(req.message, req.thread_id):
+        async for event in unified.chat_stream(
+            req.message, req.thread_id,
+            conversation_id=req.conversation_id, agent=req.agent,
+        ):
             yield event
     return StreamingResponse(
         event_gen(),
@@ -425,9 +503,9 @@ async def get_metrics():
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/pipeline/status")
 async def pipeline_status():
-    from core.security_gatekeeper import gatekeeper
-    from core.task_planner import planner
-    from core.pre_check import pre_check
+    from novamind.core.security_gatekeeper import gatekeeper
+    from novamind.core.task_planner import planner
+    from novamind.core.pre_check import pre_check
     return {
         "gatekeeper": True,
         "planner": True,
@@ -437,23 +515,23 @@ async def pipeline_status():
 
 @app.post("/api/security/check")
 async def security_check(req: dict):
-    from core.security_gatekeeper import gatekeeper
+    from novamind.core.security_gatekeeper import gatekeeper
     text = req.get("text", "")
     check_type = req.get("type", "request")
     if check_type == "code":
-        from core.pre_check import pre_check
+        from novamind.core.pre_check import pre_check
         return pre_check.check(text).to_dict()
     return gatekeeper.analyze(text).to_dict()
 
 @app.post("/api/pipeline/plan")
 async def pipeline_plan(req: dict):
-    from core.task_planner import planner
+    from novamind.core.task_planner import planner
     plan = planner.plan(req.get("message", ""))
     return plan.to_dict()
 
 @app.get("/api/security/metrics")
 async def security_metrics():
-    from core.security_gatekeeper import gatekeeper
+    from novamind.core.security_gatekeeper import gatekeeper
     return gatekeeper.get_metrics()
 
 
@@ -514,7 +592,7 @@ async def pipeline_stream(req: _StreamRequest):
         try:
             # Ensure ReactLoop is wired
             if getattr(proactive_pipeline, "_react_loop", None) is None:
-                from core.react_loop import ReactLoop
+                from novamind.core.react_loop import ReactLoop
                 if getattr(unified, "_react_loop", None) is None:
                     unified._react_loop = ReactLoop(
                         router=unified.router,
@@ -580,6 +658,361 @@ async def pipeline_stream(req: _StreamRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+# ═══════════════════════════════════════════════════════
+# v1.5 — Conversation persistence (SQLite, replaces localStorage)
+# ═══════════════════════════════════════════════════════
+from novamind.core.session_store import get_store
+
+store = get_store()
+
+
+class ConversationCreate(BaseModel):
+    id: Optional[str] = None
+    title: str = ""
+    agent: str = ""
+
+
+class ConversationUpdate(BaseModel):
+    title: Optional[str] = None
+    agent: Optional[str] = None
+    meta: Optional[Dict] = None
+
+
+class MessageCreate(BaseModel):
+    role: str = "user"
+    content: str = ""
+    ts: Optional[int] = None
+    meta: Optional[Dict] = None
+
+
+class ConversationPut(BaseModel):
+    title: Optional[str] = None
+    agent: Optional[str] = None
+    meta: Optional[Dict] = None
+    messages: Optional[List[Dict]] = None
+
+
+class MigrateRequest(BaseModel):
+    conversations: List[Dict] = []
+
+
+@app.get("/api/db/stats")
+async def db_stats():
+    return store.stats()
+
+
+@app.get("/api/conversations")
+async def list_conversations(q: Optional[str] = None, limit: int = 500):
+    if q:
+        return {"conversations": store.search_conversations(q, limit=limit)}
+    return {"conversations": store.list_conversations(limit=limit)}
+
+
+@app.post("/api/conversations")
+async def create_conversation(req: ConversationCreate):
+    return store.create_conversation(conv_id=req.id, title=req.title, agent=req.agent)
+
+
+@app.get("/api/conversations/{cid}")
+async def get_conversation(cid: str):
+    conv = store.get_conversation(cid)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return conv
+
+
+@app.patch("/api/conversations/{cid}")
+async def update_conversation(cid: str, req: ConversationUpdate):
+    ok = store.update_conversation(cid, title=req.title, agent=req.agent, meta=req.meta)
+    if not ok:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return {"status": "updated", "id": cid}
+
+
+@app.put("/api/conversations/{cid}")
+async def put_conversation(cid: str, req: ConversationPut):
+    """Create-or-replace a conversation (client-authoritative full sync)."""
+    if store.get_conversation(cid) is None:
+        store.create_conversation(conv_id=cid, title=req.title or "",
+                                  agent=req.agent or "", meta=req.meta)
+    elif req.title is not None or req.agent is not None or req.meta is not None:
+        store.update_conversation(cid, title=req.title, agent=req.agent, meta=req.meta)
+    if req.messages is not None:
+        store.replace_messages(cid, req.messages)
+    return store.get_conversation(cid)
+
+
+@app.delete("/api/conversations/{cid}")
+async def delete_conversation(cid: str):
+    return {"deleted": store.delete_conversation(cid), "id": cid}
+
+
+@app.delete("/api/conversations")
+async def clear_conversations():
+    return {"cleared": store.clear_conversations()}
+
+
+@app.post("/api/conversations/{cid}/messages")
+async def add_message(cid: str, req: MessageCreate):
+    if store.get_conversation(cid) is None:
+        store.create_conversation(conv_id=cid)
+    return store.add_message(cid, req.role, req.content, meta=req.meta, ts=req.ts)
+
+
+@app.delete("/api/messages/{mid}")
+async def delete_message(mid: str):
+    return {"deleted": store.delete_message(mid), "id": mid}
+
+
+@app.get("/api/conversations/{cid}/export")
+async def export_conversation(cid: str, format: str = "json"):
+    data = store.export_conversation(cid, fmt=format)
+    if data is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if format in ("md", "markdown"):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(data, media_type="text/markdown")
+    return JSONResponse(content=json.loads(data))
+
+
+@app.post("/api/conversations/migrate")
+async def migrate_conversations(req: MigrateRequest):
+    return {"imported": store.import_conversations(req.conversations)}
+
+
+@app.get("/api/export/conversations")
+async def export_all_conversations(format: str = "json"):
+    """Bulk backup: every conversation with its messages (json or markdown)."""
+    data = store.export_all_conversations(fmt=format)
+    if format in ("md", "markdown"):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(data, media_type="text/markdown")
+    return JSONResponse(content=json.loads(data))
+
+
+# ── Time Machine: request traces (v1.5) ──────────────────────────────────
+@app.get("/api/traces")
+async def list_traces(conversation_id: str = "", q: str = "", limit: int = 200):
+    if q:
+        return {"traces": store.search_traces(q, limit=limit)}
+    return {"traces": store.list_traces(conversation_id=conversation_id or None,
+                                        limit=limit)}
+
+
+@app.get("/api/traces/{tid}")
+async def get_trace(tid: str):
+    tr = store.get_trace(tid)
+    if tr is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    return tr
+
+
+@app.delete("/api/traces/{tid}")
+async def delete_trace(tid: str):
+    return {"deleted": store.delete_trace(tid), "id": tid}
+
+
+@app.delete("/api/traces")
+async def clear_traces(conversation_id: str = ""):
+    return {"cleared": store.clear_traces(conversation_id or None)}
+
+
+@app.get("/api/traces/{tid}/export")
+async def export_trace(tid: str, format: str = "json"):
+    data = store.export_trace(tid, fmt=format)
+    if data is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    if format in ("md", "markdown"):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(data, media_type="text/markdown")
+    return JSONResponse(content=json.loads(data))
+
+
+@app.post("/api/traces/{tid}/replay")
+async def replay_trace(tid: str):
+    """Re-run a logged request through the pipeline and log the new result."""
+    import asyncio as _aio
+
+    tr = store.get_trace(tid)
+    if tr is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    loop = _aio.get_event_loop()
+    t0 = time.time()
+    try:
+        result = await loop.run_in_executor(
+            None, lambda: proactive_pipeline.execute(tr["message"])
+        )
+        answer = result.answer or "(no answer)"
+        status = "blocked" if result.status == "blocked" else "ok"
+    except Exception as e:  # pragma: no cover - defensive
+        answer = "Replay error: " + str(e)
+        status = "error"
+    new = store.add_trace(
+        conversation_id=tr["conversation_id"], message=tr["message"],
+        response=answer, agent=tr.get("agent", ""), status=status,
+        latency_ms=int((time.time() - t0) * 1000), meta={"replay_of": tid},
+    )
+    return {"trace": new, "answer": answer, "replay_of": tid}
+
+
+# ═══════════════════════════════════════════════════════════
+# The Living Council (المجلس الحيّ) — v2.0
+# ═══════════════════════════════════════════════════════════
+class CouncilRequest(BaseModel):
+    topic: str
+    rounds: int = 3
+
+
+_council: Optional[Council] = None
+_genome: Optional[Genome] = None
+
+
+def get_genome() -> Genome:
+    """Process-wide Agent Genome, backed by the shared SQLite store.
+
+    Seeded from the council roles on first use so every member has a genome
+    row to evolve from.
+    """
+    global _genome
+    if _genome is None:
+        _genome = Genome(store)
+        _genome.seed(members=COUNCIL_MEMBERS)
+    return _genome
+
+
+def get_council() -> Council:
+    """Process-wide council, sharing the chat router + the SQLite store."""
+    global _council
+    if _council is None:
+        _council = Council(router=unified.router, store=store, genome=get_genome())
+    return _council
+
+
+@app.post("/api/council/debate")
+async def council_debate(req: CouncilRequest):
+    """Run a full council debate and return the synthesised result."""
+    import asyncio as _aio
+
+    loop = _aio.get_event_loop()
+    return await loop.run_in_executor(
+        None, lambda: get_council().debate(req.topic, rounds=req.rounds)
+    )
+
+
+@app.post("/api/council/stream")
+async def council_stream(req: CouncilRequest):
+    """Stream a live council debate as Server-Sent Events."""
+    import asyncio as _aio
+    import queue as _queue
+    import threading as _threading
+
+    q: "_queue.Queue" = _queue.Queue()
+
+    def _work() -> None:
+        try:
+            for ev in get_council().debate_stream(req.topic, rounds=req.rounds):
+                q.put(ev)
+        except Exception as e:  # pragma: no cover - defensive
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    _threading.Thread(target=_work, daemon=True).start()
+
+    async def event_gen():
+        loop = _aio.get_event_loop()
+        while True:
+            ev = await loop.run_in_executor(None, q.get)
+            if ev is None:
+                break
+            yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/council/sessions")
+async def council_sessions(limit: int = 50):
+    return {"sessions": store.list_council_sessions(limit=limit)}
+
+
+@app.get("/api/council/sessions/{sid}")
+async def council_session_get(sid: str):
+    s = store.get_council_session(sid)
+    if s is None:
+        raise HTTPException(status_code=404, detail="council session not found")
+    return s
+
+
+@app.delete("/api/council/sessions/{sid}")
+async def council_session_delete(sid: str):
+    ok = store.delete_council_session(sid)
+    if not ok:
+        raise HTTPException(status_code=404, detail="council session not found")
+    return {"deleted": True, "id": sid}
+
+
+# ═══════════════════════════════════════════════════════════
+# Agent Genome (جينوم الوكلاء) — v2.0
+# ═══════════════════════════════════════════════════════════
+class GenomePatch(BaseModel):
+    name: Optional[str] = None
+    persona: Optional[str] = None
+
+
+@app.get("/api/genome")
+async def genome_list():
+    """Every agent's genome, ranked by standing (best first)."""
+    return {"agents": get_genome().rank()}
+
+
+@app.get("/api/genome/export")
+async def genome_export():
+    """Export the whole genome (agents + timelines) as a downloadable JSON."""
+    payload = get_genome().export()
+    return JSONResponse(
+        content=payload,
+        headers={"Content-Disposition": 'attachment; filename="genome.json"'},
+    )
+
+
+@app.post("/api/genome/import")
+async def genome_import(body: Dict):
+    """Import agents from an exported genome (idempotent by agent_id)."""
+    n = get_genome().import_(body or {})
+    return {"imported": n}
+
+
+@app.get("/api/genome/{agent_id}")
+async def genome_detail(agent_id: str):
+    agent = get_genome().detail(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return agent
+
+
+@app.patch("/api/genome/{agent_id}")
+async def genome_patch(agent_id: str, req: GenomePatch):
+    """Edit an agent's persona / display name (does not touch its stats)."""
+    ok = store.update_agent(agent_id, name=req.name, persona=req.persona)
+    if not ok:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return store.get_agent(agent_id)
+
+
+@app.post("/api/genome/{agent_id}/reset")
+async def genome_reset(agent_id: str):
+    """Re-train an agent: zero its stats, bump generation, keep lineage."""
+    agent = get_genome().reset(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return agent
+
 
 if __name__ == "__main__":
     main()

@@ -66,8 +66,9 @@ class BaseAgent(ABC):
         user = task
         if context:
             user = f"{user}\n\n--- context ---\n{context}"
+        system = self.system_prompt
         messages = [
-            Message("system", self.system_prompt),
+            Message("system", system),
             Message("user", user),
         ]
         return self._with_lessons(messages, lessons)

@@ -57,6 +57,39 @@ def _signed_index(feature: str, dim: int) -> tuple[int, int]:
     return value % dim, sign
 
 
+_ARABIC_DIACRITICS = re.compile(r"[\u0617-\u061A\u064B-\u0652\u0670\u0640]")
+
+_ARABIC_TRANS = str.maketrans({
+    "\u0623": "\u0627",  # أ -> ا
+    "\u0625": "\u0627",  # إ -> ا
+    "\u0622": "\u0627",  # آ -> ا
+    "\u0671": "\u0627",  # ٱ -> ا
+    "\u0629": "\u0647",  # ة -> ه
+    "\u0649": "\u064A",  # ى -> ي
+    "\u0626": "\u064A",  # ئ -> ي
+    "\u0624": "\u0648",  # ؤ -> و
+})
+
+
+def _normalize_arabic(text):
+    """يزيل التشكيل ويوحّد الهمزات والتاء المربوطة للألف/الياء."""
+    text = _ARABIC_DIACRITICS.sub("", text)
+    return text.translate(_ARABIC_TRANS)
+
+
+_STOPWORDS = frozenset([
+    # عربي
+    "هل", "في", "من", "على", "عن", "الى", "إلى", "او", "أو", "ام", "أم",
+    "هو", "هي", "هذا", "هذه", "ذلك", "تلك", "التي", "الذي", "ما", "لا",
+    "ان", "أن", "إن", "كان", "كانت", "ثم", "قد", "كل", "بعض", "نحن",
+    "لكن", "اذا", "إذا", "كيف", "متى", "لماذا", "اين", "أين", "هناك",
+    # إنجليزي
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "with",
+    "is", "are", "was", "were", "be", "been", "or", "and", "vs",
+    "by", "as", "it", "this", "that", "from", "into", "than", "not",
+])
+
+
 class HashingEmbedder:
     """Deterministic feature-hashing embedder over word + character *n*-grams."""
 
@@ -69,14 +102,17 @@ class HashingEmbedder:
         self.ngram = ngram
 
     def features(self, text: str) -> set[str]:
-        """The feature set for ``text``: words plus their character n-grams."""
-        words = _WORD.findall(text.lower())
+        """Words (بدون stopwords) + char n-grams + word bigrams."""
+        text = _normalize_arabic(text.lower())
+        words = [w for w in _WORD.findall(text) if w not in _STOPWORDS]
         features = set(words)
         for word in words:
             if len(word) < self.ngram:
                 continue
             for start in range(len(word) - self.ngram + 1):
                 features.add(word[start : start + self.ngram])
+        for i in range(len(words) - 1):
+            features.add(words[i] + "_" + words[i + 1])
         return features
 
     def __call__(self, text: str) -> list[float]:
@@ -89,6 +125,10 @@ class HashingEmbedder:
         if norm == 0.0:
             return vector
         return [value / norm for value in vector]
+
+    def embed(self, text: str) -> list[float]:
+        """Alias of ``__call__`` — satisfies the ``EmbeddingProvider`` protocol."""
+        return self(text)
 
 
 def make_embedder(spec: Embedder | str | None) -> Embedder | None:
