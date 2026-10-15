@@ -1,7 +1,9 @@
 """Smart Router — يقرر: وكيل واحد أم فريق، من يشارك، وكيف."""
 from __future__ import annotations
-import os, sys, re, json
-from dataclasses import dataclass, field
+import os
+import sys
+import re
+from dataclasses import dataclass
 from enum import Enum
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -219,7 +221,7 @@ class SmartRouter:
         return (
             Strategy.COUNCIL.value,
             candidates[:3],
-            f"طلب حرج → مجلس للتحقق"
+            "طلب حرج → مجلس للتحقق"
         )
 
     def _estimate_time(self, strategy: str, n_agents: int) -> float:

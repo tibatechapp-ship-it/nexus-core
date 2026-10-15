@@ -9,12 +9,14 @@ __pycache__/
 # Backups & pre-versions
 *.backup*
 *.bak
+*.bak-*
 *.pre_*
 *.old
 
 # Runtime data
 logs/
 workspace/
+/hive/
 *.db-journal
 memory.db
 

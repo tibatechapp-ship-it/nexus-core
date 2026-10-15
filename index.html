@@ -636,5 +636,100 @@ out.addEventListener('click', e => {
   }
 })();
 </script>
+<script>
+/* ═══ Nexus v1.12: voice session + /craft ═══ */
+(function(){
+'use strict';
+const out=document.getElementById('out');
+function sys(t,cls){const d=document.createElement('div');d.className='ln '+(cls||'dim');d.textContent=t;out.appendChild(d);out.scrollTop=out.scrollHeight;}
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const vs={on:false,busy:false,last:null};let rec=null;
+
+if(typeof window.handleEvent==='function'){
+  const _he=window.handleEvent;
+  window.handleEvent=function(t,d){ if(t==='final_verdict') vs.last=d; return _he.apply(this,arguments); };
+}
+
+function vsSay(t){return new Promise(function(res){try{
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);
+  u.lang='ar-SA';u.onend=res;u.onerror=res;speechSynthesis.speak(u);}catch(e){res();}});}
+
+async function vsRun(q){
+  vs.busy=true; const hs=document.getElementById('hstat'); if(hs)hs.textContent='🎧 يعالج…';
+  vs.last=null;
+  try{ await Promise.resolve(window.deliberate(q)); }catch(e){}
+  const d=vs.last;
+  let t = d ? ('القرار: '+(d.verdict==='approve'?'موافقة':d.verdict==='reject'?'رفض':'مراجعة بشرية')
+    +' بنسبة '+Math.round((Number(d.score)||0)*100)+' بالمئة.'
+    +(d.recommendation?' التوصية: '+d.recommendation+'.':'')) : 'لم يصل قرار، حاول مجدداً.';
+  await vsSay(t);
+  vs.busy=false;
+}
+
+function vsListen(){
+  if(!vs.on||vs.busy||!SR) return;
+  rec=new SR(); rec.lang='ar-SA'; rec.interimResults=false; rec.maxAlternatives=1;
+  rec.onresult=function(e){ const t=(e.results[0][0].transcript||'').trim();
+    if(/^(توقف|إيقاف|كفى|إنهاء الجلسة|انهاء الجلسة)$/.test(t)){ vsStop(); return; }
+    if(t.length<3) return;
+    vsRun(t).then(vsListen); };
+  rec.onerror=function(e){ if(e.error==='not-allowed'){ sys('🎙 رُفض إذن الميكروفون — انتهت الجلسة','warn'); vs.on=false; } };
+  rec.onend=function(){ if(vs.on&&!vs.busy) setTimeout(vsListen,700); };
+  try{ rec.start(); const hs=document.getElementById('hstat'); if(hs)hs.textContent='🎤 أسمعك…'; }catch(e){}
+}
+
+function vsStop(){ vs.on=false; try{rec&&rec.stop()}catch(e){}
+  try{speechSynthesis.cancel()}catch(e){}
+  const hs=document.getElementById('hstat'); if(hs)hs.textContent='online';
+  sys('⏹ انتهت الجلسة الصوتية','ok'); }
+
+function vsStart(){
+  if(!SR){ sys('المتصفح لا يدعم التعرف الصوتي — استخدم Chrome','warn'); return; }
+  vs.on=true;
+  sys('🎙 الجلسة الصوتية بدأت — تحدث وسأرد صوتياً. قل "توقف" أو اضغط Esc للإنهاء.','ok');
+  vsListen();
+}
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&vs.on) vsStop(); });
+
+async function craft(arg){
+  let review=false,q=arg||'';
+  const m=q.match(/\s+review$/i); if(m){review=true;q=q.slice(0,m.index);}
+  if(!q){ sys('استخدم: /craft <وصف المطلوب> [review]','warn'); return; }
+  sys('⚙️ توليد كود…');
+  try{
+    const r=await fetch('/api/craft',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q,review:review})});
+    const d=await r.json();
+    if(!d.ok){ sys('❌ '+(d.error||'فشل'),'err'); return; }
+    sys('📦 '+(d.build_id||''),'ok');
+    (d.files||[]).forEach(function(f){ sys('  • '+f.path+' ('+f.bytes+'B)'); });
+    const p=d.proof||{}; const pc=Object.keys(p.py_compile||{});
+    sys('  proof: ملفات='+(p.files_written||0)+' | py_compile: '+
+      (pc.length?pc.map(function(k){return k+'='+(p.py_compile[k]==='ok'?'✅':'❌');}).join('، '):'لا ملفات بايثون'),
+      p.ok?'ok':'err');
+    if(d.review&&d.review.verdict){
+      const v=d.review.verdict;
+      sys('  🔎 مراجعة المجلس: '+v+' ('+Math.round((d.review.score||0)*100)+'%)',
+          v==='approve'?'ok':v==='reject'?'err':'warn');
+    }
+  }catch(e){ sys('❌ '+e.message,'err'); }
+}
+
+if(typeof window.command==='function'){
+  const _cmd=window.command;
+  window.command=async function(raw){
+    const p=String(raw).slice(1).trim().split(/\s+/);
+    const c=(p[0]||'').toLowerCase();
+    if(c==='session'||c==='talk'){ if(vs.on) vsStop(); else vsStart(); return; }
+    if(c==='craft'){ await craft(p.slice(1).join(' ').trim()); return; }
+    return _cmd.apply(this,arguments);
+  };
+  sys('✦ v1.12: /session جلسة صوتية متصلة · /craft توليد كود مُراجَع','dim');
+}else{
+  sys('⚠️ v1.12: لم أجد window.command — أرسل أول أسطر آخر <script>','warn');
+}
+})();
+</script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 """تشغيل وكيل مع RAG تلقائياً."""
-import os, sys
+import os
+import sys
 
 # ═══ إضافة المسارين: ROOT و src ═══
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

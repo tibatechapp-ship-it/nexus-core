@@ -1,6 +1,7 @@
 """Nexus-Core Web Dashboard."""
 from __future__ import annotations
-import os, sys, time
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -135,7 +136,6 @@ def rag_query(q: str, k: int = 5):
 @app.post("/api/council/deliberate")
 def council_deliberate(req: CouncilRequest):
     try:
-        import src.nexus
         from src.council.rag_bridge import get_council_bridge
         b = get_council_bridge()
         b.engine.MAX_ROUNDS = 1
@@ -166,7 +166,6 @@ def run_topic(req: CouncilRequest):
         t = get_topic(req.question)  # نستخدم حقل question كـ topic_id
         if not t:
             return {"ok": False, "error": "topic not found"}
-        import src.nexus
         from src.council.rag_bridge import get_council_bridge
         b = get_council_bridge()
         result = b.deliberate_with_memory(t.question)
@@ -250,7 +249,6 @@ class HybridRequest(BaseModel):
 def hybrid_run(req: HybridRequest):
     """يستخدم Hybrid Router (code/tool/decision)."""
     try:
-        import src.nexus
         from src.orchestrator.hybrid_router import HybridRouter, classify
 
         route = req.force or classify(req.prompt)
@@ -296,7 +294,6 @@ class SmartRequest(BaseModel):
 def smart_run(req: SmartRequest):
     """يستخدم Smart Router لاختيار الاستراتيجية المثلى."""
     try:
-        import src.nexus  # تفعيل monitoring
         from src.orchestrator.supervisor import Supervisor
         
         sup = Supervisor(use_rag=True, verbose=False)

@@ -4,8 +4,7 @@ import json
 import os
 import sqlite3
 import struct
-from pathlib import Path
-from typing import Sequence, Optional
+from typing import Sequence
 
 from .base import VectorStore, SearchResult
 

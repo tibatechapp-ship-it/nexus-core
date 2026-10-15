@@ -42,7 +42,7 @@ def patch_llm_router():
 
             # سجّل
             try:
-                call = mon.log_call(
+                mon.log_call(
                     provider=provider_name,
                     model=model,
                     elapsed=time.time() - _t0,

@@ -1,6 +1,9 @@
 """Supervisor — ينفذ قرار SmartRouter."""
 from __future__ import annotations
-import os, sys, time, concurrent.futures
+import os
+import sys
+import time
+import concurrent.futures
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -263,7 +266,7 @@ class Supervisor:
 
     def _print_decision(self, d):
         print(f"\n{'='*60}")
-        print(f"🧠 Smart Router — القرار")
+        print("🧠 Smart Router — القرار")
         print(f"{'='*60}")
         print(f"   📁 الفئة:        {d.category}")
         print(f"   📊 التعقيد:      {d.complexity}")

@@ -1,7 +1,6 @@
 """Tests for council history."""
 import os
 import sys
-import json
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

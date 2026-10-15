@@ -3,7 +3,6 @@ import os
 import hashlib
 import json
 import time
-from pathlib import Path
 
 
 _CACHE_DIR = os.path.expanduser("~/.nexus/data/agent_cache")

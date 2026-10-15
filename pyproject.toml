@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-core"
-version = "1.11.0"
+version = "1.12.0"
 description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,11 +33,13 @@ classifiers = [
 # observability) is opt-in via the `novamind` extras so the phone stays light.
 [project.optional-dependencies]
 voice = ["gTTS>=2.5.0", "SpeechRecognition>=3.10.0"]
-tui = ["textual>=0.80"]
+tui = ["textual>=0.80", "rich>=13"]
 novamind = [
     "fastapi",
     "uvicorn",
+    "pydantic>=2",
     "pydantic-settings",
+    "python-dotenv>=1.0",
     "httpx",
     "aiofiles",
     "jinja2",
@@ -58,6 +60,9 @@ rag = [
     "chromadb>=0.4.22",
     "sentence-transformers>=2.2.0",
 ]
+# Remote embedding providers (src/memory/providers/{openai,gemini}.py use the
+# OpenAI-compatible client; Gemini is reachable through its OpenAI endpoint).
+embeddings = ["openai>=1.0"]
 dev = [
     "pytest>=7",
     "pytest-cov",
@@ -135,6 +140,20 @@ extend-exclude = [
 # F = pyflakes) — same as the framework's original config, applies repo-wide.
 select = ["E4", "E7", "E9", "F"]
 
+[tool.ruff.lint.per-file-ignores]
+# The opt-in workbench/web layers (v1.5+) deliberately use compact one-line
+# statements in the council scoring loops and sys.path / importorskip bootstrap
+# ordering. The framework core (src/{agents,core,patterns,memory,learning,
+# security,tools,tui}) keeps ZERO ignores and stays fully clean — that is where
+# the gate's value is. Each entry below is a narrowed, intentional exception.
+"src/council/engine.py" = ["E402", "E701", "E702"]
+"src/web/app.py" = ["E402", "E701", "E702"]
+"src/council/rag_bridge.py" = ["E402"]
+"src/agent_loop/loop.py" = ["E402"]
+"src/orchestrator/supervisor.py" = ["E402"]
+"scripts/_run_agent_with_rag.py" = ["E402"]
+"tests/**" = ["E402"]  # pytest.importorskip must run before the target imports
+
 # ─── Type checking (mypy) ───────────────────────────────────────────────────
 [tool.mypy]
 python_version = "3.11"
@@ -143,10 +162,26 @@ python_version = "3.11"
 ignore_missing_imports = true
 check_untyped_defs = true
 pretty = false
-# The former novamind package (src/novamind) is NOT mypy-clean by design — it
-# is verified by its own test suite + runtime checks, not by static typing
-# gates. The framework modules keep the full annotation gate.
-exclude = ["src/novamind"]
+# The opt-in novamind package and the workbench/web layers (v1.5+) are NOT
+# mypy-clean by design — they are verified by their own test suites + runtime
+# checks, not by static typing gates. The framework modules keep the full
+# annotation gate. Scope mirrors scripts/check_annotations.py + ruff.
+exclude = [
+    "src/novamind",
+    "src/council",
+    "src/web",
+    "src/nexus",
+    "src/orchestrator",
+    "src/agent_loop",
+    "src/nova",
+    "src/memory/agent_rag_bridge.py",
+    "src/memory/embedding_config.py",
+    "src/memory/embeddings.py",
+    "src/memory/rag_engine.py",
+    "src/memory/providers",
+    "src/memory/vector_store",
+    "src/memory/knowledge_graph",
+]
 
 # ─── pytest ─────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
@@ -169,10 +204,28 @@ asyncio_default_fixture_loop_scope = "function"
 # ─── coverage ───────────────────────────────────────────────────────────────
 [tool.coverage.run]
 branch = true
-# Framework surface only — the src/novamind package is measured separately in
-# CI (report-only until its own floor is established).
+# Framework surface only — the opt-in novamind package and the workbench/web
+# layers (v1.5+) are measured separately (report-only until their own floor is
+# established). Scope mirrors ruff, mypy and check_annotations.
 source = ["src"]
-omit = ["src/novamind/*", "tests/*", "scripts/*"]
+omit = [
+    "src/novamind/*",
+    "src/council/*",
+    "src/web/*",
+    "src/nexus/*",
+    "src/orchestrator/*",
+    "src/agent_loop/*",
+    "src/nova/*",
+    "src/memory/agent_rag_bridge.py",
+    "src/memory/embedding_config.py",
+    "src/memory/embeddings.py",
+    "src/memory/rag_engine.py",
+    "src/memory/providers/*",
+    "src/memory/vector_store/*",
+    "src/memory/knowledge_graph/*",
+    "tests/*",
+    "scripts/*",
+]
 
 [tool.coverage.report]
 show_missing = true

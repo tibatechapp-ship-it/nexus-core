@@ -99,3 +99,26 @@ def test_build_unknown_decision_errors(seeded):
 def test_build_detail_not_found(seeded):
     client, _ = seeded
     assert "error" in client.get("/api/builds/does-not-exist").json()
+
+
+# ─────────────────────────── /api/craft (v1.12) ───────────────────────────
+
+class _CraftLLM:
+    def generate(self, **kwargs):
+        return {"ok": True, "text": '[{"path": "main.py", "content": "x = 1\\n"}]'}
+
+
+def test_craft_generates_code_with_proof(seeded, monkeypatch):
+    client, _ = seeded
+    import src.council.craft as craft
+    monkeypatch.setattr(craft, "_router", lambda: _CraftLLM())
+    body = client.post("/api/craft", json={"query": "اكتب سكربت بسيط"}).json()
+    assert body["ok"] is True
+    assert body["proof"]["py_compile"]["main.py"] == "ok"
+    assert body["build_id"].startswith("craft_")
+
+
+def test_craft_missing_query_errors(seeded):
+    client, _ = seeded
+    body = client.post("/api/craft", json={}).json()
+    assert body["ok"] is False and "error" in body

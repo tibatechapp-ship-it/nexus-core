@@ -1,4 +1,9 @@
-import os, sys, json, threading, asyncio
+import asyncio
+import json
+import os
+import sys
+import threading
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
@@ -6,6 +11,12 @@ from sse_starlette.sse import EventSourceResponse
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+
+# ═══ src/ على المسار: طبقة novamind تُستورَد باسم `novamind.*` لا `src.novamind`
+# (بدون هذا يعمل الخادم لكن المجلس يرجع صامتاً لوضع offline) ═══
+_SRC_DIR = os.path.join(BASE_DIR, "src")
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 # ═══ اضبط NOVAMIND_HOME قبل أي استيراد ═══
 os.environ["NOVAMIND_HOME"] = BASE_DIR
@@ -241,6 +252,29 @@ def api_build_detail(build_id: str):
     if get_build is None:
         return {"error": "Builder غير متوفر"}
     return get_build(build_id) or {"error": "not found"}
+
+
+@app.post("/api/craft")
+async def api_craft(request: Request):
+    """وضع الصياغة (v1.12): يولّد كوداً فعلياً من وصف حرّ مباشرة.
+
+    يقبل ``query`` (وصف المطلوب)، و``review=true`` لطلب مراجعة الكود المولَّد من
+    المجلس نفسه. يعيد ``proof`` يحوي نتيجة ``py_compile`` لكل ملف بايثون.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": False, "error": "JSON غير صالح"}
+    query = str(body.get("query") or body.get("question") or "").strip()[:800]
+    if not query:
+        return {"ok": False, "error": "query مطلوب"}
+    review = bool(body.get("review"))
+    try:
+        from src.council.craft import generate_code
+        result = await asyncio.to_thread(generate_code, query, review)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 @app.get("/api/history")

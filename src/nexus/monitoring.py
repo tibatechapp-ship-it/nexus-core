@@ -1,12 +1,10 @@
 """Monitoring — تتبع استدعاءات LLM، التكلفة، التوكن، الوقت."""
 from __future__ import annotations
 import os
-import sys
 import json
 import time
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from datetime import datetime
-from typing import Optional
 
 # ═══ أسعار تقديرية (لكل 1M توكن) ═══
 PRICE_PER_1M = {

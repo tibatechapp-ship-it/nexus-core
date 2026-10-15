@@ -49,7 +49,6 @@ class AgentLoop:
         try:
             # نحتاج استدعاء مباشر مع tools
             from openai import OpenAI
-            import os
 
             # استخدم مزود Groq
             provider = None
@@ -125,7 +124,7 @@ class AgentLoop:
             if not tool_calls:
                 # ═══ الإجابة النهائية ═══
                 answer = msg.content or "(لا إجابة)"
-                self._log("✅", f"الإجابة النهائية")
+                self._log("✅", "الإجابة النهائية")
                 return {
                     "ok": True,
                     "answer": answer,

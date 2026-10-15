@@ -12,8 +12,10 @@ from __future__ import annotations
 import builtins
 import json
 import os
+import re
 import subprocess
 import sys
+import tomllib
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -38,6 +40,46 @@ ROOT = Path(__file__).resolve().parents[2]
 FRAMEWORK_FILES = [
     path for path in (ROOT / "src").rglob("*.py") if "novamind" not in path.parts
 ]
+
+# In-tree top-level packages (live under src/, not third-party dependencies).
+IN_TREE_PACKAGES = {"src", "nova", "novamind"}
+
+# Distribution name → import name, for the packages where they differ.
+_DIST_TO_IMPORT = {
+    "python_dotenv": "dotenv",
+    "python_jose": "jose",
+    "python_multipart": "multipart",
+    "pyyaml": "yaml",
+    "opentelemetry_api": "opentelemetry",
+    "opentelemetry_sdk": "opentelemetry",
+    "opentelemetry_exporter_otlp_proto_grpc": "opentelemetry",
+    "sentence_transformers": "sentence_transformers",
+    "gtts": "gtts",
+    "speechrecognition": "speech_recognition",
+}
+
+
+def _dist_import_name(spec: str) -> str:
+    """Normalise a dependency spec ('pkg[extra]>=1 ; marker') to its import name."""
+    name = spec.split(";", 1)[0]
+    name = re.split(r"[<>=!~\[; ]", name, maxsplit=1)[0].strip().lower()
+    name = name.replace("-", "_").replace(".", "_")
+    return _DIST_TO_IMPORT.get(name, name)
+
+
+def _declared_import_names() -> set[str]:
+    """Every import name the project declares (core deps + all extras).
+
+    Read live from pyproject.toml so the invariant fails the moment code
+    imports a package that was never declared — the actual supply-chain
+    guarantee (no silent / typosquatted dependency).
+    """
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = data.get("project", {})
+    specs = list(project.get("dependencies", []))
+    for group in project.get("optional-dependencies", {}).values():
+        specs.extend(group)
+    return {_dist_import_name(spec) for spec in specs} | IN_TREE_PACKAGES
 
 
 @pytest.mark.adversarial
@@ -245,12 +287,17 @@ def test_supply_chain_imports_are_stdlib_only() -> None:
 
     Scenario: a supply-chain attack relies on an unexpected (or typosquatted)
     dependency. ``src/core``, ``src/agents`` and ``src/patterns`` import nothing
-    outside the standard library; the whole framework surface adds only
-    ``textual``/``rich``, which are the declared optional ``tui`` extra. The
-    ``src/novamind`` package is the declared opt-in layer (its deps live in the
-    ``novamind`` extra), so it is excluded from the stdlib invariant.
+    outside the standard library; the wider ``src/`` surface may import only
+    packages the project declares in ``pyproject.toml`` (core deps + extras)
+    plus the in-tree packages (``src``, ``nova``, ``novamind``). The invariant
+    is read live from ``pyproject.toml``, so an undeclared (or typosquatted)
+    import fails immediately.
     """
     core_modules: set[str] = set()
+    # The pure framework core (src/core, src/agents, src/patterns) imports
+    # nothing outside the standard library; the wider surface may import only
+    # packages the project actually declares in pyproject.toml (core deps +
+    # extras), plus the in-tree packages (src, nova, novamind).
     for layer in ("core", "agents", "patterns"):
         core_modules |= imported_modules(ROOT / "src" / layer)
     core_modules -= {"src"}
@@ -258,8 +305,9 @@ def test_supply_chain_imports_are_stdlib_only() -> None:
     assert not non_stdlib, f"unexpected third-party core imports: {sorted(non_stdlib)}"
 
     whole_tree = imported_from_files(FRAMEWORK_FILES) - {"src"}
-    extras = {name for name in whole_tree if name not in sys.stdlib_module_names}
-    assert extras <= {"textual", "rich"}, f"undeclared dependency: {sorted(extras)}"
+    third_party = {name for name in whole_tree if name not in sys.stdlib_module_names}
+    undeclared = third_party - _declared_import_names()
+    assert not undeclared, f"undeclared dependency: {sorted(undeclared)}"
 
 
 @pytest.mark.adversarial

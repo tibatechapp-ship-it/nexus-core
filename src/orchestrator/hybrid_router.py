@@ -153,7 +153,6 @@ class HybridRouter:
     def _run_council(self, prompt: str) -> dict:
         """Council of Agents."""
         try:
-            import src.nexus
             from src.council.rag_bridge import get_council_bridge
             b = get_council_bridge()
             b.engine.MAX_ROUNDS = 1
