@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import sys
+from pathlib import Path
 import threading
 
 from fastapi import FastAPI, Request
@@ -465,6 +466,95 @@ async def pwa_service_worker():
 async def pwa_icon():
     return Response(content=_ICON_SVG, media_type="image/svg+xml",
                     headers={"Cache-Control": "public, max-age=86400"})
+
+
+
+# ═══ Review API (v1.12.2) ═══
+@app.post("/api/review")
+async def api_review(request: Request):
+    """مراجعة مشروع محلي عبر المجلس الحي."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "JSON غير صالح"}, status_code=400)
+
+    path_str = (body.get("path") or "").strip()
+    max_files = min(int(body.get("max_files", 8)), 20)
+
+    # ═══ أمان: path confinement ═══
+    if not path_str or ".." in path_str:
+        return JSONResponse({"ok": False, "error": "مسار غير صالح"}, status_code=400)
+
+    p = Path(path_str).expanduser().resolve()
+    home = Path.home().resolve()
+
+    if not p.exists():
+        return JSONResponse({"ok": False, "error": f"المسار غير موجود: {p}"}, status_code=404)
+    if not p.is_dir():
+        return JSONResponse({"ok": False, "error": "المسار ليس مجلداً"}, status_code=400)
+    # مسارات مسموحة: $HOME و $TMPDIR (Termux)
+    import tempfile
+    tmp_dir = Path(tempfile.gettempdir()).resolve()
+    in_home = (home == p or home in p.parents)
+    in_tmp = (tmp_dir == p or tmp_dir in p.parents)
+    if not (in_home or in_tmp):
+        return JSONResponse({"ok": False, "error": "المسار خارج $HOME/$TMPDIR"}, status_code=403)
+
+    # ═══ جمع الملفات ═══
+    ALLOWED = (".py", ".js", ".ts", ".dart", ".java", ".kt", ".go", ".html", ".css", ".md")
+    files = []
+    total_bytes = 0
+    MAX_BYTES = 30_000
+
+    for f in sorted(p.rglob("*")):
+        if any(part.startswith(".") for part in f.parts if part != "."):
+            continue
+        if "node_modules" in f.parts or "__pycache__" in f.parts or "venv" in f.parts:
+            continue
+        if not f.is_file() or f.suffix not in ALLOWED:
+            continue
+        try:
+            size = f.stat().st_size
+            if size > 20_000:
+                continue
+            file_content = f.read_text(encoding="utf-8")
+            total_bytes += size
+            rel = f.relative_to(p)
+            files.append(f"─── {rel} ({size}B) ───\n{file_content}")
+            if len(files) >= max_files or total_bytes > MAX_BYTES:
+                break
+        except Exception:
+            continue
+
+    if not files:
+        return JSONResponse({"ok": False, "error": "لا ملفات قابلة للمراجعة"}, status_code=404)
+
+    # ═══ استدعاء المجلس ═══
+    if get_council_bridge is None:
+        return JSONResponse({"ok": False, "error": f"Bridge غير متوفر: {_bridge_err}"}, status_code=503)
+
+    context = (
+        f"راجع كود مشروع «{p.name}» من 4 زوايا: البنية، الأمان، الصيانة، الأداء.\n"
+        f"عدد الملفات: {len(files)}\n\n"
+        + "\n\n".join(files)
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: get_council_bridge().deliberate_with_memory(context, use_cache=False)
+        )
+        return {
+            "ok": True,
+            "project": p.name,
+            "files_reviewed": len(files),
+            "bytes_reviewed": total_bytes,
+            "verdict": getattr(result, "verdict", None),
+            "score": getattr(result, "score", None),
+            "recommendation": getattr(result, "recommendation", None),
+            "transcript": getattr(result, "transcript", []),
+        }
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"Review failed: {e}"}, status_code=500)
 
 
 if __name__ == "__main__":
