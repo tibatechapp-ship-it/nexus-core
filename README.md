@@ -24,16 +24,36 @@ src/            framework (stdlib-only, phone-safe, fully tested)
   agents/       20 built-in agents (core/planning/quality/ops)
   core/         types, LLM backend protocol, streaming, context, resilience
   patterns/     Supervisor, Pipeline (resumable), Fanout, Delegation, Blackboard
-  memory/       4 SQLite stores (episodic/semantic/procedural/emotional)
+  memory/       4 SQLite stores (episodic/semantic/procedural/emotional) + RAG
   learning/     experience collector → lessons → anti-forgetting
   security/     offline static security scanner (8 agents) + CLI
   tools/        read-only tool execution (ReAct loop, confined root)
   tui/          Textual terminal UI (screens, tool traces, security)
+  mcp/          Model Context Protocol server/client + agent bridge (30 tools)
+  council/      Council workbench engine (3 members) + Craft code generation
   novamind/     former novamind package (opt-in `novamind` extras)
-tests/          framework suite (1218 tests @ 99%) + tests/novamind/ (opt-in)
+tests/          framework suite (1848 tests @ 98.9%) + tests/novamind/ (opt-in)
+main.py         Council workbench server (FastAPI) + index.html console
 zyvo-*.py       standalone Telegram + voice assistants
 docs/           framework + novamind documentation
 ```
+
+## Quality gates
+
+One command defines "green" (`make check` → ruff, mypy, annotation check,
+tests + coverage). The **framework surface** (the stdlib-only core + the zyvo
+scripts) is gated; the opt-in novamind + workbench/web layers are excluded from
+those gates and verified by their own tests. The same scope is applied
+consistently in `pyproject.toml`, `scripts/check_annotations.py` and the
+coverage config.
+
+```bash
+make check     # ruff check .  +  mypy (103 files)  +  annotations  +  1848 tests @ 98.9%
+```
+
+An adversarial red-team suite (`tests/adversarial`, 92 vectors / 8 categories)
+guards the framework — including a live supply-chain invariant that fails on any
+import not declared in `pyproject.toml`.
 
 ## Install
 
@@ -74,6 +94,31 @@ PYTHONPATH=src/novamind:src:. python unified_agent.py   # http://localhost:8000
   inline rename, and full conversation export/import.
 - **API** — `/api/chat` (SSE stream), `/api/conversations[...]`,
   `/api/traces[...]`, `/api/export/conversations`, `/api/db/stats`.
+
+## Council workbench + Craft (v1.12)
+
+A focused, self-contained Council console (`main.py` + `index.html`) — separate
+from the v2.0 "Living Council" below. Three members (Profiler / Analyst /
+Critic) deliberate a question in Arabic or English and return a verdict, a
+confidence score and a one-line recommendation, streamed live over SSE.
+
+```bash
+PYTHONPATH=src:. python main.py      # http://127.0.0.1:8000
+```
+
+**Craft mode** (`POST /api/craft`, console: `/craft <desc> [review]`) turns a
+free-text brief into **real working code** — no prior debate needed:
+
+- the model returns strict JSON `[{"path","content"}]`; every path is confined
+  (`..`/absolute rejected) and extensions are allow-listed;
+- every generated `.py` is run through `py_compile` — the response carries a
+  `proof` block, and a render error means `proof.ok=false` (no silent success);
+- with `review`, the Council then votes on the generated artifact itself.
+
+The console also adds **voice**: `/session` starts a hands-free conversation
+(Web Speech `ar-SA` → deliberate → spoken verdict, say "توقف" to end), plus TTS,
+generated SFX, search, share and transcript export. The web app is installable
+(PWA) with a service worker that never caches `/api/*` (so streaming stays live).
 
 ## The Living Council (v2.0 — المجلس الحيّ)
 
@@ -138,10 +183,16 @@ working when the network drops.
 ## Verify before shipping (must all pass)
 
 ```bash
+make check         # ruff check .  +  mypy  +  annotations  +  tests/coverage
+```
+
+Equivalently, run the gates by hand:
+
+```bash
 ruff check .
 mypy zyvo-telegram.py zyvo-voice.py src
 python scripts/check_annotations.py        # every function type-annotated
-python -m pytest --cov                     # 1218 tests, coverage floor 95%
+python -m pytest --cov --cov-fail-under=95 --ignore=tests/novamind
 ```
 
 The novamind layer's suite needs the `novamind` extras and runs in CI
