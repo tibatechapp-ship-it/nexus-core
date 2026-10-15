@@ -1,11 +1,12 @@
 import asyncio
+import hmac
 import json
 import os
 import sys
 import threading
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +81,69 @@ def _app_version():
         return "unknown"
 
 
-app = FastAPI(title="Nexus Real Workbench")
+app = FastAPI(title="Nexus Real Workbench", docs_url=None, redoc_url=None)
+
+
+# ═══ Docs (v1.12.1) — أصول Swagger محلية (بلا CDN) + المواصفة الحيّة ═══
+DOCS_DIR = os.path.join(BASE_DIR, "docs")
+
+_VENDOR_MIME = {
+    "swagger-ui.css": "text/css; charset=utf-8",
+    "swagger-ui-bundle.js": "application/javascript; charset=utf-8",
+}
+
+
+def _read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+@app.get("/api/openapi.yaml", include_in_schema=False)
+async def openapi_spec():
+    p = os.path.join(DOCS_DIR, "openapi.yaml")
+    if not os.path.exists(p):
+        return JSONResponse({"error": "openapi.yaml missing"}, status_code=404)
+    return Response(content=_read_text(p), media_type="application/yaml")
+
+
+@app.get("/docs", include_in_schema=False)
+async def docs_root():
+    return RedirectResponse("/docs/swagger")
+
+
+@app.get("/docs/swagger", response_class=HTMLResponse, include_in_schema=False)
+async def docs_swagger():
+    p = os.path.join(DOCS_DIR, "swagger.html")
+    if not os.path.exists(p):
+        return HTMLResponse("<h1>swagger.html missing</h1>", status_code=404)
+    return _read_text(p)
+
+
+@app.get("/docs/vendor/{fname}", include_in_schema=False)
+async def docs_vendor(fname: str):
+    mt = _VENDOR_MIME.get(fname)
+    if not mt:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    p = os.path.join(DOCS_DIR, "vendor", fname)
+    if not os.path.exists(p):
+        return JSONResponse({"error": fname + " missing — see docs/api.md"}, status_code=404)
+    return Response(content=_read_text(p), media_type=mt)
+
+
+# ═══ Auth اختياري: فعّله بضبط CRAFT_AUTH_TOKEN (يحمي /api/craft و /api/build) ═══
+CRAFT_TOKEN = os.environ.get("CRAFT_AUTH_TOKEN", "").strip()
+
+
+def _craft_auth(request: Request):
+    if not CRAFT_TOKEN:
+        return None  # auth معطّل — الوضع المحلي الافتراضي (الخادم على 127.0.0.1)
+    tok = request.headers.get("X-Craft-Token", "")
+    if tok and hmac.compare_digest(tok, CRAFT_TOKEN):
+        return None
+    return JSONResponse(
+        {"ok": False, "error": "unauthorized: X-Craft-Token required"},
+        status_code=401,
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -190,11 +253,14 @@ async def health():
 
 
 @app.post("/api/build")
-def api_build(body: dict):
+def api_build(request: Request, body: dict):
     """وضع البنّاء: يحوّل قرار المجلس إلى حِزمة ملفات على القرص.
 
     يقبل ``query`` (يداول ثم يبني) أو ``decision_id`` (يبني من قرار محفوظ).
     """
+    _deny = _craft_auth(request)
+    if _deny:
+        return _deny
     if Builder is None:
         return {"ok": False, "error": "Builder غير متوفر: " + str(_builder_err)}
 
@@ -261,6 +327,9 @@ async def api_craft(request: Request):
     يقبل ``query`` (وصف المطلوب)، و``review=true`` لطلب مراجعة الكود المولَّد من
     المجلس نفسه. يعيد ``proof`` يحوي نتيجة ``py_compile`` لكل ملف بايثون.
     """
+    _deny = _craft_auth(request)
+    if _deny:
+        return _deny
     try:
         body = await request.json()
     except Exception:
