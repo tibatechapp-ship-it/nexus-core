@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.12.1 — 2026-10-15
+**Spec truth: the OpenAPI contract now matches the code, and a guard keeps it
+that way.**
+- **OpenAPI spec (`docs/openapi.yaml`, new):** describes the REAL routes and
+  fields only — `/api/{health,deliberate,history,history/{rec_id},stats,topics,
+  build,builds,builds/{build_id},craft}`. It documents the honest error model
+  (`/api/craft` and `/api/build` answer **HTTP 200 with `ok=false`** on
+  functional failure) instead of promising fields that never existed.
+- **Local Swagger UI (`docs/swagger.html` + `docs/vendor/`, new):** served from
+  the repo, **no CDN** — `/docs/swagger` works fully offline. `main.py` now
+  serves `/api/openapi.yaml`, `/docs` (redirect), `/docs/swagger` and
+  `/docs/vendor/{file}`; FastAPI's default CDN docs are turned off
+  (`docs_url=None, redoc_url=None`).
+- **Optional auth:** set `CRAFT_AUTH_TOKEN` to require `X-Craft-Token` on
+  `/api/craft` and `/api/build` (disabled by default — the server binds
+  127.0.0.1 only).
+- **Drift guard (`tests/test_openapi.py`, new):** fails the suite if a real
+  route is undocumented, if the spec promises a phantom route, or if the spec
+  reintroduces a fabricated field (`size_bytes`, `proof.command`, `success`).
+
 ## v1.12.0 — 2026-10-15
 **Craft mode + all quality gates green repo-wide.**
 - **Craft (`src/council/craft.py`, new):** generate real code from a free-text

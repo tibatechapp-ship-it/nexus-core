@@ -49,3 +49,12 @@ clean_mock.py
 clean2.py
 chk.py
 chk.sh
+
+# Coverage artifacts (workbench-specific)
+.cov-wb.rc
+.coverage-orch
+.coverage-*
+
+# Audit logs (generated)
+audit_report.txt
+*.audit

@@ -698,3 +698,51 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - NEXT: bring the workbench layers INTO the four gates (annotate + tests +
   coverage) so the exclusion can be removed; a real headless render test of the
   v1.12 console module; `/session` on-device voice check.
+
+### v1.12.1 "Spec Truth" (2026-10-15) — docs spec matches reality + drift guard
+- STALE PREMISE WARNING: tyba pasted a delivery plan (from another session/agent)
+  claiming a pre-existing `docs/openapi.yaml` + `docs/swagger.html` +
+  `scripts/serve_swagger.py` + `docs/api.md`, and "patch main.py" anchors
+  (`SWAGGER_HTML_PATH`, `DOCS_DIR`) — NONE of these existed in the repo
+  (verified: main.py had zero swagger code). The plan's shell blocks would have
+  FAILED at the anchors. Always verify the premise before running pasted blocks.
+- SHIPPED (local, UNCOMMITTED at time of writing):
+  * `docs/openapi.yaml` (NEW) — truthful contract for the 10 real routes
+    (`/api/{health,deliberate,history,history/{rec_id},stats,topics,build,builds,
+    builds/{build_id},craft}`); documents the HONEST error model (craft/build
+    return HTTP 200 + `ok=false` on functional failure). Corrected vs the plan's
+    spec: `HistoryItem` has NO `rounds` (real `_brief` = id/query/verdict/score/
+    topic_id/timestamp); `/api/history` limit max 200 (not 100); `/api/build`
+    body = `decision_id|query|use_llm`; `/api/builds` param = `n`.
+  * `docs/swagger.html` + `docs/vendor/{swagger-ui.css,swagger-ui-bundle.js}`
+    (NEW, downloaded from jsdelivr@4) — LOCAL Swagger, NO CDN → works offline.
+  * `main.py`: `FastAPI(docs_url=None, redoc_url=None)`, `DOCS_DIR`, routes
+    `/api/openapi.yaml` (media_type application/yaml), `/docs` →
+    RedirectResponse(`/docs/swagger`), `/docs/swagger`, `/docs/vendor/{fname}`
+    (mime map + 404); optional auth `CRAFT_AUTH_TOKEN` + `X-Craft-Token`
+    (hmac.compare_digest) gating `/api/craft` + `/api/build` — DISABLED when env
+    unset (server binds 127.0.0.1). api_build signature now `(request, body)`.
+  * `tests/test_openapi.py` (NEW, 8 tests): serving + LOCAL-asset check +
+    BIDIRECTIONAL drift guard (undocumented route OR phantom route fails the
+    suite) + no fabricated fields (`size_bytes`/`proof.command`/`success`).
+    Loads repo-root main.py via importlib (avoid the novamind `main` collision);
+    excludes `/api/openapi.yaml` from the path comparison.
+  * `docs/api.md` (NEW) truthful; version → 1.12.1 (pyproject + src/__init__ +
+    CHANGELOG new section — test_version_sync requires the changelog heading).
+- VERIFIED: tests/test_openapi.py 10 passed; full suite 2010 passed / 1 failed
+  (only the Android novamind smoke `test_no_load_errors`, pre-existing);
+  `audit.sh` board clean (server 1.12.1, zyvo :4142 = 1 instance 0 orphans,
+  rec filter ok). Live: /docs 307→swagger, /api/openapi.yaml 200 yaml v1.12.1,
+  vendor css 145KB + js 1MB 200, craft real LLM → ok=true 4 files py_compile ok.
+- ❗ UNCOMMITTED WIP IN THE TREE (NOT mine, NOT this task): pyproject.toml +
+  scripts/check_annotations.py + src/{agent_loop,orchestrator,council/engine,
+  web/app}.py are modified toward "bring workbench layers INTO the four gates"
+  (the AGENTS "NEXT"). Effect: the WIP pyproject removed the workbench omits →
+  `pytest --cov --cov-fail-under=95` now measures src/council,src/web (0%) etc →
+  coverage 81.21% FAILS. At the COMMITTED config the gate is ~98.9% green.
+  The v1.12.1 docs work does NOT cause this. Do NOT sweep it into a docs commit.
+- `main.py` is supervised by runit service `nexus-core` (killing it → runsv
+  respawns). A `zyvo-health` runit service runs `tyb-zyv-ai/scripts/
+  health_monitor.py`. `sv restart zyvo-telegram` cleans an orphan brain (the
+  bot adopts the surviving :4142 brain via `server_up()`); audit.sh §8 pattern
+  `zyvo[.]bin --port 4142` is precise (ignores the interactive non-port brain).
