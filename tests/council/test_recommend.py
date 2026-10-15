@@ -56,6 +56,23 @@ def test_handles_non_dict_entries():
     assert extract_recommendation(["نص خام [التوصية: redis]"]) == "redis"
 
 
+def test_verdict_words_are_not_recommendations():
+    """حكم الثقة ليس توصية تنفيذية (v1.10.1) — يُرفض في مطلع التوصية فقط."""
+    transcript = [
+        _entry("analyst", "[التوصية: آمن تماماً]"),
+        _entry("critic", "[التوصية: pytest]"),
+    ]
+    assert extract_recommendation(transcript) == "pytest"
+    assert extract_recommendation([_entry("critic", "[التوصية: خطر]")]) == ""
+
+
+def test_yes_no_words_still_valid_recommendations():
+    """startswith لا in: 'نعم'/'لا' توصيتان مشروعتان، و'سلامة' ليست حكماً."""
+    assert extract_recommendation([_entry("analyst", "[التوصية: نعم]")]) == "نعم"
+    assert extract_recommendation([_entry("analyst", "[التوصية: لا]")]) == "لا"
+    assert extract_recommendation([_entry("analyst", "[التوصية: سلامة المدخلات]")]) == "سلامة المدخلات"
+
+
 def test_cache_hit_transcript_yields_recommendation():
     """السيناريو الفعلي للبند ②: transcript من الكاش يعطي توصية كاملة."""
     cached_transcript = [

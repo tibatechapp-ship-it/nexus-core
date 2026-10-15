@@ -2,6 +2,29 @@
 
 All notable changes to this project. Newest first.
 
+## v1.10.1 — 2026-10-15
+**Hygiene + suite repair (reported from a v1.10.0 review).**
+- Recommendation filter: **verdict words** (`آمن/امن/غير آمن/خطر/مقبول/مرفوض/محايد`)
+  are no longer accepted as recommendations. The check uses `startswith`
+  (not `in`) so legitimate `نعم`/`لا` answers and words like `سلامة` survive.
+  Patch target is `src/council/recommend.py` — the v1.9.2 refactor moved this
+  logic out of `main.py`, so the reviewed draft's path was stale.
+- **Single version source**: `/api/health` now returns `version`, read from
+  `pyproject.toml`; the console header renders `h.version` instead of a
+  hardcoded `v1.10.0`. `pyproject.toml` + `src/__init__.py` aligned to 1.10.1.
+- **Suite repair (two real, pre-existing collection/ordering bugs):**
+  - `tests/test_zyvo_{telegram,voice}.py` imported top-level `conftest`, which
+    resolved to `tests/novamind/conftest.py` once the novamind extras (fastapi)
+    became installed — an `ImportError` that aborted collection of the whole
+    suite. Fixed to `from tests.conftest import ...`.
+  - `tests/test_build_api.py` did a bare `import main`; the novamind suite puts
+    `src/novamind` on `sys.path`, so `main` resolved to `src/novamind/main.py`
+    (no `app`) and all 6 builder-API tests errored. The workbench app is now
+    loaded by explicit path (`importlib.util.spec_from_file_location`), making
+    the tests order-independent.
+- New regression test for the verdict-word filter
+  (`tests/council/test_recommend.py`).
+
 ## v1.9.3 — 2026-10-15
 **Embedding-provider correctness (prep for real embeddings).**
 - `src/memory/providers/openai.py` was a byte-for-byte copy of `gemini.py`

@@ -5,6 +5,9 @@ store is never touched.
 """
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -15,6 +18,23 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from src.council.engine import CouncilResult  # noqa: E402
 from src.council.history import CouncilHistory  # noqa: E402
+
+_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_workbench_main():
+    """Load the repo-root ``main.py`` by explicit path.
+
+    A bare ``import main`` is order-dependent: the novamind suite puts
+    ``src/novamind`` on ``sys.path``, so ``main`` would resolve to
+    ``src/novamind/main.py`` (no ``app``) and the whole file errors. Loading
+    by path makes these tests independent of collection order.
+    """
+    spec = importlib.util.spec_from_file_location("nexus_workbench_main",
+                                                  _ROOT / "main.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture()
@@ -31,7 +51,7 @@ def seeded(tmp_path, monkeypatch):
     rec_id = hist.save(result, query="هل نستخدم sqlite؟", category="test")
     monkeypatch.setattr("src.council.history.get_history", lambda: hist)
 
-    import main
+    main = _load_workbench_main()
     return TestClient(main.app), rec_id
 
 

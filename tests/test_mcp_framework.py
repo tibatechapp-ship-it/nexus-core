@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from src import __version__ as nexus_version
 from src.core.types import AgentResult
 from src.mcp import framework as fw
 from src.mcp.client import InProcessClient
@@ -48,7 +49,8 @@ def test_build_framework_server_default(tmp_path):
     assert _EXPECTED_GIT <= names
     assert "agent_architect" in names
     assert server.name == "nexus-core"
-    assert server.version == "1.5.0"
+    # version comes from src.__version__ (single source), not a pinned literal
+    assert server.version == nexus_version
 
 
 def test_build_framework_server_flags(tmp_path):

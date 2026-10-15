@@ -17,7 +17,7 @@ from unittest import mock
 
 import pytest
 
-from conftest import FakePopen, FakeResponse
+from tests.conftest import FakePopen, FakeResponse
 
 
 # --------------------------------------------------------------------------- #

@@ -12,6 +12,8 @@ _REC_RE = re.compile(r"\[التوصية:\s*([^\]]+)\]")
 
 # كلمات ليست توصيات حقيقية (أسماء الأدوار أو صياغات التوجيه)
 _AGENT_WORDS = {"profiler", "analyst", "critic", "judge", "cache", "agent"}
+# أحكام ثقة/تصنيفات ليست توصيات تنفيذية (تُرفض فقط في مطلع التوصية)
+_VERDICT_WORDS = ("آمن", "امن", "غير آمن", "خطر", "مقبول", "مرفوض", "محايد")
 _BAD_FRAGMENTS = ("اقصر", "أقصر", "خلاصة جوابك", "جوابك", "السؤال",
                   "التوجيه", "المطلوب", "المباشر", "ضع هنا", "اكتب")
 
@@ -30,6 +32,7 @@ def extract_recommendation(transcript) -> str:
                 continue
             rec = match.group(1).strip().strip(".").strip("<>").strip()
             if rec and rec.lower() not in _AGENT_WORDS and len(rec) >= 2 \
+                    and not rec.startswith(_VERDICT_WORDS) \
                     and not any(bad in rec for bad in _BAD_FRAGMENTS):
                 recs.append(rec)
         if recs:

@@ -59,6 +59,16 @@ def _embeddings_info():
     except Exception as exc:  # احتياط أخير
         return None, f"{type(exc).__name__}: {exc}"
 
+def _app_version():
+    """إصدار التطبيق من مصدر واحد (pyproject.toml) — لا تكرار يدوي."""
+    try:
+        import tomllib
+        with open(os.path.join(BASE_DIR, "pyproject.toml"), "rb") as fh:
+            return str(tomllib.load(fh)["project"]["version"])
+    except Exception:
+        return "unknown"
+
+
 app = FastAPI(title="Nexus Real Workbench")
 
 
@@ -155,6 +165,7 @@ async def health():
     emb_spec, emb_fallback = _embeddings_info()
     emb_env_raw = (os.environ.get(_EMB_ENV) if _EMB_ENV else None) or None
     return {
+        "version": _app_version(),
         "status": "ok",
         "bridge": get_council_bridge is not None,
         "topics": search_topics is not None,

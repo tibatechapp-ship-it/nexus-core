@@ -91,7 +91,7 @@ setInterval(() => {
   line('──────────────────────────────', 'dim');
   try {
     const h = await (await fetch('/api/health')).json();
-    document.getElementById('hver').textContent = 'v1.10.0';
+    document.getElementById('hver').textContent = (h.version ? 'v' + h.version : 'v0.0.0');
     line(h.bridge ? '[ ok ] engine : council bridge online' : '[FAIL] engine : bridge missing', h.bridge ? 'ok' : 'err');
     line(h.topics ? '[ ok ] topics : loaded' : '[FAIL] topics : missing', h.topics ? 'ok' : 'err');
     line(h.builder ? '[ ok ] builder : ready' : '[warn] builder : unavailable', h.builder ? 'ok' : 'warn');
