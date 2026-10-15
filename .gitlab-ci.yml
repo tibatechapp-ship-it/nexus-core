@@ -1,0 +1,44 @@
+# GitLab CI — mirrors .github/workflows/ci.yml
+stages:
+  - lint
+  - type
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  GIT_DEPTH: "20"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .cache/pip/
+
+before_script:
+  - python3 --version
+  - python3 -m pip install --quiet --upgrade pip
+  - python3 -m pip install --quiet ruff mypy pytest pytest-cov pytest-benchmark pytest-asyncio
+
+# ═══ Lint ═══
+ruff:
+  stage: lint
+  script:
+    - ruff check .
+
+# ═══ Type check ═══
+mypy:
+  stage: type
+  script:
+    - mypy src
+
+# ═══ Annotations ═══
+annotations:
+  stage: type
+  script:
+    - python3 scripts/check_annotations.py
+
+# ═══ Tests ═══
+pytest:
+  stage: test
+  script:
+    - python3 -m pytest tests/ --ignore=tests/novamind -q --no-cov --tb=short
+  timeout: 30m
