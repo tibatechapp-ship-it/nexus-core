@@ -61,10 +61,11 @@ def test_resolve_allowed_chat_precedence(tg, monkeypatch):
     # app-specific env has the highest precedence (and is stripped)
     monkeypatch.setenv("ZYVO_TELEGRAM_CHAT_ID", " 11 ")
     assert tg._resolve_allowed_chat({"ZYVO_TELEGRAM_CHAT_ID": "55"}) == "11"
-    # nothing anywhere -> empty (the chat filter would be disabled)
+    # nothing anywhere -> FATAL: refuse to start with an open chat filter
     monkeypatch.delenv("ZYVO_TELEGRAM_CHAT_ID", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
-    assert tg._resolve_allowed_chat({}) == ""
+    with pytest.raises(RuntimeError):
+        tg._resolve_allowed_chat({})
 
 
 # --------------------------------------------------------------------------- #
@@ -283,10 +284,10 @@ def test_start_server_missing_script_raises(tg, monkeypatch):
         tg.start_server()
 
 
-def test_ensure_server_returns_existing_when_up(tg, monkeypatch):
+def test_ensure_server_returns_true_when_up(tg, monkeypatch):
     monkeypatch.setattr(tg, "server_up", lambda: True)
     tg._PROC = "sentinel"
-    assert tg.ensure_server() == "sentinel"
+    assert tg.ensure_server() is True
 
 
 def test_ensure_server_starts_when_down(tg, monkeypatch):
@@ -294,10 +295,10 @@ def test_ensure_server_starts_when_down(tg, monkeypatch):
     monkeypatch.setattr(tg, "kill_tree", lambda p: None)
     monkeypatch.setattr(tg, "start_server", lambda: "NEWPROC")
     tg._PROC = None
-    assert tg.ensure_server() == "NEWPROC"
+    assert tg.ensure_server() is True
 
 
-def test_ensure_server_gives_up_returns_none(tg, monkeypatch):
+def test_ensure_server_gives_up_returns_false(tg, monkeypatch):
     monkeypatch.setattr(tg, "server_up", lambda: False)
     monkeypatch.setattr(tg, "kill_tree", lambda p: None)
     monkeypatch.setattr(tg.time, "sleep", lambda s: None)
@@ -306,7 +307,22 @@ def test_ensure_server_gives_up_returns_none(tg, monkeypatch):
         raise RuntimeError("cannot start")
 
     monkeypatch.setattr(tg, "start_server", boom)
-    assert tg.ensure_server() is None
+    assert tg.ensure_server() is False
+
+
+def test_install_signal_handlers_kills_brain_on_stop(tg, monkeypatch):
+    killed = []
+    monkeypatch.setattr(tg, "kill_tree", lambda p: killed.append(p))
+    registered = {}
+    monkeypatch.setattr(tg.signal, "signal",
+                        lambda sig, fn: registered.__setitem__(sig, fn))
+    tg._PROC = "BRAIN"
+    tg._install_signal_handlers()
+    assert set(registered) == {tg.signal.SIGTERM, tg.signal.SIGINT,
+                               tg.signal.SIGHUP}
+    with pytest.raises(SystemExit):
+        registered[tg.signal.SIGTERM](tg.signal.SIGTERM, None)
+    assert killed == ["BRAIN"]
 
 
 # --------------------------------------------------------------------------- #
@@ -816,7 +832,7 @@ def test_ensure_server_waits_for_existing_proc(tg, monkeypatch):
     live = Live()
     tg._PROC = live
     monkeypatch.setattr(tg, "start_server", lambda: "NEW")
-    assert tg.ensure_server() == "NEW"
+    assert tg.ensure_server() is True
     assert killed == [live]
 
 
@@ -836,7 +852,7 @@ def test_ensure_server_wait_loop_finds_server(tg, monkeypatch):
 
     live = Live()
     tg._PROC = live
-    assert tg.ensure_server() is live
+    assert tg.ensure_server() is True
 
 
 def test_get_session_creates_when_state_empty(tg, tmp_path, monkeypatch):

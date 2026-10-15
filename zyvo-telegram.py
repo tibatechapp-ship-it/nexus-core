@@ -82,17 +82,25 @@ def load_env() -> dict[str, str]:
 def _resolve_allowed_chat(cfg: dict[str, str]) -> str:
     """Resolve the single authorised chat id for the poll-loop filter.
 
-    The app-specific ``ZYVO_TELEGRAM_CHAT_ID`` wins over the generic
-    ``TELEGRAM_CHAT_ID``; within the same key the environment wins over the env
-    file. An empty result disables the filter (see :func:`poll_loop`), so a
-    missing id must never be silently returned as a usable value.
+    SECURITY: This function MUST return a non-empty value. An empty chat_id
+    would silently disable the filter and allow ANY user to control the bot.
     """
-    return str(
+    resolved = str(
         os.environ.get("ZYVO_TELEGRAM_CHAT_ID")
         or cfg.get("ZYVO_TELEGRAM_CHAT_ID", "")
         or os.environ.get("TELEGRAM_CHAT_ID")
         or cfg.get("TELEGRAM_CHAT_ID", "")
     ).strip()
+
+    if not resolved:
+        raise RuntimeError(
+            "FATAL SECURITY: no CHAT_ID configured. "
+            "Set ZYVO_TELEGRAM_CHAT_ID or TELEGRAM_CHAT_ID in "
+            "~/.config/zyvo/telegram.env before starting the bot. "
+            "Refusing to start with an open filter."
+        )
+
+    return resolved
 
 
 CFG: dict[str, str] = load_env()
@@ -223,7 +231,7 @@ def api(method: str, path: str, body: Any = None, timeout: int = 600) -> Any:
 
 def server_up() -> bool:
     try:
-        with urllib.request.urlopen(BASE + "/session", timeout=3) as r:
+        with urllib.request.urlopen(BASE + "/api/session", timeout=3) as r:
             return r.status == 200
     except Exception:
         return False
@@ -269,25 +277,31 @@ def start_server() -> subprocess.Popen[bytes]:
     raise RuntimeError("ZYVO server did not come up")
 
 
-def ensure_server() -> subprocess.Popen[bytes] | None:
+def ensure_server() -> bool:
+    """Return True if server is reachable (external OR self-spawned).
+
+    The server may already be running as a runsv service — in that case
+    _PROC is None but the server IS up. Return bool, not the Popen object.
+    """
     global _PROC
     if server_up():
-        return _PROC
+        return True  # server up (runsv or external)
     if _PROC is not None and _PROC.poll() is None:
         for _ in range(15):
             if server_up():
-                return _PROC
+                return True
             time.sleep(1)
     if _PROC is not None:
         kill_tree(_PROC)
+        _PROC = None
     for attempt in range(1, 4):
         try:
             _PROC = start_server()
-            return _PROC
+            return True
         except Exception as e:
             print("ensure_server:", e, flush=True)
             time.sleep(3)
-    return None
+    return False
 
 
 def get_session(force_new: bool = False) -> str:
@@ -458,7 +472,7 @@ def run_turn(sid: str, text: str) -> tuple[str, list[dict[str, Any]]]:
             break
         except Exception as e:
             print(f"run_turn error ({attempt}/3): {e}", flush=True)
-            if ensure_server() is None:
+            if not ensure_server():
                 time.sleep(3)
             else:
                 time.sleep(1)
@@ -608,7 +622,7 @@ def worker() -> None:
         chat_id, text = WORKQ.get()
         try:
             RUNNING_TURN = True
-            if ensure_server() is None:
+            if not ensure_server():
                 send_message(chat_id, "⚠️ تعذّر تشغيل سيرفر ZYVO.")
                 continue
             CURRENT_SID = get_session()
@@ -714,6 +728,27 @@ def self_test() -> None:
     print("tts:", "ok" if make_voice_note("اختبار الصوت من زيڨو", v) else "FAIL")
 
 
+def _install_signal_handlers() -> None:
+    """Kill the spawned ZYVO server when this service is asked to stop.
+
+    ``runit`` restarts the service with SIGTERM. Without a handler the brain
+    spawned by :func:`start_server` lives in its own session, is orphaned,
+    and keeps holding :data:`PORT` -- the next start then spawns a SECOND
+    brain (double RAM / swap pressure). Handle the common stop signals so
+    :func:`kill_tree` always runs.
+    """
+
+    def _handler(signum: int, _frame: object) -> None:
+        kill_tree(_PROC)
+        raise SystemExit(0)
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(sig, _handler)
+        except Exception:
+            pass
+
+
 def main() -> None:
     if not TOKEN:
         sys.exit(f"Missing TELEGRAM_BOT_TOKEN (put it in {ENV_FILE})")
@@ -730,13 +765,17 @@ def main() -> None:
         self_test()
         return
 
-    if ensure_server() is None:
+    if not ensure_server():
         print("WARNING: ZYVO server not up yet; will retry on first message", flush=True)
+    _install_signal_handlers()
     get_session()                     # ensure a session exists
     PermissionWatchdog().start()
     threading.Thread(target=sse_listener, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()
-    poll_loop()
+    try:
+        poll_loop()
+    finally:
+        kill_tree(_PROC)              # never leave an orphaned brain behind
 
 
 if __name__ == "__main__":
