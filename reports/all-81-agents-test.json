@@ -1,0 +1,450 @@
+[
+  {
+    "name": "analyst",
+    "category": "core",
+    "ok": true,
+    "elapsed": 1.4,
+    "output": "تخصصي هو تحليل المتطلبات والقيود، وكشف الغموض والافتراضات، لتحويل الطلبات العامة"
+  },
+  {
+    "name": "architect",
+    "category": "core",
+    "ok": true,
+    "elapsed": 3.8,
+    "output": "أنا الوكيل المعماري المتخصص في تصميم البنية العامة للنظم بتركيز على المكونات، تد"
+  },
+  {
+    "name": "coder",
+    "category": "core",
+    "ok": true,
+    "elapsed": 2.3,
+    "output": "أنا ذكاء اصطناعي متقدم من شركة OpenAI، متخصص في توليد النصوص المساعدة والإجابة ع"
+  },
+  {
+    "name": "compliance",
+    "category": "core",
+    "ok": true,
+    "elapsed": 1.9,
+    "output": "متخصص في فحص التراخيص والسياسات والقيود القانونية لضمان أن جميع المكوّنات والبيا"
+  },
+  {
+    "name": "debugger",
+    "category": "core",
+    "ok": true,
+    "elapsed": 3.6,
+    "output": "متخصص في تشخيص الأعطال من السجلات والآثار والكود وتحديد السبب الجذري للمشكلات بأ"
+  },
+  {
+    "name": "designer",
+    "category": "core",
+    "ok": true,
+    "elapsed": 6.2,
+    "output": "مصمم واجهات وتجربة مستخدم (UI/UX) يركز على البساطة والاتساق والقابلية للاستخدام "
+  },
+  {
+    "name": "devops",
+    "category": "core",
+    "ok": true,
+    "elapsed": 1.7,
+    "output": "تخصصي هو بناء ونشر وتهيئة البنية التحتية والأنظمة بشكل مؤتمت وموثوق وقابل للتكرا"
+  },
+  {
+    "name": "documentation",
+    "category": "core",
+    "ok": true,
+    "elapsed": 3.9,
+    "output": "أخصّص في كتابة وتنمية وثائق المستخدمين والمطورين لتكون مطابقة بدقة للكود الفعلي،"
+  },
+  {
+    "name": "estimator",
+    "category": "core",
+    "ok": true,
+    "elapsed": 3.1,
+    "output": "أُقدّر الجهد، التكلفة، والمخاطر مع نطاقات واقعية، مع توضيح الافتراضات التي قد تؤ"
+  },
+  {
+    "name": "monitor",
+    "category": "core",
+    "ok": true,
+    "elapsed": 1.9,
+    "output": "متخصص في مراقبة إشارات النظام الحية مثل العمليات والموارد ومعدلات الأخطاء وإصدار"
+  },
+  {
+    "name": "orchestrator",
+    "category": "core",
+    "ok": true,
+    "elapsed": 7.1,
+    "output": "أنا متخصص في تنسيق الفريق وتحديد أدوار الأعضاء وترتيب التنفيذ وضمان تحقيق الهدف "
+  },
+  {
+    "name": "performance",
+    "category": "core",
+    "ok": true,
+    "elapsed": 5.4,
+    "output": "أنا وكيل الأداء: أقيس أولاً، أحدد الاختناقات الحقيقية (CPU، ذاكرة، بطارية، I/O)،"
+  },
+  {
+    "name": "planner",
+    "category": "core",
+    "ok": true,
+    "elapsed": 1.7,
+    "output": "أنا المسؤول عن تقسيم الأهداف الكبيرة إلى مهام مرتبة، قابلة للتنفيذ والقياس، مع ت"
+  },
+  {
+    "name": "recovery",
+    "category": "core",
+    "ok": true,
+    "elapsed": 7.6,
+    "output": "أنا وكيل استعادة الخدمة في فريق tyb-zyv-ai، ومحوري في إعادة تشغيل الأنظمة بعد ال"
+  },
+  {
+    "name": "refactor",
+    "category": "core",
+    "ok": true,
+    "elapsed": 2.6,
+    "output": "أنا نموذج لغة ذكي مُُدَرَّب على فهم وإنتاج النصوص، مسانِدًا في التّرجمة، البرمجة"
+  },
+  {
+    "name": "reporter",
+    "category": "core",
+    "ok": true,
+    "elapsed": 2.0,
+    "output": "أنا متخصص في تقديم المساعدة عبر كتابة النصوص، تبسيط المعلومات، وإيجاد حلول إبداع"
+  },
+  {
+    "name": "researcher",
+    "category": "core",
+    "ok": true,
+    "elapsed": 8.4,
+    "output": "أنا متخصص في جمع وتحقق المعلومات الحديثة من المصادر الأولية وتوثيقها."
+  },
+  {
+    "name": "reviewer",
+    "category": "core",
+    "ok": true,
+    "elapsed": 2.2,
+    "output": "أنا متخصص في مراجعة الكود (Code Review) بدقة للتحقق من الصحة، الأسلوب، الوضوح، و"
+  },
+  {
+    "name": "security_auditor",
+    "category": "core",
+    "ok": true,
+    "elapsed": 1.2,
+    "output": "تخصصي هو مراجعة الكود والإعدادات أمنياً لاكتشاف الثغرات، مثل التسريبات والبرمجيا"
+  },
+  {
+    "name": "tester",
+    "category": "core",
+    "ok": true,
+    "elapsed": 6.4,
+    "output": "أنا متخصص في كتابة وتشغيل اختبارات موجهة تؤكد السلوك الفعلي للكود، وتُغطي مسارات"
+  },
+  {
+    "name": "a11y_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: A11yAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "api_design_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: APIDesignAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "architecture_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: ArchitectureAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "auth_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: AuthAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "cicd_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: CICDAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "cleanup_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: argument should be a str or an os.PathLike object where __fspath__ returns a str"
+  },
+  {
+    "name": "code_review_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: CodeReviewAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "complexity_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: ComplexityAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "compliance_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: ComplianceAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "crypto_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: CryptoAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "css_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: CSSAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "db_migration_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: DBMigrationAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "deadcode_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: DeadCodeAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "dependency_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: DependencyAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "docker_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: DockerAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "documentation_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: DocumentationAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "duplication_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: DuplicationAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "embedding_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: EmbeddingAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "evaluation_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: EvaluationAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "finetune_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: FinetuneAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "git_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: argument should be a str or an os.PathLike object where __fspath__ returns a str"
+  },
+  {
+    "name": "indexing_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: IndexingAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "injection_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: InjectionAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "k8s_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: K8sAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "maintenance_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: MaintenanceAgent() takes no arguments"
+  },
+  {
+    "name": "migration_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: MigrationAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "monitoring_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: MonitoringAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "naming_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: NamingAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "nginx_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: NginxAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "nosql_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: NoSQLAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "orm_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: ORMAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "performance_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: PerformanceAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "privacy_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: PrivacyAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "prompt_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: PromptAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "react_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: ReactAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "refactor_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: RefactorAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "rtl_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: RTLAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "secrets_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: SecretsAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "security_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: SecurityAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "sql_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: SQLAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "terraform_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: TerraformAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "transaction_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: TransactionAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "vue_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: VueAgent.__init__() takes 1 positional argument but 2 were given"
+  },
+  {
+    "name": "xss_agent",
+    "category": "novamind",
+    "ok": false,
+    "elapsed": 0.0,
+    "output": "ERROR: XSSAgent.__init__() takes 1 positional argument but 2 were given"
+  }
+]

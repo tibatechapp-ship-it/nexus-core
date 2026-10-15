@@ -1,0 +1,265 @@
+[
+  {
+    "name": "a11y_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "api_design_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "architecture_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "auth_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "cicd_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "cleanup_agent",
+    "ok": true,
+    "method": "cleanup",
+    "note": "CleanupResult(ok=False, dry_run=True, files_deleted=0, dirs_deleted=0, bytes_freed=0, errors=['Not f"
+  },
+  {
+    "name": "code_review_agent",
+    "ok": true,
+    "method": "review",
+    "note": "{'ok': False, 'verdict': 'warnings', 'filename': 'code.py', 'dimensions': ['security', 'performance'"
+  },
+  {
+    "name": "complexity_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "compliance_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "crypto_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "css_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "db_migration_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "deadcode_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "dependency_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "docker_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "documentation_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': False, 'verdict': 'issues', 'total': 2, 'issues': [{'line': 2, 'type': 'missing_docstring', '"
+  },
+  {
+    "name": "duplication_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "embedding_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "evaluation_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "finetune_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "git_agent",
+    "ok": true,
+    "method": "execute",
+    "note": "{'ok': False, 'error': 'unknown git command'}"
+  },
+  {
+    "name": "indexing_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "injection_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "k8s_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "maintenance_agent",
+    "ok": false,
+    "note": "no_method"
+  },
+  {
+    "name": "migration_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'language': 'python', 'target': 'modern', 'total': 0, 'by_migration': "
+  },
+  {
+    "name": "monitoring_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': False, 'verdict': 'issues', 'total': 1, 'issues': [{'line': 3, 'category': 'logging', 'severi"
+  },
+  {
+    "name": "naming_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "nginx_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "nosql_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "orm_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "performance_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'language': 'python', 'total': 0, 'by_severity': {'critical': 0, 'high"
+  },
+  {
+    "name": "privacy_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "prompt_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "react_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "refactor_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'language': 'python', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "rtl_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "secrets_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "security_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'language': 'python', 'total': 0, 'by_severity': {'critical': 0, 'high"
+  },
+  {
+    "name": "sql_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "terraform_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "transaction_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "vue_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  },
+  {
+    "name": "xss_agent",
+    "ok": true,
+    "method": "analyze",
+    "note": "{'ok': True, 'verdict': 'ok', 'total': 0, 'issues': []}"
+  }
+]
