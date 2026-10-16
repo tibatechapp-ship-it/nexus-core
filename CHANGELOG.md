@@ -2,6 +2,24 @@
 
 All notable changes to this project. Newest first.
 
+## v1.13.5 — 2026-10-17
+**بوابات CI خضراء بالكامل: إصلاح 20 فشلًا قديمًا في وظيفة Tests.**
+- وظيفة Tests في GitHub Actions كانت حمراء بـ **20 فشلًا قديمًا** (كلها تعتمد
+  على إضافات اختيارية غير موجودة على CI: امتداد `sqlite-vec`/`vec0.so` وحزمة
+  `openai`). الآن = **success على Python 3.11/3.12/3.13** (2441 ناجح، 28
+  متخطّى، 0 فاشل).
+- `tests/conftest.py`: مسبار مشترك `vec_extension_available()` + علامة
+  `requires_vec` — «sqlite-vec» امتداد قابل للتحميل لا وحدة قابلة للاستيراد،
+  لذا `importorskip("sqlite_vec")` لا ينفع. طُبّقت على 13 اختبار RAG/متجهات.
+- `tests/test_agent_loop.py`: `pytest.importorskip("openai")` على اختبارَي عميل
+  openai. `tests/test_misc_coverage.py`: حقن عملاء وهميين بـ`raising=False` (لا
+  يُعرّف الاسم `OpenAI` أصلًا حين تغيب الحزمة).
+- `src/cli/main.py`: `cmd_review` لم يعد يثبّت مسارات Termux —
+  `tempfile.gettempdir()` (تحترم `$TMPDIR`) + إعادة كتابة سطر
+  `TARGET = Path("...")` بتعبير نمطي عام؛ الاختبارات صارت مستقلة تمامًا.
+- القاعدة المثبّتة: اختبار يحتاج «إضافة اختيارية» يجب أن **يُتخطّى**، لا أن
+  يؤكّد وجودها.
+
 ## v1.13.4 — 2026-10-16
 **المجلس الحيّ: تسمية العضو السادس «Tork Acil» + تثبيت الإصدار.**
 - `src/novamind/council/council.py`: `id="turk"`/`name="Turk"` →
