@@ -16,6 +16,8 @@ from typing import Any
 
 import pytest
 
+from tests.conftest import requires_vec
+
 from src.council.cache import CACHE_VERSION, CachedVerdict, CouncilCache
 from src.council.engine import CouncilResult
 from src.memory.embeddings import HashingEmbedder
@@ -33,6 +35,7 @@ def test_embedding_to_blob_roundtrip() -> None:
     assert len(blob) == 12  # 3 × float32
 
 
+@requires_vec
 def test_sqlite_vec_store_crud(tmp_path: Path) -> None:
     store = SQLiteVecStore(str(tmp_path / "v.db"), dim=4)
     assert isinstance(store, VectorStore)
@@ -51,6 +54,7 @@ def test_sqlite_vec_store_crud(tmp_path: Path) -> None:
     store.close()
 
 
+@requires_vec
 def test_sqlite_vec_store_creates_parent_dir(tmp_path: Path) -> None:
     nested = tmp_path / "a" / "b" / "v.db"
     store = SQLiteVecStore(str(nested), dim=4)
@@ -84,6 +88,7 @@ def _rag_engine(tmp_path: Path, **kw: Any) -> RAGEngine:
 
 
 
+@requires_vec
 def test_rag_engine_add_retrieve_roundtrip(tmp_path: Path) -> None:
     eng = _rag_engine(tmp_path)
     eng.add_document("doc1", "python is a programming language")
@@ -98,6 +103,7 @@ def test_rag_engine_add_retrieve_roundtrip(tmp_path: Path) -> None:
     eng.close()
 
 
+@requires_vec
 def test_rag_engine_add_documents_counts_valid_tuples(tmp_path: Path) -> None:
     eng = _rag_engine(tmp_path)
     n = eng.add_documents([
@@ -111,6 +117,7 @@ def test_rag_engine_add_documents_counts_valid_tuples(tmp_path: Path) -> None:
     eng.close()
 
 
+@requires_vec
 def test_rag_engine_empty_generate(tmp_path: Path) -> None:
     eng = _rag_engine(tmp_path)
     out = eng.generate("nothing stored yet", k=3)
@@ -118,6 +125,7 @@ def test_rag_engine_empty_generate(tmp_path: Path) -> None:
     eng.close()
 
 
+@requires_vec
 def test_rag_engine_with_llm_router(tmp_path: Path) -> None:
     class FakeLLM:
         def __init__(self) -> None:
@@ -136,6 +144,7 @@ def test_rag_engine_with_llm_router(tmp_path: Path) -> None:
     eng.close()
 
 
+@requires_vec
 def test_rag_engine_default_path_is_under_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -169,6 +178,7 @@ def _fresh_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     return arb.AgentRAGBridge()
 
 
+@requires_vec
 def test_agent_rag_bridge_singleton_and_roundtrip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -185,6 +195,7 @@ def test_agent_rag_bridge_singleton_and_roundtrip(
     assert "سياق من الذاكرة" in enriched
 
 
+@requires_vec
 def test_agent_rag_bridge_enrich_without_docs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -192,6 +203,7 @@ def test_agent_rag_bridge_enrich_without_docs(
     assert b.enrich_prompt("unrelated question xyz") == "unrelated question xyz"
 
 
+@requires_vec
 def test_agent_rag_bridge_enrich_swallows_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -205,6 +217,7 @@ def test_agent_rag_bridge_enrich_swallows_errors(
     assert b.enrich_prompt("anything") == "anything"
 
 
+@requires_vec
 def test_get_bridge_singleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import src.memory.agent_rag_bridge as arb
 
@@ -213,6 +226,7 @@ def test_get_bridge_singleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert arb.get_bridge() is b
 
 
+@requires_vec
 def test_agent_rag_bridge_fallback_prints_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -531,6 +545,7 @@ def test_deliberate_streaming_on_event_exception_swallowed(
     assert res.verdict == "approve"
 
 
+@requires_vec
 def test_get_council_bridge_is_process_singleton() -> None:
     import src.council.rag_bridge as rb
 

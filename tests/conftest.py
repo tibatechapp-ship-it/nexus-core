@@ -36,6 +36,35 @@ from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 REPORT = AdversarialReport()
 
 
+def vec_extension_available() -> bool:
+    """True when the ``vec0`` SQLite extension can actually be loaded.
+
+    ``sqlite-vec`` ships as a *loadable extension* (``vec0.so``), not an
+    importable module, so ``pytest.importorskip("sqlite_vec")`` cannot detect it.
+    The only honest probe is to try ``load_extension`` once; on a host without
+    the ``.so`` (e.g. CI) this is ``False`` and the RAG tests skip instead of
+    failing with ``RuntimeError: sqlite-vec غير مثبت``.
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.enable_load_extension(True)
+        conn.load_extension("vec0")
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+#: Skip marker for any test that needs a working ``vec0`` store.
+requires_vec = pytest.mark.skipif(
+    not vec_extension_available(),
+    reason="sqlite-vec extension (vec0) not installed",
+)
+
+
 def _load(name: str, filename: str) -> types.ModuleType:
     """Import a hyphenated script by path under a valid module name."""
     path = ROOT / filename

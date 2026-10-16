@@ -21,35 +21,9 @@ from src.memory.procedural import ProceduralMemory, Skill
 from src.memory.providers.base import EmbeddingProvider, get_provider
 from src.memory.rag_engine import RAGEngine
 from src.memory.vector_store.base import VectorStore
+from tests.conftest import requires_vec
 
 _MISSING: object = object()
-
-
-def _vec_extension_available() -> bool:
-    """True when the ``vec0`` SQLite extension can actually be loaded.
-
-    ``sqlite-vec`` is a loadable extension (not an importable module), so the
-    only honest probe is to try ``load_extension`` once — on a host without the
-    ``.so`` (e.g. CI) this returns ``False`` and the RAG tests skip rather than
-    fail with ``RuntimeError: sqlite-vec غير مثبت``.
-    """
-    import sqlite3
-
-    conn = sqlite3.connect(":memory:")
-    try:
-        conn.enable_load_extension(True)
-        conn.load_extension("vec0")
-        return True
-    except Exception:
-        return False
-    finally:
-        conn.close()
-
-
-requires_vec: pytest.MarkDecorator = pytest.mark.skipif(
-    not _vec_extension_available(),
-    reason="sqlite-vec extension (vec0) not installed",
-)
 
 
 # --------------------------------------------------------------------------- #
