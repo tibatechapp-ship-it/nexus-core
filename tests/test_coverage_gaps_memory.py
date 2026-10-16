@@ -25,6 +25,33 @@ from src.memory.vector_store.base import VectorStore
 _MISSING: object = object()
 
 
+def _vec_extension_available() -> bool:
+    """True when the ``vec0`` SQLite extension can actually be loaded.
+
+    ``sqlite-vec`` is a loadable extension (not an importable module), so the
+    only honest probe is to try ``load_extension`` once — on a host without the
+    ``.so`` (e.g. CI) this returns ``False`` and the RAG tests skip rather than
+    fail with ``RuntimeError: sqlite-vec غير مثبت``.
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.enable_load_extension(True)
+        conn.load_extension("vec0")
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+requires_vec: pytest.MarkDecorator = pytest.mark.skipif(
+    not _vec_extension_available(),
+    reason="sqlite-vec extension (vec0) not installed",
+)
+
+
 # --------------------------------------------------------------------------- #
 # declared protocol / ABC stub bodies
 #
@@ -61,6 +88,7 @@ def test_build_embedder_returns_a_live_provider(
     ``**kwargs`` to a non-default provider), so the key is set here.
     """
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    pytest.importorskip("openai")
     provider, dim, reason = build_embedder("openai")
     assert type(provider).__name__ == "OpenAIEmbeddings"
     assert dim == dim_for("openai") == 1536
@@ -68,6 +96,7 @@ def test_build_embedder_returns_a_live_provider(
 
 
 def test_get_provider_constructs_openai_client() -> None:
+    pytest.importorskip("openai")
     provider = get_provider("openai", api_key="test-key")
     assert provider.dim == 1536
 
@@ -110,6 +139,7 @@ def test_embedding_providers_degrade_without_openai(module_name: str) -> None:
 
 def test_embedding_providers_have_openai_installed() -> None:
     """Guard: the fallback test above is only meaningful when openai *is* here."""
+    pytest.importorskip("openai")
     import src.memory.providers.gemini as gemini
     import src.memory.providers.openai as openai_provider
 
@@ -161,6 +191,7 @@ def test_vector_find_falls_back_to_lexical_for_rows_without_embedding() -> None:
 # --------------------------------------------------------------------------- #
 # stores on a relative path (no parent directory to create)
 # --------------------------------------------------------------------------- #
+@requires_vec
 def test_rag_engine_relative_store_path_skips_parent_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
