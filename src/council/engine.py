@@ -186,12 +186,13 @@ class CouncilEngine:
         """أغلبية الأحكام الصريحة (2/3) — والطريقة الكلمية احتياط."""
         if len(responses) < 2:
             return True
-        verdicts = [self._explicit_verdict(r) for r in responses.values()]
-        if all(v is not None for v in verdicts):
+        verdicts = [
+            v for v in (self._explicit_verdict(r) for r in responses.values()) if v is not None
+        ]
+        if len(verdicts) == len(responses):
             counts: dict[str, int] = {}
             for v in verdicts:
-                if v is not None:
-                    counts[v] = counts.get(v, 0) + 1
+                counts[v] = counts.get(v, 0) + 1
             return max(counts.values()) >= len(verdicts) // 2 + 1
         # fallback كلمي
         positive = ["مقبول", "آمن", "موافق", "approve", "safe"]

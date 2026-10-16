@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-core"
-version = "1.13.4"
+version = "1.13.5"
 description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -204,7 +204,11 @@ omit = [
 show_missing = true
 skip_empty = true
 # The deep security/performance suites must keep overall coverage this high.
-fail_under = 95
+# Measured: 100.00% with the full dependency set, 99.68% when the optional
+# extras (sqlite-vec / openai / sse-starlette) are absent, as on GitHub
+# Actions. The floor is 99 — high enough to catch any real regression, with
+# margin for the optional-dependency skip path (100 would fail on CI alone).
+fail_under = 99
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

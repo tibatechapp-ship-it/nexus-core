@@ -211,6 +211,54 @@ def test_archive_entry_count_is_capped(
     assert report.result.scanned_files == 3
 
 
+def test_archive_directory_entries_are_skipped(tmp_path: Path) -> None:
+    """A directory entry inside the archive is not scanned as a file."""
+    archive_path = tmp_path / "with-dirs.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("src/", "")  # a directory entry, not a file
+        archive.writestr("src/app.py", _BAD_SOURCE)
+
+    report = SecurityOrchestrator().scan(archive_path)
+
+    assert report.findings  # the python entry was scanned
+    assert report.result.scanned_files == 1
+
+
+def test_archive_total_bytes_budget_stops_the_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The total decompressed-byte budget stops the scan mid-archive."""
+    monkeypatch.setattr(SecurityOrchestrator, "_MAX_TOTAL_BYTES", 8)
+    archive_path = tmp_path / "budget.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("first.py", "x = 1\n")  # 6 bytes — fits the budget
+        archive.writestr("second.py", "y = 2\n")  # would exceed it
+
+    report = SecurityOrchestrator().scan(archive_path)
+
+    assert report.result.scanned_files == 1  # the second entry was never read
+
+
+def test_archive_unreadable_entry_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An entry that cannot be read is skipped; the scan still returns."""
+    archive_path = _write_zip(tmp_path, "unreadable.zip")
+    original_read = zipfile.ZipFile.read
+
+    def flaky_read(self: zipfile.ZipFile, name: object, pwd: object = None) -> bytes:
+        if isinstance(name, zipfile.ZipInfo) and name.filename.endswith("app.py"):
+            raise zipfile.BadZipFile("corrupt entry")
+        return original_read(self, name)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", flaky_read)
+
+    report = SecurityOrchestrator().scan(archive_path)
+
+    assert report.findings == ()
+    assert report.result.scanned_files == 0
+
+
 # ── orchestrator: rendering ──────────────────────────────────────────────
 def test_report_to_dict_is_jsonable(tmp_path: Path) -> None:
     _write_tree(tmp_path)

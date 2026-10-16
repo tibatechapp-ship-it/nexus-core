@@ -12,6 +12,7 @@ import pytest
 from src.memory.embeddings import HashingEmbedder
 from src.memory.providers.base import get_provider, resolve_api_key
 from src.memory import embedding_config as ec
+from tests.conftest import requires_vec
 
 
 # ───────────────────────────── providers ─────────────────────────────
@@ -175,8 +176,8 @@ def test_resolve_rag_provider_failure_keeps_hashing_path(monkeypatch, tmp_path):
 
 # ──────────────────────── RAGEngine dim round-trip ────────────────────
 
+@requires_vec
 def test_rag_engine_honors_dim(tmp_path):
-    pytest.importorskip("sqlite3")
     from src.memory.rag_engine import RAGEngine
 
     embedder = HashingEmbedder(dim=64)
@@ -196,6 +197,7 @@ def test_rag_engine_honors_dim(tmp_path):
         engine.close()
 
 
+@requires_vec
 def test_rag_engine_dim_from_embedder_attribute(tmp_path):
     from src.memory.rag_engine import RAGEngine
 

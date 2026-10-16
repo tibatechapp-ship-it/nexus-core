@@ -11,9 +11,6 @@ import src.cli.main as cli
 from src.sessions.manager import SessionManager
 from src.skills.loader import SkillLoader
 
-_REVIEW_SCRIPT = Path("/data/data/com.termux/files/usr/tmp/run_5_agents.py")
-_REVIEW_DYN = Path("/data/data/com.termux/files/usr/tmp/review_dynamic.py")
-
 
 class _FakeBackend:
     keys = ["k1", "k2"]
@@ -109,25 +106,32 @@ def test_cmd_review_missing_path(capsys: pytest.CaptureFixture[str], tmp_path: P
     assert "غير موجود" in capsys.readouterr().out
 
 
-def test_cmd_review_script_absent(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    # real target exists; the helper script does not → graceful failure
+def test_cmd_review_script_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # real target exists; the helper script does not → graceful failure.
+    # Point the CLI at a guaranteed-absent path (never rely on a machine-specific
+    # /data/data/... file being missing).
+    monkeypatch.setattr(cli, "_REVIEW_SCRIPT", tmp_path / "absent.py")
     assert cli.cmd_review(_ns(path=str(tmp_path))) == 1
 
 
 def test_cmd_review_runs_helper(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    had = _REVIEW_SCRIPT.exists()
-    if not had:
-        _REVIEW_SCRIPT.write_text('TARGET = Path("/data/x")\n', encoding="utf-8")
-    try:
-        calls: list[Any] = []
-        monkeypatch.setattr("subprocess.call", lambda argv: calls.append(argv) or 0)
-        assert cli.cmd_review(_ns(path=str(tmp_path))) == 0
-        assert calls and calls[0][0] == "python3"
-        assert _REVIEW_DYN.exists()
-    finally:
-        if not had:
-            _REVIEW_SCRIPT.unlink(missing_ok=True)
-        _REVIEW_DYN.unlink(missing_ok=True)
+    script = tmp_path / "run_5_agents.py"
+    dyn = tmp_path / "review_dynamic.py"
+    monkeypatch.setattr(cli, "_REVIEW_SCRIPT", script)
+    monkeypatch.setattr(cli, "_REVIEW_DYN", dyn)
+    script.write_text('TARGET = Path("/data/x")\n', encoding="utf-8")
+
+    calls: list[Any] = []
+    monkeypatch.setattr("subprocess.call", lambda argv: calls.append(argv) or 0)
+    assert cli.cmd_review(_ns(path=str(tmp_path))) == 0
+    assert calls and calls[0][0] == "python3"
+    assert dyn.exists()
+    # the helper's TARGET line is rewritten to the reviewed project
+    written = dyn.read_text(encoding="utf-8")
+    assert "/data/x" not in written
+    assert f'TARGET = Path("{Path(str(tmp_path)).resolve()}")' in written
 
 
 def test_cmd_sessions_empty_and_populated(

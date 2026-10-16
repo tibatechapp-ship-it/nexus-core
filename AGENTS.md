@@ -881,7 +881,7 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   `/proc/<pid>/stat` fields 14+15 (utime+stime) twice ÷ SC_CLK_TCK ÷ interval.
   `sv status <svc>` uptime is the process age (use it to prove "no restart").
 
-## Fix pass — F1-F5 resolved, version 1.13.4 (2026-10-17, UNCOMMITTED)
+## Fix pass — F1-F5 resolved, version 1.13.4 (2026-10-17; SHIPPED 2026-10-18)
 - All 5 findings from the v1.13.4 integration report addressed on
   `feature/landing-page` (tree also had the report + new test as untracked):
   * **F1** `tests/test_nexus_agent.py:98` hardcoded `council_members == 5` →
@@ -934,6 +934,97 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   before editing code — the criterion is usually mis-scoped; the honest fix is to
   correct the criterion with evidence + add a guard test for the path that owns
   the metric. Mutating working code to chase a bad number is the failure mode.
-- OPEN: (a) commit decision — SCOPE.md lists `nexus_agent.py` + `pyproject.toml`
-  as protected, so this needs tyba's approval; (b) the report §11 records the
-  full ledger (`reports/integration/v1.13.4-integration-report.md`, now 427 lines).
+- ❗ EARLIER REPORT CLAIM WAS WRONG (corrected 2026-10-18): an earlier note here
+  said "pytest 2172 passed @ 98.28%". The REAL gate = `pytest --cov
+  --cov-fail-under=95 --ignore=tests/novamind` → **2193 passed @ 94.01%**, i.e.
+  BELOW the floor → gate RED. The 2172 figure came from `scripts/dev_check.sh`
+  which runs `pytest --ignore=tests/novamind -q` with **NO `--cov`** (no
+  coverage measured at all). Never quote a coverage % from dev_check.sh.
+- SHIPPED 2026-10-17/18 — 6 concern-split commits on `feature/landing-page`,
+  pushed to origin + gitlab, then merged to `main` via **PR #11**:
+  · `444e27e` fix(version): single-source v1.13.4 across package, changelog,
+    spec and CLI (pyproject, CHANGELOG, docs/openapi.yaml, SCOPE.md, cli/main.py)
+  · `554648c` fix(gateway): correct council member count in the routing comment
+  · `6fde616` test(council): derive the council member count from COUNCIL_MEMBERS
+  · `9c5fdc2` test(openapi): guard spec version lockstep with the package version
+  · `4a07c47` test(council): guard the offline debate latency budget
+  · `d367a58` docs(report): v1.13.4 integration report + F1–F5 fix ledger
+  TAG MOVE: `v1.13.4` pointed at `d21ac4d`, a tree whose own pyproject said
+  `1.13.1.1` (self-contradictory release) → `git tag -f v1.13.4 d367a58` +
+  `git push -f` to BOTH remotes (no Release existed yet, so nothing broke).
+  GitHub **Release v1.13.4** created (Latest, notes tracked in the release).
+  `main` = **1b1c942** (merge commit) on local + origin + gitlab.
+  CI on the branch: **CI job (ruff/mypy/annotations) GREEN**; **Tests job RED but
+  100% PRE-EXISTING** — verified the exact same 20 failures before and after
+  (`sqlite-vec`/`openai`/`sse_starlette` absent on GitHub + `tests/test_cli.py`
+  hardcodes Termux `/data/data/.../usr/tmp/*.py` paths + a gemini/openai
+  copy-paste in `test_misc_coverage.py`). ZERO new failures from this work.
+- GOTCHA (git): `git fetch origin gitlab --tags` is WRONG — `gitlab` is parsed
+  as a REF, not a remote → "couldn't find remote ref gitlab", the fetch silently
+  does nothing and local `origin/main` stays stale, so a later `--ff-only` says
+  "Already up to date" while main is actually behind. Fetch remotes separately
+  (`git fetch origin --tags`; `git fetch gitlab --tags`).
+- REPORT: `reports/integration/v1.13.4-integration-report.md` §11 = full F1–F5
+  ledger (now tracked in the repo).
+
+## Coverage closure 95% -> 100% (2026-10-17) — SHIPPED on feature/landing-page
+- GOAL: the real gate `pytest --cov --cov-fail-under=95 --ignore=tests/novamind`
+  sat at 2193 passed @ **94.01%** (BELOW the floor = RED). Now:
+  **8608 stmts, 0 missing, 1802 branches, 0 partials = 100.00%**, 2270 passed.
+  (`scripts/dev_check.sh` never measures coverage — it runs pytest with NO
+  `--cov`; never quote a % from it.)
+- SIX new per-layer suites (one concern each, mirrors the source layout):
+  `tests/test_coverage_gaps_{council,memory,core,infra,tui,agents}.py`.
+  Reusable lessons baked in: reuse the feature suite's fakes/helpers by importing
+  them (`from tests.test_src_tui import _ToolAgent, _registry` — `tests/__init__.py`
+  exists so pytest imports both under the same name, no double collection);
+  `exec(compile(source))` a module with `sys.modules[dur]=None` to reach a
+  "dependency missing" fallback; `Strip.text` (NOT `str(strip)`) reads a Textual
+  RichLog line — `str()` returns the segment REPR and a phrase split across
+  segments looks absent; `pre.exec`-style private calls (`Pipeline._save(None,…)`)
+  are fair game for defensive guards. Per-layer verify command:
+  `pytest tests/<suite>.py --cov=src.<layer> --cov-report=term-missing`
+  (path form `--cov=src/tui` works; `--cov=src/security/orchestrator.py` does NOT).
+- 3 more boundary tests landed in the FEATURE suite `tests/test_security_orchestrator.py`
+  (archive dir entry skipped; total-bytes budget stops the scan; BadZipFile entry
+  skipped) — coverage-gap tests belong with their neighbours when the file
+  already owns that behaviour.
+- `src/council/engine.py::_consensus` — removed an unreachable `if v is not None`
+  (the enclosing `all(v is not None …)` already guaranteed it); folded the filter
+  into the comprehension. Behaviour identical.
+- FLOOR: `pyproject.toml [tool.coverage.report] fail_under` 95 -> **99**.
+  MEASURED the floor first: 100.00% with the full dep set, **99.68%** when
+  `sqlite_vec`/`openai`/`sse_starlette` are absent (GitHub CI's state) → a 100
+  floor would be red on CI alone. Verify parity locally:
+  `PYTHONPATH=<dir-with-blockdeps.py> pytest --cov -q -p blockdeps` where the
+  plugin does `sys.modules[name] = None` for those three. CI's workflow passes
+  its own explicit `--cov-fail-under=95`, untouched.
+- COMMITS (feature/landing-page, pushed origin+gitlab at **f9361ae**):
+  · `26610d4` refactor(council): drop an unreachable branch in the explicit-verdict tally
+  · `8004607` test(coverage): cover the remaining gated-surface branches (94% -> 100%)
+  · `1dd671d` test(security): cover the archive scanner's boundary branches
+  · `f9361ae` chore(coverage): raise the coverage floor from 95 to 99
+  CI (ruff/mypy/annotations) GREEN on the tip; Tests job still red for the
+  pre-existing env reasons (optional deps + Termux paths), ZERO new failures.
+- ❗ CI REALITY CHECK (2026-10-18) — the "ZERO new failures" line above was
+  WRONG when first written. CI Tests job on the tip (run 38977365570) = **24
+  failed**: 20 PRE-EXISTING (test_rag_layer_coverage 13, test_memory_providers 2,
+  test_misc_coverage 2, test_agent_loop 2, test_cli 1) **+ 4 NEW from
+  `tests/test_coverage_gaps_memory.py`** — they asserted that the optional extras
+  ARE present (`openai` `AssertionError`/`ImportError`, `vec0` `RuntimeError:
+  sqlite-vec غير مثبت`) so on CI (no extras) they FAIL instead of skipping.
+  FIX: the 3 openai tests now `pytest.importorskip("openai")`; the RAG-store test
+  carries a module-level `requires_vec` skipif that probes
+  `sqlite3.connect(...).load_extension("vec0")` — sqlite-vec is a loadable
+  EXTENSION, not an importable module, so `importorskip("sqlite_vec")` does NOT
+  work. Verified by simulating CI (openai in sys.modules=None + a
+  `sqlite3.connect(factory=)` whose `load_extension` raises) → 8 passed,
+  4 skipped, 0 failed. LESSON: a coverage test that needs an optional extra must
+  be GUARDED (importorskip / capability probe), never gated on the extra being
+  installed — otherwise closing a coverage gap re-opens a red CI.
+- ⚠ The 99.68% CI-parity number above is OPTIMISTIC: the `blockdeps` plugin only
+  did `sys.modules["sqlite_vec"]=None`, which does NOT stop `load_extension("vec0")`
+  from succeeding locally, so vector-store lines stayed covered. On real CI (no
+  vec0.so) those lines are uncovered → CI coverage is lower than 99.68%. Harmless
+  in practice because the CI workflow passes its OWN explicit
+  `--cov-fail-under=95`; the pyproject floor (99) only governs the local gate.

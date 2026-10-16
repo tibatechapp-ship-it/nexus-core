@@ -111,7 +111,9 @@ def test_openai_embeddings_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     import src.memory.providers.openai as mod
 
     monkeypatch.setattr(mod, "HAS_OPENAI", True)
-    monkeypatch.setattr(mod, "OpenAI", _FakeOpenAI)
+    # raising=False: with the real ``openai`` package absent the module defines
+    # no ``OpenAI`` name at all — we inject the fake one to exercise the happy path.
+    monkeypatch.setattr(mod, "OpenAI", _FakeOpenAI, raising=False)
     cls = mod.OpenAIEmbeddings(api_key="sk-test")
     vec = cls.embed("hello")
     assert list(vec) == [0.1, 0.2, 0.3]
@@ -135,7 +137,7 @@ def test_gemini_embeddings_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     import src.memory.providers.gemini as mod
 
     monkeypatch.setattr(mod, "HAS_OPENAI", True)
-    monkeypatch.setattr(mod, "OpenAI", _FakeOpenAI)
+    monkeypatch.setattr(mod, "OpenAI", _FakeOpenAI, raising=False)
     cls = mod.GeminiEmbeddings(api_key="gk")
     assert list(cls.embed("hi")) == [0.1, 0.2, 0.3]
     # Gemini goes through the OpenAI-compatible base_url
