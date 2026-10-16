@@ -40,7 +40,7 @@ certification = ["cryptography>=41"]
 novamind = [
     "fastapi",
     "uvicorn",
-    "pydantic>=2",
+    "pydantic>=2.14.1",
     "pydantic-settings",
     "python-dotenv>=1.0",
     "httpx",
