@@ -10,6 +10,11 @@ updates:
       pip-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # pytest-textual-snapshot (1.1.0, latest) pins syrupy==4.8.0 exactly, so
+      # ANY syrupy bump makes the [dev] extra unsolvable. Revisit once
+      # pytest-textual-snapshot supports syrupy 6.x.
+      - dependency-name: "syrupy"
 
   - package-ecosystem: github-actions
     directory: "/"
