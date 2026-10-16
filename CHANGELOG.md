@@ -2,6 +2,28 @@
 
 All notable changes to this project. Newest first.
 
+## v1.13.1.1 — 2026-10-16
+**Error memory wired into the LLM router — every provider failure is recorded.**
+- `src/novamind/core/llm_router.py`: guarded import (`HAS_ERROR_MEMORY` +
+  `try/except`) and a `log()` call inside the `except` branch of
+  `LLMRouter.generate`. Each failure records `error_type` (e.g. `AttributeError`),
+  `context` (e.g. `provider=broken-test`), the provider name, the role and a
+  500-char-truncated `error_message`.
+- Effect: one line per provider failure is appended to
+  `~/.nexus/error_memory.jsonl` (the raw material for future error-pattern
+  analysis). A failure inside `error_memory` itself never breaks the LLM call.
+- Verified: a deliberately broken provider → exactly one log entry.
+
+## v1.13.1 — 2026-10-16
+**Error memory (first wire) — an append-only JSONL log of LLM failures.**
+- `src/novamind/error_memory.py` (new, 57 lines): `ErrorMemory` singleton
+  (`get()`) with `log(error_type, context, error_message, **extra)` (append),
+  `recent(n)` (last *n*) and `stats()` (counts by type). Stores one JSON object
+  per line in `~/.nexus/error_memory.jsonl`.
+- `tests/test_error_memory.py` (new, 6 tests): file write, stats-by-type,
+  recent-returns-last-n, message truncation, extra-kwargs stored, singleton
+  identity.
+
 ## v1.13.0 — 2026-10-16
 **Unified server (`nexus_agent.py`): one FastAPI app that wraps every layer
 without losing a feature — gradual unification *with separation*.**
