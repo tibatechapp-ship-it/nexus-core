@@ -50,11 +50,11 @@ class CouncilMember:
 
 COUNCIL_MEMBERS: List[CouncilMember] = [
     CouncilMember(
-        id="turk",
-        name="Turk",
+        id="tork_acil",
+        name="Tork Acil",
         emoji="🎯",
         system=(
-            "أنت «Turk» — رئيس جلسة Council وعضوها الأول. "
+            "أنت «Tork Acil» — رئيس جلسة Council وعضوها الأول. "
             "دورك: (1) تفتح النقاش بتحديد نطاق السؤال. "
             "(2) توزّع المهام على الأعضاء حسب تخصصهم. "
             "(3) تجمع الآراء وتلخّصها. "
