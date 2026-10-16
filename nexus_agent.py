@@ -348,7 +348,7 @@ def api_chat(req: ChatRequest) -> Any:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# /api/council/* — المجلس الحيّ (5 أعضاء) + الجلسات
+# /api/council/* — المجلس الحيّ (6 أعضاء) + الجلسات
 # ═══════════════════════════════════════════════════════════════════════
 @app.post("/api/council/debate")
 async def api_council_debate(req: CouncilRequest) -> Dict[str, Any]:
