@@ -1,9 +1,9 @@
 """Version single-source invariant.
 
-The project keeps one authoritative version and mirrors it in two places that
-are easy to drift apart: ``pyproject.toml`` and ``src/__init__.py``. The console
-and ``/api/health`` read the runtime value live; the changelog records it for
-humans. This test fails the moment any of the three disagree.
+The project keeps ONE authoritative version in ``pyproject.toml``.
+``src.__version__`` reads it at import (no hand-kept mirror), and the console +
+``/api/health`` read it live. This test fails if ``src`` ever drifts back to a
+hard-coded literal, and records the version for humans in the changelog.
 """
 from __future__ import annotations
 

@@ -56,7 +56,7 @@ def build_signature_map(method_args: list, is_instance: bool) -> dict:
     - task → code (للـ fix)
     - ctx.filename → filename
     """
-    smap = {}
+    smap: dict[str, Any] = {}
 
     if not method_args:
         return smap

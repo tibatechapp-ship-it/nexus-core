@@ -1,6 +1,6 @@
 """OpenAI Embeddings Provider."""
 from __future__ import annotations
-from typing import Sequence
+from typing import Sequence, Any
 
 from .base import resolve_api_key
 
@@ -17,7 +17,7 @@ class OpenAIEmbeddings:
     # بُعد text-embedding-3-small
     dim = 1536
 
-    def __init__(self, api_key: str = None, model: str = "text-embedding-3-small"):
+    def __init__(self: Any, api_key: str | None = None, model: str = "text-embedding-3-small") -> None:
         if not HAS_OPENAI:
             raise ImportError("openai غير مثبت")
         self.api_key = api_key or resolve_api_key("OPENAI_API_KEY")

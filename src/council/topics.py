@@ -1,4 +1,5 @@
 """مكتبة مواضيع المجلس."""
+from typing import Any
 from dataclasses import dataclass, field
 
 
@@ -113,12 +114,12 @@ TOPICS = {
 }
 
 
-def get_topic(topic_id):
+def get_topic(topic_id: Any) -> Any:
     return TOPICS.get(topic_id)
 
 
-def list_categories():
-    r = {}
+def list_categories() -> Any:
+    r: dict[str, list] = {}
     for tid, t in TOPICS.items():
         r.setdefault(t.category, []).append({
             "id": tid, "title": t.title, "risk": t.risk_level
@@ -126,7 +127,7 @@ def list_categories():
     return r
 
 
-def search_topics(query):
+def search_topics(query: Any) -> Any:
     q = query.lower()
     return [
         {"id": tid, "title": t.title, "category": t.category}

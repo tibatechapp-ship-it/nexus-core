@@ -84,11 +84,11 @@ def classify(prompt: str) -> str:
 class HybridRouter:
     """يوجّه الطلب للطريقة المثلى."""
 
-    def __init__(self, use_rag=True, verbose=False):
+    def __init__(self, use_rag: bool = True, verbose: bool = False) -> None:
         self.use_rag = use_rag
         self.verbose = verbose
 
-    def run(self, prompt: str, force: str = None) -> dict:
+    def run(self, prompt: str, force: str | None = None) -> dict:
         """ينفذ الطلب بالطريقة المثلى."""
         route = force or classify(prompt)
 
@@ -191,7 +191,7 @@ class HybridRouter:
 # Singleton
 _router = None
 
-def get_hybrid_router(use_rag=True, verbose=False) -> HybridRouter:
+def get_hybrid_router(use_rag: bool = True, verbose: bool = False) -> HybridRouter:
     global _router
     if _router is None or _router.use_rag != use_rag:
         _router = HybridRouter(use_rag=use_rag, verbose=verbose)

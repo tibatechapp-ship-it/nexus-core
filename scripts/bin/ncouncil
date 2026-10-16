@@ -1,0 +1,56 @@
+#!/data/data/com.termux/files/usr/bin/bash
+if [ $# -eq 0 ]; then echo "الاستخدام: ncouncil \"الموضوع\" [عدد الجولات]"; exit 1; fi
+TOPIC="$1"
+ROUNDS="${2:-2}"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+REPORT_DIR="$HOME/nexus-core/reports"
+REPORT="$REPORT_DIR/council-$TIMESTAMP.md"
+mkdir -p "$REPORT_DIR"
+
+echo "🏛️  المجلس: $TOPIC ($ROUNDS جولات)"
+echo ""
+
+{
+    echo "# 🏛️ تقرير المجلس — $TOPIC"
+    echo ""
+    echo "**التاريخ:** $(date)"
+    echo ""
+    echo "---"
+    echo ""
+} > "$REPORT"
+
+curl -N -s -X POST http://127.0.0.1:8080/api/council/stream \
+    -H "Content-Type: application/json" \
+    -d "{\"topic\": \"$TOPIC\", \"rounds\": $ROUNDS}" \
+    2>/dev/null | while IFS= read -r line; do
+        if [[ "$line" == data:* ]]; then
+            echo "${line#data: }" | python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read().strip())
+    t = d.get('type', '')
+    if t == 'session':
+        print(f\"## 👥 الأعضاء ({len(d.get('members', []))})\")
+        for m in d.get('members', []):
+            print(f\"- {m.get('emoji', '')} {m.get('name', '?')}\")
+        print()
+    elif t == 'round':
+        print(f\"\n## 🔄 الجولة {d.get('round')}/{d.get('total')}\n\")
+    elif t == 'member_message':
+        print(f\"### {d.get('emoji', '')} {d.get('name', '?')} ({d.get('elapsed', 0):.1f}s)\")
+        print()
+        print(d.get('content', ''))
+        print()
+    elif t == 'consensus':
+        print(f\"**🤝 التوافق:** {d.get('score', 0)*100:.0f}%\n\")
+    elif t == 'verdict':
+        print(f\"\n## ✅ الحكم النهائي\n\n**التوافق:** {d.get('consensus', 0)*100:.0f}%\n\")
+        print(d.get('verdict', ''))
+        print()
+except: pass
+" 2>/dev/null | tee -a "$REPORT"
+        fi
+    done
+
+echo ""
+echo "✅ التقرير: $REPORT"

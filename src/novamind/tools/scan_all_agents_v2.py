@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 # [FIXED PATH] Use relative imports or conftest.py instead
-AGENTS_DIR = PROJECT_ROOT / "nova" / "agents"
-OUTPUT = PROJECT_ROOT / "reports" / "all_agents_signatures.json"
+AGENTS_DIR = PROJECT_ROOT = Path(__file__).resolve().parents[3] / "nova" / "agents"
+OUTPUT = PROJECT_ROOT = Path(__file__).resolve().parents[3] / "reports" / "all_agents_signatures.json"
 
 # كلمات ممنوعة (ليست وكلاء)
 BLACKLIST = {

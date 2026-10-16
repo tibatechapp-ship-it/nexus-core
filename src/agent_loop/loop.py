@@ -4,6 +4,7 @@ import os
 import sys
 import json
 import time
+from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -29,7 +30,13 @@ SYSTEM_PROMPT = """أنت وكيل ذكي يستخدم الأدوات لحل ا�
 
 
 class AgentLoop:
-    def __init__(self, llm=None, registry=None, max_iterations=8, verbose=True):
+    def __init__(
+        self,
+        llm: Any = None,
+        registry: Any = None,
+        max_iterations: int = 8,
+        verbose: bool = True,
+    ) -> None:
         self.llm = llm
         if self.llm is None:
             from novamind.core.llm_router import get_router
@@ -37,14 +44,14 @@ class AgentLoop:
         self.registry = registry or build_default_registry()
         self.max_iterations = max_iterations
         self.verbose = verbose
-        self.trace = []
+        self.trace: list[dict[str, Any]] = []
 
-    def _log(self, icon, text):
+    def _log(self, icon: str, text: Any) -> None:
         if self.verbose:
             print(f"{icon} {text}")
         self.trace.append({"icon": icon, "text": str(text)})
 
-    def _call_llm(self, messages):
+    def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """يستدعي LLM مع tools ويُرجع الرد."""
         try:
             # نحتاج استدعاء مباشر مع tools
@@ -63,7 +70,7 @@ class AgentLoop:
             client = OpenAI(api_key=provider.api_key, base_url=provider.base_url)
             model = provider.models.get("fast", "qwen/qwen3.8-27b")
 
-            response = client.chat.completions.create(
+            response = client.chat.completions.create(  # type: ignore[call-overload]
                 model=model,
                 messages=messages,
                 tools=self.registry.to_openai(),
@@ -76,12 +83,12 @@ class AgentLoop:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    def run(self, user_input):
+    def run(self, user_input: str) -> dict[str, Any]:
         """يشغّل الحلقة الكاملة."""
         self.trace = []
         self._log("🎯", f"المهمة: {user_input}")
 
-        messages = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_input},
         ]
@@ -102,7 +109,7 @@ class AgentLoop:
 
             msg = result["message"]
             # ═══ أضف الرسالة بحقول نظيفة فقط ═══
-            assistant_msg = {"role": "assistant"}
+            assistant_msg: dict[str, Any] = {"role": "assistant"}
             if msg.content:
                 assistant_msg["content"] = msg.content
             if getattr(msg, "tool_calls", None):

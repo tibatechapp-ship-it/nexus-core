@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import json
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Any
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Relation:
 class KnowledgeGraph:
     """رسم بياني بسيط للمعرفة على SQLite."""
 
-    def __init__(self, path: str = ":memory:"):
+    def __init__(self: Any, path: str = ":memory:") -> None:
         self._conn = sqlite3.connect(path)
         self._init_schema()
 
@@ -64,23 +64,26 @@ class KnowledgeGraph:
         self._conn.commit()
 
     def neighbors(self, entity_id: str, depth: int = 1) -> list:
-        """يُرجع الجيران حتى عمق معين."""
-        visited = set()
-        frontier = {entity_id}
+        """يُرجع الجيران حتى عمق معين (BFS يجمع كل عقدة مكتشفة)."""
+        visited: set[str] = {entity_id}
+        found: set[str] = set()
+        frontier: set[str] = {entity_id}
         for _ in range(depth):
-            next_frontier = set()
+            next_frontier: set[str] = set()
             for node in frontier:
-                if node in visited:
-                    continue
-                visited.add(node)
                 rows = self._conn.execute(
                     "SELECT target FROM relations WHERE source = ? "
                     "UNION SELECT source FROM relations WHERE target = ?",
                     (node, node),
                 ).fetchall()
-                next_frontier.update(r[0] for r in rows)
-            frontier = next_frontier - visited
-        return list(visited - {entity_id})
+                for row in rows:
+                    neighbor = row[0]
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        found.add(neighbor)
+                        next_frontier.add(neighbor)
+            frontier = next_frontier
+        return list(found)
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         row = self._conn.execute(

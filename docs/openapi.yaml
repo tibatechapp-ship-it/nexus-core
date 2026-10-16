@@ -1,0 +1,476 @@
+openapi: 3.0.3
+info:
+  title: Nexus Council API
+  version: 1.13.4
+  description: |
+    Multi-agent decision council: live SSE deliberation, decision memory
+    with echo-chamber protection, and code crafting guarded by compile proofs.
+
+    ERROR MODEL (read first): /api/craft and /api/build answer HTTP 200 even on
+    functional failures (LLM error, unsafe path, py_compile failure) with
+    ok=false. Always check `ok` and `proof.ok`. Non-200 codes are protocol-level
+    only: 401 (auth enabled but token missing/wrong), 400 (malformed JSON body).
+  contact:
+    name: tibatechapp-ship-it
+    url: https://github.com/tibatechapp-ship-it/nexus-core
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local server (binds 127.0.0.1 only)
+
+tags:
+  - {name: System, description: Health & status}
+  - {name: Council, description: Live deliberation via SSE}
+  - {name: Memory, description: Decision history, search, stats, topics}
+  - {name: Craft, description: Decision->bundle & brief->code with proofs}
+
+paths:
+  /api/health:
+    get:
+      tags: [System]
+      summary: Service health, version, component status
+      operationId: getHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+              example:
+                version: "1.13.4"
+                status: ok
+                bridge: true
+                topics: true
+                builder: true
+                builder_error: null
+                embeddings: "hashing"
+                embeddings_requested: null
+                embeddings_fallback: null
+                bridge_error: null
+
+  /api/deliberate:
+    post:
+      tags: [Council]
+      summary: Start a live deliberation — Server-Sent Events stream
+      description: |
+        Returns text/event-stream. Event types:
+        - `status`        {phase, message, topic_id?}   phases: init|context|council_start
+        - `agent_action`  {actor, phase, text}          one per agent response, streamed live
+        - `final_verdict` {verdict, score, rounds, elapsed, consensus, recommendation, record_id}
+        - `error`         {message}
+
+        NOTE: use fetch + ReadableStream (the native EventSource API cannot POST).
+        An empty query returns plain JSON {"error": "..."} with 200 (not a stream).
+      operationId: deliberate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  maxLength: 1000
+                  example: "هل نستخدم SQLite أم PostgreSQL؟"
+                question:
+                  type: string
+                  description: alias accepted for backward compatibility
+      responses:
+        '200':
+          description: SSE stream (or a JSON error object for an empty query)
+          content:
+            text/event-stream:
+              schema: {type: string}
+              example: |
+                event: status
+                data: {"phase": "init", "message": "جاري تحليل الاستعلام..."}
+
+                event: agent_action
+                data: {"actor": "profiler", "phase": "independent", "text": "..."}
+
+                event: final_verdict
+                data: {"verdict": "approve", "score": 0.85, "rounds": 0, "elapsed": 3.5, "consensus": true, "recommendation": "SQLite", "record_id": "decision_..."}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string, example: "الاستعلام فارغ"}
+
+  /api/history:
+    get:
+      tags: [Memory]
+      summary: Recent decisions (server-side text filter available)
+      operationId: listHistory
+      parameters:
+        - {name: q, in: query, schema: {type: string}, description: substring filter on query/reasoning/topic_id/category}
+        - {name: limit, in: query, schema: {type: integer, default: 10, minimum: 1, maximum: 200}}
+      responses:
+        '200':
+          description: list (or {"error", "items": []} on storage failure)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/HistoryItem'}
+              example:
+                - id: "decision_1792024508871482_1"
+                  query: "هل نستخدم sqlite؟"
+                  verdict: "approve"
+                  score: 0.85
+                  topic_id: ""
+                  timestamp: 1792024508.87
+
+  /api/history/{rec_id}:
+    get:
+      tags: [Memory]
+      summary: Full decision record incl. transcript
+      operationId: getDecision
+      parameters:
+        - {name: rec_id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: full record (or {"error": "not found"})
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Decision'}
+
+  /api/stats:
+    get:
+      tags: [Memory]
+      summary: Council verdict statistics
+      operationId: getStats
+      responses:
+        '200':
+          description: OK ({"total": 0} when no decisions stored yet)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Stats'}
+              example:
+                total: 18
+                by_verdict: {approve: 10, reject: 6, human_review: 2}
+                avg_score: 0.578
+                avg_rounds: 0.61
+
+  /api/topics:
+    get:
+      tags: [Memory]
+      summary: Ready-made decision topics
+      operationId: listTopics
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Topic'}
+
+  /api/build:
+    post:
+      tags: [Craft]
+      summary: Convert a council decision into a file bundle on disk
+      description: |
+        Body accepts `decision_id` (build from a stored decision), `query`
+        (deliberate then build) and `use_llm` (default true). Functional errors
+        return 200 with ok=false.
+      operationId: buildFromDecision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision_id: {type: string, example: "decision_1792021853442372_1"}
+                query: {type: string}
+                use_llm: {type: boolean, default: true}
+      responses:
+        '200':
+          description: result (check ok)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CraftBuildResult'}
+        '401':
+          description: CRAFT_AUTH_TOKEN is set and X-Craft-Token header missing/wrong
+
+  /api/builds:
+    get:
+      tags: [Craft]
+      summary: List existing builds
+      operationId: listBuilds
+      parameters:
+        - {name: n, in: query, schema: {type: integer, default: 20}, description: how many recent builds}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/BuildSummary'}
+
+  /api/builds/{build_id}:
+    get:
+      tags: [Craft]
+      summary: Build detail (the build manifest)
+      operationId: getBuild
+      parameters:
+        - {name: build_id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: manifest (or error object)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BuildManifest'}
+
+  /api/craft:
+    post:
+      tags: [Craft]
+      summary: Generate code files from a free-text brief (+ optional council review)
+      description: |
+        Flow: brief -> LLM -> strict JSON array of {path, content} -> safety gate
+        (name/extension/depth/size) -> write -> py_compile per .py file.
+        proof.ok=false means at least one .py failed to compile — errors are
+        reported honestly per file. review runs the council on the generated
+        code and returns its verdict. Failures raise inside the module and are
+        surfaced as {"ok": false, "error": "..."} with HTTP 200.
+      operationId: craftCode
+      security:
+        - CraftToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: {type: string, maxLength: 800, example: "اكتب دالة فيبوناتشي في بايثون مع اختبار بسيط"}
+                review: {type: boolean, default: false, description: run council review on the generated code}
+      responses:
+        '200':
+          description: result (check ok and proof.ok)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CraftBuildResult'}
+              example:
+                ok: true
+                build_id: "craft_1792021853442372"
+                dir: "/home/user/.nexus/data/builds/craft_1792021853442372"
+                files:
+                  - {path: "fib.py", bytes: 214}
+                  - {path: "README.md", bytes: 580}
+                proof:
+                  files_written: 2
+                  py_compile: {"fib.py": "ok"}
+                  ok: true
+                review: {verdict: "approve", score: 0.85}
+        '401':
+          description: CRAFT_AUTH_TOKEN is set and X-Craft-Token header missing/wrong
+
+  /api/review:
+    post:
+      tags: [Review]
+      summary: Review a local project folder with the live council
+      description: |
+        Reads up to `max_files` source files (allow-listed extensions) from a
+        directory, capped at 30 KB total, and asks the council to review the
+        code from 4 angles: structure, security, maintainability, performance.
+        Path confinement: the folder must resolve inside $HOME or $TMPDIR.
+      operationId: reviewProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: {type: string, example: "$HOME/nexus-core/src"}
+                max_files: {type: integer, default: 8, minimum: 1, maximum: 20}
+      responses:
+        '200':
+          description: review result (check ok)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReviewResult'}
+              example:
+                ok: true
+                project: "src"
+                files_reviewed: 8
+                bytes_reviewed: 26410
+                verdict: "مقبول"
+                score: 0.78
+                recommendation: "تقوية التحقق من المدخلات"
+                transcript: []
+        '400':
+          description: invalid JSON, empty path, or path containing '..'
+        '403':
+          description: folder resolves outside $HOME and $TMPDIR
+        '404':
+          description: path does not exist, is not a folder, or holds no reviewable files
+        '503':
+          description: council bridge unavailable
+        '500':
+          description: the council review raised
+
+components:
+  securitySchemes:
+    CraftToken: {type: apiKey, in: header, name: X-Craft-Token, description: required only if CRAFT_AUTH_TOKEN env is set}
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, example: ok}
+        version: {type: string}
+        bridge: {type: boolean}
+        topics: {type: boolean}
+        builder: {type: boolean}
+        builder_error: {type: string, nullable: true}
+        embeddings: {type: string, nullable: true, example: hashing}
+        embeddings_requested: {type: string, nullable: true}
+        embeddings_fallback: {type: string, nullable: true}
+        bridge_error: {type: string, nullable: true}
+
+    HistoryItem:
+      type: object
+      description: Brief row returned by /api/history and /api/history?q=
+      properties:
+        id: {type: string}
+        query: {type: string, description: truncated to ~100 chars}
+        verdict: {type: string, enum: [approve, reject, human_review, unknown]}
+        score: {type: number}
+        topic_id: {type: string}
+        timestamp: {type: number, description: unix seconds}
+
+    Decision:
+      type: object
+      properties:
+        id: {type: string}
+        query: {type: string}
+        verdict: {type: string}
+        score: {type: number}
+        rounds: {type: integer}
+        consensus: {type: boolean}
+        reasoning: {type: string}
+        transcript:
+          type: array
+          items:
+            type: object
+            properties:
+              phase: {type: string, example: debate_1}
+              member: {type: string, example: critic}
+              response: {type: string}
+        topic_id: {type: string}
+        category: {type: string}
+        security_events: {type: array, items: {type: object}}
+        timestamp: {type: number}
+
+    Stats:
+      type: object
+      properties:
+        total: {type: integer}
+        by_verdict:
+          type: object
+          properties:
+            approve: {type: integer}
+            reject: {type: integer}
+            human_review: {type: integer}
+        avg_score: {type: number}
+        avg_rounds: {type: number}
+
+    Topic:
+      type: object
+      properties:
+        id: {type: string, example: db_sqlite_vs_postgres}
+        title: {type: string}
+        category: {type: string}
+        question: {type: string}
+        risk: {type: string, example: low}
+
+    CraftBuildResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: {type: boolean}
+        error: {type: string, description: present only when ok=false}
+        build_id: {type: string}
+        title: {type: string, description: present on /api/build}
+        kind: {type: string, enum: [code, plan], description: present on /api/build}
+        summary: {type: string, description: present on /api/build}
+        dir: {type: string, description: absolute path of the build folder}
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, bytes]
+            properties:
+              path: {type: string}
+              bytes: {type: integer}
+        proof:
+          type: object
+          properties:
+            files_written: {type: integer}
+            ok: {type: boolean}
+            py_compile:
+              type: object
+              description: path -> "ok" | compile error message (.py files only)
+              additionalProperties: {type: string}
+        review:
+          nullable: true
+          description: null when review=false or generation failed
+          type: object
+          properties:
+            verdict: {type: string, enum: [approve, reject, human_review, error]}
+            score: {type: number}
+            error: {type: string, description: present when the review call failed}
+
+    ReviewResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: {type: boolean}
+        error: {type: string, description: present only when ok=false}
+        project: {type: string, description: reviewed folder name}
+        files_reviewed: {type: integer}
+        bytes_reviewed: {type: integer}
+        verdict: {type: string, nullable: true}
+        score: {type: number, nullable: true}
+        recommendation: {type: string, nullable: true}
+        transcript: {type: array, items: {type: object}}
+
+    BuildSummary:
+      type: object
+      properties:
+        build_id: {type: string}
+        title: {type: string}
+        kind: {type: string}
+        ok: {type: boolean}
+        files: {type: integer, description: file count}
+        timestamp: {type: number}
+
+    BuildManifest:
+      type: object
+      properties:
+        build_id: {type: string}
+        title: {type: string}
+        kind: {type: string}
+        summary: {type: string}
+        steps: {type: array, items: {type: string}}
+        verdict: {type: string}
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              path: {type: string}
+              bytes: {type: integer}
+              sha256: {type: string}
+        skipped: {type: array, items: {type: string}}
+        proof: {type: object}
+        timestamp: {type: number}

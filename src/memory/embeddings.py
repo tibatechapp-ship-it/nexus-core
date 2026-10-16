@@ -20,7 +20,7 @@ import hashlib
 import math
 import re
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Protocol, Any
 
 __all__ = ["Embedder", "HashingEmbedder", "cosine", "make_embedder"]
 
@@ -71,7 +71,7 @@ _ARABIC_TRANS = str.maketrans({
 })
 
 
-def _normalize_arabic(text):
+def _normalize_arabic(text: Any) -> Any:
     """يزيل التشكيل ويوحّد الهمزات والتاء المربوطة للألف/الياء."""
     text = _ARABIC_DIACRITICS.sub("", text)
     return text.translate(_ARABIC_TRANS)

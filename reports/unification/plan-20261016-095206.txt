@@ -1,0 +1,30 @@
+event: status
+data: {"phase": "init", "message": "جاري تحليل الاستعلام..."}
+
+event: status
+data: {"phase": "council_start", "message": "بدء المداولة الحية..."}
+
+event: status
+data: {"phase": "past", "message": "قرارات سابقة مشابهة: حُقنت"}
+
+event: phase
+data: {"name": "independent", "label": "المرحلة 1: تحليل مستقل"}
+
+event: agent_action
+data: {"actor": "profiler", "phase": "independent", "text": "خطر: دمج 79 وكيلًا مع نظام Zyvo دون فصل واضح قد يؤدي إلى تعقيد معماري مفرط وصراعات في إدارة الحالة.\nخطر: غياب خطة هجرة تدريجية يهدد استقرار النظام الحالي ويزيد من احتمالية فشل التنفيذ بسبب حجم الكود المتشابك.\n[الحكم: موافق]\n[التوصية: توحيد تدريجي مع فصل]"}
+
+event: agent_action
+data: {"actor": "analyst", "phase": "independent", "text": "آمن: توحيد النظامين يزيل التكرار ويحسن كفاءة المعالجة عبر دمج قدرات Zyvo وNovaMind في بنية واحدة. هذا التوجه يضمن قابلية التوسع والصيانة طويلة الأمد للمنتج النهائي.\n[الحكم: موافق]\n[التوصية: توحيد فوري للنظامين]"}
+
+event: agent_action
+data: {"actor": "critic", "phase": "independent", "text": "مقبول: الحجة الأولى مقبولة لوضوحها المنطقي في توحيد الأنظمة المتفرقة، بينما الحجة الثانية مرفوضة لغيابها عن تقديم مبررات تقنية كافية للتكامل.\n[الحكم: موافق]\n[التوصية: توحيد الأنظمة ضروري]"}
+
+event: phase
+data: {"name": "early_consensus", "label": "إجماع مبكر — تم تخطي جولة النقاش"}
+
+event: log
+data: {"message": "تم الحفظ في السجل: decision_1792133351239672_2"}
+
+event: final_verdict
+data: {"verdict": "approve", "score": 0.85, "rounds": 0, "elapsed": 2.4, "consensus": true, "recommendation": "توحيد تدريجي مع فصل", "record_id": "decision_1792133351239672_2"}
+

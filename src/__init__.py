@@ -19,6 +19,24 @@ Import layout::
 
 from __future__ import annotations
 
-__version__ = "1.12.0"
+import tomllib
+from pathlib import Path
+
+
+def _read_version() -> str:
+    """الإصدار من مصدر واحد: ``pyproject.toml`` — لا تكرار يدوي.
+
+    يُقرأ عند الاستيراد من ملف المشروع؛ إن غاب (مثلاً حزمة مثبّتة بلا
+    pyproject) نعود إلى ``"0.0.0"`` بدل رقم قديم يتقادم.
+    """
+    try:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with pyproject.open("rb") as fh:
+            return str(tomllib.load(fh)["project"]["version"])
+    except Exception:  # pragma: no cover - defensive (no pyproject next to src/)
+        return "0.0.0"
+
+
+__version__ = _read_version()
 
 __all__ = ["__version__"]

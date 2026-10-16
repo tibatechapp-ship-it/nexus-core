@@ -15,6 +15,16 @@ from dataclasses import dataclass
 
 logger = logging.getLogger("llm_router")
 
+# ─── Error Memory integration (v1.13.1.1) ───
+try:
+    from novamind.error_memory import get_error_memory
+    HAS_ERROR_MEMORY = True
+except ImportError:
+    HAS_ERROR_MEMORY = False
+    def get_error_memory():
+        return None
+
+
 
 @dataclass
 class ProviderConfig:
@@ -363,6 +373,21 @@ class LLMRouter:
                 p.failures += 1
                 p.last_error = str(e)[:200]
                 last_error = p.name + ": " + str(e)[:200]
+
+                # 🆕 error_memory (v1.13.1.1)
+                if HAS_ERROR_MEMORY:
+                    try:
+                        _mem = get_error_memory()
+                        if _mem:
+                            _mem.log(
+                                error_type=type(e).__name__,
+                                context=f"provider={p.name}",
+                                error_message=str(e),
+                                role=role,
+                                provider=p.name,
+                            )
+                    except Exception:
+                        pass
                 logger.warning("provider " + p.name + " failed: " + str(e)[:120])
 
         return {"ok": False, "text": "", "provider": "", "model": "",

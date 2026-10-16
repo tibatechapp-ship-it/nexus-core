@@ -60,18 +60,27 @@ def voice() -> types.ModuleType:
 
 
 @pytest.fixture(autouse=True)
-def _reset_module_state(tg: types.ModuleType, voice: types.ModuleType) -> None:
-    """Reset mutable module globals before each test for isolation."""
-    # telegram
-    with tg.PARTS_LOCK:
-        tg.PARTS.clear()
-    tg.PAUSED = False
-    tg.CURRENT_SID = None
-    tg.RUNNING_TURN = False
-    tg._PROC = None
-    # voice
-    voice.ACTION = "always"
-    voice._PROC = None
+def _reset_module_state() -> None:
+    """Reset mutable module globals before each test for isolation.
+
+    Only touches the two scripts when they are ALREADY loaded (they are loaded
+    on demand by the ``tg``/``voice`` fixtures). Requesting them here would
+    force-load both for every test in the suite -- wasteful, and it used to
+    surface any import-time failure as an error on unrelated tests (e.g.
+    ``tests/novamind``). Modules are simply absent until a test needs them.
+    """
+    tg = sys.modules.get("zyvo_telegram_under_test")
+    if tg is not None:
+        with tg.PARTS_LOCK:
+            tg.PARTS.clear()
+        tg.PAUSED = False
+        tg.CURRENT_SID = None
+        tg.RUNNING_TURN = False
+        tg._PROC = None
+    voice = sys.modules.get("zyvo_voice_under_test")
+    if voice is not None:
+        voice.ACTION = "always"
+        voice._PROC = None
 
 
 class FakePopen:

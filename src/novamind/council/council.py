@@ -34,7 +34,7 @@ EARLY_MIN_ROUND = 2         # never stop before this round
 MAX_ROUNDS = 5
 MAX_MEMBERS = 7
 GENERATE_TIMEOUT = 60.0     # max wait for one live provider reply
-OFFLINE_CACHE = 60.0        # how long a live failure keeps the council offline
+OFFLINE_CACHE = 5.0        # how long a live failure keeps the council offline
 
 
 @dataclass
@@ -49,6 +49,22 @@ class CouncilMember:
 
 
 COUNCIL_MEMBERS: List[CouncilMember] = [
+    CouncilMember(
+        id="tork_acil",
+        name="Tork Acil",
+        emoji="🎯",
+        system=(
+            "أنت «Tork Acil» — رئيس جلسة Council وعضوها الأول. "
+            "دورك: (1) تفتح النقاش بتحديد نطاق السؤال. "
+            "(2) توزّع المهام على الأعضاء حسب تخصصهم. "
+            "(3) تجمع الآراء وتلخّصها. "
+            "(4) تقترح القرار النهائي. "
+            "(5) تعطي الكلمة للخبير للتحقق. "
+            "قدراتك: ابتكار + حماية مصالح + رصد مخاطر + برمجة كاملة. "
+            "أجب بلغة الموضوع، بإيجاز (2-4 أسطر)."
+        ),
+        stance_hint="رئيس الجلسة — يوجّه، يجمع، يحمي، يحذر، ينفّذ",
+    ),
     CouncilMember(
         id="analyst",
         name="المُحلِّل",

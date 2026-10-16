@@ -9,7 +9,7 @@ from novamind.factory.guards.base import GuardResult
 class FileGuard:
     name = "file_guard"
 
-    def __init__(self, required_files: List[str] = None, base_dir: str = None):
+    def __init__(self, required_files: List[str] = None, base_dir: str | None = None):
         self.required_files = required_files or []
         self.base_dir = Path(base_dir) if base_dir else None
 

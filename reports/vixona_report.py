@@ -190,7 +190,7 @@ def send_report(
     chat_id = env.get("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id:
-        print("❌ Missing token or chat_id", file=sys.stderr)
+        # تم تعطيل الإشعار (لا يوجد token)
         return False
 
     header = build_header(category, title)

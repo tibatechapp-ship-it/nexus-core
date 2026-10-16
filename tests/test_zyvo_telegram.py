@@ -17,7 +17,7 @@ from unittest import mock
 
 import pytest
 
-from tests.conftest import FakePopen, FakeResponse
+from tests.conftest import FakePopen, FakeResponse, ROOT
 
 
 # --------------------------------------------------------------------------- #
@@ -66,6 +66,34 @@ def test_resolve_allowed_chat_precedence(tg, monkeypatch):
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
     with pytest.raises(RuntimeError):
         tg._resolve_allowed_chat({})
+
+
+def test_resolve_allowed_chat_safe_swallows_fatal(tg):
+    """The import-time variant returns "" instead of raising (import safety)."""
+    assert tg._resolve_allowed_chat_safe({}) == ""
+    assert tg._resolve_allowed_chat_safe({"TELEGRAM_CHAT_ID": "7"}) == "7"
+
+
+def test_module_import_survives_missing_config(monkeypatch, tmp_path):
+    """Regression: importing the bot must not raise when nothing is configured.
+
+    An import-time raise broke the WHOLE suite on CI (which has no
+    telegram.env), because the shared autouse fixture used to force-load this
+    module for every test. The hard guard now lives in ``main`` only.
+    """
+    import importlib.util
+
+    for var in ("ZYVO_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID", "TELEGRAM_BOT_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))  # no telegram.env here
+    spec = importlib.util.spec_from_file_location(
+        "zyvo_telegram_no_config", str(ROOT / "zyvo-telegram.py")
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # must NOT raise
+    assert module.ALLOWED_CHAT == ""
+    assert module.TOKEN == ""
 
 
 # --------------------------------------------------------------------------- #
@@ -707,6 +735,7 @@ def test_main_send_test_path(tg, monkeypatch):
 def test_main_self_test_path(tg, monkeypatch):
     called = []
     monkeypatch.setattr(tg, "TOKEN", "T")
+    monkeypatch.setattr(tg, "ALLOWED_CHAT", "42")
     monkeypatch.setattr(tg.subprocess, "Popen", lambda *a, **k: None)
     monkeypatch.setattr(tg, "self_test", lambda: called.append(True))
     monkeypatch.setattr(tg.sys, "argv", ["zyvo-telegram", "--self-test"])
@@ -717,6 +746,7 @@ def test_main_self_test_path(tg, monkeypatch):
 def test_main_full_path_wires_threads(tg, monkeypatch):
     started = []
     monkeypatch.setattr(tg, "TOKEN", "T")
+    monkeypatch.setattr(tg, "ALLOWED_CHAT", "42")
     monkeypatch.setattr(tg.subprocess, "Popen", lambda *a, **k: None)
     monkeypatch.setattr(tg, "ensure_server", lambda: object())
     monkeypatch.setattr(tg, "get_session", lambda *a, **k: "S")
@@ -1262,8 +1292,19 @@ def test_poll_loop_generic_error(tg, monkeypatch, capsys):
     assert "poll error" in capsys.readouterr().out
 
 
+def test_main_refuses_without_chat_id(tg, monkeypatch):
+    """SECURITY: a real start with an empty filter must be refused."""
+    monkeypatch.setattr(tg, "TOKEN", "T")
+    monkeypatch.setattr(tg, "ALLOWED_CHAT", "")
+    monkeypatch.setattr(tg.sys, "argv", ["zyvo-telegram"])
+    with pytest.raises(SystemExit) as excinfo:
+        tg.main()
+    assert "FATAL SECURITY" in str(excinfo.value)
+
+
 def test_main_warns_when_server_down(tg, monkeypatch, capsys):
     monkeypatch.setattr(tg, "TOKEN", "T")
+    monkeypatch.setattr(tg, "ALLOWED_CHAT", "42")
     monkeypatch.setattr(tg.subprocess, "Popen", lambda *a, **k: None)
     monkeypatch.setattr(tg, "ensure_server", lambda: None)
     monkeypatch.setattr(tg, "get_session", lambda: "S")

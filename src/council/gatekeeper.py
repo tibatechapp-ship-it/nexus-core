@@ -1,5 +1,6 @@
 """Council Gatekeeper — فحص كل رسالة بين الوكلاء."""
 from __future__ import annotations
+from typing import Any
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -52,10 +53,10 @@ IMPERSONATION = [
 
 
 class CouncilGatekeeper:
-    def __init__(self):
-        self.log = []
+    def __init__(self: Any) -> None:
+        self.log: list[Any] = []
 
-    def analyze(self, sender: str, content: str, recipient: str = None) -> Verdict:
+    def analyze(self, sender: str, content: str, recipient: str | None = None) -> Verdict:
         score = 0
         matched = []
         for level, patterns in INJECTION_PATTERNS.items():

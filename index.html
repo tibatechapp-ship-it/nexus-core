@@ -99,6 +99,13 @@ setInterval(() => {
          (h.embeddings_fallback ? ' <span class="warn">(fallback: ' + esc(h.embeddings_fallback) + ')</span>' : ''),
          h.embeddings_fallback ? 'warn' : 'ok');
     document.getElementById('hstat').textContent = 'online';
+    // Engine status من /api/diag — يُضاف بجانب online/offline
+    try {
+      const dg = await (await fetch('/api/diag', { cache: 'no-store' })).json();
+      const eng = dg.engine_ok ? 'engine OK' : 'engine ERR';
+      document.getElementById('hstat').textContent = 'online · ' + eng;
+      if (dg.engine_err) line('[FAIL] engine : ' + esc(dg.engine_err), 'err');
+    } catch (e) {}
   } catch (e) {
     line('[FAIL] server unreachable: ' + esc(e.message), 'err');
     document.getElementById('hstat').textContent = 'offline';
@@ -128,6 +135,7 @@ async function command(raw){
     line('/build &lt;id&gt; [llm]    ابنِ مخرجات من قرار', 'dim');
     line('/builds              الحِزم المبنية', 'dim');
     line('/stats               إحصائيات المجلس', 'dim');
+    line('/tools               أدوات MCP المتاحة (30 أداة)', 'dim');
     line('/health              حالة الخادم', 'dim');
     line('أو اكتب أي سؤال تقني مباشرة.', 'dim');
   }
@@ -162,8 +170,24 @@ async function command(raw){
            (h.bridge_error ? ' | err: ' + esc(h.bridge_error) : ''), 'ok');
     } catch (e) { line('[!] ' + esc(e.message), 'err'); }
   }
-  else if (cmd === 'stats') {
+  else if (cmd === 'tools' || cmd === 'mcp') {
     try {
+      const j = await (await fetch('/api/mcp/tools', { cache: 'no-store' })).json();
+      if (!j.ok) { line('[!] MCP: ' + esc(j.error || 'unavailable'), 'err'); return; }
+      sep('MCP tools (' + j.total + ')');
+      const groups = {};
+      (j.tools || []).forEach(t => { (groups[t.group] = groups[t.group] || []).push(t); });
+      const order = ['agents', 'security', 'workspace', 'git'];
+      order.forEach(g => {
+        const list = groups[g];
+        if (!list || !list.length) return;
+        line('▸ ' + g + ' <span class="dim">(' + list.length + ')</span>', 'c-cyan');
+        list.forEach(t => line('   <span class="c-blue">' + esc(t.name) + '</span>' +
+          (t.description ? ' <span class="dim">— ' + esc(t.description.slice(0, 64)) + '</span>' : '')));
+      });
+    } catch (e) { line('[!] ' + esc(e.message), 'err'); }
+  }
+  else if (cmd === 'stats') {    try {
       const s = await (await fetch('/api/stats')).json();
       if (!s.total) { line('لا قرارات محفوظة بعد.', 'dim'); return; }
       const bv = s.by_verdict || {};
@@ -353,7 +377,7 @@ out.addEventListener('click', e => {
   const b = e.target.closest('.buildlink');
   if (b) { input.value = ''; build(b.dataset.build, false); return; }
   const t = e.target.closest('.cmdlink');
-  if (t) { line('<span class="p1">nexus❯</span> /show ' + esc(t.dataset.id), 'cmd'); command('show ' + t.dataset.id); }
+  if (t) { line('<span class="p1">nexus❯</span> /show ' + esc(t.dataset.id), 'cmd'); command('/show ' + t.dataset.id); }
 });
 </script>
 <script>

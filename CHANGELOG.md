@@ -2,6 +2,92 @@
 
 All notable changes to this project. Newest first.
 
+## v1.13.4 — 2026-10-16
+**المجلس الحيّ: تسمية العضو السادس «Tork Acil» + تثبيت الإصدار.**
+- `src/novamind/council/council.py`: `id="turk"`/`name="Turk"` →
+  `id="tork_acil"`/`name="Tork Acil"` (والشخصية `system=` تواكب الاسم الجديد).
+  العضو الأول في `COUNCIL_MEMBERS` (رئيس الجلسة) يبقى محافظًا على دوره.
+- الإصدار المعلَن كان متأخرًا عن الواقع منذ v1.13.3: `pyproject.toml` و
+  `CHANGELOG` لم يُحدَّثا، فـ `/api/health` و `/api/status` كانا يبلّغان
+  `1.13.1.1`. الآن الإصدار = **1.13.4** من مصدر واحد
+  (`pyproject.toml` → `src.__version__` → `docs/openapi.yaml` + `SCOPE.md`).
+- ملاحظة توافق: الجلسات المحفوظة قبل v1.13.3 تبقى بـ 5 أعضاء في قاعدة
+  البيانات كما هي (لا ترحيل — السجل التاريخي يُحفظ كما كان).
+
+## v1.13.3 — 2026-10-16
+**Council: عضو سادس (رئيس الجلسة) — 5 → 6 أعضاء.**
+- `src/novamind/council/council.py`: `CouncilMember` جديد في مقدمة
+  `COUNCIL_MEMBERS` — رئيس جلسة Council وعضوها الأول: يفتح النقاش بتحديد
+  نطاق السؤال، يوزّع المهام حسب التخصص، يجمع الآراء ويلخّصها، يقترح القرار
+  النهائي، ثم يسلّم الكلمة للخبير للتحقق. القدرات: ابتكار + حماية مصالح +
+  رصد مخاطر + برمجة كاملة (frontend/backend/devops/security).
+- الأثر: `council_members` في `/api/status` = 6، والجلسات الجديدة
+  تبدأ بالرئيس ثم تتابع بقية الأعضاء (analyst → critic → visionary →
+  pragmatist → expert). `MAX_MEMBERS=7` بقي كما هو (هامش لعضو سابع).
+
+## v1.13.1.1 — 2026-10-16
+**Error memory wired into the LLM router — every provider failure is recorded.**
+- `src/novamind/core/llm_router.py`: guarded import (`HAS_ERROR_MEMORY` +
+  `try/except`) and a `log()` call inside the `except` branch of
+  `LLMRouter.generate`. Each failure records `error_type` (e.g. `AttributeError`),
+  `context` (e.g. `provider=broken-test`), the provider name, the role and a
+  500-char-truncated `error_message`.
+- Effect: one line per provider failure is appended to
+  `~/.nexus/error_memory.jsonl` (the raw material for future error-pattern
+  analysis). A failure inside `error_memory` itself never breaks the LLM call.
+- Verified: a deliberately broken provider → exactly one log entry.
+
+## v1.13.1 — 2026-10-16
+**Error memory (first wire) — an append-only JSONL log of LLM failures.**
+- `src/novamind/error_memory.py` (new, 57 lines): `ErrorMemory` singleton
+  (`get()`) with `log(error_type, context, error_message, **extra)` (append),
+  `recent(n)` (last *n*) and `stats()` (counts by type). Stores one JSON object
+  per line in `~/.nexus/error_memory.jsonl`.
+- `tests/test_error_memory.py` (new, 6 tests): file write, stats-by-type,
+  recent-returns-last-n, message truncation, extra-kwargs stored, singleton
+  identity.
+
+## v1.13.0 — 2026-10-16
+**Unified server (`nexus_agent.py`): one FastAPI app that wraps every layer
+without losing a feature — gradual unification *with separation*.**
+- **Wrap, don't rewrite (`main.py` is imported intact):** `nexus_agent.py`
+  loads `main.py` by path under a private module name (`_nexus_workbench`) and
+  reuses its `app` object, so all Workbench routes stay byte-for-byte:
+  `/api/deliberate` (SSE), `/api/build(s)`, `/api/craft` (real), `/api/history`
+  (+search), `/api/topics`, `/api/stats`, `/api/review`, PWA, Swagger. Loading
+  by path avoids the `main` name collision (novamind ships its own `main.py`).
+- **NovaMind Living Council + Genome added on the same app:** `/api/council/
+  debate`, `/api/council/stream` (SSE), `/api/council/sessions[/{sid}]`,
+  `/api/genome`, `/api/genome/{id}`, `/api/genome/{id}/reset`,
+  `/api/genome/{id}` (PATCH persona), `/api/genome/export|import`.
+- **Framework surface:** `/api/agents` (the real 20 built-ins from
+  `AGENT_CLASSES`, not a hardcoded count), `/api/status` (unified component
+  report) and a real `/api/chat` (SSE via novamind `LLMRouter`, honouring an
+  agent's `system_prompt`) — replacing the old echo stub.
+- **No `from __future__ import annotations`** (like `main.py`) so Pydantic
+  models bind real types regardless of how the module is loaded.
+- 32 routes total (19 Workbench + 13 NovaMind/framework). Version → 1.13.0.
+
+## v1.12.1 — 2026-10-15
+**Spec truth: the OpenAPI contract now matches the code, and a guard keeps it
+that way.**
+- **OpenAPI spec (`docs/openapi.yaml`, new):** describes the REAL routes and
+  fields only — `/api/{health,deliberate,history,history/{rec_id},stats,topics,
+  build,builds,builds/{build_id},craft}`. It documents the honest error model
+  (`/api/craft` and `/api/build` answer **HTTP 200 with `ok=false`** on
+  functional failure) instead of promising fields that never existed.
+- **Local Swagger UI (`docs/swagger.html` + `docs/vendor/`, new):** served from
+  the repo, **no CDN** — `/docs/swagger` works fully offline. `main.py` now
+  serves `/api/openapi.yaml`, `/docs` (redirect), `/docs/swagger` and
+  `/docs/vendor/{file}`; FastAPI's default CDN docs are turned off
+  (`docs_url=None, redoc_url=None`).
+- **Optional auth:** set `CRAFT_AUTH_TOKEN` to require `X-Craft-Token` on
+  `/api/craft` and `/api/build` (disabled by default — the server binds
+  127.0.0.1 only).
+- **Drift guard (`tests/test_openapi.py`, new):** fails the suite if a real
+  route is undocumented, if the spec promises a phantom route, or if the spec
+  reintroduces a fabricated field (`size_bytes`, `proof.command`, `success`).
+
 ## v1.12.0 — 2026-10-15
 **Craft mode + all quality gates green repo-wide.**
 - **Craft (`src/council/craft.py`, new):** generate real code from a free-text

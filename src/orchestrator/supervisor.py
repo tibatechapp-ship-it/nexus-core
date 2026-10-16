@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import concurrent.futures
+from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -26,20 +27,20 @@ class Supervisor:
         "detect", "inspect", "lint", "verify",
     ]
 
-    def __init__(self, use_rag: bool = True, verbose: bool = True):
+    def __init__(self, use_rag: bool = True, verbose: bool = True) -> None:
         self.router = SmartRouter()
         self.use_rag = use_rag
         self.verbose = verbose
-        self._rag = None
-        self._registry = None
+        self._rag: Any = None
+        self._registry: Any = None
 
-    def _get_registry(self):
+    def _get_registry(self) -> Any:
         if self._registry is None:
-            from nova.registry import REGISTRY
+            from nova.registry import REGISTRY  # type: ignore[import-not-found]
             self._registry = REGISTRY
         return self._registry
 
-    def _get_rag(self):
+    def _get_rag(self) -> Any:
         if self._rag is None and self.use_rag:
             try:
                 from src.memory.agent_rag_bridge import get_bridge
@@ -48,7 +49,7 @@ class Supervisor:
                 self._rag = None
         return self._rag
 
-    def _detect_method(self, agent):
+    def _detect_method(self, agent: Any) -> str | None:
         """يكتشف الطريقة المتاحة."""
         for m in self.METHOD_CANDIDATES:
             if hasattr(agent, m) and callable(getattr(agent, m)):
@@ -159,7 +160,7 @@ class Supervisor:
             "elapsed": round(time.time() - start, 3),
         }
 
-    def execute(self, prompt: str, force_strategy: str = None) -> dict:
+    def execute(self, prompt: str, force_strategy: str | None = None) -> dict:
         """ينفذ المهمة."""
         decision = self.router.decide(prompt)
         if force_strategy:
@@ -264,7 +265,7 @@ class Supervisor:
             "elapsed": round(elapsed_total, 3),
         }
 
-    def _print_decision(self, d):
+    def _print_decision(self, d: Any) -> None:
         print(f"\n{'='*60}")
         print("🧠 Smart Router — القرار")
         print(f"{'='*60}")

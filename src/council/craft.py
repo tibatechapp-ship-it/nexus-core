@@ -63,7 +63,7 @@ def _router() -> Optional[Any]:
 
 def _safe_path(base: str, rel: str) -> str:
     """يبني مساراً مطلقاً آمناً داخل ``base`` أو يرفع ``CraftError``."""
-    norm = _safe_rel_path(rel) if _safe_rel_path else None
+    norm = _safe_rel_path(rel)
     if not norm:
         raise CraftError("مسار غير آمن: " + str(rel)[:60])
     if not norm.endswith(ALLOWED_EXT):

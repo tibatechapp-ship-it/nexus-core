@@ -1,0 +1,259 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nexus — الواجهة الموحّدة لـ Nexus-Core
+# ═══════════════════════════════════════════════════════
+
+set -uo pipefail
+PROJECT="$HOME/nexus-core"
+LOG_DIR="$PROJECT/logs"
+PORT="${NOVAMIND_PORT:-8080}"
+
+G='\033[0;32m'; R='\033[0;31m'; Y='\033[1;33m'; C='\033[0;36m'; B='\033[1m'; N='\033[0m'
+log() { echo -e "${G}[$(date +%H:%M:%S)]${N} $*"; }
+err() { echo -e "${R}[$(date +%H:%M:%S)]${N} $*"; }
+title() { echo -e "${C}${B}$*${N}"; }
+line() { echo -e "${C}═══════════════════════════════════════════${N}"; }
+
+check_project() { [ -d "$PROJECT" ] || { err "المشروع غير موجود"; exit 1; }; cd "$PROJECT"; mkdir -p "$LOG_DIR"; }
+
+# ═══ الإدارة ═══
+
+cmd_start() {
+    line; title "  🚀 بدء Nexus-Core"; line
+    check_project
+    if pgrep -f "nexus_agent.py" >/dev/null; then
+        log "البوابة الموحّدة تعمل بالفعل"
+    elif pgrep -f "unified_agent.py" >/dev/null; then
+        log "NovaMind يعمل بالفعل"
+    else
+        log "🚀 تشغيل البوابة الموحّدة (Workbench + NovaMind)..."
+        NOVAMIND_PORT="$PORT" NEXUS_PORT="$PORT" PYTHONPATH=src/novamind:src:. nohup python3 nexus_agent.py > "$LOG_DIR/nexus.log" 2>&1 &
+        sleep 5
+        if pgrep -f "nexus_agent.py" >/dev/null; then
+            log "✅ البوابة الموحّدة تعمل على :$PORT"
+        else
+            log "⚠️ فشلت البوابة — محاولة unified_agent.py..."
+            NOVAMIND_PORT="$PORT" PYTHONPATH=src/novamind:src:. nohup python3 unified_agent.py > "$LOG_DIR/novamind.log" 2>&1 &
+            sleep 3
+            pgrep -f "unified_agent.py" >/dev/null && log "✅ يعمل على :$PORT" || { err "❌ فشل"; tail -10 "$LOG_DIR/nexus.log"; return 1; }
+        fi
+    fi
+    command -v termux-wake-lock >/dev/null 2>&1 && { termux-wake-lock 2>/dev/null; log "✅ Wake lock"; }
+    echo ""; log "✅ Nexus-Core يعمل"; echo "  🌐 http://127.0.0.1:$PORT/"; echo ""
+}
+
+cmd_stop() {
+    line; title "  🛑 إيقاف"; line
+    for proc in "nexus_agent.py" "unified_agent.py"; do
+        pgrep -f "$proc" >/dev/null && { log "إيقاف $proc"; pkill -f "$proc" 2>/dev/null; }
+    done
+    sleep 2
+    command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock 2>/dev/null
+    log "✅ تم الإيقاف"
+}
+
+cmd_restart() { cmd_stop; sleep 2; cmd_start; }
+
+cmd_status() {
+    line; title "  📊 حالة Nexus-Core"; line;     echo ""
+    echo -e "${C}═══ العمليات ═══${N}"
+    if pgrep -f "nexus_agent.py" >/dev/null; then
+        PID=$(pgrep -f "nexus_agent.py" | head -1)
+        MEM=$(ps -o rss= -p "$PID" 2>/dev/null | awk '{print int($1/1024)" MB"}')
+        echo -e "  ${G}✅${N} nexus_agent.py (بوابة موحّدة، PID: $PID, MEM: $MEM)"
+    elif pgrep -f "unified_agent.py" >/dev/null; then
+        PID=$(pgrep -f "unified_agent.py" | head -1)
+        MEM=$(ps -o rss= -p "$PID" 2>/dev/null | awk '{print int($1/1024)" MB"}')
+        echo -e "  ${G}✅${N} unified_agent.py (PID: $PID, MEM: $MEM)"
+    else
+        echo -e "  ${R}❌${N} البوابة الموحّدة"
+    fi
+    echo ""
+    echo -e "${C}═══ الإحصائيات ═══${N}"
+    local status=$(curl -s "http://127.0.0.1:$PORT/api/status" 2>/dev/null)
+    [ -n "$status" ] && echo "$status" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    c = d.get('components', {})
+    ag = c.get('agents') or {}
+    print(f'  • الإصدار:  {d.get(\"version\", \"?\")}')
+    print(f'  • الوكلاء:  {ag.get(\"total\", \"?\")} (إطار {ag.get(\"framework\",\"?\")} + نوڤامايند {ag.get(\"novamind\",\"?\")})')
+    print(f'  • المجلس:   {c.get(\"council_members\", \"?\")} أعضاء | المواضيع: {c.get(\"topics\", \"?\")}')
+    print(f'  • المحرّك:  {\"✅ مثبّت\" if c.get(\"engine\") else \"❌\"}')
+except: pass
+" 2>/dev/null
+    echo ""
+    echo -e "${C}═══ Genome ═══${N}"
+    curl -s "http://127.0.0.1:$PORT/api/genome" 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    for a in sorted(d.get('agents', []), key=lambda x: -x.get('standing', 0)):
+        emoji = a.get('meta', {}).get('emoji', '🤖')
+        print(f\"  {emoji} {a.get('agent_id', '?'):12s}: {a.get('standing',0)*100:5.1f}% | gen {a.get('generation',1)} | {a.get('status','?'):10s}\")
+except: pass
+" 2>/dev/null
+    echo ""
+    echo -e "${C}═══ الموارد ═══${N}"
+    FREE=$(free -h 2>/dev/null | awk 'NR==2{print $7}')
+    echo "  • الذاكرة: $FREE"
+    BATT=$(termux-battery-status 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("percentage","?"))' 2>/dev/null || echo "?")
+    echo "  • البطارية: $BATT%"
+    echo ""
+}
+
+cmd_logs() {
+    line; title "  📄 سجلات Nexus-Core"; line
+    if [ -f "$LOG_DIR/nexus.log" ]; then tail -20 "$LOG_DIR/nexus.log"
+    elif [ -f "$LOG_DIR/novamind.log" ]; then tail -20 "$LOG_DIR/novamind.log"
+    else echo "لا يوجد سجل"; fi
+}
+
+cmd_web() {
+    local url="http://127.0.0.1:$PORT/"
+    title "🌐 $url"
+    command -v termux-open-url >/dev/null 2>&1 && { termux-open-url "$url"; log "✅ فُتح"; } || echo "افتح: $url"
+}
+
+# ═══ التفاعل ═══
+
+cmd_ask() {
+    [ $# -eq 0 ] && { err "الاستخدام: nexus ask \"سؤالك\""; exit 1; }
+    check_project
+    exec python3 -m src.cli.main ask "$@"
+}
+
+cmd_stream() {
+    [ $# -eq 0 ] && { err "الاستخدام: nexus stream \"سؤالك\""; exit 1; }
+    local PROMPT="$1"
+    local CONV="${2:-stream-$(date +%s)}"
+    curl -N -s -X POST "http://127.0.0.1:$PORT/api/chat" \
+        -H "Content-Type: application/json" \
+        -d "{\"message\": \"$PROMPT\", \"conversation_id\": \"$CONV\"}" \
+        2>/dev/null | while IFS= read -r line; do
+            if [[ "$line" == data:* ]]; then
+                echo "${line#data: }" | python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read().strip())
+    t = d.get('type', '')
+    if t == 'chunk':
+        print(d.get('content', ''), end='', flush=True)
+    elif t == 'plan':
+        print('\033[0;36m📋 ' + d.get('content', '') + '\033[0m', flush=True)
+except: pass
+" 2>/dev/null
+            fi
+        done
+    echo ""
+}
+
+cmd_council() {
+    [ $# -eq 0 ] && { err "الاستخدام: nexus council \"الموضوع\" [جولات]"; exit 1; }
+    local TOPIC="$1"
+    local ROUNDS="${2:-2}"
+    local TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    local REPORT="$PROJECT/reports/council-$TIMESTAMP.md"
+    mkdir -p "$PROJECT/reports"
+
+    line; title "  🏛️  مجلس Nexus-Core"; line
+    echo "  📋 الموضوع: $TOPIC"
+    echo "  🔄 الجولات: $ROUNDS"
+    echo ""
+
+    {
+        echo "# 🏛️ تقرير المجلس — Nexus-Core"
+        echo ""
+        echo "**الموضوع:** $TOPIC"
+        echo "**التاريخ:** $(date)"
+        echo "**الجولات:** $ROUNDS"
+        echo ""
+        echo "---"
+        echo ""
+    } > "$REPORT"
+
+    curl -N -s -X POST "http://127.0.0.1:$PORT/api/council/stream" \
+        -H "Content-Type: application/json" \
+        -d "{\"topic\": \"$TOPIC\", \"rounds\": $ROUNDS}" \
+        2>/dev/null | while IFS= read -r line; do
+            if [[ "$line" == data:* ]]; then
+                echo "${line#data: }" | python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read().strip())
+    t = d.get('type', '')
+    if t == 'session':
+        print(f\"## 👥 الأعضاء ({len(d.get('members', []))})\")
+        for m in d.get('members', []):
+            print(f\"- {m.get('emoji', '')} **{m.get('name', '?')}**\")
+        print()
+    elif t == 'round':
+        print(f\"\n## 🔄 الجولة {d.get('round')}/{d.get('total')}\n\")
+    elif t == 'member_message':
+        print(f\"### {d.get('emoji', '')} {d.get('name', '?')} ({d.get('elapsed', 0):.1f}s)\")
+        print()
+        print(d.get('content', ''))
+        print()
+    elif t == 'consensus':
+        print(f\"**🤝 التوافق:** {d.get('score', 0)*100:.0f}%\n\")
+    elif t == 'verdict':
+        print(f\"\n## ✅ الحكم النهائي\n\n**التوافق:** {d.get('consensus', 0)*100:.0f}%\n\")
+        print(d.get('verdict', ''))
+        print()
+except: pass
+" 2>/dev/null | tee -a "$REPORT"
+            fi
+        done
+
+    echo ""
+    log "✅ التقرير: $REPORT"
+}
+
+cmd_agents() { check_project; exec python3 -m src.cli.main agents "$@"; }
+cmd_review() { [ $# -eq 0 ] && { err "الاستخدام: nexus review <file>"; exit 1; }; check_project; exec python3 -m src.cli.main review "$@"; }
+cmd_sessions() { check_project; exec python3 -m src.cli.main sessions "$@"; }
+cmd_skills() { check_project; exec python3 -m src.cli.main skills "$@"; }
+
+cmd_help() {
+    line; title "  🎯 nexus — واجهة Nexus-Core"; line
+    echo ""
+    echo -e "  ${B}الإدارة:${N}"
+    echo "    nexus start          🚀 تشغيل"
+    echo "    nexus stop           🛑 إيقاف"
+    echo "    nexus restart        🔄 إعادة تشغيل"
+    echo "    nexus status         📊 حالة + Genome"
+    echo "    nexus logs           📄 السجلات"
+    echo "    nexus web            🌐 الواجهة"
+    echo ""
+    echo -e "  ${B}التفاعل:${N}"
+    echo "    nexus ask \"...\"      ❓ سؤال"
+    echo "    nexus stream \"...\"   ⚡ streaming"
+    echo "    nexus council \"...\"  🏛️ مجلس"
+    echo "    nexus review <file>  📝 مراجعة"
+    echo "    nexus agents         🤖 الوكلاء"
+    echo "    nexus sessions       📚 الجلسات"
+    echo "    nexus skills         🎯 المهارات"
+    echo ""
+    echo "    nexus help           ❔ المساعدة"
+    echo ""
+    echo -e "  🌐 ${C}http://127.0.0.1:$PORT/${N}"
+    echo ""
+}
+
+case "${1:-help}" in
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    restart)    cmd_restart ;;
+    status)     cmd_status ;;
+    logs)       cmd_logs ;;
+    web)        cmd_web ;;
+    help|"")    cmd_help ;;
+    ask)        shift; cmd_ask "$@" ;;
+    stream)     shift; cmd_stream "$@" ;;
+    council)    shift; cmd_council "$@" ;;
+    review)     shift; cmd_review "$@" ;;
+    agents)     shift; cmd_agents "$@" ;;
+    sessions)   shift; cmd_sessions "$@" ;;
+    skills)     shift; cmd_skills "$@" ;;
+    *)          err "أمر غير معروف: $1"; echo ""; cmd_help; exit 1 ;;
+esac

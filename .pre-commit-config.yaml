@@ -1,5 +1,16 @@
-# Pre-commit hooks for NovaMind
-# Install: pre-commit install
+# Pre-commit hooks — nexus-core
+#
+# Install (once):
+#   pip install pre-commit
+#   pre-commit install                      # commit hooks (fast)
+#   pre-commit install --hook-type pre-push # push hooks (full gates)
+#
+# The local hooks below run EXACTLY the same gates as scripts/dev_check.sh,
+# so a clean commit locally == a clean gate in CI. `language: system` means
+# they use the tools already installed in the env (no hook-env downloads) —
+# important on Termux where fetching hook environments is slow/fragile.
+
+default_stages: [pre-commit]
 
 repos:
   # ─── Basic file hygiene ───
@@ -10,40 +21,43 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
-      - id: check-added-large-files
-        args: ["--maxkb=2000"]
       - id: check-merge-conflict
       - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
       - id: mixed-line-ending
 
-  # ─── Markdown structure (mdformat - fast) ───
-  - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.19
+  # ─── Local gates (mirror scripts/dev_check.sh) ───
+  - repo: local
     hooks:
-      - id: mdformat
-        additional_dependencies:
-          - mdformat-gfm
-          - mdformat-tables
-          - mdformat-frontmatter
-        files: ^docs/.*\.md$
-        args: ["--wrap=100"]
-
-  # ─── Vale: DISABLED locally (Alpine incompatibility) ───
-  # Runs in GitHub Actions instead (glibc environment)
-
-  # ─── Python quality (only src/) ───
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
-    hooks:
+      # Lint — fast, runs on staged Python files only.
       - id: ruff
-        args: ["--fix", "--exit-non-zero-on-fix"]
-        files: ^src/
-      - id: ruff-format
-        files: ^src/
+        name: ruff check
+        entry: ruff check --force-exclude
+        language: system
+        types: [python]
+        pass_filenames: true
 
-  # ─── Security: secrets in any file ───
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.21.2
-    hooks:
-      - id: gitleaks
-        args: ["--verbose"]
+      # Every function is type-annotated (framework surface).
+      - id: check-annotations
+        name: check_annotations
+        entry: python scripts/check_annotations.py
+        language: system
+        pass_filenames: false
+        files: ^(src/|zyvo-.*\.py$)
+
+      # Static types — slower, so only on push.
+      - id: mypy-framework
+        name: mypy (framework scope)
+        entry: mypy zyvo-telegram.py zyvo-voice.py src
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Full test suite — slowest, push only.
+      - id: pytest
+        name: pytest (ignore tests/novamind)
+        entry: pytest --ignore=tests/novamind -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
