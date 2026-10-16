@@ -132,6 +132,8 @@ def test_agent_loop_defaults_to_real_router() -> None:
 
 
 def test_call_llm_success_with_fake_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("openai")  # the client factory is patched on the real module
+
     class _Groq:
         name = "groq_01"
         enabled = True
@@ -167,6 +169,8 @@ def test_call_llm_success_with_fake_client(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_call_llm_provider_selection_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("openai")
+
     class _P:
         name = "groq_01"
         enabled = True
