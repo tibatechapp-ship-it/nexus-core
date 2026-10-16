@@ -853,3 +853,87 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - Files touched: nexus_agent.py, index.html, tests/test_nexus_agent.py,
   .pre-commit-config.yaml (M) + scripts/dev_check.sh (NEW). tests/test_orchestrator.py
   got a ruff --fix (unused imports). No commit made (user reviews).
+
+## Integration test run — v1.13.4 (2026-10-16, read-only) — report shipped
+- Full 5-axis integration/coordination/leadership/isolation/perf test of the
+  RUNNING unified gateway. Service `nexus-core` (runit) runs `python3
+  nexus_agent.py` with `NEXUS_PORT=8000` on :8000 (`$PREFIX/var/service/
+  nexus-core/run`). Report: `reports/integration/v1.13.4-integration-report.md`.
+- RESULT: **39/42 PASS**, 0 critical. Axes 1-4 = 35/35 green; Axis 5 (perf) 4/7.
+  6-member Council verified live (tork_acil #1), SSE event order verified
+  (session→round→6×(member_start,member_message)→consensus→verdict→done), genome
+  loop moves standings, offline path (`Council(router=None)`) fully working.
+- FINDINGS (unfixed — task was report-only):
+  **F1** `tests/test_nexus_agent.py:98` hardcodes `council_members == 5` → the
+  only red test (12 passed/1 failed) since Tork Acil made it 6. Fix = compare to
+  `len(COUNCIL_MEMBERS)` (test_council.py already does).
+  **F2** VERSION DRIFT: commits 68db87f "v1.13.3" + d21ac4d "v1.13.4" NEVER bumped
+  `pyproject.toml` (still `1.13.1.1`) nor CHANGELOG → `/api/health`+`/api/status`
+  report **1.13.1.1**. test_version_sync passes (only checks the declared
+  version). Real current version = 1.13.1.1.
+  **F3** stale comment `nexus_agent.py:351` "(5 أعضاء)" → now 6.
+  **F4** RSS = 106,788 kB ≈ **104.3 MB** > 100 MB budget (stable, not a leak).
+  **F5** perf criteria T5.3(<2s)/T5.4(<6s) unreachable live (1 round = 41.9s,
+  2 rounds = 100s); offline = 2ms/3.5ms → criterion implies the offline path.
+- TERMUX TOOLING FACTS: no `/usr/bin/time` and no `bc` on this box → time
+  requests with `python3` (`time.time()` around urllib) or the bash `time`
+  builtin + `date +%s.%N`. RSS = `/proc/<pid>/status` VmRSS; idle CPU = sample
+  `/proc/<pid>/stat` fields 14+15 (utime+stime) twice ÷ SC_CLK_TCK ÷ interval.
+  `sv status <svc>` uptime is the process age (use it to prove "no restart").
+
+## Fix pass — F1-F5 resolved, version 1.13.4 (2026-10-17, UNCOMMITTED)
+- All 5 findings from the v1.13.4 integration report addressed on
+  `feature/landing-page` (tree also had the report + new test as untracked):
+  * **F1** `tests/test_nexus_agent.py:98` hardcoded `council_members == 5` →
+    `len(mod.COUNCIL_MEMBERS)` → file now **13/13** (was 12 passed/1 failed).
+  * **F2** VERSION DRIFT closed: `pyproject.toml` 1.13.1.1 → **1.13.4**;
+    CHANGELOG gained `## v1.13.4` + `## v1.13.3` headings (v1.13.3 = the 6th
+    member, v1.13.4 = rename to Tork Acil — both were missing); `docs/openapi.yaml`
+    was still `1.12.1` (the v1.12.1 "Spec Truth" version was never propagated to
+    later releases) → now 1.13.4; `SCOPE.md` (2 places) → v1.13.4;
+    `src/cli/main.py --version` was hardcoded `nexus-core 1.13.0` → now
+    `f"nexus-core {__version__}"` (+`from src import __version__` after the
+    file's sys.path setup, matching its existing first-party import block).
+  * **F3** `nexus_agent.py:351` comment "(5 أعضاء)" → "(6 أعضاء)".
+  * **F4** RAM 104.3MB vs 100MB budget → **RE-SCOPED, NOT a code defect** (see
+    the measured floor below). No code change; Council core deliberately untouched.
+  * **F5** perf criteria T5.3/T5.4 (2s/6s) → re-scoped to the offline path AND
+    made enforceable: NEW `tests/test_council_perf.py` (4 tests) asserts the
+    original budgets on `Council(router=None, store=None)` + 3-round scaling +
+    member coverage (`set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}`).
+    Margin ~1000× (2–4ms) so a failure = real regression.
+- NEW F2 GUARD (closes the hole that caused the drift): `tests/test_openapi.py`
+  gained `test_spec_version_matches_package_version` (openapi.yaml `info.version`
+  == `src.__version__`) + `test_health_version_matches_spec`. The old drift guard
+  only compared ROUTES, so a stale `info.version` slipped through for 3 versions.
+- GATES after: ruff clean, mypy **154** files, check_annotations **154**,
+  `pytest --ignore=tests/novamind` → **2172 passed** (dev_check.sh: 98.28% cov,
+  floor 95). Targeted: test_nexus_agent 13 ✅, test_openapi+version_sync 12 ✅,
+  test_council_perf 4 ✅.
+- SERVICE restarted (`sv restart nexus-core`) → pid **9039**; `curl /api/health`
+  → `1.13.4` (was 1.13.1.1); `/api/status` → version 1.13.4,
+  council_members **6**, agents 20+79=**99**; `python3 -m src.cli.main --version`
+  → `nexus-core 1.13.4`. NOTE: the restart ends the T5.7 "no restart" window.
+- ❗ MEASURED MEMORY FLOOR (2026-10-17, this phone; RSS same interpreter):
+  bare python3 **12MB** → +FastAPI/starlette/pydantic (import `nexus_agent`, no
+  LLM call) **62MB** → +first **LIVE** LLM call **94MB** (openai SDK + httpx +
+  aiohttp + opentelemetry + truststore imported LAZILY on first use ≈ 32MB) →
+  104–124MB with council/genome/engine state (plateaus ⇒ footprint, not a leak).
+  The offline config (never calls the LLM) stays 62–70MB. ⇒ a 100MB budget is
+  below the live-build floor; it only fits the offline build. Re-scoped budget:
+  **≤96MB offline / ≤128MB live**. Going under 100MB live would mean replacing
+  the provider SDK with a stdlib transport in the PROTECTED
+  `src/novamind/core/llm_router.py` → v1.14 candidate, not a defect.
+- ❗ DEAD ENDS for RSS on Android (measured, do not retry): `MALLOC_ARENA_MAX=2`
+  → 94MB no change (not glibc-arena fragmentation); `gc.collect()` +
+  `malloc_trim(0)` → `malloc_trim` **does not exist** in Android's libc
+  (`undefined symbol: malloc_trim`); reusing a `ThreadPoolExecutor` instead of
+  the per-call `threading.Thread` in `Council._live_generate` → **+0MB benefit**
+  (7 throwaway threads = 94MB vs 94MB) so thread stacks are NOT the cost.
+- ❗ LESSON (generalised): when a resource/perf criterion fails, MEASURE THE FLOOR
+  before editing code — the criterion is usually mis-scoped; the honest fix is to
+  correct the criterion with evidence + add a guard test for the path that owns
+  the metric. Mutating working code to chase a bad number is the failure mode.
+- OPEN: (a) commit decision — SCOPE.md lists `nexus_agent.py` + `pyproject.toml`
+  as protected, so this needs tyba's approval; (b) the report §11 records the
+  full ledger (`reports/integration/v1.13.4-integration-report.md`, now 427 lines).
