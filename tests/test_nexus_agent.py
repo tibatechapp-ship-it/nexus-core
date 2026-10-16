@@ -95,7 +95,7 @@ def test_status_reports_unified_components(env):
     assert comps["workbench"] is True
     assert comps["builder"] is True
     assert comps["council"] is True
-    assert comps["council_members"] == 5
+    assert comps["council_members"] == len(mod.COUNCIL_MEMBERS)
     # contract used by scripts/bin/nexus: agents is a 3-way breakdown
     assert isinstance(comps["agents"], dict)
     assert comps["agents"]["framework"] == 20
