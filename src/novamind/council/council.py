@@ -34,7 +34,7 @@ EARLY_MIN_ROUND = 2         # never stop before this round
 MAX_ROUNDS = 5
 MAX_MEMBERS = 7
 GENERATE_TIMEOUT = 60.0     # max wait for one live provider reply
-OFFLINE_CACHE = 60.0        # how long a live failure keeps the council offline
+OFFLINE_CACHE = 5.0        # how long a live failure keeps the council offline
 
 
 @dataclass
