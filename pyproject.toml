@@ -42,7 +42,7 @@ novamind = [
     "uvicorn",
     "pydantic>=2",
     "pydantic-settings",
-    "python-dotenv>=1.0",
+    "python-dotenv>=1.2.4",
     "httpx",
     "aiofiles",
     "jinja2",
