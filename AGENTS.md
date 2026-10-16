@@ -1081,3 +1081,17 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   so the following `git pull origin main --ff-only` advanced the CURRENT branch
   (`feature/landing-page`) to the merge commit instead. Recovered with
   `git stash push AGENTS.md` → checkout → `merge --ff-only origin/main` → pop.
+- BADGE JOB FIXED (2026-10-17, `c49c214` on `main`): the `publish coverage badge`
+  job (runs only on `push` to `main`, `needs: test`) installed a THIN dep set
+  (no fastapi/httpx/sqlalchemy) and ran `pytest --cov --cov-fail-under=95 -q`
+  WITHOUT `--ignore=tests/novamind` → the workbench test modules failed at import
+  → **pytest exit 2** → the whole Tests workflow was red on `main` (PRE-EXISTING;
+  the run on the previous `main` 1b1c942 failed there too). FIX = the job now
+  installs the SAME deps as the `test` job + runs the EXACT Layer-1 command
+  (`--ignore=tests/novamind`) so the badge reflects the gated coverage; also
+  dropped the `>/dev/null 2>&1` redirect. Result: run 38980975563 = **success**
+  (3 pytest jobs + badge job). Badge = **99%** (honest CI coverage: badge job has
+  fastapi but not openai/sqlite-vec; "Badge unchanged" → no extra commit).
+- FULL STATE 2026-10-17: `main` = **`c49c214`** on origin + gitlab (in sync). Tag
+  `v1.13.5` at `4b1999a` (origin + gitlab). GitHub Release v1.13.5 (Latest) with a
+  post-release addendum for `c49c214`. `feature/landing-page` = 3bca44c (merged).
