@@ -1028,3 +1028,56 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   vec0.so) those lines are uncovered → CI coverage is lower than 99.68%. Harmless
   in practice because the CI workflow passes its OWN explicit
   `--cov-fail-under=95`; the pyproject floor (99) only governs the local gate.
+
+## ALL CI GREEN — 20 pre-existing Tests failures fixed (2026-10-17) — SHIPPED
+- Branch `feature/landing-page`, tip **`173ba6d`** (pushed origin+gitlab). The
+  **Tests job is now SUCCESS on py 3.11/3.12/3.13** (was 20 failed / 2214 passed
+  / 8 skipped). CI job (ruff/mypy/annotations) GREEN. Confirmed from the run log:
+  2217 passed + 153 + 71 = **2441 passed, 28 skipped, 0 failed** per interpreter.
+- The exact 20 (from `gh run view 38978129921 --log-failed`): `test_rag_layer_coverage` **13**,
+  `test_agent_loop` **2**, `test_memory_providers` **2**, `test_misc_coverage` **2**,
+  `test_cli` **1**. Four concern-split commits:
+  · **`a1e4de8`** test(rag): guard vector-store tests behind a vec0 extension probe
+  · **`023e6aa`** test(agent-loop): skip the openai client tests when the package is absent
+  · **`a59b0af`** test(memory): inject fake provider clients without requiring openai
+  · **`173ba6d`** fix(cli): make review helper paths portable and its tests hermetic
+- ROOT CAUSES + FIXES:
+  · **sqlite-vec is a loadable EXTENSION** (`vec0.so`), never an importable module →
+    `importorskip("sqlite_vec")` is useless. FIX = shared `vec_extension_available()`
+    probe + module-level `requires_vec = pytest.mark.skipif(...)` in
+    `tests/conftest.py`; applied to the 13 + 2 tests (import via
+    `from tests.conftest import requires_vec`). Also replaced a WRONG
+    `importorskip("sqlite3")` (sqlite3 is always importable) and removed the
+    duplicate probe from `tests/test_coverage_gaps_memory.py`.
+  · **openai-dependent tests** patch `openai.OpenAI` → `ModuleNotFoundError` without
+    the extra → `pytest.importorskip("openai")` inside the test.
+  · **provider happy-path tests** did `monkeypatch.setattr(mod, "OpenAI", fake)` but
+    `src/memory/providers/{openai,gemini}.py` only define that name when the package
+    imports → use `raising=False` (the constructor reads the module global at call
+    time, so the happy path is still fully covered — better than skipping).
+  · **`src/cli/main.py::cmd_review` hardcoded Termux paths**
+    (`/data/data/com.termux/files/usr/tmp/{run_5_agents,review_dynamic}.py`) AND
+    rewrote the helper's `TARGET` line with one hardcoded literal → not portable.
+    FIX: module constants built from `tempfile.gettempdir()` (honors `$TMPDIR` →
+    identical on Termux) + `re.sub(r'^TARGET = Path(".*")', ...)` count=1
+    MULTILINE; tests monkeypatch the constants to `tmp_path` → fully hermetic.
+- ❗ CI-SIM GOTCHA: a `-p blockdeps` plugin that patches `sqlite3.connect` inside
+  `pytest_configure` is TOO LATE — `tests/conftest.py`'s module-level `requires_vec`
+  is evaluated at conftest IMPORT (before configure) → the probe still saw the real
+  `vec0` and the sim showed 16 false failures. Patch at PLUGIN MODULE LEVEL
+  (throwaway `/data/data/com.termux/files/usr/tmp/zyvo/noextras.py`) so conftest
+  sees `sys.modules["openai"]=None` + a vec-less `connect` from import time. After:
+  full-suite sim = **2248 passed, 22 skipped, 0 failed**; local real gate =
+  **2270 passed @ 100.00%** (8614 stmts — +6 from the cli fix).
+- Addressed: the earlier ⚠ above is now moot — CI measures its OWN coverage with
+  `--cov-fail-under=95` and the Tests job PASSES. `dev_check.sh` still measures NO
+  coverage.
+- MERGED + RELEASED 2026-10-17: `chore(release): v1.13.5` (**`4b1999a`**, version
+  single-source bumped: pyproject/CHANGELOG/openapi/SCOPE) → **PR #12** merged →
+  `main` = **`3bca44c`** (origin). Tests job green on `4b1999a` too. Tag
+  **`v1.13.5`** at `4b1999a` pushed to origin (+ gitlab). GitHub Release v1.13.5
+  created. Local `main` = 3bca44c.
+- GOTCHA HIT AGAIN: the tracked `AGENTS.md` edit made `git checkout main` ABORT,
+  so the following `git pull origin main --ff-only` advanced the CURRENT branch
+  (`feature/landing-page`) to the merge commit instead. Recovered with
+  `git stash push AGENTS.md` → checkout → `merge --ff-only origin/main` → pop.
