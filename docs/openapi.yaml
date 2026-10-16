@@ -272,6 +272,52 @@ paths:
         '401':
           description: CRAFT_AUTH_TOKEN is set and X-Craft-Token header missing/wrong
 
+  /api/review:
+    post:
+      tags: [Review]
+      summary: Review a local project folder with the live council
+      description: |
+        Reads up to `max_files` source files (allow-listed extensions) from a
+        directory, capped at 30 KB total, and asks the council to review the
+        code from 4 angles: structure, security, maintainability, performance.
+        Path confinement: the folder must resolve inside $HOME or $TMPDIR.
+      operationId: reviewProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: {type: string, example: "$HOME/nexus-core/src"}
+                max_files: {type: integer, default: 8, minimum: 1, maximum: 20}
+      responses:
+        '200':
+          description: review result (check ok)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReviewResult'}
+              example:
+                ok: true
+                project: "src"
+                files_reviewed: 8
+                bytes_reviewed: 26410
+                verdict: "مقبول"
+                score: 0.78
+                recommendation: "تقوية التحقق من المدخلات"
+                transcript: []
+        '400':
+          description: invalid JSON, empty path, or path containing '..'
+        '403':
+          description: folder resolves outside $HOME and $TMPDIR
+        '404':
+          description: path does not exist, is not a folder, or holds no reviewable files
+        '503':
+          description: council bridge unavailable
+        '500':
+          description: the council review raised
+
 components:
   securitySchemes:
     CraftToken: {type: apiKey, in: header, name: X-Craft-Token, description: required only if CRAFT_AUTH_TOKEN env is set}
@@ -383,6 +429,20 @@ components:
             verdict: {type: string, enum: [approve, reject, human_review, error]}
             score: {type: number}
             error: {type: string, description: present when the review call failed}
+
+    ReviewResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: {type: boolean}
+        error: {type: string, description: present only when ok=false}
+        project: {type: string, description: reviewed folder name}
+        files_reviewed: {type: integer}
+        bytes_reviewed: {type: integer}
+        verdict: {type: string, nullable: true}
+        score: {type: number, nullable: true}
+        recommendation: {type: string, nullable: true}
+        transcript: {type: array, items: {type: object}}
 
     BuildSummary:
       type: object

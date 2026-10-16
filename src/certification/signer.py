@@ -30,8 +30,8 @@ class Signer:
         self.keys_dir = KEYS_DIR
         self.keys_dir.mkdir(parents=True, exist_ok=True)
         self.use_ed25519 = use_ed25519
-        self._private_key = None
-        self._public_key = None
+        self._private_key: Any = None
+        self._public_key: Any = None
         self._load_or_create_keys()
     
     def _load_or_create_keys(self) -> None:
@@ -50,7 +50,6 @@ class Signer:
         """Ed25519 keys."""
         from cryptography.hazmat.primitives.asymmetric.ed25519 import (
             Ed25519PrivateKey,
-            Ed25519PublicKey,
         )
         from cryptography.hazmat.primitives import serialization
         

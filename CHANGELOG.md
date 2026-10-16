@@ -2,6 +2,27 @@
 
 All notable changes to this project. Newest first.
 
+## v1.13.0 — 2026-10-16
+**Unified server (`nexus_agent.py`): one FastAPI app that wraps every layer
+without losing a feature — gradual unification *with separation*.**
+- **Wrap, don't rewrite (`main.py` is imported intact):** `nexus_agent.py`
+  loads `main.py` by path under a private module name (`_nexus_workbench`) and
+  reuses its `app` object, so all Workbench routes stay byte-for-byte:
+  `/api/deliberate` (SSE), `/api/build(s)`, `/api/craft` (real), `/api/history`
+  (+search), `/api/topics`, `/api/stats`, `/api/review`, PWA, Swagger. Loading
+  by path avoids the `main` name collision (novamind ships its own `main.py`).
+- **NovaMind Living Council + Genome added on the same app:** `/api/council/
+  debate`, `/api/council/stream` (SSE), `/api/council/sessions[/{sid}]`,
+  `/api/genome`, `/api/genome/{id}`, `/api/genome/{id}/reset`,
+  `/api/genome/{id}` (PATCH persona), `/api/genome/export|import`.
+- **Framework surface:** `/api/agents` (the real 20 built-ins from
+  `AGENT_CLASSES`, not a hardcoded count), `/api/status` (unified component
+  report) and a real `/api/chat` (SSE via novamind `LLMRouter`, honouring an
+  agent's `system_prompt`) — replacing the old echo stub.
+- **No `from __future__ import annotations`** (like `main.py`) so Pydantic
+  models bind real types regardless of how the module is loaded.
+- 32 routes total (19 Workbench + 13 NovaMind/framework). Version → 1.13.0.
+
 ## v1.12.1 — 2026-10-15
 **Spec truth: the OpenAPI contract now matches the code, and a guard keeps it
 that way.**

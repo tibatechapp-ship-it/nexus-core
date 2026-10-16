@@ -31,6 +31,10 @@ from src.sessions.manager import SessionManager
 from src.skills.loader import SkillLoader
 
 
+_AGENT_SCAFFOLD = frozenset({"base", "registry", "state", "sub_agent", "communication", "metrics"})
+"""وحدات بنية تحتية في src/agents — ليست وكلاء (نفس منطق nexus_agent)."""
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     """يعرض حالة النظام."""
     print("=" * 60)
@@ -48,7 +52,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     
     # Skills
     sl = SkillLoader()
-    skills = sl.list()
+    skills = sl.list_skills()
     print(f"🎯 Skills: {len(skills)}")
     for name in skills:
         print(f"   • {name}")
@@ -58,7 +62,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     try:
         from src.core.ollama_backend import OllamaBackend
         b = OllamaBackend()
-        print(f"🤖 Backend: OllamaBackend")
+        print("🤖 Backend: OllamaBackend")
         print(f"   Keys: {len(b.keys)}")
         print(f"   Models: {len(b.models)}")
         for m in b.models:
@@ -72,7 +76,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         agents_dir = ROOT / "src" / "agents"
         agents = sorted(
             f.stem for f in agents_dir.glob("*.py")
-            if not f.stem.startswith("_") and f.stem not in ("base", "registry", "state")
+            if not f.stem.startswith("_") and f.stem not in _AGENT_SCAFFOLD
         )
         print(f"👥 Agents: {len(agents)}")
         for a in agents[:10]:
@@ -92,7 +96,7 @@ def cmd_agents(args: argparse.Namespace) -> int:
     agents_dir = ROOT / "src" / "agents"
     agents = sorted(
         f.stem for f in agents_dir.glob("*.py")
-        if not f.stem.startswith("_") and f.stem not in ("base", "registry", "state")
+        if not f.stem.startswith("_") and f.stem not in _AGENT_SCAFFOLD
     )
     print(f"👥 {len(agents)} وكيل:")
     for a in agents:
@@ -232,7 +236,7 @@ def cmd_sessions(args: argparse.Namespace) -> int:
 def cmd_skills(args: argparse.Namespace) -> int:
     """يعرض المهارات."""
     sl = SkillLoader()
-    skills = sl.list()
+    skills = sl.list_skills()
     
     if not skills:
         print("🎯 لا توجد مهارات")
@@ -254,7 +258,7 @@ def cmd_skill(args: argparse.Namespace) -> int:
     
     if not skill:
         print(f"❌ المهارة غير موجودة: {args.name}")
-        print(f"   المتاح: {', '.join(sl.list())}")
+        print(f"   المتاح: {', '.join(sl.list_skills())}")
         return 1
     
     print(skill.content)

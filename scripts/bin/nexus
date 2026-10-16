@@ -20,13 +20,22 @@ check_project() { [ -d "$PROJECT" ] || { err "المشروع غير موجود";
 cmd_start() {
     line; title "  🚀 بدء Nexus-Core"; line
     check_project
-    if pgrep -f "unified_agent.py" >/dev/null; then
+    if pgrep -f "nexus_agent.py" >/dev/null; then
+        log "البوابة الموحّدة تعمل بالفعل"
+    elif pgrep -f "unified_agent.py" >/dev/null; then
         log "NovaMind يعمل بالفعل"
     else
-        log "🚀 تشغيل NovaMind..."
-        NOVAMIND_PORT="$PORT" PYTHONPATH=src/novamind:src:. nohup python3 unified_agent.py > "$LOG_DIR/novamind.log" 2>&1 &
-        sleep 3
-        pgrep -f "unified_agent.py" >/dev/null && log "✅ يعمل على :$PORT" || { err "❌ فشل"; tail -10 "$LOG_DIR/novamind.log"; return 1; }
+        log "🚀 تشغيل البوابة الموحّدة (Workbench + NovaMind)..."
+        NOVAMIND_PORT="$PORT" NEXUS_PORT="$PORT" PYTHONPATH=src/novamind:src:. nohup python3 nexus_agent.py > "$LOG_DIR/nexus.log" 2>&1 &
+        sleep 5
+        if pgrep -f "nexus_agent.py" >/dev/null; then
+            log "✅ البوابة الموحّدة تعمل على :$PORT"
+        else
+            log "⚠️ فشلت البوابة — محاولة unified_agent.py..."
+            NOVAMIND_PORT="$PORT" PYTHONPATH=src/novamind:src:. nohup python3 unified_agent.py > "$LOG_DIR/novamind.log" 2>&1 &
+            sleep 3
+            pgrep -f "unified_agent.py" >/dev/null && log "✅ يعمل على :$PORT" || { err "❌ فشل"; tail -10 "$LOG_DIR/nexus.log"; return 1; }
+        fi
     fi
     command -v termux-wake-lock >/dev/null 2>&1 && { termux-wake-lock 2>/dev/null; log "✅ Wake lock"; }
     echo ""; log "✅ Nexus-Core يعمل"; echo "  🌐 http://127.0.0.1:$PORT/"; echo ""
@@ -34,7 +43,7 @@ cmd_start() {
 
 cmd_stop() {
     line; title "  🛑 إيقاف"; line
-    for proc in "unified_agent.py" "main.py"; do
+    for proc in "nexus_agent.py" "unified_agent.py"; do
         pgrep -f "$proc" >/dev/null && { log "إيقاف $proc"; pkill -f "$proc" 2>/dev/null; }
     done
     sleep 2
@@ -45,25 +54,32 @@ cmd_stop() {
 cmd_restart() { cmd_stop; sleep 2; cmd_start; }
 
 cmd_status() {
-    line; title "  📊 حالة Nexus-Core"; line; echo ""
+    line; title "  📊 حالة Nexus-Core"; line;     echo ""
     echo -e "${C}═══ العمليات ═══${N}"
-    if pgrep -f "unified_agent.py" >/dev/null; then
+    if pgrep -f "nexus_agent.py" >/dev/null; then
+        PID=$(pgrep -f "nexus_agent.py" | head -1)
+        MEM=$(ps -o rss= -p "$PID" 2>/dev/null | awk '{print int($1/1024)" MB"}')
+        echo -e "  ${G}✅${N} nexus_agent.py (بوابة موحّدة، PID: $PID, MEM: $MEM)"
+    elif pgrep -f "unified_agent.py" >/dev/null; then
         PID=$(pgrep -f "unified_agent.py" | head -1)
         MEM=$(ps -o rss= -p "$PID" 2>/dev/null | awk '{print int($1/1024)" MB"}')
         echo -e "  ${G}✅${N} unified_agent.py (PID: $PID, MEM: $MEM)"
     else
-        echo -e "  ${R}❌${N} unified_agent.py"
+        echo -e "  ${R}❌${N} البوابة الموحّدة"
     fi
     echo ""
     echo -e "${C}═══ الإحصائيات ═══${N}"
-    local health=$(curl -s "http://127.0.0.1:$PORT/api/health" 2>/dev/null)
-    [ -n "$health" ] && echo "$health" | python3 -c "
+    local status=$(curl -s "http://127.0.0.1:$PORT/api/status" 2>/dev/null)
+    [ -n "$status" ] && echo "$status" | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
+    c = d.get('components', {})
+    ag = c.get('agents') or {}
     print(f'  • الإصدار:  {d.get(\"version\", \"?\")}')
-    print(f'  • الوكلاء:  {d.get(\"agents\", \"?\")}')
-    print(f'  • الحالة:   {d.get(\"status\", \"?\")}')
+    print(f'  • الوكلاء:  {ag.get(\"total\", \"?\")} (إطار {ag.get(\"framework\",\"?\")} + نوڤامايند {ag.get(\"novamind\",\"?\")})')
+    print(f'  • المجلس:   {c.get(\"council_members\", \"?\")} أعضاء | المواضيع: {c.get(\"topics\", \"?\")}')
+    print(f'  • المحرّك:  {\"✅ مثبّت\" if c.get(\"engine\") else \"❌\"}')
 except: pass
 " 2>/dev/null
     echo ""
@@ -88,7 +104,9 @@ except: pass
 
 cmd_logs() {
     line; title "  📄 سجلات Nexus-Core"; line
-    [ -f "$LOG_DIR/novamind.log" ] && tail -20 "$LOG_DIR/novamind.log" || echo "لا يوجد سجل"
+    if [ -f "$LOG_DIR/nexus.log" ]; then tail -20 "$LOG_DIR/nexus.log"
+    elif [ -f "$LOG_DIR/novamind.log" ]; then tail -20 "$LOG_DIR/novamind.log"
+    else echo "لا يوجد سجل"; fi
 }
 
 cmd_web() {

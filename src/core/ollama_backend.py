@@ -103,8 +103,7 @@ class OllamaBackend:
     @staticmethod
     def _dedupe(items: list[str]) -> list[str]:
         """يحذف المكرر مع الحفاظ على الترتيب."""
-        seen: set[str] = set()
-        return [x for x in items if not (x in seen or seen.add(x))]
+        return list(dict.fromkeys(items))
     
     def _call(
         self,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-core"
-version = "1.12.1"
+version = "1.13.0"
 description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,9 @@ classifiers = [
 [project.optional-dependencies]
 voice = ["gTTS>=2.5.0", "SpeechRecognition>=3.10.0"]
 tui = ["textual>=0.80", "rich>=13"]
+# Ed25519 build signing (src/certification). Optional: the signer falls back to
+# SHA256 when cryptography is absent (e.g. Termux), so it is never a hard dep.
+certification = ["cryptography>=41"]
 novamind = [
     "fastapi",
     "uvicorn",
@@ -146,6 +149,7 @@ select = ["E4", "E7", "E9", "F"]
 "src/agent_loop/loop.py" = ["E402"]
 "src/orchestrator/supervisor.py" = ["E402"]
 "scripts/_run_agent_with_rag.py" = ["E402"]
+"src/cli/main.py" = ["E402"]  # bootstrap: sys.path setup must precede src.* imports
 "tests/**" = ["E402"]  # pytest.importorskip must run before the target imports
 
 # ─── Type checking (mypy) ───────────────────────────────────────────────────

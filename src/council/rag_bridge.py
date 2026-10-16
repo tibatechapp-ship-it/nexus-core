@@ -11,6 +11,14 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))
 from src.council.engine import CouncilEngine, CouncilResult
 
 
+def _cached_consensus(cached: Any) -> bool:
+    """إجماع الإدخال المخزّن — يُستنتج من الثقة عند غيابه (v1.9.2)."""
+    value = getattr(cached, "consensus", None)
+    if value is not None:
+        return bool(value)
+    return bool((cached.score or 0) >= 0.7)
+
+
 class CouncilRAGBridge:
     def __init__(self: Any, rag_bridge: Any =None) -> None:
         if rag_bridge is None:
@@ -89,7 +97,7 @@ class CouncilRAGBridge:
                     print("CACHE HIT hits=" + str(cached.hits))
                     return CouncilResult(
                         verdict=cached.verdict, score=cached.score,
-                        consensus=bool((getattr(cached), "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,  # type: ignore[call-overload]
+                        consensus=bool(_cached_consensus(cached)), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
                     )
@@ -170,7 +178,7 @@ class CouncilRAGBridge:
                          "text": cached.transcript_summary})
                     return CouncilResult(
                         verdict=cached.verdict, score=cached.score,
-                        consensus=bool((getattr(cached), "consensus", None) if getattr(cached, "consensus", None) is not None else cached.score >= 0.7), rounds=cached.rounds,  # type: ignore[call-overload]
+                        consensus=bool(_cached_consensus(cached)), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
                     )

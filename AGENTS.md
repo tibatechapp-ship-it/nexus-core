@@ -746,3 +746,77 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   health_monitor.py`. `sv restart zyvo-telegram` cleans an orphan brain (the
   bot adopts the surviving :4142 brain via `server_up()`); audit.sh §8 pattern
   `zyvo[.]bin --port 4142` is precise (ignores the interactive non-port brain).
+## فحص + توحيد (2026-10-16) — nexus_agent.py gateway + gate repair
+- GATEWAY: `nexus_agent.py` (untracked) = ONE process on :8080. Loads `main.py`
+  as parent app, mounts `unified_agent.py` engine at "/" (catch-all), adds
+  `/api/status` + `/chat` BEFORE mount (parent routes win). Rollback = run either
+  file alone. `scripts/bin/nexus` now starts/stops/statuses it (reads
+  `/api/status`; logs prefer `logs/nexus.log`). Verified live: /api/status real
+  numbers (v1.12.1, 24 topics, 5 council, 20+79=99 agents, 5 genome);
+  /api/council/stream OK (groq_01); /api/chat plan+chunk.
+- GATE BOARD after repair: ruff ✅, check_annotations ✅, mypy ✅ (152 files),
+  pytest 0 fail, coverage ❌ 75.86% (floor 95). benchmark 6/16+ running
+  (was 0/16), security 15/16 (was 0/16 — the 1 = transient LLM timeout on topic
+  14 "لا رد"; the test script has no retry).
+- MYPY FIXES (real bugs in today's modules): `signer.py` typed `_private_key/
+  _public_key = None` → `Any` (16 errs); `skills/loader.py` method `list()`
+  shadowed builtin `list` inside the class → broke `list[Skill]` → renamed
+  `list_skills()` (+3 CLI callers); `ollama_backend._dedupe` used
+  `seen.add()` as a value → `list(dict.fromkeys(items))`.
+- PYTEST FIXES: declared `certification = ["cryptography>=41"]` extra
+  (`src/certification/signer.py` imports it lazily w/ SHA256 fallback) so the
+  supply-chain test passes; documented `/api/review` (v1.12.2) in
+  `docs/openapi.yaml` (+ ReviewResult schema) to clear the drift guard.
+- COVERAGE GAP = 1550 stmts to cover: today's new modules (cli 221, ollama 87,
+  sessions 80, skills 45, certification 148 = 581) + UNUSED scaffolds
+  `src/{orchestrator,agent_loop,web}` (781 — imported by NOTHING; app uses
+  `novamind.core.orchestrator`, a different module; `tests/orchestrator/` empty)
+  + misc (~120). Commit 869d134 (Oct 15) widened the gate scope to these layers
+  claiming "all gates green" but wrote NO tests → coverage has been red since
+  (CI blocked by billing, so nobody saw it). OPEN DECISION: how to close coverage.
+
+## v1.13.0 — unified gateway `nexus_agent.py` (2026-10-16)
+- ONE process on :8080 = `main.py` (parent, loaded by PATH as
+  `_nexus_workbench`) + `unified_agent.py` engine mounted as **catch-all at
+  "/"** (`_nexus_engine`, `ENGINE_OK/ENGINE_ERR`) + my routes registered
+  BETWEEN them. **ORDER IS THE CONTRACT**: parent + my routes win, engine keeps
+  its 27 exclusive routes (`/api/conversations`, `/api/traces`, `/api/pipeline/*`,
+  `/api/workspace/*`, `/api/security/*`, `/api/metrics`, `/api/db/stats`,
+  `/offline.html`, `/redoc`). Rollback = run either file alone (both untouched).
+  Loading by path (never bare `import main`) avoids novamind's `src/novamind/main.py`.
+- Added on the same app: `/api/status` (**superset contract** consumed by
+  `scripts/bin/nexus`: `nexus:"unified"`, `ok`, `port`, `components.{engine,
+  engine_error, topics, agents{framework=20, novamind=79, total=99}, council,
+  council_members, genome, builder, craft, workbench}`), `/api/agents` (real 20
+  from `AGENT_CLASSES`), `/api/chat` (SSE via `LLMRouter` honouring the agent's
+  `system_prompt`), `/api/council/{debate,stream,sessions[/{sid}]}`,
+  `/api/genome*` (list/detail/patch/reset/export/import).
+- NO `from __future__ import annotations` in `nexus_agent.py`: Pydantic resolves
+  forward refs at class-creation, so a by-path-loaded module needs real types.
+- Tests: `tests/test_nexus_agent.py` (11) — hermetic (temp `SessionStore`,
+  `Council(router=None)`, fake router, monkeypatched singletons + `get_history`)
+  with a **route-preservation guard** (16 wrapped workbench routes must exist)
+  and an **engine-mount guard**. Own gate: `ruff check nexus_agent.py
+  tests/test_nexus_agent.py` + `pytest tests/test_nexus_agent.py`.
+- Run/stop: `scripts/bin/nexus {start,stop,status,restart}` (renders agents +
+  council + engine + genome table), logs `logs/nexus.log`. Version → 1.13.0
+  (pyproject + `src/__init__` + CHANGELOG heading — `test_version_sync` checks it).
+- ❗ **CONCURRENT SESSION** — a second zyvo session edits THIS tree live
+  (`pgrep -f zyvo.bin` ×2; `tests/test_{cli,ollama_backend,certification,skills,
+  sessions,orchestrator}.py` + signer/cli/skills/openapi edits appeared 12:08–12:16
+  while I worked — they are closing the coverage gap above). Effects: repo-wide
+  `ruff check .` went clean → 3 F401 from THEIR in-progress
+  `tests/test_orchestrator.py`; mypy now **18 errors** in
+  `src/certification/signer.py` (16) + `src/core/ollama_backend.py` +
+  `src/skills/loader.py` — none mine. RULE: scope gates to your own files,
+  never repo-wide `ruff --fix`, never `git add -A`, check `git status` mtimes first.
+- Handoff gates: my files ruff ✅ / 11 tests ✅ / annotations ✅ (154 files).
+  Repo-wide: coverage ❌ 75.85% (**pre-existing** — fails identically without
+  my files) and mypy ❌ (18, other session's edits). The earlier "2 failed"
+  (adversarial supply-chain + openapi drift) did NOT reproduce in 3 later full
+  runs → transient, caused by their concurrent writes.
+- Live verified 12:28: status contract, 99 agents, all 16 wrapped routes 200,
+  6 engine routes 200, `/` = workbench console (parent wins), `/api/chat`
+  returns my SSE (groq_01/02), council stream → session/round/5×member_start/
+  10×member_message/consensus/verdict/done (10.5 KB), 50 sessions persisted,
+  genome loop moved standings (analyst 57.7→57.9, critic 32.2→32.6, runs→101).

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 __all__ = ["Skill", "SkillLoader"]
 
@@ -127,7 +126,7 @@ class SkillLoader:
             if not skill_file.exists():
                 skill_file.write_text(content, encoding="utf-8")
 
-    def list(self) -> list[str]:
+    def list_skills(self) -> list[str]:
         """يعيد قائمة بأسماء المهارات."""
         return sorted(
             d.name for d in self.base_dir.iterdir()
@@ -156,7 +155,7 @@ class SkillLoader:
         """يبحث في المهارات."""
         q = query.lower()
         results: list[Skill] = []
-        for name in self.list():
+        for name in self.list_skills():
             skill = self.load(name)
             if skill and (q in skill.name.lower() or q in skill.content.lower()):
                 results.append(skill)
