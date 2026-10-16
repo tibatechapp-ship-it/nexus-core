@@ -103,9 +103,23 @@ def _resolve_allowed_chat(cfg: dict[str, str]) -> str:
     return resolved
 
 
+def _resolve_allowed_chat_safe(cfg: dict[str, str]) -> str:
+    """Best-effort chat-id resolution used at import time.
+
+    Returns ``""`` when nothing is configured instead of raising: importing
+    this module must never fail (tests, tooling and the CI gates import it).
+    The hard security guard that REFUSES to start with an open filter lives in
+    :func:`main` -- the single place the bot actually starts.
+    """
+    try:
+        return _resolve_allowed_chat(cfg)
+    except RuntimeError:
+        return ""
+
+
 CFG: dict[str, str] = load_env()
 TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN") or CFG.get("TELEGRAM_BOT_TOKEN", "")
-ALLOWED_CHAT: str = _resolve_allowed_chat(CFG)
+ALLOWED_CHAT: str = _resolve_allowed_chat_safe(CFG)
 API: str = f"https://api.telegram.org/bot{TOKEN}"
 
 # Modes
@@ -752,6 +766,14 @@ def _install_signal_handlers() -> None:
 def main() -> None:
     if not TOKEN:
         sys.exit(f"Missing TELEGRAM_BOT_TOKEN (put it in {ENV_FILE})")
+    if not ALLOWED_CHAT:
+        # SECURITY: refuse to start with an empty filter. Import stays safe
+        # (see _resolve_allowed_chat_safe); only a real start is blocked.
+        sys.exit(
+            "FATAL SECURITY: no CHAT_ID configured. Set ZYVO_TELEGRAM_CHAT_ID "
+            f"or TELEGRAM_CHAT_ID in {ENV_FILE} before starting the bot. "
+            "Refusing to start with an open filter."
+        )
     try:
         subprocess.Popen(["termux-wake-lock"])
     except Exception:
