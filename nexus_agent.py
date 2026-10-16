@@ -254,6 +254,50 @@ def api_status() -> Dict[str, Any]:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# /api/diag — تشخيص مفصّل: مصدر الملف، حالة المحرك، قائمة المسارات
+# ═══════════════════════════════════════════════════════════════════════
+@app.get("/api/diag")
+def api_diag() -> Dict[str, Any]:
+    """تشخيص فوري للبوابة: أي ملف مشغّل، هل المحرك حيّ، وكم مسار في كل طبقة."""
+
+    def _paths(router: Any) -> List[str]:
+        out: List[str] = []
+        try:
+            for r in getattr(router, "routes", []):
+                p = getattr(r, "path", None) or getattr(r, "path_format", None)
+                if p:
+                    out.append(str(p))
+        except Exception:
+            pass
+        return out
+
+    _mod = globals().get("_engine")
+    engine_app = getattr(_mod, "app", None) if _mod is not None else None
+    parent_paths = _paths(app)
+    engine_paths = _paths(engine_app) if engine_app is not None else []
+    return {
+        "ok": True,
+        "loaded_from": str(Path(__file__).resolve()),
+        "version": _wb._app_version(),
+        "port": int(os.environ.get("NEXUS_PORT", "8080")),
+        "engine_ok": bool(ENGINE_OK),
+        "engine_err": ENGINE_ERR or None,
+        "council_ok": bool(COUNCIL_OK),
+        "council_err": COUNCIL_ERR or None,
+        "mounts": {
+            "engine": "/ (catch-all — unified_agent)",
+            "workbench": "main.py parent app",
+        },
+        "routes_winning": "parent + gateway routes beat engine catch-all",
+        "parent_routes_count": len(parent_paths),
+        "engine_routes_count": len(engine_paths),
+        "parent_routes": sorted(parent_paths),
+        "engine_routes": sorted(engine_paths),
+        "sys_path_head": sys.path[:6],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # /api/agents — الوكلاء المدمجون (حقيقي، من السجلّ لا رقم مكتوب يدويًا)
 # ═══════════════════════════════════════════════════════════════════════
 @app.get("/api/agents")
@@ -435,6 +479,50 @@ def api_genome_reset(agent_id: str) -> Any:
     if agent is None:
         raise HTTPException(status_code=404, detail="agent not found")
     return agent
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# /api/mcp/tools — طقم أدوات MCP لسطح الإطار (30 أداة) — للعرض في الواجهة
+# ═══════════════════════════════════════════════════════════════════════
+_MCP_SERVER: Any = None
+
+
+def _framework_mcp_server() -> Any:
+    """يُبنى مرّة واحدة (lazy) ويعاد استخدامه — بناء الوكلاء ليس مجانياً."""
+    global _MCP_SERVER
+    if _MCP_SERVER is None:
+        from src.mcp.framework import build_framework_server
+        _MCP_SERVER = build_framework_server(root=BASE_DIR)
+    return _MCP_SERVER
+
+
+def _mcp_group(name: str) -> str:
+    if name.startswith("agent_"):
+        return "agents"
+    if name.startswith("git_"):
+        return "git"
+    if name.startswith("security_"):
+        return "security"
+    return "workspace"
+
+
+@app.get("/api/mcp/tools")
+def api_mcp_tools() -> Dict[str, Any]:
+    """أدوات خادم MCP لسطح الإطار: الاسم، الوصف، والمجموعة، ومخطّط الإدخال."""
+    try:
+        specs = _framework_mcp_server().list_tools()["tools"]
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}", "total": 0, "tools": []}
+    tools = [
+        {
+            "name": t.get("name", ""),
+            "description": t.get("description", ""),
+            "group": _mcp_group(t.get("name", "")),
+            "input_schema": t.get("inputSchema", {}),
+        }
+        for t in specs
+    ]
+    return {"ok": True, "total": len(tools), "tools": tools}
 
 
 # ═══════════════════════════════════════════════════════════════════════

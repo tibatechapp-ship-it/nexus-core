@@ -820,3 +820,36 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   returns my SSE (groq_01/02), council stream → session/round/5×member_start/
   10×member_message/consensus/verdict/done (10.5 KB), 50 sessions persisted,
   genome loop moved standings (analyst 57.7→57.9, critic 32.2→32.6, runs→101).
+
+## v1.13 dev-ergonomics (2026-10-16) — diag + dev_check + pre-commit
+- `/api/diag` (nexus_agent.py, after `/api/status`): loaded_from, version,
+  engine_ok/err, council_ok/err, mounts, routes_winning, **parent_routes(36)**
+  + **engine_routes(53)** sorted lists, sys_path_head. GOTCHA fixed mid-build:
+  the engine is stored as the MODULE `_engine` (not `.app`) — must read
+  `_engine.app.routes` or engine_routes_count is 0. Test added:
+  `test_diag_reports_mounts_and_routes` in tests/test_nexus_agent.py (12 total).
+- `scripts/dev_check.sh` (NEW, chmod 755): the 4 gates in one command —
+  `ruff check .` → `mypy zyvo-telegram.py zyvo-voice.py src` →
+  `python scripts/check_annotations.py` → `pytest --ignore=tests/novamind -q`.
+  Current: ALL GREEN, 2165 passed.
+- `index.html` header `#hstat`: after health boot, fetches `/api/diag` and shows
+  `online · engine OK` (or `· engine ERR`). Verified by headless chromium
+  `--dump-dom`: `id="hstat" ... online · engine OK`. All 3 inline script blocks
+  pass `node --check`.
+- `.pre-commit-config.yaml` REWRITTEN (was stale NovaMind-era, rev v5.0.0/
+  0.8.4). Now: hygiene hooks (trailing-whitespace, end-of-file-fixer,
+  check-yaml/toml, detect-private-key, large-files) + LOCAL `language: system`
+  hooks mirroring dev_check.sh — ruff (staged .py), check-annotations
+  (commit), mypy + pytest (pre-push stage). `language: system` avoids hook-env
+  downloads (Termux-friendly). `pre-commit` installed (4.7.0),
+  `pre-commit validate-config` → CONFIG VALID, ruff+check-annotations hooks run
+  Passed.
+- ❗ LESSON (Termux/repo): `pre-commit run --all-files` with a NEW
+  trailing-whitespace hook reformatted **136 files** at once. Recover WITHOUT
+  losing real edits: `for f in $(git diff --name-only); do git diff -w --quiet
+  -- "$f" && git checkout -- "$f"; done` — reverts whitespace-ONLY files, keeps
+  files with real changes (5 kept). Note the first deliberate commit will still
+  do a one-time whitespace cleanup across ~130 files.
+- Files touched: nexus_agent.py, index.html, tests/test_nexus_agent.py,
+  .pre-commit-config.yaml (M) + scripts/dev_check.sh (NEW). tests/test_orchestrator.py
+  got a ruff --fix (unused imports). No commit made (user reviews).

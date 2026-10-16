@@ -105,6 +105,34 @@ def test_status_reports_unified_components(env):
     assert isinstance(comps["topics"], int) and comps["topics"] > 0
 
 
+def test_diag_reports_mounts_and_routes(env):
+    """``/api/diag``: مصدر الملف، حالة المحرّك، وعدّادات المسارات حقيقية."""
+    mod, client, _store = env
+    body = client.get("/api/diag").json()
+    assert body["ok"] is True
+    assert body["loaded_from"].endswith("nexus_agent.py")
+    assert body["engine_ok"] is True
+    assert body["council_ok"] is True
+    # المحرّك المفروز يملك مسارات فعلية (كان يُعدّ 0 قبل إصلاح _engine.app)
+    assert body["engine_routes_count"] > 0
+    assert body["parent_routes_count"] > 0
+    assert "/api/diag" in body["parent_routes"]
+    assert body["version"] == mod._wb._app_version()
+
+
+def test_mcp_tools_lists_framework_surface(env):
+    """``/api/mcp/tools`` يعرض سطح أدوات MCP (وكلاء + أمان + ملفات + git)."""
+    _mod, client, _store = env
+    body = client.get("/api/mcp/tools").json()
+    assert body["ok"] is True
+    assert body["total"] >= 25
+    groups = {t["group"] for t in body["tools"]}
+    assert {"agents", "security", "workspace", "git"} <= groups
+    names = {t["name"] for t in body["tools"]}
+    assert "agent_analyst" in names
+    assert "git_status" in names
+
+
 def test_engine_mounted_as_catch_all(env):
     """المحرّف (unified_agent) مثبّت خلف كل المسارات — الوالد يفوز أولاً."""
     mod, client, _store = env
