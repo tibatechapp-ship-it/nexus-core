@@ -31,6 +31,10 @@ Thumbs.db
 # Certification reports
 reports/certification/
 reports/reports.db
+# pip freeze dumps are regenerable environment snapshots, not dependency
+# manifests — dependabot reads any *.txt under the configured directory as a
+# requirements file and opens bogus “bump” PRs against it.
+/reports/pip-*.txt
 # Runtime data dirs — anchored to the repo root so they do NOT shadow the
 # source packages src/memory/ and src/**/data/ (e.g. src/novamind/registry/data).
 /data/
