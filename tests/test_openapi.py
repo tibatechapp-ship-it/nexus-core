@@ -116,3 +116,34 @@ def test_spec_no_phantom_fields():
     txt = _SPEC.read_text(encoding="utf-8")
     for lie in ("size_bytes:", "proof.command", "success:"):
         assert lie not in txt, f"المواصفة تعد بحقل غير منفَّذ: {lie}"
+
+
+# ────────────────────────── version lockstep (F2 guard) ──────────────────────────
+
+def _spec_version() -> str:
+    """`info.version` من المواصفة (أول تطابق لصف version داخل info)."""
+    match = re.search(
+        r"^\s+version:\s*['\"]?([\d.]+)['\"]?\s*$",
+        _SPEC.read_text(encoding="utf-8"), re.M)
+    assert match, "لا يوجد info.version في المواصفة"
+    return match.group(1)
+
+
+def test_spec_version_matches_package_version():
+    """`info.version` في المواصفة = `src.__version__` (المصدر الواحد).
+
+    هذا هو الثقب الذي سبّب F2: بقي `docs/openapi.yaml` على 1.12.1 ثلاثة
+    إصدارات بينما التطبيق تقدّم، ولم يكن هناك أي اختبار يلاحظ.
+    """
+    from src import __version__
+
+    assert _spec_version() == __version__, (
+        f"انحراف إصدار المواصفة: openapi.yaml={_spec_version()} "
+        f"vs src.__version__={__version__}"
+    )
+
+
+def test_health_version_matches_spec(client):
+    """`/api/health` يعلن نفس إصدار المواصفة — لا مصدر ثالث متقادم."""
+    c, _ = client
+    assert c.get("/api/health").json()["version"] == _spec_version()
