@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -34,6 +36,15 @@ from src.skills.loader import SkillLoader
 
 _AGENT_SCAFFOLD = frozenset({"base", "registry", "state", "sub_agent", "communication", "metrics"})
 """وحدات بنية تحتية في src/agents — ليست وكلاء (نفس منطق nexus_agent)."""
+
+_REVIEW_SCRIPT = Path(tempfile.gettempdir()) / "run_5_agents.py"
+"""سكريبت مراجعة الـ5 وكلاء الذي ينسخه ``nexus review``.
+
+يُبنى على ``tempfile.gettempdir()`` (يحترم ``$TMPDIR``) فلا يثبّت مسار Termux
+على منصّات أخرى — على Termux يعطي نفس المسار السابق تمامًا.
+"""
+_REVIEW_DYN = Path(tempfile.gettempdir()) / "review_dynamic.py"
+"""مخرَج ``nexus review`` المؤقت (السكريبت بعد توجيهه إلى المشروع)."""
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -191,22 +202,25 @@ def cmd_chat(args: argparse.Namespace) -> int:
 def cmd_review(args: argparse.Namespace) -> int:
     """مراجعة مشروع عبر 5 وكلاء."""
     import subprocess
-    
+
     path = Path(args.path).expanduser().resolve()
     if not path.exists():
         print(f"❌ المسار غير موجود: {path}")
         return 1
-    
-    # استخدم السكريبت الموجود
-    script = Path("/data/data/com.termux/files/usr/tmp/run_5_agents.py")
+
+    # استخدم السكريبت الموجود (مسار مؤقت محمول — انظر _REVIEW_SCRIPT)
+    script = _REVIEW_SCRIPT
     if script.exists():
-        # نسخه إلى الهدف
         content = script.read_text()
-        content = content.replace(
-            'TARGET = Path("/data/data/com.termux/files/usr/tmp/wifi-chat-review")',
-            f'TARGET = Path("{path}")'
+        # وجّه السكريبت إلى المشروع المطلوب: استبدل أي سطر TARGET = Path("...")
+        content = re.sub(
+            r'^TARGET = Path\(".*"\)',
+            lambda _m: f'TARGET = Path("{path}")',
+            content,
+            count=1,
+            flags=re.MULTILINE,
         )
-        tmp_script = Path("/data/data/com.termux/files/usr/tmp/review_dynamic.py")
+        tmp_script = _REVIEW_DYN
         tmp_script.write_text(content)
         return subprocess.call(["python3", "-u", str(tmp_script)])
     else:
