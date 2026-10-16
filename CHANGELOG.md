@@ -2,6 +2,29 @@
 
 All notable changes to this project. Newest first.
 
+## v1.13.4 — 2026-10-16
+**المجلس الحيّ: تسمية العضو السادس «Tork Acil» + تثبيت الإصدار.**
+- `src/novamind/council/council.py`: `id="turk"`/`name="Turk"` →
+  `id="tork_acil"`/`name="Tork Acil"` (والشخصية `system=` تواكب الاسم الجديد).
+  العضو الأول في `COUNCIL_MEMBERS` (رئيس الجلسة) يبقى محافظًا على دوره.
+- الإصدار المعلَن كان متأخرًا عن الواقع منذ v1.13.3: `pyproject.toml` و
+  `CHANGELOG` لم يُحدَّثا، فـ `/api/health` و `/api/status` كانا يبلّغان
+  `1.13.1.1`. الآن الإصدار = **1.13.4** من مصدر واحد
+  (`pyproject.toml` → `src.__version__` → `docs/openapi.yaml` + `SCOPE.md`).
+- ملاحظة توافق: الجلسات المحفوظة قبل v1.13.3 تبقى بـ 5 أعضاء في قاعدة
+  البيانات كما هي (لا ترحيل — السجل التاريخي يُحفظ كما كان).
+
+## v1.13.3 — 2026-10-16
+**Council: عضو سادس (رئيس الجلسة) — 5 → 6 أعضاء.**
+- `src/novamind/council/council.py`: `CouncilMember` جديد في مقدمة
+  `COUNCIL_MEMBERS` — رئيس جلسة Council وعضوها الأول: يفتح النقاش بتحديد
+  نطاق السؤال، يوزّع المهام حسب التخصص، يجمع الآراء ويلخّصها، يقترح القرار
+  النهائي، ثم يسلّم الكلمة للخبير للتحقق. القدرات: ابتكار + حماية مصالح +
+  رصد مخاطر + برمجة كاملة (frontend/backend/devops/security).
+- الأثر: `council_members` في `/api/status` = 6، والجلسات الجديدة
+  تبدأ بالرئيس ثم تتابع بقية الأعضاء (analyst → critic → visionary →
+  pragmatist → expert). `MAX_MEMBERS=7` بقي كما هو (هامش لعضو سابع).
+
 ## v1.13.1.1 — 2026-10-16
 **Error memory wired into the LLM router — every provider failure is recorded.**
 - `src/novamind/core/llm_router.py`: guarded import (`HAS_ERROR_MEMORY` +

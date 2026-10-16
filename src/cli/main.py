@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from src import __version__
 from src.sessions.manager import SessionManager
 from src.skills.loader import SkillLoader
 
@@ -306,7 +307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="nexus",
         description="Nexus-Core CLI — واجهة موحدة لوكلاء nexus-core",
     )
-    parser.add_argument("-v", "--version", action="version", version="nexus-core 1.13.0")
+    parser.add_argument("-v", "--version", action="version", version=f"nexus-core {__version__}")
     
     sub = parser.add_subparsers(dest="command", help="الأوامر المتاحة")
     
