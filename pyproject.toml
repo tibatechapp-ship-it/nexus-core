@@ -47,7 +47,7 @@ novamind = [
     "aiofiles",
     "jinja2",
     "pyyaml",
-    "sqlalchemy>=2.0.35",
+    "sqlalchemy>=2.1.4",
     "aiosqlite>=0.20.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
