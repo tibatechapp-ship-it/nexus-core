@@ -58,3 +58,4 @@ chk.sh
 # Audit logs (generated)
 audit_report.txt
 *.audit
+ollama_keys.txt

@@ -1,0 +1,42 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# ncouncil-project — Council لمشروع Nexus-Core فقط
+
+if [ $# -eq 0 ]; then
+    echo "📋 الاستخدام: ncouncil-project \"موضوع المشروع\" [عدد الجولات]"
+    echo ""
+    echo "✅ أمثلة:"
+    echo "  ncouncil-project \"كيف أحسن أداء NovaMind؟\" 3"
+    echo "  ncouncil-project \"ما أفضل بنية للـ 79 وكيل؟\" 2"
+    echo "  ncouncil-project \"كيف أضيف وكيل أمان؟\" 2"
+    echo "  ncouncil-project \"مراجعة كود unified_agent.py\" 2"
+    echo "  ncouncil-project \"كيف أحسن Council؟\" 2"
+    exit 1
+fi
+
+TOPIC="$1"
+ROUNDS="${2:-2}"
+
+# قائمة الكلمات المفتاحية للمشروع
+PROJECT_KEYWORDS="nexus|novamind|council|agent|genome|memory|hive|zyvo|code|python|api|database|sql|docker|architecture|design|performance|security|مشروع|كود|برمجة|تطبيق|نظام|أمان|أداء|بنية|وكيل|مطور|وكلاء|نوفا|نيكسوس|مجل[سس]|ذاكرة|جينوم"
+
+# التحقق من الموضوع
+if ! echo "$TOPIC" | grep -qiE "$PROJECT_KEYWORDS"; then
+    echo "❌ الموضوع غير متعلق بمشروع Nexus-Core!"
+    echo ""
+    echo "✅ مواضيع مسموحة:"
+    echo "  • Nexus-Core, NovaMind, Council"
+    echo "  • الوكلاء, Genome, Memory, Hive"
+    echo "  • الكود, البرمجة, API, Database"
+    echo "  • البنية, الأداء, الأمان"
+    echo ""
+    echo "💡 مثال:"
+    echo "  ncouncil-project \"كيف أحسن أداء NovaMind؟\" 3"
+    exit 1
+fi
+
+echo "✅ الموضوع متعلق بالمشروع"
+echo "🏛️  تشغيل Council..."
+echo ""
+
+# استدع ncouncil
+ncouncil "$TOPIC" "$ROUNDS"

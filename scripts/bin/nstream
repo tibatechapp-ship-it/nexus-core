@@ -1,0 +1,31 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# nstream — دردشة مع Nexus-Core مع Streaming مباشر
+
+if [ $# -eq 0 ]; then
+    echo "الاستخدام: nstream \"سؤالك\""
+    exit 1
+fi
+
+PROMPT="$1"
+CONV="${2:-stream-$(date +%s)}"
+
+curl -N -s -X POST http://127.0.0.1:8080/api/chat \
+    -H "Content-Type: application/json" \
+    -d "{\"message\": \"$PROMPT\", \"conversation_id\": \"$CONV\"}" \
+    2>/dev/null | while IFS= read -r line; do
+        if [[ "$line" == data:* ]]; then
+            content="${line#data: }"
+            echo "$content" | python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read().strip())
+    if d.get('type') == 'chunk':
+        print(d.get('content', ''), end='', flush=True)
+    elif d.get('type') == 'plan':
+        print('\033[0;36m📋 ' + d.get('content', '') + '\033[0m', flush=True)
+except: pass
+" 2>/dev/null
+        fi
+    done
+echo ""
+echo ""
