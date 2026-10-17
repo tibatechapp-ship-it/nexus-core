@@ -147,3 +147,35 @@ def test_health_version_matches_spec(client):
     """`/api/health` يعلن نفس إصدار المواصفة — لا مصدر ثالث متقادم."""
     c, _ = client
     assert c.get("/api/health").json()["version"] == _spec_version()
+
+
+# ────────────────────────── spec integrity ──────────────────────────
+
+def test_spec_is_valid_yaml():
+    """المواصفة تُقرأ بمحلّل YAML حقيقي — لا بـregex فقط.
+
+    عُثر على علّة كامنة: ثلاث قيم ``description`` تضمّنت ``{...: ...}`` داخل
+    scalar عادي، فأي محلّل YAML صحيح (وكذلك Swagger-UI والمحقّقات) كان يفشل
+    على الملف رغم خضور اختبارات المسارات (لأنها كانت تقرأ بـ``re``).
+    """
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(_SPEC.read_text(encoding="utf-8"))
+    assert str(doc["openapi"]).startswith("3.")
+    assert doc["paths"], "المواصفة بلا مسارات"
+    assert doc["info"]["version"] == _spec_version()
+    # كل مسار موثّق يحمل استجابة واحدة على الأقل
+    for path, ops in doc["paths"].items():
+        for verb, op in ops.items():
+            assert op.get("responses"), f"{verb.upper()} {path} بلا استجابات"
+
+
+def test_every_mutating_route_documents_the_guard():
+    """كل مسار متغيّر موثّق يشرح 401/429 — لأن الحارس يعترضها قبل التنفيذ."""
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(_SPEC.read_text(encoding="utf-8"))
+    for path, ops in doc["paths"].items():
+        for verb, op in ops.items():
+            if verb not in ("post", "put", "patch", "delete"):
+                continue
+            codes = set(op["responses"])
+            assert {"401", "429"} <= codes, f"{verb.upper()} {path} بلا 401/429"
