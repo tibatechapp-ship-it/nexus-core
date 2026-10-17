@@ -9,7 +9,18 @@ info:
     ERROR MODEL (read first): /api/craft and /api/build answer HTTP 200 even on
     functional failures (LLM error, unsafe path, py_compile failure) with
     ok=false. Always check `ok` and `proof.ok`. Non-200 codes are protocol-level
-    only: 401 (auth enabled but token missing/wrong), 400 (malformed JSON body).
+    only: 401 (auth enabled but token missing/wrong), 429 (rate limit exceeded),
+    400 (malformed JSON body), 404 (unknown id/asset).
+
+    ACCESS GUARD (unified gateway only): the launcher `nexus_agent.py` installs
+    ONE HTTP middleware in front of every route — optional token auth
+    (`NEXUS_AUTH_TOKEN`, header `X-Auth-Token`), a per-client rate limit
+    (`NEXUS_RATE_LIMIT` / `NEXUS_RATE_WINDOW`, default 120 per 60s) and an
+    optional JSONL audit log (`NEXUS_AUDIT_LOG`). Only mutating methods
+    (POST/PUT/PATCH/DELETE) are guarded; GET always passes. With the guard off
+    (its defaults for auth/audit, or `NEXUS_RATE_LIMIT=0`) this spec describes
+    the standalone `main.py` behaviour exactly. Denied calls return
+    `{"ok": false, "error": "..."}`; a 429 also carries `Retry-After`.
   contact:
     name: tibatechapp-ship-it
     url: https://github.com/tibatechapp-ship-it/nexus-core
@@ -96,6 +107,10 @@ paths:
                 type: object
                 properties:
                   error: {type: string, example: "الاستعلام فارغ"}
+        '401':
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
+        '429':
+          description: the gateway rate limit is exhausted (Retry-After header set)
 
   /api/history:
     get:
@@ -107,7 +122,7 @@ paths:
         - {name: limit, in: query, schema: {type: integer, default: 10, minimum: 1, maximum: 200}}
       responses:
         '200':
-          description: list (or {"error", "items": []} on storage failure)
+          description: 'list (or {"error", "items": []} on storage failure)'
           content:
             application/json:
               schema:
@@ -130,7 +145,7 @@ paths:
         - {name: rec_id, in: path, required: true, schema: {type: string}}
       responses:
         '200':
-          description: full record (or {"error": "not found"})
+          description: 'full record (or {"error": "not found"})'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Decision'}
@@ -142,7 +157,7 @@ paths:
       operationId: getStats
       responses:
         '200':
-          description: OK ({"total": 0} when no decisions stored yet)
+          description: 'OK ({"total": 0} when no decisions stored yet)'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Stats'}
@@ -192,7 +207,9 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/CraftBuildResult'}
         '401':
-          description: CRAFT_AUTH_TOKEN is set and X-Craft-Token header missing/wrong
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
+        '429':
+          description: the gateway rate limit is exhausted (Retry-After header set)
 
   /api/builds:
     get:
@@ -270,7 +287,9 @@ paths:
                   ok: true
                 review: {verdict: "approve", score: 0.85}
         '401':
-          description: CRAFT_AUTH_TOKEN is set and X-Craft-Token header missing/wrong
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
+        '429':
+          description: the gateway rate limit is exhausted (Retry-After header set)
 
   /api/review:
     post:
@@ -307,6 +326,10 @@ paths:
                 score: 0.78
                 recommendation: "تقوية التحقق من المدخلات"
                 transcript: []
+        '401':
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
+        '429':
+          description: the gateway rate limit is exhausted (Retry-After header set)
         '400':
           description: invalid JSON, empty path, or path containing '..'
         '403':
@@ -321,6 +344,7 @@ paths:
 components:
   securitySchemes:
     CraftToken: {type: apiKey, in: header, name: X-Craft-Token, description: required only if CRAFT_AUTH_TOKEN env is set}
+    AccessToken: {type: apiKey, in: header, name: X-Auth-Token, description: required on mutating methods only when the unified gateway runs with NEXUS_AUTH_TOKEN set}
   schemas:
     Health:
       type: object
