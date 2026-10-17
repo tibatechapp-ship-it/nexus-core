@@ -1610,3 +1610,94 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   test-locked → its rename+version rides the docs commit.
 - NEXT (v1.16.0): wire `genome_v2.observe_outcome` to real agent runs (the task
   channel is built+tested but unpopulated in production).
+
+## Access guard — ENABLED live (2026-10-18) + console token shim
+- The guard is now **child processus du service** delivery: `$PREFIX/var/service/
+  nexus-core/run` ends with
+  `exec chpst -e /data/data/com.termux/files/usr/var/service/nexus-core/env python3 nexus_agent.py 2>&1`.
+  Token lives in `env/NEXUS_AUTH_TOKEN` (chmod 600) and is read at import time.
+- ❗ **runit does NOT apply the `env/` dir on its own** — a service must call
+  `envdir`/`chpst -e` in its `run`. Evidence: writing `env/NEXUS_TEST_PROBE`
+  never showed in the process environ. AND the path must be **ABSOLUTE** — the
+  run script `cd`s into the repo first, so `chpst -e env` resolved to
+  `nexus-core/env` → `chpst: fatal error: env: does not exist` and the service
+  went `down`. (Verified working after the fix: `chpst -e <abs env>` passes
+  `NEXUS_AUTH_TOKEN` through while keeping PATH.)
+- `.env` must NOT carry `NEXUS_AUTH_TOKEN`: `load_dotenv()` in `main.py:29` and
+  `unified_agent.py:33` leaks it into pytest → 6 `tests/test_nexus_agent.py`
+  failures (401s + a KeyError in the genome import). Removed from `.env`; the
+  service takes it from the env dir instead. Backup of the old `.env` in
+  `$TMPDIR/nexus.env.bak-*`; `run` backup in `$TMPDIR/nexus-run.bak-*`.
+- NEW `tests/test_ui_auth_shim.py` (13): source drift guards for the shim in
+  BOTH consoles + behavioural node runs; `tests/conftest.py` now clears
+  `NEXUS_AUTH_TOKEN`/`NEXUS_RATE_LIMIT`/`NEXUS_RATE_WINDOW`/`NEXUS_AUDIT_LOG`
+  at import so a developer's own guard config can never 401 the suite.
+- Console shim (in `index.html` + `web/unified_ui.html`): no-op unless a token
+  is stored; bootstrap from `/?token=XXX` (stores once + scrubs the URL);
+  wraps `fetch` and `XMLHttpRequest` for POST/PUT/PATCH/DELETE only and adds
+  `X-Auth-Token`. GETs stay untouched.
+- LIVE VERIFY (service :8000, pid 28790, version 1.15.0):
+  `POST /api/training/evolve` no token → **401**, bad token → **401**, good
+  token → **200**, `GET /api/training/status` → **200**;
+  `/api/status["guard"]` = `{auth: true, header: x-auth-token, rate: 120,
+  window: 60.0, audit: null, methods: [DELETE, PATCH, POST, PUT]}`.
+- ❗ STALE ORPHAN SWEEP: `sv restart` had left a DUPLICATE `nexus_agent.py`
+  (pid 22286, ppid=1 orphan, holding the OLD `.env` token). `pgrep -af
+  "nexus_agent[.]py"` then kill the non-supervised PID — only the pid from
+  `sv status nexus-core` is live. After the sweep: exactly 1 process.
+- GATES GREEN: ruff clean (excluding the unrelated untracked `exec_sandbox.py`)
+  · annotations 162 · mypy 162 · real gate **2909 passed, 1 skipped @ 100.00%**
+  (9260 stmts / 2004 branches).
+- SHIPPED: `b42aa37` feat(ui) token shim · `1566537` test(hermetic) conftest
+  guard-env clear — pushed to origin + gitlab (both at `1566537`).
+- ⚠ UNRELATED WIP in the tree, deliberately UNTOUCHED: `M nexus_agent.py`
+  (exec-sandbox mount, v3.2.0), `M web/sw.js` (rewritten v3.2.0),
+  `?? exec_sandbox.py` (ruff E401/E701) — never swept into these commits.
+- NEXT (repeat of v1.16.0): wire `genome_v2.observe_outcome` to real agent runs;
+  a real headless render test of the two consoles WITH the shim active; then
+  the v1.16.0 release.
+
+## v1.16.0 — the task channel is LIVE (2026-10-18) — feature/novamind-factory
+- GOAL: `genome_v2.observe_outcome` (the second, task-outcome channel) existed
+  and was tested, but NOTHING called it in production. Now every real
+  `/api/chat` run feeds it.
+- ❗ ROOT CAUSE — "one file, two names = two genomes". `src/novamind/genome_v2.py`
+  is importable as BOTH `novamind.genome_v2` and `src.novamind.genome_v2`; each
+  spelling = a separate module object = a separate **in-memory** singleton (the
+  genome has NO persistence). Proven: `novamind.genome_v2 is
+  src.novamind.genome_v2` → **False**. So the Council (verdicts) and the
+  training loop (runs) could feed two unconnected genomes.
+- FIX: pin the canonical spelling `src.novamind.genome_v2` FIRST in the fallback
+  tuples (`src/novamind/training/field.py::_genome_obj`,
+  `src/novamind/training/engine.py::_feed_genome`) — the same spelling
+  `src/council/engine.py` and `nexus_agent.py` already use. Every production
+  consumer now uses `src.`; only one TEST used the other name.
+- STALE TEST: `tests/test_training_engine_hardening.py::test_the_one_way_genome_
+  feed_still_works_without_the_loop` read the genome via
+  `import_module("novamind.genome_v2")` (copy #2) → went red; fixed to the
+  canonical spelling.
+- NEW `nexus_agent.py::_record_task_outcome(agent_id, ok, duration, task)` +
+  the `/api/chat` generator wrapped in `try/finally` with `time.monotonic()`
+  timing: a completed answer = success, no provider / generation error =
+  failure, and an **empty message is not recorded at all** (`ran` flag) so an
+  accidental empty send can never pollute the fitness. Fail-safe: every genome
+  error is swallowed ⇒ a broken genome can never break a chat.
+- NEW `tests/test_nexus_agent.py` +5 (`_DeadRouter`, `_capture_outcomes` — the
+  fake monkeypatches the string `"src.novamind.genome_v2.get_genome_v2"`, so the
+  real singleton is never touched): records success, records failure, a broken
+  genome still streams, the agent id defaults, and an empty message records
+  nothing.
+- GATES: ruff clean **except the unrelated `exec_sandbox.py` WIP** (18 errors,
+  not mine) · annotations **162** · mypy **162** · real gate **2915 passed,
+  1 skipped @ 100.00%** (9260 stmts / 2004 branches).
+- ❗ WIP ISOLATION (learned this session): the unfinished v3.2.0 work
+  (`exec_sandbox.py` + its mount in `nexus_agent.py`) was PARKED so the diff was
+  clean — `git diff nexus_agent.py > $TMPDIR/wip-nexus.patch` then
+  `git stash push -m "wip: v3.2.0 exec_sandbox mount" -- nexus_agent.py`.
+  WIP VERIFICATION (read-only, done): exec_sandbox WAS mounted (log
+  `✅ exec_sandbox مركّب`); routes live = `GET /api/exec/tools` → 200,
+  `POST /api/exec` → 401 without a token.
+- ❗ A block-shaped `edit` inserted a PLACEHOLDER junk line
+  (`from scipy_guard import unused`) into a test — caught by the gate run.
+  Lesson: after a multi-line insert, READ the result and run the suite; never
+  trust the diff of an edit you did not re-read.
