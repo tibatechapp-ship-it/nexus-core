@@ -1475,3 +1475,43 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   `--cov` warning — all read from the KB (first attempt hit a provider 429 OTPM;
   the second succeeded via groq_01).
 
+
+## P2 — skills layer (layer 3): repo seed + prompt injection + `/api/skills` (2026-10-18)
+- Branch `feature/novamind-factory`. The 5 skills in `~/.config/nexus/skills`
+  were shipped but **read by NOTHING**; now the repo carries its own seed and the
+  agents actually receive their skills.
+- `src/skills/loader.py`: `SEED_DIR = <repo>/skills` (new), `DEFAULT_SKILLS`
+  (5: code-review, security-audit, architecture-review, documentation, testing),
+  `SkillLoader(base_dir=SKILLS_DIR, seed_dir=None)`, `_dirs()` (user dir FIRST,
+  so a user file WINS on a name clash), `list_skills()` = union of both dirs,
+  `sources()`. `seed_dir=None` keeps the old single-dir behaviour.
+- NEW repo seed `skills/<name>/SKILL.md` (5 files, tracked).
+- NEW `src/skills/inject.py`: `DEFAULT_LIMIT=3`, `get_skill_loader()` singleton
+  (`seed_dir=SEED_DIR`) + `reset_skill_loader()`, `agent_skill_names(agent)`
+  (reads `AgentManifest.skills` — the manifest stays the SINGLE source of which
+  skills an agent has), `render_skills()` (header `### المهارات المُفعَّلة (Skills)`
+  + `<!-- skills: … -->`), `skills_block()`, `inject_skills_into_prompt(text,
+  agent, loader, limit)` (empty block → text unchanged; empty text → block only).
+- `src/skills/api.py` (NEW): `GET /api/skills` (count + name/description +
+  sources), `GET /api/skills/{name}` (404 when unknown); `register(app, loader)`
+  uses `app.router.routes.extend(...)` (the deferred-`include_router` fix).
+  `src/skills/__init__.py` exports loader+inject only — `api` is NOT imported
+  there, so the package stays FastAPI-free.
+- WIRING: `nexus_agent.py::_agent_system(agent_id, task)` appends the skills
+  block AFTER the knowledge block; each layer is independently `try/except` so a
+  broken layer degrades to the plain prompt (chat never breaks). `unified_agent.py`
+  tail mounts the routes (`SKILLS_OK`/`SKILLS_ERR`) like training/knowledge.
+- GATES GREEN: ruff clean · mypy **161** · annotations **161** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2815 passed,
+  1 skipped @ 100.00%**; `src/skills` 100% (158 stmts / 56 branches).
+- LIVE (`:8000` after `sv restart nexus-core`, pid 16829): `/api/skills` → 5,
+  `/api/skills/code-review` → 200, unknown → 404, `/api/knowledge` +
+  `/api/training/status` intact, and a real `/api/chat {agent:coder}` answered
+  with the coder's own manifest skills (code-review + testing) → the injection
+  reaches the model.
+- ❗ Editing `unified_agent.py` with a block-shaped edit DUPLICATED the
+  knowledge `try:` line (two `try:` in a row → SyntaxError, and `ENGINE_OK`
+  silently became False → 3 test_nexus_agent failures). Always `ast.parse` the
+  file after a tail edit; `import`-probe a by-path module to catch it.
+- Optional-extra coverage lesson re-applied: a `list_skills()` name that
+  `load()` cannot resolve must be skipped, not fatal — tested explicitly.
