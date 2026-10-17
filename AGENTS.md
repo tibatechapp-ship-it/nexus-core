@@ -1319,3 +1319,76 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   for `claimed != certified`; the winner that day was `planner@0.76`.
 - Legacy `Trainer` path (`novamind/core/training/`) does NOT use this loop —
   wiring it in is a later step; the loop currently binds to `TrainingEngine` runs.
+
+## P4.5 — Academy 🎓 dashboard (2026-10-18) — feature/novamind-factory
+- Goal: the training stack gets a FACE. Panel inside `web/unified_ui.html`
+  (buttons `#btnAcademy` "Agent Academy" → `#academyModal`) with 3 tabs:
+  **مراحل** (stages, `GET /api/training/plan/{agent}`), **دروس** (lessons,
+  `GET /api/training/lessons?agent_id=`), **لياقات** (fitness,
+  `GET /api/training/fitness`) + أزرار `تحديث` / `إعادة تدريب`
+  (`POST /api/training/evolve`). AR+EN i18n via the existing `t()` table.
+- BACKEND ADDITIONS (P4.5):
+  * `field.py`: `_NEUTRAL_FITNESS = 0.5` + `_clamp_limit(limit)` (shared by
+    `lessons()` and the new `fitness()`); `FieldLoop.fitness(limit=50)` returns
+    ranked rows — `agent_id, fitness, status, observations, agreements, dissent,
+    streak, best_streak, generation, retired, action, reason` — `[]` when the
+    genome is disabled/missing/broken.
+  * `engine.py`: `TrainingEngine.fitness(limit=50)` delegates to the loop and
+    returns `[]` when `field_loop=False`.
+  * `api.py`: `GET /api/training/fitness` → `{count, agents}`.
+- UI DETAILS: agent picker = `/api/training/agents` (agents that have TRAINED)
+  and falls back to the full roster `/api/agents` when nobody has trained yet —
+  so the panel is usable from a cold start. `acaLoadAgents` keeps the previous
+  selection when it still exists.
+- TESTS: `tests/test_training_field.py` fitness coverage (~11 new → 50),
+  `tests/test_training_api.py` (+fitness route + mount regression;
+  `EXPECTED_ROUTES` grew), NEW `tests/test_ui_academy.py` (9: markup/binding/tab
+  guards, AR==EN i18n key parity, training-API usage, real `node --check` when
+  node exists). GATES GREEN: ruff · mypy **155** · annotations **155** · real
+  gate **2499 passed @ 100.00%** (8755 stmts).
+- LIVE VERIFIED (headless Chromium + CDP driver
+  `<session>/academy-render.py`, spare engine `unified_agent.py` on :8010 —
+  the RUNNING :8000 service was NOT restarted for this test):
+  modal opens · 12 real curriculum stages painted · lessons tab shows the real
+  merged planner lesson · fitness tab shows `coder 0.6875 stable` +
+  `planner 0.5 gen2 (observations reset by mutation)` · evolve click → toast
+  `♻ لا يوجد ما يُطوَّر الآن` · **`window.__errs` = [] (zero JS errors)** ·
+  screenshots `academy-panel.png` (empty state) + `academy-panel-data.png`.
+- ❗ WHICH PAGE IS WHICH (cost an hour): `web/unified_ui.html` (the engine
+  console, where ALL new UI lives: council/genome/academy) is served by
+  `unified_agent.py` at **`/`** — but in the unified gateway the PARENT wins `/`
+  and serves `index.html` ("Nexus Council Console"). So `curl :8000/` NEVER
+  shows the Academy panel. To render/test engine UI, run `unified_agent.py`
+  alone on a spare port (`NOVAMIND_PORT=8010`) — or hit the engine directly.
+- ❗ CDP DRIVER BUG (new lesson): `while time.time() < deadline` where `deadline`
+  is a DURATION (30/90 s) never iterates — `time.time()` is ~1.7e9. Use
+  `end = time.monotonic() + timeout; while time.monotonic() < end`. Symptom: an
+  instant `no page target` even though `curl /json` returns a live page.
+  Also: give each chromium run a UNIQUE `--user-data-dir` (a stale
+  SingletonLock makes a relaunch exit silently without opening the debug port).
+
+## progbench — executable agent programming benchmark (2026-10-17)
+- `scripts/benchmark/progbench.py` (NEW, stdlib-only): measures agent programming
+  ability by **executing** their output, not by checking they answered. 8 tasks in
+  3 families: `exec` (write fn → import + run hidden asserts), `mutation` (write
+  tests → must PASS on a correct impl and FAIL on a mutant), `keyword` (must name
+  the concept). Calls the live gateway's `POST /api/chat` (SSE) per agent, honours
+  each agent's system prompt, writes JSON + Markdown to `reports/benchmark/`.
+  Run: `python3 scripts/benchmark/progbench.py --agents coder,tester --tasks gen_two_sum`.
+- `tests/test_progbench.py` (29, hermetic): task-bank integrity, extraction
+  (last fenced block), exec grading good/bad/timeout, mutation grading
+  strong/weak/crash, keyword grouping, `call_agent` SSE parse (monkeypatched),
+  `fetch_agents`, `summarize`, `render_markdown`. No network.
+  NOTE: loading the script by path needs `sys.modules[name] = mod` BEFORE
+  `exec_module` (dataclass annotation resolution).
+- RESULT (live :8000, 20 framework agents × 8 tasks, 1656s): **144/160 = 90%
+  pass@1, 0 errors**. Per task: tests_slugify **35%** (mutation — the hard one);
+  gen_merge_intervals/gen_lru_cache/tool_git_history 95%; two_sum/palindrome/
+  binary_search/sql_injection 100%. Per agent: tester/debugger/designer/devops/
+  recovery 8/8; analyst 6/8; the rest 7/8. Report:
+  `reports/benchmark/progbench-20261017-173148.{json,md}`.
+- SLOW-CALL NOTE: a few calls take 35-105s (provider 429 → rotate/cooldown), so a
+  full 20×8 run ≈ 27 min. Not a harness bug.
+- `scripts/benchmark/agent-benchmark.sh` FIXED: hardcoded `:8080` → `${BASE}`
+  (`PORT=${NEXUS_PORT:-8000}`); member count now read live from `/api/status`
+  (`council_members`) instead of a hardcoded "5".
