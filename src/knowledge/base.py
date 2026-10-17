@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 __all__ = [
     "KnowledgeDoc",
@@ -24,6 +24,7 @@ __all__ = [
     "KB_DIR",
     "SEED_DIR",
     "DEFAULT_LIMIT",
+    "UNIVERSAL_DOCS",
     "normalize_token",
     "tokenize",
     "parse_front_matter",
@@ -34,6 +35,9 @@ __all__ = [
 KB_DIR = Path.home() / ".config" / "nexus" / "knowledge"
 SEED_DIR = Path(__file__).resolve().parents[2] / "knowledge"
 DEFAULT_LIMIT = 4
+
+#: الوثائق العامّة التي تُحقن لكل وكيل — ما هو المشروع، وكيف نعمل.
+UNIVERSAL_DOCS: Tuple[str, ...] = ("nexus-core", "conventions")
 
 #────────────────────────────── تنظيف وتقطيع ──────────────────────────────#
 
@@ -261,23 +265,63 @@ class KnowledgeBase:
     #── الاختيار والحقن ──#
 
     def select(
-        self, agent_id: str, task: str = "", limit: int = DEFAULT_LIMIT
+        self,
+        agent_id: str,
+        task: str = "",
+        limit: int = DEFAULT_LIMIT,
+        category: str = "",
     ) -> List[KnowledgeDoc]:
-        """وثائق الوكيل: المُثبّتة دائماً ثم الأعلى صلة بالمهمة، بلا تكرار."""
-        chosen: List[KnowledgeDoc] = list(self.pinned())
-        seen = {doc.name for doc in chosen}
+        """وثائق الوكيل مرتّبة: العامّة، فالمُثبّتة، فوثيقة الفئة، فالأعلى صلة.
+
+        الترتيب هو الأولوية: أهمّ ما يُحقَن دائماً في المقدّمة (ما هو المشروع
+        وكيف نعمل)، ثم وثيقة فئة الوكيل، ثم ما تطلبه المهمّة فعلاً.
+        """
+        if limit <= 0:
+            return []
+        chosen: List[KnowledgeDoc] = []
+        seen: Set[str] = set()
+
+        def push(doc: Optional[KnowledgeDoc]) -> None:
+            if doc is not None and doc.name not in seen:
+                chosen.append(doc)
+                seen.add(doc.name)
+
+        for name in UNIVERSAL_DOCS:
+            push(self.load(name))
+        for doc in self.pinned():
+            push(doc)
+        push(self.category_doc(agent_id, category))
         haystack = f"{agent_id} {task}".strip()
-        for doc in self.search(haystack, limit=limit + len(chosen)):
-            if doc.name in seen:
-                continue
-            chosen.append(doc)
-            seen.add(doc.name)
+        for doc in self.search(haystack, limit=limit + len(seen)):
             if len(chosen) >= limit:
                 break
-        return chosen[:limit] if limit > 0 else []
+            push(doc)
+        return chosen[:limit]
+
+    def category_doc(
+        self, agent_id: str, category: str = ""
+    ) -> Optional[KnowledgeDoc]:
+        """وثيقة فئة الوكيل: مطابقة الفئة أوّلًا، ثم الاسم أو الوسوم.
+
+        ``category`` صريحة (مجموعة الوكيل) وإلا نستعمل ``agent_id`` نفسه، فيعمل
+        الاستدعاء البسيط ``for_agent("coder")`` بلا أي إعداد إضافي.
+        """
+        for key in (category, agent_id):
+            wanted = key.strip().lower()
+            if not wanted:
+                continue
+            for doc in self.all_docs():
+                if doc.category.lower() == wanted:
+                    return doc
+            for doc in self.all_docs():
+                if doc.name.lower() == wanted:
+                    return doc
+                if any(tag.lower() == wanted for tag in doc.tags):
+                    return doc
+        return None
 
     def render(self, docs: Sequence[KnowledgeDoc]) -> str:
-        """يُصيغ الوثائق كتلة نصية جاهزة للحقن في تعليمات الوكيل."""
+        """يُصيغ الوثائق ككتلة نصية جاهزة للحقن في تعليمات الوكيل."""
         if not docs:
             return ""
         names = ", ".join(doc.name for doc in docs)
@@ -292,10 +336,14 @@ class KnowledgeBase:
         return "\n".join(parts)
 
     def for_agent(
-        self, agent_id: str, task: str = "", limit: int = DEFAULT_LIMIT
+        self,
+        agent_id: str,
+        task: str = "",
+        limit: int = DEFAULT_LIMIT,
+        category: str = "",
     ) -> str:
-        """كتلة المعرفة الجاهزة للحقن لوكيل ومهمة محدّدة (قد تكون فارغة)."""
-        return self.render(self.select(agent_id, task, limit))
+        """كتلة المعرفة الجاهزة لوكيل: عامّة (nexus-core + conventions) + فئته + المهمّة."""
+        return self.render(self.select(agent_id, task, limit, category))
 
     #── الإحصاء ──#
 
