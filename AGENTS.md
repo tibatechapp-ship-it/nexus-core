@@ -1425,3 +1425,53 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   1 skipped @ 100.00%** (8916 stmts, 1898 branches, 0 missed).
 - Council 16-metric bench finished (10m45s, live 6-member council on `:8000`):
   **16/16 passed, 0 failed** → `reports/benchmark/benchmark-20261017-173922.{json,md}`.
+
+## Phase 2 — knowledge → prompt injection + `/api/knowledge` + wiring (2026-10-18)
+- Wires the P1 Knowledge Base into agents (layer 2 becomes ACTIVE) on branch
+  `feature/novamind-factory`. COMMITTED as 3 concern-split commits + a memory
+  commit: `eb7bb85` feat(knowledge) for_agent()+inject_into_prompt() ·
+  `61f4dc8` feat(api) /api/knowledge endpoints · `e7767c6` feat(wiring) inject in
+  chat + build. Modified `src/knowledge/{base,__init__}.py`; NEW
+  `src/knowledge/{inject,api}.py` + `tests/test_knowledge_{for_agent,api}.py` +
+  `tests/test_wiring_{chat,build}.py`; wired `nexus_agent.py` +
+  `src/council/builder.py` + `unified_agent.py`.
+- `base.py`: `UNIVERSAL_DOCS=("nexus-core","conventions")` (always injected);
+  `select(agent_id, task, limit, category)` order = **universal → other pinned →
+  category doc → relevance hits** (dedupe, then truncate); NEW
+  `category_doc(agent_id, category)` (match category → name → tag); `for_agent`
+  now takes `category`.
+- `inject.py` (stdlib): `inject_into_prompt(agent, task, *, kb=None, limit,
+  include_task=True, instructions=None)` = `[instructions|agent_prompt, knowledge
+  block, "### المهمّة\\n"+task]` joined by `\\n\\n` (empty sections dropped).
+  `include_task=False` keeps the task for relevance selection but omits it from
+  the text (chat: the message is the user turn). `instructions=` overrides the
+  agent prompt (builder already owns its instruction text).
+  `knowledge_block(agent, task, *, kb, limit)` = the bare block.
+  Helpers `agent_name` (name/id/agent_id/class), `agent_prompt`
+  (system_prompt/identity/prompt), `agent_category` (group). Duck-typed — NO
+  `src.agents` import (keeps knowledge↔agents decoupled).
+- `api.py`: `build_router(kb)` (routes `GET /api/knowledge` list + `GET
+  /api/knowledge/{name}` content/404) + `register(app, kb=None)` which does
+  `app.router.routes.extend(router.routes)` (the deferred-include_router fix, so
+  it works through the gateway MOUNT). **`api` is NOT imported in `__init__`** —
+  keeps the KB importable without FastAPI.
+- `unified_agent.py` tail: guarded `from src.knowledge.api import register;
+  register(app)` with `KNOWLEDGE_OK`/`KNOWLEDGE_ERR` (mirrors the training mount).
+- WIRING: `nexus_agent.py::_agent_system(agent_id, task)` composes the agent's
+  system prompt + KB block (`include_task=False`, task only for selection);
+  `_agent_for()` factors the roster lookup; a broken KB degrades to the plain
+  prompt (never breaks chat). `src/council/builder.py::_compose_blueprint_prompt`
+  prepends the KB block to the builder instructions; `_blueprint_prompt` now
+  routes through it (the question reaches the model via the task section);
+  falls back to instructions + question if the layer is missing.
+- GATES GREEN: ruff clean · mypy **159** · annotations **159** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2780 passed,
+  1 skipped @ 100.00%** (src/council/builder.py + src/knowledge 100%).
+- LIVE VERIFIED (spare `NEXUS_PORT=8096`; the :8000 runit service NOT restarted):
+  `/api/knowledge` → 4 docs/3 pinned, `/{name}` content, unknown → 404. `coder`
+  system prompt = 5822 chars incl. the gates doc + `make check`; builder
+  blueprint prompt carries the KB header + task. LIVE `/api/chat` (agent=coder)
+  answered **"make check"** + the exact gate composition + the `dev_check.sh`
+  `--cov` warning — all read from the KB (first attempt hit a provider 429 OTPM;
+  the second succeeded via groq_01).
+
