@@ -165,6 +165,7 @@ class TrainingEngine:
         clock: Optional[Callable[[], float]] = None,
         min_score: float = GRADUATION_MIN_SCORE,
         feed_genome: bool = True,
+        field_loop: bool = True,
     ) -> None:
         self._store = store
         self.evaluator: Evaluator = evaluator or deterministic_evaluator
@@ -173,6 +174,11 @@ class TrainingEngine:
         # the bar but never lower it below the published constant.
         self.min_score = max(float(min_score), GRADUATION_MIN_SCORE)
         self.feed_genome = bool(feed_genome)
+        # The field loop (P4) turns every run into a lesson and evolves the
+        # genome.  It is the default path; turning it off falls back to the P3
+        # one-way genome feed, so every earlier caller behaves as before.
+        self.field_loop = bool(field_loop)
+        self._field: Any = None
         self._lock = threading.Lock()
 
     # ── helpers ──────────────────────────────────────────────────────────
@@ -303,7 +309,9 @@ class TrainingEngine:
             if certified:
                 self._issue_certificate(run)
 
-        if self.feed_genome:
+        if self.field_loop:
+            self._run_field(run)
+        elif self.feed_genome:
             self._feed_genome(run)
         return run
 
@@ -375,6 +383,73 @@ class TrainingEngine:
             genome_v2.get_genome_v2().observe(run.agent_id, claimed, truth)
         except Exception:
             return
+
+    # ── field loop (P4) ──────────────────────────────────────────────────
+    def field(self) -> Optional[Any]:
+        """The field loop bound to this engine, or ``None`` when unavailable.
+
+        The loop lives beside the training database so a run with its own store
+        keeps its own lessons (and tests stay hermetic).  ``feed_genome`` gates
+        the genome half — with it off the loop only records lessons, which is
+        exactly what a hermetic test wants.  ``field_loop=False`` by-passes the
+        loop entirely, restoring the plain P3 behaviour.
+        """
+        if not self.field_loop:
+            return None
+        if self._field is None:
+            try:
+                from .field import FieldLoop, default_lesson_db_path, field_enabled
+
+                if not field_enabled():
+                    return None
+                self._field = FieldLoop(
+                    lesson_db=default_lesson_db_path(self.store.path),
+                    genome_enabled=self.feed_genome,
+                )
+            except Exception:
+                return None
+        return self._field
+
+    def _run_field(self, run: TrainingRun) -> None:
+        """Close the loop for one run (never let the feed break a training run)."""
+        loop = self.field()
+        if loop is None:
+            return
+        try:
+            loop.tick(run)
+        except Exception:
+            return
+
+    # ── field views (delegate, tolerant of a missing loop) ───────────────
+    def field_stats(self) -> Dict[str, Any]:
+        """Loop counters (``{}`` when the loop is unavailable)."""
+        loop = self.field()
+        if loop is None:
+            return {}
+        try:
+            return dict(loop.stats())
+        except Exception:
+            return {}
+
+    def lessons(self, agent_id: Optional[str] = None, limit: int = 50) -> List[Any]:
+        """Lessons the loop has absorbed (empty when it is unavailable)."""
+        loop = self.field()
+        if loop is None:
+            return []
+        try:
+            return list(loop.lessons(agent_id, limit=limit))
+        except Exception:
+            return []
+
+    def evolve(self) -> List[Dict[str, Any]]:
+        """Run an evolution pass now (empty when the loop is unavailable)."""
+        loop = self.field()
+        if loop is None:
+            return []
+        try:
+            return list(loop.evolve())
+        except Exception:
+            return []
 
 
 _ENGINE: Optional[TrainingEngine] = None
