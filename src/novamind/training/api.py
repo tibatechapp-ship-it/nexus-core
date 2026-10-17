@@ -152,6 +152,12 @@ def build_router(engine: Optional[TrainingEngine] = None) -> APIRouter:
             "lessons": [item.to_dict() for item in items],
         }
 
+    @router.get("/fitness")
+    async def training_fitness(limit: int = 50) -> Dict[str, Any]:
+        """Per-agent genome standings (fitness, evidence, next action)."""
+        items = eng.fitness(limit=limit)
+        return {"count": len(items), "agents": items}
+
     @router.post("/evolve")
     async def training_evolve() -> Dict[str, Any]:
         """Run an evolution pass now and report what it changed."""

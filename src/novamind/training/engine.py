@@ -451,6 +451,16 @@ class TrainingEngine:
         except Exception:
             return []
 
+    def fitness(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Per-agent genome standings (empty when the loop is unavailable)."""
+        loop = self.field()
+        if loop is None:
+            return []
+        try:
+            return list(loop.fitness(limit))
+        except Exception:
+            return []
+
 
 _ENGINE: Optional[TrainingEngine] = None
 _ENGINE_LOCK = threading.Lock()

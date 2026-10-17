@@ -42,6 +42,9 @@ from .store import default_db_path
 #: Master switch for the loop (``NEXUS_TRAINING_FIELD=0`` disables the field feed).
 FIELD_ENV = "NEXUS_TRAINING_FIELD"
 
+#: Fitness of an agent with no evidence yet (mirrors ``genome_v2``).
+_NEUTRAL_FITNESS = 0.5
+
 #: Explicit lesson-database path for the field loop.
 LESSON_DB_ENV = "NEXUS_TRAINING_LESSONS_DB"
 
@@ -76,8 +79,16 @@ def field_enabled() -> bool:
     }
 
 
+def _clamp_limit(limit: int) -> int:
+    """Clamp a listing limit into the supported range."""
+    try:
+        value = int(limit)
+    except (TypeError, ValueError):
+        return _MAX_LIMIT
+    return max(_MIN_LIMIT, min(value, _MAX_LIMIT))
+
+
 def _learning(name: str) -> Any:
-    """Import a module from the learning layer, or ``None`` when unavailable."""
     for module_name in (f"learning.{name}", f"src.learning.{name}"):
         try:
             return importlib.import_module(module_name)
@@ -297,11 +308,24 @@ class FieldLoop:
         genome = self._genome_obj()
         if genome is None:
             return []
+        try:
+            rows = list(genome.rank())
+        except Exception:
+            # A genome that cannot even be listed must not take the pass down
+            # (``fitness`` guards the same call — keep the two consistent).
+            return []
         actions: List[Dict[str, Any]] = []
         with self._lock:
-            for row in genome.rank():
-                agent_id = str(row["agent_id"])
-                advice = genome.advise(agent_id)
+            for row in rows:
+                agent_id = str(row.get("agent_id", ""))
+                if not agent_id:
+                    continue
+                try:
+                    advice = genome.advise(agent_id)
+                except Exception:
+                    # A genome whose advice cannot be read must not take the pass
+                    # down (``fitness`` guards the same call — keep them consistent).
+                    advice = {}
                 action = str(advice.get("action", "keep"))
                 mutated = False
                 if action == "retrain":
@@ -322,6 +346,48 @@ class FieldLoop:
             if len(self._mutations) > _MAX_LIMIT:
                 del self._mutations[:len(self._mutations) - _MAX_LIMIT]
         return actions
+
+    def fitness(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Per-agent genome standings, best fitness first.
+
+        Each row carries the evidence behind the number (observations,
+        agreements, dissents, streak) plus the genome's own next action, so a
+        dashboard can show *why* an agent would be re-trained instead of just a
+        score.
+        """
+        if not self.genome_enabled:
+            return []
+        genome = self._genome_obj()
+        if genome is None:
+            return []
+        try:
+            rows = genome.rank(include_retired=True)
+        except Exception:
+            return []
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            agent_id = str(row.get("agent_id", ""))
+            if not agent_id:
+                continue
+            try:
+                advice = genome.advise(agent_id)
+            except Exception:
+                advice = {}
+            out.append({
+                "agent_id": agent_id,
+                "fitness": float(row.get("fitness", _NEUTRAL_FITNESS)),
+                "status": str(row.get("status", "")),
+                "observations": int(row.get("observations", 0)),
+                "agreements": int(row.get("agreements", 0)),
+                "dissent": int(row.get("dissent", 0)),
+                "streak": int(row.get("streak", 0)),
+                "best_streak": int(row.get("best_streak", 0)),
+                "generation": int(row.get("generation", 1)),
+                "retired": bool(row.get("retired", False)),
+                "action": str(advice.get("action", "")),
+                "reason": str(advice.get("reason", "")),
+            })
+        return out[:_clamp_limit(limit)]
 
     def tick(self, run: TrainingRun) -> Dict[str, Any]:
         """Run the whole loop for one run and return its report."""
@@ -346,7 +412,7 @@ class FieldLoop:
     def lessons(self, agent_id: Optional[str] = None,
                 limit: int = 50) -> List[Any]:
         """Stored lessons (optionally for one agent), most confident first."""
-        bounded = max(_MIN_LIMIT, min(int(limit), _MAX_LIMIT))
+        bounded = _clamp_limit(limit)
         with self._lock:
             if agent_id is not None:
                 store = self._stores.get(str(agent_id))
@@ -374,9 +440,22 @@ class FieldLoop:
                 "database": (
                     str(self._lesson_db_path) if self._database is not None else None
                 ),
-                "genome": genome.stats() if genome is not None else None,
+                "genome": self._genome_stats(genome),
                 "last_tick": self._last_tick,
             }
+
+    def _genome_stats(self, genome: Any) -> Optional[Dict[str, Any]]:
+        """The genome's own counters, or ``{}`` when it cannot answer.
+
+        The dashboard polls this route; a genome that is missing or broken must
+        render an empty panel, never a 500.
+        """
+        if genome is None:
+            return None
+        try:
+            return dict(genome.stats())
+        except Exception:
+            return {}
 
     def last_tick(self) -> Optional[Dict[str, Any]]:
         """The most recent tick report, or ``None``."""
@@ -391,6 +470,22 @@ class FieldLoop:
             self._mutations = []
             self._ticks = 0
             self._last_tick = None
+
+    def close(self) -> None:
+        """Release the lesson database handle (idempotent, never raises).
+
+        The loop owns exactly one connection for its whole life, so a service
+        that drops the loop (restart, tests) must hand the handle back instead
+        of leaking a file descriptor until garbage collection.
+        """
+        with self._lock:
+            database = self._database
+            self._database = None
+        if database is not None:
+            try:
+                database.close()
+            except Exception:
+                pass
 
     # ── persistence ──────────────────────────────────────────────────────
     def _persist(self) -> None:
@@ -421,7 +516,10 @@ def get_field_loop(**kwargs: Any) -> FieldLoop:
 
 
 def reset_field_loop() -> None:
-    """Drop the cached singleton (tests only)."""
+    """Drop the cached singleton, releasing its database handle (tests only)."""
     global _FIELD
     with _FIELD_LOCK:
+        previous = _FIELD
         _FIELD = None
+    if previous is not None:
+        previous.close()
