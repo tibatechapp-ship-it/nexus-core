@@ -206,6 +206,10 @@ class CouncilEngine:
         return len(set(old)) == 1
 
     def _judge(self, transcript: list[dict[str, Any]]) -> tuple[str, float]:
+        """الحكم النهائي — نقطة الوصل لطبقة المراقبة (الجينوم)."""
+        return self._judge_verdict(transcript)
+
+    def _judge_verdict(self, transcript: list[dict[str, Any]]) -> tuple[str, float]:
         """الحكم النهائي بناءً على الأحكام الصريحة (fallback كلمي)."""
         scores: dict[str, float] = {"profiler": 0.5, "analyst": 0.5, "critic": 0.5}
         vmap = {"yes": 0.9, "mid": 0.5, "no": 0.1}
