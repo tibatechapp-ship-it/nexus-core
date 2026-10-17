@@ -30,6 +30,9 @@ EXPECTED_ROUTES = (
     "/api/training/runs",
     "/api/training/runs/{run_id}",
     "/api/training/certificates",
+    "/api/training/field",
+    "/api/training/lessons",
+    "/api/training/evolve",
 )
 
 
@@ -236,3 +239,69 @@ def test_certificates_match_the_run_they_were_issued_for(
     # Signing is optional (cryptography may be absent): either a real signature
     # or an empty string, never a fabricated one.
     assert isinstance(cert["signature"], str)
+
+
+# ── field loop (P4) ──────────────────────────────────────────────────────
+def test_field_is_quiet_before_any_run(client: TestClient) -> None:
+    payload = client.get("/api/training/field").json()
+    assert payload["ticks"] == 0
+    assert payload["absorbed"] == 0
+    assert payload["lessons"] == 0
+    assert client.get("/api/training/lessons").json() == {
+        "count": 0, "lessons": [],
+    }
+
+
+def test_a_run_teaches_a_lesson(client: TestClient) -> None:
+    """A training run closes the loop: it leaves a lesson behind."""
+    run = _train(client, quality=0.95)
+    field = client.get("/api/training/field").json()
+    assert field["ticks"] == 1
+    assert field["absorbed"] == 1
+
+    payload = client.get("/api/training/lessons").json()
+    assert payload["count"] == 1
+    lesson = payload["lessons"][0]
+    assert lesson["agent_role"] == "coder"
+    assert lesson["source_outcome"] == "success"
+    assert f"run:{run['run_id']}" in lesson["evidence"]
+    assert lesson["confidence"] > 0
+
+
+def test_lessons_can_be_filtered_by_agent(client: TestClient) -> None:
+    _train(client, agent_id="coder", quality=0.95)
+    _train(client, agent_id="tester", quality=0.95)
+    assert client.get(
+        "/api/training/lessons", params={"agent_id": "coder"}
+    ).json()["count"] == 1
+    assert client.get(
+        "/api/training/lessons", params={"agent_id": "ghost"}
+    ).json()["count"] == 0
+    assert client.get("/api/training/lessons").json()["count"] == 2
+
+
+def test_status_reports_the_field_loop(client: TestClient) -> None:
+    _train(client, quality=0.95)
+    field = client.get("/api/training/status").json()["field"]
+    assert field["ticks"] == 1
+    assert field["lessons"] == 1
+
+
+def test_evolve_is_inert_without_a_genome(client: TestClient) -> None:
+    """The hermetic engine has the genome half off, so nothing mutates."""
+    _train(client, quality=0.95)
+    payload = client.post("/api/training/evolve").json()
+    assert payload["count"] == 0
+    assert payload["mutated"] == []
+    assert payload["actions"] == []
+
+
+def test_field_routes_survive_an_asgi_mount(mounted: TestClient) -> None:
+    """Regression: the deferred-router trap also applies to the P4 routes."""
+    assert mounted.get("/api/training/field").status_code == 200
+    assert mounted.get("/api/training/lessons").status_code == 200
+    assert mounted.post("/api/training/evolve").status_code == 200
+    assert mounted.post(
+        "/api/training/run", json={"agent_id": "coder", "quality": 0.95}
+    ).status_code == 200
+    assert mounted.get("/api/training/lessons").json()["count"] == 1
