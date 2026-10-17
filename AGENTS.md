@@ -1701,3 +1701,25 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   (`from scipy_guard import unused`) into a test — caught by the gate run.
   Lesson: after a multi-line insert, READ the result and run the suite; never
   trust the diff of an edit you did not re-read.
+### v1.16.0 LIVE — verified on the service (:8000) after `sv restart nexus-core`
+- Commits `44406a1` fix(training) · `87ecc65` feat(gateway) · `8a0de47`
+  docs(memory) on `feature/novamind-factory`; origin == gitlab == **`8a0de47`**.
+- Restart pid **14250** (single process; no orphan). `/api/health` 200 (1.15.0 —
+  no version bump), `/api/status` 200 (guard auth true), `/api/exec/tools` 200
+  (WIP mount alive), `/api/{training/status,skills,knowledge}` all 200.
+- **THE ORACLE** is `GET /api/training/fitness`, because it reads the SAME
+  singleton (`get_genome_v2()`) that `_record_task_outcome` writes:
+  * before a chat → `count 0` (fresh in-memory genome, no persistence);
+  * after ONE `POST /api/chat {agent:coder, message:…}` (X-Auth-Token) →
+    `count 1`, `coder fitness 0.5833` — i.e. a real observable move off the
+    0.5 neutral on a single success. (`observations` stays the judgement-only
+    counter; the task evidence rides the blended fitness.)
+  * after `POST /api/chat {agent:designer, message:""}` → still `count 1`, so
+    the `ran` guard really does keep empty sends out of the genome.
+- Lesson: when the state is in-memory only, pick an HTTP endpoint that reads
+  the same object as the oracle — never claim a wiring works from unit tests
+  alone.
+- ❗ GIT TRAP (cost a re-commit): a commit message passed inline with `-m` and
+  containing BACKTICKS is command-substituted by the shell → the message lands
+  mangled (the quoted fragments vanish). Write the message to a file and use
+  `git commit -F <file>` (fixed with `git commit --amend -F …` before pushing).
