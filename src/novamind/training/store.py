@@ -6,6 +6,7 @@ path resolution chain that works on Termux without configuration.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -13,7 +14,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from .models import TrainingRun
 
@@ -84,6 +85,27 @@ def default_db_path() -> Path:
         return Path(tempfile.gettempdir()) / "nexus-training.db"
 
 
+def _json_column(raw: Any, fallback: Any) -> Any:
+    """Decode a JSON column, tolerating a damaged or legacy row.
+
+    One unreadable row must never take the whole history down (a 500 on
+    ``/api/training/runs`` costs every other run); a bad column degrades to the
+    empty value of the right type instead.
+    """
+    if isinstance(raw, (str, bytes, bytearray)):
+        try:
+            decoded = json.loads(raw)
+        except (TypeError, ValueError):
+            return fallback
+    else:
+        decoded = raw
+    if isinstance(fallback, list) and not isinstance(decoded, list):
+        return fallback
+    if isinstance(fallback, dict) and not isinstance(decoded, dict):
+        return fallback
+    return decoded
+
+
 def _row_to_run(row: sqlite3.Row) -> TrainingRun:
     """Rebuild a :class:`TrainingRun` from a DB row."""
     return TrainingRun(
@@ -98,8 +120,8 @@ def _row_to_run(row: sqlite3.Row) -> TrainingRun:
         final_score=row["final_score"],
         verdict=row["verdict"],
         certified=bool(row["certified"]),
-        phases=tuple(json.loads(row["phases"] or "[]")),
-        detail=json.loads(row["detail"] or "{}"),
+        phases=tuple(_json_column(row["phases"], [])),
+        detail=_json_column(row["detail"], {}),
     )
 
 
@@ -112,12 +134,26 @@ class TrainingStore:
         self._init_schema()
 
     # ── plumbing ─────────────────────────────────────────────────────────
-    def _connect(self) -> sqlite3.Connection:
+    @contextlib.contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Open a connection, commit on success and ALWAYS close it.
+
+        ``with sqlite3.Connection`` commits but never closes the handle — it
+        only commits/rolls back, so the connection lives until garbage
+        collection. On a phone that slowly eats file descriptors; close here
+        and keep the ``with store._connect() as conn`` call style.
+        """
         conn = sqlite3.connect(str(self.path), timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_schema(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -236,7 +272,7 @@ class TrainingStore:
                 "score": r["score"],
                 "issued_at": r["issued_at"],
                 "signature": r["signature"],
-                "payload": json.loads(r["payload"] or "{}"),
+                "payload": _json_column(r["payload"], {}),
             }
             for r in rows
         ]
