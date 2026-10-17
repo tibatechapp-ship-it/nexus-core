@@ -235,6 +235,103 @@ def test_chat_streams_chunk_then_done(env):
     assert "data: [DONE]" in joined
 
 
+class _DeadRouter:
+    """A router that cannot answer — the offline/no-provider path."""
+
+    providers: list = []
+
+    def generate(self, prompt, system="", **kwargs):  # noqa: ANN001, ANN003
+        return {"ok": False, "error": "لا مزود متاح"}
+
+
+def _capture_outcomes(monkeypatch, calls: list) -> None:
+    """Intercept the genome's task channel (the real genome is never touched)."""
+
+    class _Recorder:
+        def observe_outcome(self, agent_id, ok, *, duration=None,  # noqa: ANN001
+                            quality=None, task=""):  # noqa: ANN001
+            calls.append({"agent": agent_id, "ok": ok,
+                          "duration": duration, "task": task})
+
+    monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2",
+                        lambda: _Recorder())
+
+
+def test_chat_folds_the_run_into_the_genome(env, monkeypatch):
+    """v1.16.0: كل ردّ حقيقي يصل قناة نتائج المهام في الجينوم."""
+    _mod, client, _store = env
+    calls: list = []
+    _capture_outcomes(monkeypatch, calls)
+
+    with client.stream("POST", "/api/chat",
+                       json={"message": "اكتب اختبار", "agent": "analyst"}) as r:
+        assert r.status_code == 200
+        list(r.iter_lines())
+
+    assert len(calls) == 1
+    assert calls[0]["agent"] == "analyst"
+    assert calls[0]["ok"] is True
+    assert calls[0]["duration"] >= 0.0
+    assert calls[0]["task"] == "اكتب اختبار"
+
+
+def test_chat_records_a_failure_when_no_provider_answers(env, monkeypatch):
+    """فشل المزود = فشل حقيقي، لا يُخفي التسجيل."""
+    mod, client, _store = env
+    monkeypatch.setattr(mod, "get_router", lambda: _DeadRouter())
+    calls: list = []
+    _capture_outcomes(monkeypatch, calls)
+
+    with client.stream("POST", "/api/chat", json={"message": "مرحبا"}) as r:
+        assert r.status_code == 200
+        list(r.iter_lines())
+
+    assert len(calls) == 1
+    assert calls[0]["ok"] is False
+
+
+def test_a_broken_genome_never_breaks_chat(env, monkeypatch):
+    """الجينوم رصدٌ فقط — انهياره لا يفشل الطلب."""
+
+    def _boom():  # noqa: ANN202
+        raise RuntimeError("genome down")
+
+    _mod, client, _store = env
+    monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2", _boom)
+
+    with client.stream("POST", "/api/chat", json={"message": "مرحبا"}) as r:
+        assert r.status_code == 200
+        joined = "\n".join(ln for ln in r.iter_lines()
+                           if ln.startswith("data:"))
+    assert "ردّ تجريبي" in joined
+    assert "data: [DONE]" in joined
+
+
+def test_the_chat_agent_id_defaults_when_none_is_given(env, monkeypatch):
+    _mod, client, _store = env
+    calls: list = []
+    _capture_outcomes(monkeypatch, calls)
+
+    with client.stream("POST", "/api/chat", json={"message": "مرحبا"}) as r:
+        assert r.status_code == 200
+        list(r.iter_lines())
+
+    assert calls and calls[0]["agent"] == "default"
+
+
+def test_an_empty_message_is_not_a_task(env, monkeypatch):
+    """رسالة فارغة = لا تشغيل أصلاً، فلا تُلوّث الجينوم بفشل وهمي."""
+    _mod, client, _store = env
+    calls: list = []
+    _capture_outcomes(monkeypatch, calls)
+
+    with client.stream("POST", "/api/chat", json={"message": "   "}) as r:
+        assert r.status_code == 200
+        list(r.iter_lines())
+
+    assert calls == []
+
+
 # ── access guard: token + rate limit + audit ──────────────────────────────
 
 def test_status_reports_the_access_guard(env):
