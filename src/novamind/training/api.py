@@ -62,6 +62,7 @@ def build_router(engine: Optional[TrainingEngine] = None) -> APIRouter:
         stats["certified_agents"] = len({
             c["agent_id"] for c in store.list_certificates(limit=500)
         })
+        stats["field"] = eng.field_stats()
         return stats
 
     @router.get("/agents")
@@ -134,6 +135,32 @@ def build_router(engine: Optional[TrainingEngine] = None) -> APIRouter:
         """Issued certificates, newest first."""
         certs = eng.store.list_certificates(agent_id=agent_id, limit=limit)
         return {"count": len(certs), "certificates": certs}
+
+    @router.get("/field")
+    async def training_field() -> Dict[str, Any]:
+        """Field-loop counters (lessons absorbed, genome feeds, evolutions)."""
+        return eng.field_stats()
+
+    @router.get("/lessons")
+    async def training_lessons(
+        agent_id: Optional[str] = None, limit: int = 50
+    ) -> Dict[str, Any]:
+        """Lessons the field loop absorbed, most confident first."""
+        items = eng.lessons(agent_id, limit=limit)
+        return {
+            "count": len(items),
+            "lessons": [item.to_dict() for item in items],
+        }
+
+    @router.post("/evolve")
+    async def training_evolve() -> Dict[str, Any]:
+        """Run an evolution pass now and report what it changed."""
+        actions = eng.evolve()
+        return {
+            "count": len(actions),
+            "mutated": [a["agent_id"] for a in actions if a["mutated"]],
+            "actions": actions,
+        }
 
     return router
 
