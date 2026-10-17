@@ -32,7 +32,7 @@ class CouncilResult:
 class CouncilEngine:
     MAX_ROUNDS = 3
 
-    def __init__(self, llm_router: Any = None) -> None:
+    def __init__(self, llm_router: Any = None, genome: Any = None) -> None:
         # ═══ Auto-create LLM router if not provided ═══
         if llm_router is None:
             try:
@@ -46,6 +46,8 @@ class CouncilEngine:
         self.isolation = IsolationManager()
         self.members = [PROFILER, ANALYST, CRITIC]
         self.security_log: list[dict] = []
+        # ═══ Genome v2 observer (v1.14.0) — None → the shared default ═══
+        self._genome: Any = genome
 
     # خريطة توزيع المفاتيح على الأعضاء
     PROVIDER_MAP = {
@@ -205,9 +207,39 @@ class CouncilEngine:
             old.append("yes" if pos > neg else "no" if neg > pos else "mid")
         return len(set(old)) == 1
 
+    def _genome_v2(self) -> Any:
+        """العضو المراقب للجينوم v2 — يُستورد تأخيرياً، ولا يُسقط المجلس أبداً."""
+        if getattr(self, "_genome", None) is None:
+            try:
+                from src.novamind.genome_v2 import get_genome_v2
+                self._genome = get_genome_v2()
+            except Exception:
+                self._genome = False  # عُلِّم كغير متاح: لا نعيد المحاولة
+        return self._genome or None
+
+    def _observe_genome(self, transcript: list[dict[str, Any]], verdict: str) -> None:
+        """يطوي حكم كل عضو في الجينوم v2 — أفضل جهد، لا يمسّ الحكم النهائي."""
+        observer = self._genome_v2()
+        if observer is None:
+            return
+        try:
+            known = {m.name for m in self.members}
+            stances: dict[str, str] = {}
+            for entry in transcript:
+                member = entry.get("member")
+                stance = self._explicit_verdict(entry.get("response", ""))
+                if member in known and stance:
+                    stances[member] = stance
+            if stances:
+                observer.observe_council(stances, verdict)
+        except Exception:
+            pass
+
     def _judge(self, transcript: list[dict[str, Any]]) -> tuple[str, float]:
-        """الحكم النهائي — نقطة الوصل لطبقة المراقبة (الجينوم)."""
-        return self._judge_verdict(transcript)
+        """الحكم النهائي + طيّ أحكام الأعضاء في الجينوم v2 (مراقبة فقط)."""
+        verdict, score = self._judge_verdict(transcript)
+        self._observe_genome(transcript, verdict)
+        return verdict, score
 
     def _judge_verdict(self, transcript: list[dict[str, Any]]) -> tuple[str, float]:
         """الحكم النهائي بناءً على الأحكام الصريحة (fallback كلمي)."""
