@@ -1271,3 +1271,51 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   tool hang + the `setsid` child survived as an **orphan** (ppid=1) still holding
   :8099. Recovered by killing the PID directly; verify with
   `pgrep -af "nexus_agent[.]py"`.
+
+## P4 — the field loop (2026-10-18) — feature/novamind-factory, UNCOMMITTED
+- Goal (tyba's problem case): a training run must not just be recorded — it must
+  become a **lesson**, **feed the genome automatically**, and let the genome
+  **evolve** itself. New `src/novamind/training/field.py` + wiring.
+- `FieldLoop(genome=, lesson_db=, clock=, genome_enabled=True)`:
+  `absorb(run)` → one `learning.Lesson` per run; `observe(run)` → genome via
+  `genome_v2.observe(agent, claimed, truth)`; `evolve()` → per-agent action from
+  `genome_v2.advise` (`observe/promote/keep/retrain/revise`), and **only
+  `retrain` mutates** (`genome.mutate(agent, note="auto-retrain: probation
+  fitness")`) — mutation resets observations, which acts as a cooldown and stops
+  thrash; `tick(run)` = absorb + observe + evolve and returns a report
+  `{agent_id, run_id, verdict, lesson, genome:{agent_id,claimed,truth,agreement},
+  evolved, mutated}`; plus `lessons(agent_id, limit)`, `stats()`, `last_tick`,
+  `reset()`. Helpers: `lesson_from_run(run, *, now)`, `default_lesson_db_path`,
+  `field_enabled`, `get_field_loop`, `reset_field_loop`, `_lesson_view`.
+- ONE lesson store **per agent** (a cross-agent merge would re-attribute one
+  agent's lesson to another). Confidence band 0.5→0.95; listing limit clamped
+  1→500, ordered confidence desc.
+- ENV: `NEXUS_TRAINING_FIELD` (off/0/no/false disables) ·
+  `NEXUS_TRAINING_LESSONS_DB` (else `<training.db dir>/lessons.db`).
+- ENGINE (`engine.py`, back-compat): `TrainingEngine(..., field_loop=True)`.
+  Train path = `if self.field_loop: self._run_field(run) elif self.feed_genome:
+  self._feed_genome(run)`. New `field()` (returns **None** when `field_loop=False`),
+  `field_stats()`, `lessons(agent_id, limit)`, `evolve()`. The loop binds to
+  `default_lesson_db_path(self.store.path)` with `genome_enabled=self.feed_genome`.
+- API (`api.py`): `GET /api/training/field`, `GET /api/training/lessons`
+  (`?agent_id=`,`?limit=`), `POST /api/training/evolve`; `/api/training/status`
+  now carries `stats["field"]`. Still `register(app, engine)` (deferred-router fix).
+- Tests: `tests/test_training_field.py` (**40**, hermetic: temp DBs + injected
+  genome) + `tests/test_training_api.py` **+6** (incl. the mount regression for
+  the new routes). GATES GREEN: ruff clean · mypy **155** · annotations **155** ·
+  real gate **2477 passed @ 100.00%** (8755 stmts).
+- LIVE (spare :8097 with its own DBs, then the real :8000 after
+  `sv restart nexus-core` — pid 520, health = 1.14.0): `POST /run
+  {coder,0.95}` → graduated/0.9294 → `/lessons` count 1 (success, 0.823,
+  "Finish every coder module before asking to be evaluated") → `/field` ticks 1
+  absorbed 1 genome mean_fitness 0.5833 → `/evolve` = `observe`. **Evolution
+  proven**: 5× `{planner,0.76}` (claimed yes / truth no = disagreement) →
+  `mutations: 1`, planner fitness 0.3571 (probationary), its 5 runs merged into
+  ONE lesson ("Complete the whole planner curriculum…", confidence 1.0).
+  Live service DBs = `data/training.db` + `data/lessons.db`.
+- ❗ LIVE-TEST TRAP: the deterministic evaluator's disagreement depends on the
+  agent's own curriculum — `coder@0.78` disagrees but `analyst@0.78` **certifies**
+  (graduated). To force a mutation, PROBE a few (agent, quality) pairs and watch
+  for `claimed != certified`; the winner that day was `planner@0.76`.
+- Legacy `Trainer` path (`novamind/core/training/`) does NOT use this loop —
+  wiring it in is a later step; the loop currently binds to `TrainingEngine` runs.
