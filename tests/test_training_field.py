@@ -287,6 +287,116 @@ def test_tick_report_shape(engine: TrainingEngine) -> None:
     assert report["mutated"] == []
 
 
+# ── genome → standings (the Academy's fitness table) ─────────────────────
+def test_fitness_lists_every_agent_best_first(loop: FieldLoop, genome: Any) -> None:
+    """Standings are ranked, and each row explains its own number."""
+    for _ in range(GENOME.MIN_OBSERVATIONS):
+        genome.observe("coder", "yes", "yes")
+        genome.observe("tester", "yes", "no")
+    rows = loop.fitness()
+    assert [r["agent_id"] for r in rows] == ["coder", "tester"]
+    top, bottom = rows
+    assert top["fitness"] > bottom["fitness"]
+    assert top["observations"] == GENOME.MIN_OBSERVATIONS
+    assert top["agreements"] + top["dissent"] == GENOME.MIN_OBSERVATIONS
+    assert top["status"] == "elite"
+
+
+def test_fitness_rows_carry_evidence_and_advice(loop: FieldLoop, genome: Any) -> None:
+    """Each row explains itself: evidence counts plus the genome's next action."""
+    for _ in range(GENOME.MIN_OBSERVATIONS):
+        genome.observe("coder", "yes", "no")
+    row = loop.fitness()[0]
+    assert row["agent_id"] == "coder"
+    assert row["fitness"] < GENOME.PROBATION_BELOW
+    assert row["status"] == "probationary"
+    assert row["observations"] == GENOME.MIN_OBSERVATIONS
+    assert row["agreements"] == 0
+    assert row["dissent"] == GENOME.MIN_OBSERVATIONS
+    assert row["action"] == "retrain"
+    assert "probation" in row["reason"]
+    assert row["generation"] == 1
+    assert row["retired"] is False
+
+
+def test_fitness_includes_retired_agents(loop: FieldLoop, genome: Any) -> None:
+    """A retired agent stays visible (its history is why it was retired)."""
+    genome.observe("retired_one", "yes", "yes")
+    genome.retire("retired_one", note="test")
+    row = [r for r in loop.fitness() if r["agent_id"] == "retired_one"][0]
+    assert row["retired"] is True
+    assert row["action"] == "revise"
+
+
+def test_fitness_is_sorted_best_first(loop: FieldLoop, genome: Any) -> None:
+    """Ranking is by fitness, so the dashboard needs no client-side sort."""
+    for _ in range(GENOME.MIN_OBSERVATIONS):
+        genome.observe("good", "yes", "yes")
+        genome.observe("bad", "yes", "no")
+    rows = loop.fitness()
+    values = [r["fitness"] for r in rows]
+    assert values == sorted(values, reverse=True)
+    assert rows[0]["agent_id"] == "good"
+
+
+def test_fitness_respects_the_limit(loop: FieldLoop, genome: Any) -> None:
+    """The listing limit is clamped, never trusted blindly."""
+    for agent in ("a", "b", "c"):
+        genome.observe(agent, "yes", "yes")
+    assert len(loop.fitness(limit=2)) == 2
+    assert len(loop.fitness(limit=0)) == 1
+    assert len(loop.fitness(limit=9999)) == 3
+    assert len(loop.fitness(limit="2")) == 2  # type: ignore[arg-type]
+
+
+def test_fitness_is_empty_without_the_genome(loop: FieldLoop) -> None:
+    """No genome ⇒ no standings (the dashboard shows an empty state)."""
+    quiet = FieldLoop(
+        lesson_db=loop._lesson_db_path, genome_enabled=False
+    )
+    assert quiet.fitness() == []
+
+
+def test_fitness_is_empty_when_the_genome_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A genome that cannot be imported degrades to an empty list."""
+    loop = FieldLoop(lesson_db=tmp_path / "lessons.db")
+    monkeypatch.setattr(loop, "_genome_obj", lambda: None)
+    assert loop.fitness() == []
+
+
+def test_fitness_tolerates_a_broken_genome(tmp_path: Path) -> None:
+    """A genome that raises never takes the dashboard down."""
+    loop = FieldLoop(lesson_db=tmp_path / "lessons.db")
+
+    class Broken:
+        """A genome whose every view raises."""
+
+        def rank(self, **kwargs: Any) -> Any:
+            raise RuntimeError("boom")
+
+    monkeypatch_loop = loop
+    monkeypatch_loop._genome = Broken()
+    assert loop.fitness() == []
+
+
+def test_engine_exposes_fitness(engine: TrainingEngine) -> None:
+    """The engine delegates the standings view to its loop."""
+    engine.train("coder", quality=0.95)
+    rows = engine.fitness()
+    assert [r["agent_id"] for r in rows] == ["coder"]
+    assert rows[0]["observations"] == 1
+
+
+def test_engine_fitness_is_empty_when_the_loop_is_off(tmp_path: Path) -> None:
+    """``field_loop=False`` ⇒ no standings view."""
+    eng = TrainingEngine(
+        store=TrainingStore(tmp_path / "t.db"), field_loop=False
+    )
+    assert eng.fitness() == []
+
+
 def test_last_tick_is_none_before_any_run(loop: FieldLoop) -> None:
     """An untouched loop reports nothing."""
     assert loop.last_tick() is None
