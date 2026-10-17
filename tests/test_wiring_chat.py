@@ -91,14 +91,20 @@ def test_agent_system_no_agent_uses_default_with_knowledge(unified: Any) -> None
 def test_agent_system_falls_back_when_knowledge_unavailable(
     unified: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A broken knowledge layer degrades to the plain prompt — never raises."""
+    """A broken knowledge layer degrades to the plain prompt — never raises.
+
+    The skills layer (added later) still composes on top, so the plain prompt
+    must merely *head* the result and the knowledge block must be gone.
+    """
     def _boom(*args: Any, **kwargs: Any) -> str:
         raise RuntimeError("knowledge layer down")
 
     monkeypatch.setattr("src.knowledge.inject_into_prompt", _boom)
     cls = unified._agent_for("coder")
     prompt = getattr(cls, "system_prompt", "") or unified._DEFAULT_SYSTEM
-    assert unified._agent_system("coder", "task") == prompt
+    system = unified._agent_system("coder", "task")
+    assert system.startswith(prompt)
+    assert _KB_HEADER not in system
 
 
 def test_agent_for_is_none_for_blank_id(unified: Any) -> None:

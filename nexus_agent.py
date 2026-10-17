@@ -203,12 +203,14 @@ def _agent_for(agent_id: Optional[str]) -> Optional[Any]:
 
 
 def _agent_system(agent_id: Optional[str], task: str = "") -> str:
-    """نصّ نظام الوكيل، مدعومًا بقاعدة المعرفة المشتركة (الطبقة 2).
+    """نصّ نظام الوكيل، مدعومًا بقاعدة المعرفة (الطبقة 2) والمهارات (الطبقة 3).
 
-    يُحقَن قبل نداء LLM: ``inject_into_prompt`` يضيف كتلة معرفة المشروع
-    المرتبطة بالمهمّة (بوابات/أعراف/سياق) إلى تعليمات الوكيل، فتصبح الإجابة
-    على دراية بالمشروع. ``include_task=False`` لأن المهمّة هي دور المستخدم
-    نفسه في الدردشة (تُستعمل للترجيح لا تُنسَخ في نصّ النظام).
+    يُحقَن قبل نداء LLM: قاعدة المعرفة تضيف سياق المشروع (بوابات/أعراف/وثيقة
+    الفئة)، ثم المهارات تضيف إجراءات الوكيل المُفعَّلة (من بيانه: مراجعة كود،
+    اختبار، تدقيق أمني…) — فتصبح الإجابة على دراية بالمشروع وبمنهج الوكيل.
+    ``include_task=False`` لأن المهمّة هي دور المستخدم نفسه في الدردشة (تُستعمل
+    للترجيح لا تُنسَخ في نصّ النظام). تعذّر أي طبقة يُبقي البرومبت الأساسي —
+    لا يكسر الدردشة أبداً.
     """
     cls = _agent_for(agent_id)
     if cls is not None:
@@ -220,11 +222,17 @@ def _agent_system(agent_id: Optional[str], task: str = "") -> str:
     try:
         from src.knowledge import inject_into_prompt
 
-        return inject_into_prompt(
+        composed = inject_into_prompt(
             identity, task, include_task=False, instructions=fallback
         )
     except Exception:  # pragma: no cover - defensive: never break chat
-        return fallback
+        composed = fallback
+    try:
+        from src.skills import inject_skills_into_prompt
+
+        return inject_skills_into_prompt(composed, identity)
+    except Exception:  # pragma: no cover - defensive: never break chat
+        return composed
 
 
 # ═══════════════════════════════════════════════════════════════════════

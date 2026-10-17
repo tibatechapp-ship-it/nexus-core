@@ -1048,5 +1048,22 @@ except Exception as _knowledge_exc:  # pragma: no cover - never block the app
     print(f"⚠️ knowledge routes unavailable: {_knowledge_exc}")
 
 
+# ═══════════════════════════════════════════════════════════
+# P2 — Skills (layer 3): /api/skills/*
+# ═══════════════════════════════════════════════════════════
+# The skill system (repo seed + user override) had no HTTP face either.  Same
+# reason as above: ``include_router`` stays deferred inside the gateway mount,
+# so the concrete routes are added directly.
+try:
+    from src.skills.api import register as _register_skills
+
+    _register_skills(app)
+    SKILLS_OK = True
+except Exception as _skills_exc:  # pragma: no cover - never block the app
+    SKILLS_OK = False
+    SKILLS_ERR = str(_skills_exc)
+    print(f"⚠️ skills routes unavailable: {_skills_exc}")
+
+
 if __name__ == "__main__":
     main()
