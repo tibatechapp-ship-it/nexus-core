@@ -356,7 +356,8 @@ def test_the_one_way_genome_feed_still_works_without_the_loop(
     tmp_path: Path,
 ) -> None:
     """``field_loop=False`` = the P3 contract: the genome is fed directly."""
-    genome_mod = importlib.import_module("novamind.genome_v2")
+    # نفس الصيغة التي يستوردها المحرّك (وإلا قرأنا نسخةً ثانية غير مُغذاة).
+    genome_mod = importlib.import_module("src.novamind.genome_v2")
     engine = _engine(tmp_path, field_loop=False, feed_genome=True)
 
     run = engine.train("coder", quality=0.95)

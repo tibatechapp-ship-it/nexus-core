@@ -524,3 +524,22 @@ def test_get_field_loop_with_kwargs_is_fresh(tmp_path: Path) -> None:
     one = get_field_loop(lesson_db=tmp_path / "a.db")
     two = get_field_loop(lesson_db=tmp_path / "a.db")
     assert one is not two
+
+
+# ── one genome per process ───────────────────────────────────────────────
+def test_the_loop_and_the_council_share_one_genome() -> None:
+    """اسم واحد ⇒ جينوم واحد.
+
+    يُستورد ``genome_v2`` تحت اسمين ممكنين (``novamind.genome_v2`` و
+    ``src.novamind.genome_v2``)؛ فإن استورد كلُّ نظامٍ صيغتَه صار **نسختين
+    لا تلتقيان أبداً**. هذا الاختبار يثبّت أن الميدان (قناة المهمّة) والمجلس
+    (قناة الحُكم) يقرأان ويغذّيان نفس الوحدة — وإلا فلا دمج أصلاً.
+    """
+    from src.council.engine import CouncilEngine
+    from src.novamind.genome_v2 import get_genome_v2 as canonical
+
+    shared = canonical()
+    assert FieldLoop()._genome_obj() is shared
+    assert CouncilEngine(llm_router=object())._genome_v2() is shared
+
+

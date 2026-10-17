@@ -236,7 +236,9 @@ class FieldLoop:
         """The genome to feed (injected, else the process-wide one)."""
         if self._genome is not None:
             return self._genome
-        for module_name in ("novamind.genome_v2", "src.novamind.genome_v2"):
+        # ``src.`` first: the Council engine imports that spelling, and two
+        # spellings of one file = two module copies = two genomes.
+        for module_name in ("src.novamind.genome_v2", "novamind.genome_v2"):
             try:
                 module = importlib.import_module(module_name)
             except ImportError:
