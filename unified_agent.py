@@ -1014,5 +1014,22 @@ async def genome_reset(agent_id: str):
     return agent
 
 
+# ═══════════════════════════════════════════════════════════
+# P3 — Agent training pipeline: /api/training/*
+# ═══════════════════════════════════════════════════════════
+# The training stack lived in novamind.core.training but nothing served it.
+# ``training.api.register`` adds the routes directly (not via include_router,
+# which stays deferred and would 404 inside the gateway's mount).
+try:
+    from novamind.training.api import register as _register_training
+
+    _register_training(app)
+    TRAINING_OK = True
+except Exception as _training_exc:  # pragma: no cover - never block the app
+    TRAINING_OK = False
+    TRAINING_ERR = str(_training_exc)
+    print(f"⚠️ training routes unavailable: {_training_exc}")
+
+
 if __name__ == "__main__":
     main()
