@@ -1031,5 +1031,22 @@ except Exception as _training_exc:  # pragma: no cover - never block the app
     print(f"⚠️ training routes unavailable: {_training_exc}")
 
 
+# ═══════════════════════════════════════════════════════════
+# P2 — Shared Knowledge Base: /api/knowledge/*
+# ═══════════════════════════════════════════════════════════
+# The KB (layer 2 of the training model) had no HTTP face.  ``knowledge.api``
+# adds the concrete routes directly for the same reason as training: a deferred
+# ``include_router`` placeholder is never expanded inside the gateway's mount.
+try:
+    from src.knowledge.api import register as _register_knowledge
+
+    _register_knowledge(app)
+    KNOWLEDGE_OK = True
+except Exception as _knowledge_exc:  # pragma: no cover - never block the app
+    KNOWLEDGE_OK = False
+    KNOWLEDGE_ERR = str(_knowledge_exc)
+    print(f"⚠️ knowledge routes unavailable: {_knowledge_exc}")
+
+
 if __name__ == "__main__":
     main()
