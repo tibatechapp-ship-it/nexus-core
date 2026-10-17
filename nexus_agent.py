@@ -31,12 +31,13 @@ Pydantic تحتاج أنواعاً حقيقية عند التعريف — يجع
 import asyncio
 import importlib.util
 import json
+import math
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -145,6 +146,49 @@ def get_council() -> Any:
         _council = Council(router=get_router(), store=get_store_singleton(),
                            genome=get_genome())
     return _council
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# H1) حارس الوصول — طبقة أمنية واحدة: token + حدّ معدّل + سجل تدقيق
+#   • المصادقة    : ``NEXUS_AUTH_TOKEN`` (فارغ ⇒ معطّلة) والرأس ``X-Auth-Token``
+#   • حدّ المعدّل : ``NEXUS_RATE_LIMIT`` / ``NEXUS_RATE_WINDOW`` (افتراضي 120/60s)
+#   • سجل التدقيق : ``NEXUS_AUDIT_LOG`` (مسار ملف JSONL، أو off ⇒ معطّل)
+#   يُركَّب كـ HTTP middleware **واحد** فيغطّي الطبقات الثلاث معاً (وورك‌بنش +
+#   مساراتي + المحرّك المثبَّت catch-all) دون لمس أي مسار، والمحميّ هو الطرق
+#   المتغيّرة فقط (POST/PUT/PATCH/DELETE)؛ القراءات تمرّ دائماً.
+# ═══════════════════════════════════════════════════════════════════════
+try:
+    from src.security.access import AccessGuard
+
+    GUARD: Any = AccessGuard.from_env()
+    GUARD_ERR = ""
+except Exception as _e:  # pragma: no cover - defensive
+    GUARD = None
+    GUARD_ERR = f"{type(_e).__name__}: {_e}"
+
+
+if GUARD is not None:
+    @app.middleware("http")
+    async def _access_guard(request: Request,
+                            call_next: Callable[[Any], Any]) -> Any:
+        """بوّابة واحدة لكل الطلبات: فحص ⇒ مرور ⇒ تسجيل."""
+        client = request.client.host if request.client else None
+        decision = GUARD.check(request.method, request.url.path,
+                               request.headers, client)
+        if decision.allowed:
+            response = await call_next(request)
+        else:
+            payload: Dict[str, Any] = {"ok": False, "error": decision.error}
+            if decision.retry_after:
+                payload["retry_after"] = decision.retry_after
+            response = JSONResponse(payload, status_code=decision.status)
+            if decision.retry_after:
+                # سقفٌ لا أرضٌ: العميل ينتظر ما يكفي (ceil) لا أقلّ
+                response.headers["Retry-After"] = str(
+                    max(1, math.ceil(decision.retry_after)))
+        GUARD.record(decision, request.method, request.url.path, client=client,
+                     status=response.status_code)
+        return response
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -265,11 +309,15 @@ def api_status() -> Dict[str, Any]:
     """
     framework = len(_agent_classes())
     novamind = _novamind_agent_count()
+    guard_stats: Dict[str, Any] = (
+        GUARD.stats() if GUARD is not None else {"error": GUARD_ERR or "disabled"}
+    )
     return {
         "ok": True,
         "nexus": "unified",
         "version": _wb._app_version(),
         "port": int(os.environ.get("NEXUS_PORT", "8080")),
+        "guard": guard_stats,
         "components": {
             "workbench": getattr(_wb, "get_council_bridge", None) is not None,
             "builder": getattr(_wb, "Builder", None) is not None,
