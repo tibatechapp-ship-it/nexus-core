@@ -1202,3 +1202,72 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   (8755 stmts). `src/agents/manifest.py` = 100%.
 - NEXT: P3 (training pipeline + `/api/training/*`) after tyba approves P1.
   Academy UI = P4.5.
+
+## P3 — training engine + `/api/training/*` (2026-10-18) — feature/novamind-factory
+- Built AFTER tyba approved P1. **NOT committed** (tyba's rule: no P3 commit
+  until he approves). P4 (field loop) is next; P4.5 = Academy UI.
+- NEW package `src/novamind/training/` (stdlib-only, phone-safe):
+  * `models.py` — frozen `TrainingRun`; `GRADUATION_MIN_SCORE=0.75`;
+    `RETRAIN_FLOOR=0.5`; `TrainingVerdict` {graduated, needs_retraining, failed};
+    `verdict_for(graduated, score, *, completion_rate=1.0, critical=False)`.
+    Verdict prefers **evidence over the raw score**: a critical failure or
+    completion < 50% ⇒ `failed`; otherwise below the floor ⇒ `needs_retraining`.
+  * `store.py` — SQLite (`SCHEMA_VERSION=1`, WAL, connection-per-op): tables
+    `training_runs` + `training_certificates` (+2 indexes). `default_db_path()` =
+    `$NEXUS_TRAINING_DB` → `$NEXUS_DB` sibling `training.db` → `<repo>/data` →
+    tempdir. `get_store()/reset_store()` singleton.
+  * `engine.py` — `TrainingEngine(store=, evaluator=, clock=, min_score=,
+    feed_genome=)`. **Deterministic** default `deterministic_evaluator` (sha256 of
+    `salt|agent|skill|index`, spread ±0.12 around trainer quality) — the legacy
+    `novamind.core.training` runner uses `random.gauss` and is not reproducible.
+    Curriculum = `get_training_plan(spec).modules` (real plans) **+ the agent's
+    own manifest skill tags** (normalised `code-review`→`code_review`, deduped) —
+    so the manifest stays the single source of identity. Per-module pass uses the
+    module's own `min_score` (0.7); the weighted average is hours-weighted.
+    `is_graduated` = completion ≥0.8 AND weighted score ≥0.75 AND no module <0.5.
+    `min_score` is CLAMPED **up** to the constant — a caller/plan can raise the
+    bar, never lower it. Certificate issued only when graduated AND score ≥ 0.75.
+    Ed25519 signing is optional: probes
+    `cryptography.hazmat.primitives.asymmetric.ed25519` first (a bare `find_spec`
+    let the signer PRINT a warning when the native backend fails on Termux);
+    unavailable ⇒ empty signature, never fabricated.
+    `feed_genome` scores **self-assessment accuracy**: agent's claim
+    (`training_score >= floor`) vs ground truth (`certified`) → `genome_v2.observe`.
+  * `api.py` — `build_router(engine=None)` (8 routes) + **`register(app, engine)`
+    which does `app.router.routes.extend(router.routes)`**.
+- ❗ WIRING BUG FOUND + FIXED (worth remembering): `app.include_router()` is
+  **DEFERRED in FastAPI 0.143** — it appends a `fastapi.routing._IncludedRouter`
+  placeholder to `app.router.routes` instead of the real paths, and a
+  sub-application reached via `parent.mount("/", app)` **never expands it** →
+  `/api/training/*` returned **404 through the gateway** while the identical app
+  answered 200 under `TestClient`. Diagnosis: `(type(r).__name__, r.path)` of the
+  tail of `app.router.routes` shows `('_IncludedRouter', None)`. A test on the
+  BARE app cannot catch it — the regression test must go **through a mount**.
+  Lesson → skill `fastapi-deferred-router-mount` (with the pkill self-match /
+  orphan-port gotcha).
+- MOUNT: `unified_agent.py` (NOT protected) gained a guarded tail block
+  `from novamind.training.api import register; register(app)` setting
+  `TRAINING_OK`/`TRAINING_ERR`. The unified gateway (`nexus_agent.py`) mounts
+  `unified_agent.app` at `/`, so the routes are reachable on the gateway port.
+- Routes: `GET /api/training/{status,agents,plan/{agent_id},runs,runs/{run_id},
+  certificates}`, `POST /api/training/{run,batch}`.
+- Tests: `tests/test_training_engine.py` (37, stdlib-only) +
+  `tests/test_training_api.py` (18, `importorskip("fastapi")`), incl. the
+  regression `test_routes_survive_an_asgi_mount` and the **stated negative**
+  (`test_no_certificate_below_the_floor`, `_below_every_module_floor_fails_hard`,
+  `_a_weak_agent_earns_no_certificate`, `_a_mediocre_agent_earns_no_certificate`).
+- GATES GREEN: ruff clean · mypy **155** · annotations **155** · real gate =
+  **2431 passed @ 100.00%** (novamind is coverage-omitted, so the % is unchanged;
+  the new code is covered by its own 55 tests).
+- LIVE VERIFIED on a SPARE port (8099, separate `NEXUS_TRAINING_DB`) — the runit
+  service on :8000 was NOT touched: `/api/training/status` 200 through the
+  gateway mount, coder@quality0.95 → **graduated/certified/0.9294/17 modules**,
+  weak@0.60 → **failed, NOT certified, 0.4656**, certificates = 1 (coder only),
+  signature empty (cryptography native backend unavailable on Termux), batch of
+  3 → 3/3 graduated. Spare gateway killed afterwards; :8000 still 200.
+- ⚠ The RUNNING service (pid 9039) predates the wiring, so `/api/training/*` will
+  404 on :8000 until `sv restart nexus-core`.
+- ❗ Termux trap re-hit: `pkill -f "NEXUS_PORT=8099"` self-matched the shell →
+  tool hang + the `setsid` child survived as an **orphan** (ppid=1) still holding
+  :8099. Recovered by killing the PID directly; verify with
+  `pgrep -af "nexus_agent[.]py"`.
