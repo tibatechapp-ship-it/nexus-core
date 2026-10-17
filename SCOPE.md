@@ -2,7 +2,7 @@
 
 **آخر تحديث:** 2026-10-18
 **الإصدار الحالي:** v1.14.0
-**HEAD:** طرف الفرع `feature/zyvo-workspace` (بلا رقم ثابت — الرقم الثابت يتقادم؛ استخدم `git log -1 --oneline`)
+**HEAD:** طرف الفرع `feature/novamind-agent` (بلا رقم ثابت — الرقم الثابت يتقادم؛ استخدم `git log -1 --oneline`)
 
 ---
 
@@ -42,7 +42,7 @@
 ## 🎯 قواعد zyvo
 
 1. اقرأ قبل أن تكتب
-2. اعمل على `feature/zyvo-workspace` فقط
+2. اعمل على `feature/novamind-agent` فقط
 3. لا تعديل مباشر على `feature/landing-page` أو `main`
 4. commit بموافقة بشرية
 5. لا تعمل في الخلفية — استئناف يدوي
@@ -51,7 +51,7 @@
 > **استثناء مسجّل — 2026-10-17:** tyba أعطى موافقة صريحة («الكل») على تنفيذ
 > إصلاح F1–F5 وإيداعه على `feature/landing-page` ثم الوسم والدمج في `main`،
 > لأن إصلاحات v1.13.4 تخصّ كودًا لا يوجد إلا على ذلك الفرع
-> (`feature/zyvo-workspace` متأخر بإيداعين). القواعد 2/3 تبقى الأصل العام.
+> (`feature/novamind-agent` متأخر بإيداعين). القواعد 2/3 تبقى الأصل العام.
 >
 > **استثناء مسجّل — 2026-10-17 (v1.13.5):** tyba اختار «دمج + وسم إصدار» —
 > فتح PR من `feature/landing-page` إلى `main` بعد إصلاح فشلات CI العشرين.
@@ -60,11 +60,11 @@
 > جينوم v2 وإيداعه: `src/novamind/genome_v2.py` (جديد) + ربط **غير مُقحِم** في
 > `src/council/engine.py` (معامل اختياري، الناتج مطابق بايت-ببايت افتراضياً)
 > + `tests/test_genome_v2.py`. عُومل الالتزام بقاعدة الفرع: العمل جرى على
-> `feature/zyvo-workspace` بعد توحيده بـ`main` (fast-forward)، ثم PR إلى `main`.
+> `feature/novamind-agent` بعد توحيده بـ`main` (fast-forward)، ثم PR إلى `main`.
 
 ## 📊 الحالة
 
 - الإصدار: v1.14.0
-- الفرع: feature/zyvo-workspace
+- الفرع: feature/novamind-agent (أُعيد تسميته من feature/zyvo-workspace في 2026-10-18 قبل أول دفع)
 - tracked: 1040 ملف
 - modified: 0 (clean)

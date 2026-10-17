@@ -1175,7 +1175,7 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   ruff clean · annotations 154 · mypy 154 · `pytest --cov --cov-fail-under=95
   --ignore=tests/novamind` = **2347 passed @ 100.00%** (8643 stmts).
 - v1.14.0 conditions 1–3 (integration-report §10) DONE. COMMITTED 2026-10-18 on
-  `feature/zyvo-workspace` (first fast-forwarded to `main`=`2c65938`): **`0fbb597`**
+  `feature/novamind-agent` (first fast-forwarded to `main`=`2c65938`): **`0fbb597`**
   refactor(council) · **`2865418`** feat(genome) · **`e0d4857`** test(genome) ·
   **`5a49fbb`** chore(release) v1.14.0. Push + tag push + PR → `main` pending
   tyba's approval. NOTE: `src/novamind/**` is EXCLUDED from ruff/mypy/annotations
