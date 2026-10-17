@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Nexus Council API
-  version: 1.13.5
+  version: 1.14.0
   description: |
     Multi-agent decision council: live SSE deliberation, decision memory
     with echo-chamber protection, and code crafting guarded by compile proofs.
@@ -36,7 +36,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Health'}
               example:
-                version: "1.13.5"
+                version: "1.14.0"
                 status: ok
                 bridge: true
                 topics: true

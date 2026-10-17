@@ -1131,8 +1131,53 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   (dependabot logged "labels could not be found") → created via `gh label create`.
   Merging conflicting dependabot PRs in this repo needs `@dependabot rebase` on
   the others (they all touch `pyproject.toml`; adjacent lines ⇒ conflicts).
-- STILL OPEN (pre-existing, NOT caused by the bumps): GitHub **Pages is not
-  configured** (`gh api repos/.../pages` → **404**), so
-  `.github/workflows/deploy-landing.yml` fails on any push touching `landing/**`
-  or the workflow file. Fix = enable Pages with source "GitHub Actions" — it
-  PUBLISHES the site, so it needs tyba's go-ahead.
+- ~~STILL OPEN: GitHub Pages not configured~~ — **RESOLVED 2026-10-18**:
+  `gh api --method POST repos/tibatechapp-ship-it/nexus-core/pages -f
+  build_type=workflow` → `build_type=workflow`, `https_enforced=true`.
+  `deploy-landing.yml` HAS `workflow_dispatch` ⇒ trigger with
+  `gh workflow run deploy-landing.yml --ref main` (**no commit needed**).
+  Deploy run **38985209549 = success**, deployment **7132174316** state=success,
+  **LIVE = https://tibatechapp-ship-it.github.io/nexus-core/**.
+  ⚠ PHONE NETWORK BLOCKS `*.github.io` (github.com→200 but github.io +
+  raw TCP `185.199.110.153:443`/`185.199.108.153:443` ALL time out — the Fastly
+  range `185.199.108.0/22`); DNS resolves, `webfetch` also times out. Verify a
+  Pages site from the phone via `api.allorigins.win/raw?url=<enc>` or
+  `r.jina.ai/<url>`. Skill: `github-pages-enable-deploy`.
+
+## v1.14.0 — Agent Genome v2 (`src/novamind/genome_v2.py`) — 2026-10-18
+- NEW pure, stdlib-only, **hermetic** genome (no I/O/clock/randomness) that
+  scores **judgement accuracy**: each council member's stance vs the final
+  verdict. Three v2 ideas over v1 `genome/`: **confidence shrinkage**
+  (`confidence = n/(n+K)`, `K=CONFIDENCE_K=5.0`, so 1 perfect sample ≠ elite),
+  **EWMA recency** (`DEFAULT_ALPHA=0.35`), and **per-stance traits** (accuracy
+  split by the final verdict). Constants: `NEUTRAL_FITNESS=0.5`,
+  `ELITE_AT=0.75`, `PROBATION_BELOW=0.35`, `MIN_OBSERVATIONS=5`,
+  `HISTORY_LIMIT=50`, `FINAL_VERDICTS=("approve","reject","human_review")`,
+  `STANCE_TO_FINAL={"yes":"approve","no":"reject","mid":"human_review"}`.
+- Pure fns: `stance_of` (None on unknown) · `agreement` (None when unscorable) ·
+  `confidence` · `ewma_update` · `fitness` (confidence-shrunk toward `prior`) ·
+  `classify_fitness` (elite/stable/probationary) · `trait_accuracy` · `empty_genome`.
+  Class `GenomeV2(alpha=…)`: `ensure/observe/observe_council/mutate/retire/revive/
+  snapshot/rank(limit,include_retired)/leaders/probationary/advise/stats/
+  to_dict/from_dict`. Singleton `get_genome_v2(*, reset=False)` +
+  `reset_genome_v2()`. `from_dict` tolerates `None`/junk/non-mapping rows.
+- ENGINE WIRING (`src/council/engine.py`, back-compat): `__init__(self,
+  llm_router=None, genome=None)`; `_genome` = injected genome else `None`.
+  `_genome_v2()` lazily imports `get_genome_v2`, caching a `False` sentinel when
+  the import fails (never retries, never raises). `_observe_genome(transcript,
+  verdict)` builds stances via `_explicit_verdict`, filtered to `self.members`,
+  and calls `observe_council` inside `try/except: pass`. **The old `_judge` body
+  is now `_judge_verdict` and `_judge` = verdict + observe** ⇒ the verdict/score
+  tuple is BYTE-IDENTICAL by default (no genome → nothing to observe).
+- Tests: `tests/test_genome_v2.py` (77, hermetic). Per-layer check:
+  `pytest tests/test_genome_v2.py --cov=src/council --cov-report=term-missing`
+  → `engine.py` 100% (204 stmts / 74 branches, 0 miss). FULL GATE green:
+  ruff clean · annotations 154 · mypy 154 · `pytest --cov --cov-fail-under=95
+  --ignore=tests/novamind` = **2347 passed @ 100.00%** (8643 stmts).
+- v1.14.0 conditions 1–3 (integration-report §10) DONE. COMMITTED 2026-10-18 on
+  `feature/novamind-agent` (first fast-forwarded to `main`=`2c65938`): **`0fbb597`**
+  refactor(council) · **`2865418`** feat(genome) · **`e0d4857`** test(genome) ·
+  **`5a49fbb`** chore(release) v1.14.0. Push + tag push + PR → `main` pending
+  tyba's approval. NOTE: `src/novamind/**` is EXCLUDED from ruff/mypy/annotations
+  (its own gate) but `src/council` IS coverage-measured ⇒ new engine lines need
+  covering tests (they have them).
