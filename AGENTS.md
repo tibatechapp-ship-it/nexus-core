@@ -1392,3 +1392,36 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - `scripts/benchmark/agent-benchmark.sh` FIXED: hardcoded `:8080` → `${BASE}`
   (`PORT=${NEXUS_PORT:-8000}`); member count now read live from `/api/status`
   (`council_members`) instead of a hardcoded "5".
+
+## Phase 1 — shared Knowledge Base (training layer 2) (2026-10-18)
+- Implements `docs/AGENT_TRAINING_PLAN.md` §1 layer 2 (hot memory): project
+  knowledge lives in ONE place and is injected into an agent's instructions
+  before a task — exactly the way `AGENTS.md` auto-loads into every zyvo session.
+- `src/knowledge/base.py` + `src/knowledge/__init__.py` (stdlib-only,
+  phone-safe). `KnowledgeDoc(name,title,content,path,category,tags,pinned)` with
+  `.tokens` / `.to_dict`; `KnowledgeBase(seed_dir=SEED_DIR, user_dir=KB_DIR, *,
+  create=True)`; `SEED_DIR = <repo>/knowledge`, `KB_DIR = ~/.config/nexus/knowledge`
+  (user doc WINS on a name clash), `DEFAULT_LIMIT=4`. Methods: `_discover` /
+  `_cache` / `refresh` / `list_docs` / `all_docs` / `load` / `pinned` / `_score`
+  / `search` / `select` (pinned first, dedupe, limit) / `render` / `for_agent`
+  / `stats`; module helpers `get_knowledge_base` / `reset_knowledge_base` /
+  `normalize_token` / `tokenize` / `parse_front_matter`. Front-matter keys:
+  `title`, `category`, `tags`, `pinned`. Scoring = weighted token overlap
+  (title+tags ×2, body ×1) with Arabic-aware normalisation (أ/إ/آ→ا, ى→ي, ة→ه,
+  harakat stripped) and ar+en stopwords.
+- Seed docs `<repo>/knowledge/`: `nexus-core.md`, `gates.md`, `conventions.md`
+  (those three pinned) + `training-model.md`.
+- Bugs found + fixed while testing: (1) `_TOKEN_RE` lacked `A-Z` and lowercased
+  AFTER the match, so `"Rules"` tokenised to `"ules"` — `.lower()` must run
+  BEFORE the match; (2) the ctor was `(base_dir, seed_dir)` (order/name trap) →
+  renamed to `(seed_dir=SEED_DIR, user_dir=KB_DIR)`; (3) dead empty-guard removed
+  from `_score`.
+- `tests/test_knowledge.py` (31, hermetic temp dirs, no home touch) → 100% on
+  `src/knowledge`. Commits `5ad036d` feat · `13f8920` test.
+- NOT yet wired: nothing injects `for_agent()` into a prompt yet (that is P2,
+  skills-first injection) and there is no `/api/knowledge` route.
+- Gate after Phase 1: ruff clean · mypy **157** · annotations **157** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2732 passed,
+  1 skipped @ 100.00%** (8916 stmts, 1898 branches, 0 missed).
+- Council 16-metric bench finished (10m45s, live 6-member council on `:8000`):
+  **16/16 passed, 0 failed** → `reports/benchmark/benchmark-20261017-173922.{json,md}`.
