@@ -1723,3 +1723,25 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   containing BACKTICKS is command-substituted by the shell → the message lands
   mangled (the quoted fragments vanish). Write the message to a file and use
   `git commit -F <file>` (fixed with `git commit --amend -F …` before pushing).
+
+### v1.16.0 SHIPPED (2026-10-18)
+- `chore(release): v1.16.0` = **`4bfd8e4`** (4 lockstep files: pyproject,
+  CHANGELOG, `docs/openapi.yaml`, SCOPE.md — the foreign WIP was left unstaged).
+  **PR #20 merged** → `main` = **`ebc93be`** on local + origin + gitlab. Tag
+  **v1.16.0** (annotated, object `6e35bcf`) at `4bfd8e4`, self-consistent
+  (`git show v1.16.0:pyproject.toml` → 1.16.0), on BOTH remotes.
+  **GitHub Release v1.16.0 (Latest)**:
+  https://github.com/tibatechapp-ship-it/nexus-core/releases/tag/v1.16.0
+  CI on the branch: lint/type-check + pytest (3.11/3.12/3.13) + secret scan = GREEN.
+- SERVICE: `sv restart nexus-core` → pid **19826** (single process, no orphan),
+  `/api/health` = **1.16.0**. Live proof on the RELEASED build: `/api/training/
+  fitness` 0 → **1** after one `POST /api/chat {agent:coder}` (coder 0.5833,
+  action observe), and an empty message (`designer`) kept it at **1**.
+- RELEASE-DAY RECIPE (worked first try, now in the ship-fixes-both-remotes skill):
+  verify tree + `git log origin/main..HEAD` → bump 4 lockstep files → four gates →
+  `git add` ONLY the version files → `git commit -F` → push branch → PR → wait for
+  checks → `gh pr merge --merge` → `git fetch origin main:main` (ff, no checkout ⇒
+  no WIP abort) → tag the RELEASE commit → push tag to both + `git push gitlab
+  main` → Release notes = `sed -n '/^## vX/,/^## vY/p' CHANGELOG.md | sed '$d'`.
+- NEXT (v1.17.0): surface `task_observations` in the Academy fitness tab + feed
+  the task channel from the 20 real framework agents' runs.
