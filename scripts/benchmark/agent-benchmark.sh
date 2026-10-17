@@ -7,6 +7,10 @@ PROJECT="$HOME/nexus-core"
 REPORT_DIR="$PROJECT/reports/benchmark"
 mkdir -p "$REPORT_DIR"
 
+# العنوان الأساسي للبوابة الموحّدة (runit service `nexus-core` على 8000 افتراضياً).
+PORT="${NEXUS_PORT:-8000}"
+BASE="http://127.0.0.1:$PORT"
+
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 REPORT="$REPORT_DIR/benchmark-$TIMESTAMP.md"
 JSON_REPORT="$REPORT_DIR/benchmark-$TIMESTAMP.json"
@@ -37,14 +41,20 @@ declare -A BENCHMARKS=(
     ["ToolUseAdvanced"]="أدوات متقدمة: صمّم نظام Multi-Agent يستخدم 10 أدوات مختلفة"
 )
 
+# ═══ عدد أعضاء المجلس (حقيقي من /api/status لا رقم مكتوب يدوياً) ═══
+N_MEMBERS=$(curl -s -m 5 "${BASE}/api/status" 2>/dev/null | python3 -c \
+    "import json,sys; print(json.load(sys.stdin).get('components',{}).get('council_members',0))" \
+    2>/dev/null)
+[ -n "$N_MEMBERS" ] || N_MEMBERS=0
+
 # ═══ بدء التقرير ═══
 {
     echo "# 🧪 تقرير اختبار كفاءة الوكلاء — Nexus-Core"
     echo ""
     echo "**التاريخ:** $(date)"
     echo "**المعايير:** ${#BENCHMARKS[@]}"
-    echo "**الأعضاء:** 5"
-    echo "**إجمالي الاختبارات:** $((${#BENCHMARKS[@]} * 5))"
+    echo "**الأعضاء:** $N_MEMBERS"
+    echo "**إجمالي الاختبارات:** $((${#BENCHMARKS[@]} * N_MEMBERS))"
     echo ""
     echo "---"
     echo ""
@@ -60,7 +70,7 @@ title "  🧪 اختبار كفاءة الوكلاء"
 line
 echo ""
 log "📊 المعايير: ${#BENCHMARKS[@]}"
-log "👥 الأعضاء: 5"
+log "👥 الأعضاء: $N_MEMBERS"
 log "📄 التقرير: $REPORT"
 echo ""
 
@@ -86,7 +96,7 @@ for BENCH in "${!BENCHMARKS[@]}"; do
     } >> "$REPORT"
     
     # استدعاء Council
-    RESPONSE=$(timeout 60 curl -N -s -X POST "http://127.0.0.1:8080/api/council/stream" \
+    RESPONSE=$(timeout 60 curl -N -s -X POST "${BASE}/api/council/stream" \
         -H "Content-Type: application/json" \
         -d "{\"topic\": \"$TASK\", \"rounds\": 1}" 2>/dev/null | \
         grep "member_message" | python3 -c "
@@ -146,7 +156,7 @@ END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 # ═══ Genome بعد الاختبار ═══
-GENOME=$(curl -s http://127.0.0.1:8080/api/genome 2>/dev/null)
+GENOME=$(curl -s ${BASE}/api/genome 2>/dev/null)
 
 {
     echo ""
@@ -193,7 +203,7 @@ echo ""
 
 # Genome النهائي
 echo -e "${C}═══ Genome بعد الاختبار ═══${N}"
-curl -s http://127.0.0.1:8080/api/genome 2>/dev/null | python3 -c "
+curl -s ${BASE}/api/genome 2>/dev/null | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)

@@ -63,3 +63,6 @@ chk.sh
 audit_report.txt
 *.audit
 ollama_keys.txt
+
+# Benchmark run logs (generated; keep the JSON/Markdown reports)
+reports/benchmark/*.log
