@@ -2,6 +2,30 @@
 
 All notable changes to this project. Newest first.
 
+## v1.16.0 — 2026-10-18
+**The genome's task channel is live — every real agent run now feeds it.**
+
+- **Root cause fixed (one file, two names = two genomes).** `src/novamind/genome_v2.py`
+  is importable as both `novamind.genome_v2` and `src.novamind.genome_v2`; each
+  spelling is a **separate module object**, so the in-memory singleton (the genome
+  has no persistence) was duplicated — the Council and the training field could
+  feed two unconnected genomes. The canonical spelling `src.novamind.genome_v2`
+  (the one `src/council/engine.py` and `nexus_agent.py` already use) is now pinned
+  FIRST in the fallback tuples of `field.py::_genome_obj` and
+  `engine.py::_feed_genome`. A stale test that read the second copy now goes
+  through the canonical name.
+- **The second channel is live** (`nexus_agent.py`):
+  `_record_task_outcome(agent_id, ok, duration, task)` is called from the
+  `/api/chat` generator, which now runs inside `try/finally` with a
+  `time.monotonic()` timer. A completed answer records a success, a dead provider
+  or a generation error records a failure, and **an empty message is not recorded
+  at all** (a `ran` flag) so an accidental empty send cannot pollute fitness.
+  Every genome error is swallowed ⇒ a broken genome can never break a chat.
+  +5 tests (the fake patches the string `src.novamind.genome_v2.get_genome_v2`).
+- **Live proof on the service:** `GET /api/training/fitness` (it reads the same
+  singleton as the writer) went 0 → 1 with `coder fitness 0.5833` after ONE real
+  `POST /api/chat {agent:coder}`; an empty message left the count at 1.
+
 ## v1.15.0 — 2026-10-18
 **One access guard for the unified server (token + rate limit + audit log), and an honest spec.**
 
