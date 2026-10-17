@@ -1,8 +1,8 @@
 # 📋 SCOPE.md — Nexus-Core Boundaries
 
-**آخر تحديث:** 2026-10-17
-**الإصدار الحالي:** v1.13.5
-**HEAD:** طرف الفرع `feature/landing-page` (بلا رقم ثابت — الرقم الثابت يتقادم؛ استخدم `git log -1 --oneline`)
+**آخر تحديث:** 2026-10-18
+**الإصدار الحالي:** v1.14.0
+**HEAD:** طرف الفرع `feature/zyvo-workspace` (بلا رقم ثابت — الرقم الثابت يتقادم؛ استخدم `git log -1 --oneline`)
 
 ---
 
@@ -19,7 +19,8 @@
 ## 🟡 حذر (بموافقة صريحة)
 
 - `src/novamind/council/*` — Council الداخلي
-- `src/novamind/genome/*` — genome (v1.14.0 قريباً)
+- `src/novamind/genome/*` — genome v1
+- `src/novamind/genome_v2.py` — genome v2 (نُفِّذ في v1.14.0)
 - `src/council/gatekeeper.py` — ethics_gate (v1.14.1)
 
 ## 🟢 مسموح (إضافات فقط)
@@ -54,10 +55,16 @@
 >
 > **استثناء مسجّل — 2026-10-17 (v1.13.5):** tyba اختار «دمج + وسم إصدار» —
 > فتح PR من `feature/landing-page` إلى `main` بعد إصلاح فشلات CI العشرين.
+>
+> **استثناء مسجّل — 2026-10-18 (v1.14.0):** tyba أعطى موافقة صريحة على بناء
+> جينوم v2 وإيداعه: `src/novamind/genome_v2.py` (جديد) + ربط **غير مُقحِم** في
+> `src/council/engine.py` (معامل اختياري، الناتج مطابق بايت-ببايت افتراضياً)
+> + `tests/test_genome_v2.py`. عُومل الالتزام بقاعدة الفرع: العمل جرى على
+> `feature/zyvo-workspace` بعد توحيده بـ`main` (fast-forward)، ثم PR إلى `main`.
 
 ## 📊 الحالة
 
-- الإصدار: v1.13.5
-- الفرع: feature/landing-page
-- tracked: 1029 ملف
+- الإصدار: v1.14.0
+- الفرع: feature/zyvo-workspace
+- tracked: 1040 ملف
 - modified: 0 (clean)
