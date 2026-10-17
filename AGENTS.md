@@ -1567,3 +1567,46 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   `FieldLoop` still feeds only the judgement channel, so the task channel is
   exercised but unpopulated. Wiring the 20 framework agents' real runs into it
   (and surfacing it in the Academy panel) is the remaining P4.5/P4 work.
+
+## P5 — access guard (token + rate limit + audit) → v1.15.0 SHIPPED 2026-10-18
+- Branch `feature/novamind-factory`; 9 concern-split commits `82f17ff..54157fe`,
+  pushed origin+gitlab; **PR #19 merged** → `main` = **`6fd1d3d`** on local +
+  origin + gitlab; tag **`v1.15.0`** (annotated) at `54157fe` on BOTH;
+  **GitHub Release v1.15.0 (Latest)**. CI on the branch: **CI + Tests green**
+  (py 3.11/3.12/3.13) — no pre-existing red this time.
+- COMMITS: `dc929e7` feat(security) access.py · `21ba38e`? → actual order:
+  `dc929e7` feat(security) · `50cf4a`… full list = `dc929e7` feat(security) ·
+  `8e0dcdb` feat(gateway) · `21ba38e` test(security) · `5305077` test(gateway) ·
+  `5ab7723` test(api) · `433c88a` docs(api) · `043c4d4` docs(training) ·
+  `859fa7e` docs(scope) · `54157fe` chore(release).
+- `src/security/access.py` (NEW, stdlib-only/FastAPI-free, 100% cov): `AccessGuard`
+  — auth (`NEXUS_AUTH_TOKEN`, `hmac.compare_digest`, header `X-Auth-Token`),
+  fixed-window rate limit (`NEXUS_RATE_LIMIT`/`NEXUS_RATE_WINDOW`, default 120/60s
+  per `client+path`, 429 + `Retry-After`=ceil), JSONL audit (`NEXUS_AUDIT_LOG`,
+  rotates at `AUDIT_MAX_BYTES`, swallows I/O). Only mutating methods gated.
+  `record(decision, method, path, client="", **fields)` — `**fields` overrides
+  the pre-verdict status with the OBSERVED status (a 404 is logged as 404).
+- WIRING: `nexus_agent.py` = ONE `@app.middleware("http")` in front of every
+  route (no route touched) + `/api/status["guard"]`. `nexus_agent.py` is
+  **read-only by default** — run `nexus-unlock` (bash fn → chmod 644) before edits.
+- `docs/openapi.yaml` was **NOT valid YAML** (3 `description` values embedded
+  `{...: ...}` in plain scalars) — invisible to the old drift guard because it
+  read the file with `re`. Now parsed with a real YAML parser; + 401/429 on every
+  mutating route + `AccessToken` securityScheme. `tests/test_openapi.py` +2.
+- NEW `docs/AGENT_TRAINING.md` = operational truth of the 4-layer training stack.
+- GATES GREEN: ruff · annotations 162 · mypy 162 (was 161 — new module) · real
+  gate **2896 passed, 1 skipped @ 100.00%** (9260 stmts).
+- LIVE VERIFIED on the service (:8000, pid 18746 → health 1.15.0, `/api/status`
+  guard = auth false / rate 120 / window 60) AND on a spare :8095 with
+  `NEXUS_AUTH_TOKEN=zzz NEXUS_RATE_LIMIT=3`: GET no token → 200 · POST no/bad
+  token → 401 · POST good token ×3 → 200 · 4th → **429 + retry-after: 22** ·
+  audit JSONL logged all 7 requests with the observed status.
+- ❗ VERSION-LOCK COMMIT TRAP (cost real thought): `test_openapi` asserts
+  `openapi info.version == src.__version__` and `test_version_sync` asserts
+  `src.__version__ == pyproject == CHANGELOG heading`. So pyproject + CHANGELOG +
+  openapi MUST bump in ONE commit; bumping early makes every intermediate commit
+  RED. Fix = hold them at the OLD version while landing the feature/docs commits,
+  then bump all three in the final `chore(release)` commit. SCOPE.md is not
+  test-locked → its rename+version rides the docs commit.
+- NEXT (v1.16.0): wire `genome_v2.observe_outcome` to real agent runs (the task
+  channel is built+tested but unpopulated in production).
