@@ -1181,3 +1181,24 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   tyba's approval. NOTE: `src/novamind/**` is EXCLUDED from ruff/mypy/annotations
   (its own gate) but `src/council` IS coverage-measured ⇒ new engine lines need
   covering tests (they have them).
+
+## P1 — AgentManifest (2026-10-18) — feature/novamind-factory
+- Branch **`feature/novamind-factory`** (off `main` 93417e8); SCOPE rule 2 names
+  `feature/novamind-agent` but tyba authorised the new branch for the training
+  build. Plan = `docs/AGENT_TRAINING_PLAN.md` (untracked).
+- SHIPPED (P1 only, **committed? NOT — awaiting tyba's approval**):
+  `src/agents/manifest.py` (frozen `AgentManifest` dataclass + validation) and
+  `tests/test_agent_manifest.py` (29 tests).
+- CONTRACT: manifest = projection of the agent CLASS (id/group/identity/tools)
+  + `_EXTRAS` table (title/spec/skills/gates/adversarial); `memory_scope` =
+  `agent:<id>`; `tools_required` = has any of `{write,edit,bash}`.
+- VOCABULARIES (all validated): `KNOWN_TOOLS` (22: read/list/grep + 19
+  declarative), `KNOWN_SKILLS` (the 5 seeded), `KNOWN_GATES`
+  (ruff/mypy/annotations/pytest/adversarial/smoke), `KNOWN_ADVERSARIAL` (14
+  slugs from tests/adversarial). `ManifestError` on missing/orphan/invalid.
+- NOT wired into `src/agents/__init__.py` (P2) — zero behaviour change.
+- GATES GREEN: ruff · mypy 155 · annotations 155 · `pytest --cov
+  --cov-fail-under=95 --ignore=tests/novamind` = **2376 passed @ 100.00%**
+  (8755 stmts). `src/agents/manifest.py` = 100%.
+- NEXT: P3 (training pipeline + `/api/training/*`) after tyba approves P1.
+  Academy UI = P4.5.
