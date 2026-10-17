@@ -1515,3 +1515,55 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   file after a tail edit; `import`-probe a by-path module to catch it.
 - Optional-extra coverage lesson re-applied: a `list_skills()` name that
   `load()` cannot resolve must be skipped, not fatal — tested explicitly.
+
+## P4.5 (genome) — task outcomes = second genome channel (2026-10-18)
+- Branch `feature/novamind-factory`. The plan's P4.5 genome goal: "مكانة لكل
+  وكيل لا للمجلس فقط". `src/novamind/genome_v2.py` gained a **second, independent
+  result channel** on the SAME agent row, fed by task outcomes instead of council
+  judgements.
+- SHAPE: `empty_genome` gains `task_observations` / `task_successes` /
+  `task_ewma` / `task_duration_avg` / `task_last_ok` / `task_last_duration` /
+  `task_last_quality`. New pure helpers: `evidence(row)` (= `observations` +
+  `task_observations`) and `blend_fitness(j, j_conf, t, t_conf)` (confidence-
+  weighted; a zero-confidence source contributes nothing; no evidence at all ⇒
+  `NEUTRAL_FITNESS`). New `GenomeV2._blended_fitness(row)` recomputes the
+  headline fitness; **a row with no task outcomes takes the exact v1.14.0
+  expression** (`fitness(observations, ewma)`) ⇒ council-only genomes stay
+  byte-identical. `advise()`/`rank()` now order by `evidence()` and `advise()`
+  returns an extra `evidence` field; `stats()` adds `task_observations`.
+  `mutate()` rebuilds through `empty_genome` ⇒ the task channel resets on
+  mutation (self-cooling).
+- API: `observe_outcome(agent_id, ok, *, duration=None, quality=None, task="")`
+  — `ok` is ground truth (a failure is ALWAYS a 0.0 sample; a gate quality can
+  never rescue it), a success takes its optional quality or 1.0; duration is
+  dashboard evidence and is NEVER scored. `observe_result(result, *, quality,
+  task)` is the duck-typed bridge over `.agent`/`.ok`/`.duration_s` (the
+  framework `AgentResult`), plus a module-level `observe_result()` over the
+  shared genome.
+- HISTORY: task events are `{"seq", "event": "task", "ok", "duration",
+  "quality", "task"}` — a separate event kind, so the exact-dict assertions in
+  `tests/test_genome_v2.py` (77 tests, UNTOUCHED) still hold.
+- TWO LATENT BUGS fixed (found by the new tests): (1) `0.0 or NEUTRAL_FITNESS`
+  swallowed a legitimate all-failures EWMA of exactly 0.0 ⇒ explicit `is None`
+  checks; (2) `ewma_update` clamps to `[0, 1]`, which silently corrupted the
+  **duration** average (seconds are unbounded) ⇒ the duration EWMA is computed
+  directly, floored at 0. Also removed a provably dead guard in `observe()`
+  (`matched is not None` already implies the final stance is recognised, so
+  `final_key` was never None there — it blocked 100% branch coverage).
+- TESTS: NEW `tests/test_genome_v2_tasks.py` (44, hermetic) — pure helpers,
+  scoring rules incl. junk duration/quality, the blend, the bridge, mixed-source
+  `advise`/`rank`/`stats`, `to_dict`/`from_dict` round-trip, migration of an old
+  task-less row, and the council engine's `_judge` path. 121 total (77 + 44).
+- COVERAGE PROFILE: `src/novamind/*` is omitted from the repo-wide profile, so
+  the module needs its own — NEW `coverage-genome.ini` (mirrors
+  `coverage-autopilot.ini`). `COVERAGE_RCFILE=coverage-genome.ini python -m
+  pytest tests/test_genome_v2*.py --cov=src.novamind.genome_v2` → **258 stmts /
+  74 branches, 0 missed, 0 partial = 100%**.
+- GATES GREEN: ruff clean · annotations **161** · mypy **161** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2859 passed,
+  1 skipped @ 100.00%** (9121 stmts / 1980 branches); `src/council` 100% and
+  `genome_v2` 100% (the plan's P4.5 genome gate).
+- NOT wired yet (next session): nothing calls `observe_outcome` in production —
+  `FieldLoop` still feeds only the judgement channel, so the task channel is
+  exercised but unpopulated. Wiring the 20 framework agents' real runs into it
+  (and surfacing it in the Academy panel) is the remaining P4.5/P4 work.
