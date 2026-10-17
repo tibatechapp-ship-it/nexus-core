@@ -1,0 +1,36 @@
+{
+  "timestamp": "20261017-173922",
+  "benchmarks": [
+    {"benchmark": "ProgramBench", "status": "ok", "timestamp": 1792247965}
+,
+    {"benchmark": "CyberGym", "status": "ok", "timestamp": 1792248031}
+,
+    {"benchmark": "ExploitGym", "status": "ok", "timestamp": 1792248052}
+,
+    {"benchmark": "AutomationBench", "status": "ok", "timestamp": 1792248076}
+,
+    {"benchmark": "HLEWithTools", "status": "ok", "timestamp": 1792248142}
+,
+    {"benchmark": "SWEMarathon", "status": "ok", "timestamp": 1792248152}
+,
+    {"benchmark": "FrontierSWE", "status": "ok", "timestamp": 1792248212}
+,
+    {"benchmark": "NL2Repo", "status": "ok", "timestamp": 1792248262}
+,
+    {"benchmark": "DeepSWE", "status": "ok", "timestamp": 1792248310}
+,
+    {"benchmark": "TerminalBench", "status": "ok", "timestamp": 1792248351}
+,
+    {"benchmark": "ALECLI", "status": "ok", "timestamp": 1792248377}
+,
+    {"benchmark": "PostTrainBench", "status": "ok", "timestamp": 1792248443}
+,
+    {"benchmark": "ExploitBench", "status": "ok", "timestamp": 1792248452}
+,
+    {"benchmark": "ToolUseAdvanced", "status": "ok", "timestamp": 1792248518}
+,
+    {"benchmark": "GDPvalAA", "status": "ok", "timestamp": 1792248556}
+,
+    {"benchmark": "Toolathlon", "status": "ok", "timestamp": 1792248601}
+  ]
+}
