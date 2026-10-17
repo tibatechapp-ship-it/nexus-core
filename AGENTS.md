@@ -1095,3 +1095,44 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - FULL STATE 2026-10-17: `main` = **`c49c214`** on origin + gitlab (in sync). Tag
   `v1.13.5` at `4b1999a` (origin + gitlab). GitHub Release v1.13.5 (Latest) with a
   post-release addendum for `c49c214`. `feature/landing-page` = 3bca44c (merged).
+
+## Dependabot backlog cleared (2026-10-18) — 13 PRs handled, 0 open
+- `main` = **`cad8994`** on origin + gitlab (in sync, tree clean). Local gate
+  re-verified: **2270 passed @ 100.00%** (8614 stmts, 1802 branches), floor 99
+  PASS. Tests workflow on `cad8994` = **success**. **0 open PRs** afterwards.
+- MERGED: #2 `actions/checkout` 4→7 · #3 `configure-pages` 5→6 · #4
+  `deploy-pages` 4→5 · #5 `upload-pages-artifact` 3→5 (each major tag verified to
+  EXIST via `gh api repos/<repo>/git/ref/tags/<tag>`) · #9 setuptools >=61→>=84 ·
+  #10 hypothesis >=6→>=6.169 · then the queue dependabot released once the
+  `open-pull-requests-limit: 5` slots freed: #13 sqlalchemy >=2.1.4 ·
+  #14 pytest-benchmark >=5.3.0 · #15 sentence-transformers >=6.1.0 ·
+  #16 python-dotenv >=1.2.4 · #17 pydantic >=2.14.1.
+- CLOSED (with reasons):
+  · **#6 + #7** — they only edited `reports/pip-after.txt`, a `pip freeze` dump.
+    Dependabot parses ANY `*.txt` under the configured directory as a
+    requirements file → bogus "bumps". FIXED AT THE ROOT (commit `29e0998`):
+    untracked the artifact (stays in history) + `.gitignore` `/reports/pip-*.txt`.
+  · **#8** — syrupy 4.8.0→6.1.1 is **NOT INSTALLABLE**: `pytest-textual-snapshot`
+    1.1.0 (latest) pins `syrupy==4.8.0` **EXACTLY**, so a `[dev]` floor of
+    `>=6.1.1` makes `pip install -e '.[dev]'` fail resolution. CI stayed green
+    only because it installs `pytest-textual-snapshot` + an unpinned `syrupy`
+    together and pip falls back to 4.8.0 → **CI runs syrupy 4.8.0, NOT 6.x**
+    (a too-quick guess said 6.1.1 — the exact pin refutes it). Commit `bffd828`
+    adds a dependabot `ignore` for `syrupy` so it isn't re-proposed.
+- ENV FACTS (verified): `pytest-textual-snapshot` 1.1.0 pins `syrupy==4.8.0`
+  exactly; `tests/adversarial/test_report_contract.py:19` imports `syrupy`
+  DIRECTLY (so it legitimately stays in the `dev` extra). The **`rag` extra**
+  (`chromadb`, `sentence-transformers`) is **not imported anywhere** in the code
+  — dead extra (cleanup candidate). `src/novamind/memory/vector_store.py:5`
+  imports **numpy** which is NOT declared in pyproject (latent undeclared dep).
+- DEPENDABOT CONFIG: `open-pull-requests-limit: 5` ⇒ more PRs surface as slots
+  free (that is how #13–#17 appeared right after #2–#10 were handled) — expect a
+  rolling backlog, not a one-shot. The `dependencies` + `ci` labels were MISSING
+  (dependabot logged "labels could not be found") → created via `gh label create`.
+  Merging conflicting dependabot PRs in this repo needs `@dependabot rebase` on
+  the others (they all touch `pyproject.toml`; adjacent lines ⇒ conflicts).
+- STILL OPEN (pre-existing, NOT caused by the bumps): GitHub **Pages is not
+  configured** (`gh api repos/.../pages` → **404**), so
+  `.github/workflows/deploy-landing.yml` fails on any push touching `landing/**`
+  or the workflow file. Fix = enable Pages with source "GitHub Actions" — it
+  PUBLISHES the site, so it needs tyba's go-ahead.
