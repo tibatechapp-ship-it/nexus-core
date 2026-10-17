@@ -192,13 +192,39 @@ def _agent_classes() -> List[Any]:
 _DEFAULT_SYSTEM = "أنت مساعد Nexus-Core. أجب بدقّة وبإيجاز، بالعربية إن سُئلت بالعربية."
 
 
-def _agent_system(agent_id: Optional[str]) -> str:
-    """نصّ نظام الوكيل المطلوب، أو الافتراضي."""
-    if agent_id:
-        for cls in _agent_classes():
-            if getattr(cls, "name", "") == agent_id:
-                return getattr(cls, "system_prompt", "") or _DEFAULT_SYSTEM
-    return _DEFAULT_SYSTEM
+def _agent_for(agent_id: Optional[str]) -> Optional[Any]:
+    """فئة الوكيل بالاسم، أو ``None`` (معرّف فاضٍ/غير معروف/تعذّر الاستيراد)."""
+    if not agent_id:
+        return None
+    for cls in _agent_classes():
+        if getattr(cls, "name", "") == agent_id:
+            return cls
+    return None
+
+
+def _agent_system(agent_id: Optional[str], task: str = "") -> str:
+    """نصّ نظام الوكيل، مدعومًا بقاعدة المعرفة المشتركة (الطبقة 2).
+
+    يُحقَن قبل نداء LLM: ``inject_into_prompt`` يضيف كتلة معرفة المشروع
+    المرتبطة بالمهمّة (بوابات/أعراف/سياق) إلى تعليمات الوكيل، فتصبح الإجابة
+    على دراية بالمشروع. ``include_task=False`` لأن المهمّة هي دور المستخدم
+    نفسه في الدردشة (تُستعمل للترجيح لا تُنسَخ في نصّ النظام).
+    """
+    cls = _agent_for(agent_id)
+    if cls is not None:
+        fallback = getattr(cls, "system_prompt", "") or _DEFAULT_SYSTEM
+        identity: Any = cls
+    else:
+        fallback = _DEFAULT_SYSTEM
+        identity = agent_id or "default"
+    try:
+        from src.knowledge import inject_into_prompt
+
+        return inject_into_prompt(
+            identity, task, include_task=False, instructions=fallback
+        )
+    except Exception:  # pragma: no cover - defensive: never break chat
+        return fallback
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -320,7 +346,7 @@ def api_agents() -> Dict[str, Any]:
 @app.post("/api/chat")
 def api_chat(req: ChatRequest) -> Any:
     message = (req.message or "").strip()[:4000]
-    system = _agent_system(req.agent)
+    system = _agent_system(req.agent, message)
 
     def gen() -> Iterator[str]:
         yield _sse({"type": "plan", "agent": req.agent or "default",
