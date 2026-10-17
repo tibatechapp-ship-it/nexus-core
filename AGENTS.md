@@ -1181,3 +1181,389 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   tyba's approval. NOTE: `src/novamind/**` is EXCLUDED from ruff/mypy/annotations
   (its own gate) but `src/council` IS coverage-measured ⇒ new engine lines need
   covering tests (they have them).
+
+## P1 — AgentManifest (2026-10-18) — feature/novamind-factory
+- Branch **`feature/novamind-factory`** (off `main` 93417e8); SCOPE rule 2 names
+  `feature/novamind-agent` but tyba authorised the new branch for the training
+  build. Plan = `docs/AGENT_TRAINING_PLAN.md` (untracked).
+- SHIPPED (P1 only, **committed? NOT — awaiting tyba's approval**):
+  `src/agents/manifest.py` (frozen `AgentManifest` dataclass + validation) and
+  `tests/test_agent_manifest.py` (29 tests).
+- CONTRACT: manifest = projection of the agent CLASS (id/group/identity/tools)
+  + `_EXTRAS` table (title/spec/skills/gates/adversarial); `memory_scope` =
+  `agent:<id>`; `tools_required` = has any of `{write,edit,bash}`.
+- VOCABULARIES (all validated): `KNOWN_TOOLS` (22: read/list/grep + 19
+  declarative), `KNOWN_SKILLS` (the 5 seeded), `KNOWN_GATES`
+  (ruff/mypy/annotations/pytest/adversarial/smoke), `KNOWN_ADVERSARIAL` (14
+  slugs from tests/adversarial). `ManifestError` on missing/orphan/invalid.
+- NOT wired into `src/agents/__init__.py` (P2) — zero behaviour change.
+- GATES GREEN: ruff · mypy 155 · annotations 155 · `pytest --cov
+  --cov-fail-under=95 --ignore=tests/novamind` = **2376 passed @ 100.00%**
+  (8755 stmts). `src/agents/manifest.py` = 100%.
+- NEXT: P3 (training pipeline + `/api/training/*`) after tyba approves P1.
+  Academy UI = P4.5.
+
+## P3 — training engine + `/api/training/*` (2026-10-18) — feature/novamind-factory
+- Built AFTER tyba approved P1. **NOT committed** (tyba's rule: no P3 commit
+  until he approves). P4 (field loop) is next; P4.5 = Academy UI.
+- NEW package `src/novamind/training/` (stdlib-only, phone-safe):
+  * `models.py` — frozen `TrainingRun`; `GRADUATION_MIN_SCORE=0.75`;
+    `RETRAIN_FLOOR=0.5`; `TrainingVerdict` {graduated, needs_retraining, failed};
+    `verdict_for(graduated, score, *, completion_rate=1.0, critical=False)`.
+    Verdict prefers **evidence over the raw score**: a critical failure or
+    completion < 50% ⇒ `failed`; otherwise below the floor ⇒ `needs_retraining`.
+  * `store.py` — SQLite (`SCHEMA_VERSION=1`, WAL, connection-per-op): tables
+    `training_runs` + `training_certificates` (+2 indexes). `default_db_path()` =
+    `$NEXUS_TRAINING_DB` → `$NEXUS_DB` sibling `training.db` → `<repo>/data` →
+    tempdir. `get_store()/reset_store()` singleton.
+  * `engine.py` — `TrainingEngine(store=, evaluator=, clock=, min_score=,
+    feed_genome=)`. **Deterministic** default `deterministic_evaluator` (sha256 of
+    `salt|agent|skill|index`, spread ±0.12 around trainer quality) — the legacy
+    `novamind.core.training` runner uses `random.gauss` and is not reproducible.
+    Curriculum = `get_training_plan(spec).modules` (real plans) **+ the agent's
+    own manifest skill tags** (normalised `code-review`→`code_review`, deduped) —
+    so the manifest stays the single source of identity. Per-module pass uses the
+    module's own `min_score` (0.7); the weighted average is hours-weighted.
+    `is_graduated` = completion ≥0.8 AND weighted score ≥0.75 AND no module <0.5.
+    `min_score` is CLAMPED **up** to the constant — a caller/plan can raise the
+    bar, never lower it. Certificate issued only when graduated AND score ≥ 0.75.
+    Ed25519 signing is optional: probes
+    `cryptography.hazmat.primitives.asymmetric.ed25519` first (a bare `find_spec`
+    let the signer PRINT a warning when the native backend fails on Termux);
+    unavailable ⇒ empty signature, never fabricated.
+    `feed_genome` scores **self-assessment accuracy**: agent's claim
+    (`training_score >= floor`) vs ground truth (`certified`) → `genome_v2.observe`.
+  * `api.py` — `build_router(engine=None)` (8 routes) + **`register(app, engine)`
+    which does `app.router.routes.extend(router.routes)`**.
+- ❗ WIRING BUG FOUND + FIXED (worth remembering): `app.include_router()` is
+  **DEFERRED in FastAPI 0.143** — it appends a `fastapi.routing._IncludedRouter`
+  placeholder to `app.router.routes` instead of the real paths, and a
+  sub-application reached via `parent.mount("/", app)` **never expands it** →
+  `/api/training/*` returned **404 through the gateway** while the identical app
+  answered 200 under `TestClient`. Diagnosis: `(type(r).__name__, r.path)` of the
+  tail of `app.router.routes` shows `('_IncludedRouter', None)`. A test on the
+  BARE app cannot catch it — the regression test must go **through a mount**.
+  Lesson → skill `fastapi-deferred-router-mount` (with the pkill self-match /
+  orphan-port gotcha).
+- MOUNT: `unified_agent.py` (NOT protected) gained a guarded tail block
+  `from novamind.training.api import register; register(app)` setting
+  `TRAINING_OK`/`TRAINING_ERR`. The unified gateway (`nexus_agent.py`) mounts
+  `unified_agent.app` at `/`, so the routes are reachable on the gateway port.
+- Routes: `GET /api/training/{status,agents,plan/{agent_id},runs,runs/{run_id},
+  certificates}`, `POST /api/training/{run,batch}`.
+- Tests: `tests/test_training_engine.py` (37, stdlib-only) +
+  `tests/test_training_api.py` (18, `importorskip("fastapi")`), incl. the
+  regression `test_routes_survive_an_asgi_mount` and the **stated negative**
+  (`test_no_certificate_below_the_floor`, `_below_every_module_floor_fails_hard`,
+  `_a_weak_agent_earns_no_certificate`, `_a_mediocre_agent_earns_no_certificate`).
+- GATES GREEN: ruff clean · mypy **155** · annotations **155** · real gate =
+  **2431 passed @ 100.00%** (novamind is coverage-omitted, so the % is unchanged;
+  the new code is covered by its own 55 tests).
+- LIVE VERIFIED on a SPARE port (8099, separate `NEXUS_TRAINING_DB`) — the runit
+  service on :8000 was NOT touched: `/api/training/status` 200 through the
+  gateway mount, coder@quality0.95 → **graduated/certified/0.9294/17 modules**,
+  weak@0.60 → **failed, NOT certified, 0.4656**, certificates = 1 (coder only),
+  signature empty (cryptography native backend unavailable on Termux), batch of
+  3 → 3/3 graduated. Spare gateway killed afterwards; :8000 still 200.
+- ⚠ The RUNNING service (pid 9039) predates the wiring, so `/api/training/*` will
+  404 on :8000 until `sv restart nexus-core`.
+- ❗ Termux trap re-hit: `pkill -f "NEXUS_PORT=8099"` self-matched the shell →
+  tool hang + the `setsid` child survived as an **orphan** (ppid=1) still holding
+  :8099. Recovered by killing the PID directly; verify with
+  `pgrep -af "nexus_agent[.]py"`.
+
+## P4 — the field loop (2026-10-18) — feature/novamind-factory, UNCOMMITTED
+- Goal (tyba's problem case): a training run must not just be recorded — it must
+  become a **lesson**, **feed the genome automatically**, and let the genome
+  **evolve** itself. New `src/novamind/training/field.py` + wiring.
+- `FieldLoop(genome=, lesson_db=, clock=, genome_enabled=True)`:
+  `absorb(run)` → one `learning.Lesson` per run; `observe(run)` → genome via
+  `genome_v2.observe(agent, claimed, truth)`; `evolve()` → per-agent action from
+  `genome_v2.advise` (`observe/promote/keep/retrain/revise`), and **only
+  `retrain` mutates** (`genome.mutate(agent, note="auto-retrain: probation
+  fitness")`) — mutation resets observations, which acts as a cooldown and stops
+  thrash; `tick(run)` = absorb + observe + evolve and returns a report
+  `{agent_id, run_id, verdict, lesson, genome:{agent_id,claimed,truth,agreement},
+  evolved, mutated}`; plus `lessons(agent_id, limit)`, `stats()`, `last_tick`,
+  `reset()`. Helpers: `lesson_from_run(run, *, now)`, `default_lesson_db_path`,
+  `field_enabled`, `get_field_loop`, `reset_field_loop`, `_lesson_view`.
+- ONE lesson store **per agent** (a cross-agent merge would re-attribute one
+  agent's lesson to another). Confidence band 0.5→0.95; listing limit clamped
+  1→500, ordered confidence desc.
+- ENV: `NEXUS_TRAINING_FIELD` (off/0/no/false disables) ·
+  `NEXUS_TRAINING_LESSONS_DB` (else `<training.db dir>/lessons.db`).
+- ENGINE (`engine.py`, back-compat): `TrainingEngine(..., field_loop=True)`.
+  Train path = `if self.field_loop: self._run_field(run) elif self.feed_genome:
+  self._feed_genome(run)`. New `field()` (returns **None** when `field_loop=False`),
+  `field_stats()`, `lessons(agent_id, limit)`, `evolve()`. The loop binds to
+  `default_lesson_db_path(self.store.path)` with `genome_enabled=self.feed_genome`.
+- API (`api.py`): `GET /api/training/field`, `GET /api/training/lessons`
+  (`?agent_id=`,`?limit=`), `POST /api/training/evolve`; `/api/training/status`
+  now carries `stats["field"]`. Still `register(app, engine)` (deferred-router fix).
+- Tests: `tests/test_training_field.py` (**40**, hermetic: temp DBs + injected
+  genome) + `tests/test_training_api.py` **+6** (incl. the mount regression for
+  the new routes). GATES GREEN: ruff clean · mypy **155** · annotations **155** ·
+  real gate **2477 passed @ 100.00%** (8755 stmts).
+- LIVE (spare :8097 with its own DBs, then the real :8000 after
+  `sv restart nexus-core` — pid 520, health = 1.14.0): `POST /run
+  {coder,0.95}` → graduated/0.9294 → `/lessons` count 1 (success, 0.823,
+  "Finish every coder module before asking to be evaluated") → `/field` ticks 1
+  absorbed 1 genome mean_fitness 0.5833 → `/evolve` = `observe`. **Evolution
+  proven**: 5× `{planner,0.76}` (claimed yes / truth no = disagreement) →
+  `mutations: 1`, planner fitness 0.3571 (probationary), its 5 runs merged into
+  ONE lesson ("Complete the whole planner curriculum…", confidence 1.0).
+  Live service DBs = `data/training.db` + `data/lessons.db`.
+- ❗ LIVE-TEST TRAP: the deterministic evaluator's disagreement depends on the
+  agent's own curriculum — `coder@0.78` disagrees but `analyst@0.78` **certifies**
+  (graduated). To force a mutation, PROBE a few (agent, quality) pairs and watch
+  for `claimed != certified`; the winner that day was `planner@0.76`.
+- Legacy `Trainer` path (`novamind/core/training/`) does NOT use this loop —
+  wiring it in is a later step; the loop currently binds to `TrainingEngine` runs.
+
+## P4.5 — Academy 🎓 dashboard (2026-10-18) — feature/novamind-factory
+- Goal: the training stack gets a FACE. Panel inside `web/unified_ui.html`
+  (buttons `#btnAcademy` "Agent Academy" → `#academyModal`) with 3 tabs:
+  **مراحل** (stages, `GET /api/training/plan/{agent}`), **دروس** (lessons,
+  `GET /api/training/lessons?agent_id=`), **لياقات** (fitness,
+  `GET /api/training/fitness`) + أزرار `تحديث` / `إعادة تدريب`
+  (`POST /api/training/evolve`). AR+EN i18n via the existing `t()` table.
+- BACKEND ADDITIONS (P4.5):
+  * `field.py`: `_NEUTRAL_FITNESS = 0.5` + `_clamp_limit(limit)` (shared by
+    `lessons()` and the new `fitness()`); `FieldLoop.fitness(limit=50)` returns
+    ranked rows — `agent_id, fitness, status, observations, agreements, dissent,
+    streak, best_streak, generation, retired, action, reason` — `[]` when the
+    genome is disabled/missing/broken.
+  * `engine.py`: `TrainingEngine.fitness(limit=50)` delegates to the loop and
+    returns `[]` when `field_loop=False`.
+  * `api.py`: `GET /api/training/fitness` → `{count, agents}`.
+- UI DETAILS: agent picker = `/api/training/agents` (agents that have TRAINED)
+  and falls back to the full roster `/api/agents` when nobody has trained yet —
+  so the panel is usable from a cold start. `acaLoadAgents` keeps the previous
+  selection when it still exists.
+- TESTS: `tests/test_training_field.py` fitness coverage (~11 new → 50),
+  `tests/test_training_api.py` (+fitness route + mount regression;
+  `EXPECTED_ROUTES` grew), NEW `tests/test_ui_academy.py` (9: markup/binding/tab
+  guards, AR==EN i18n key parity, training-API usage, real `node --check` when
+  node exists). GATES GREEN: ruff · mypy **155** · annotations **155** · real
+  gate **2499 passed @ 100.00%** (8755 stmts).
+- LIVE VERIFIED (headless Chromium + CDP driver
+  `<session>/academy-render.py`, spare engine `unified_agent.py` on :8010 —
+  the RUNNING :8000 service was NOT restarted for this test):
+  modal opens · 12 real curriculum stages painted · lessons tab shows the real
+  merged planner lesson · fitness tab shows `coder 0.6875 stable` +
+  `planner 0.5 gen2 (observations reset by mutation)` · evolve click → toast
+  `♻ لا يوجد ما يُطوَّر الآن` · **`window.__errs` = [] (zero JS errors)** ·
+  screenshots `academy-panel.png` (empty state) + `academy-panel-data.png`.
+- ❗ WHICH PAGE IS WHICH (cost an hour): `web/unified_ui.html` (the engine
+  console, where ALL new UI lives: council/genome/academy) is served by
+  `unified_agent.py` at **`/`** — but in the unified gateway the PARENT wins `/`
+  and serves `index.html` ("Nexus Council Console"). So `curl :8000/` NEVER
+  shows the Academy panel. To render/test engine UI, run `unified_agent.py`
+  alone on a spare port (`NOVAMIND_PORT=8010`) — or hit the engine directly.
+- ❗ CDP DRIVER BUG (new lesson): `while time.time() < deadline` where `deadline`
+  is a DURATION (30/90 s) never iterates — `time.time()` is ~1.7e9. Use
+  `end = time.monotonic() + timeout; while time.monotonic() < end`. Symptom: an
+  instant `no page target` even though `curl /json` returns a live page.
+  Also: give each chromium run a UNIQUE `--user-data-dir` (a stale
+  SingletonLock makes a relaunch exit silently without opening the debug port).
+
+## progbench — executable agent programming benchmark (2026-10-17)
+- `scripts/benchmark/progbench.py` (NEW, stdlib-only): measures agent programming
+  ability by **executing** their output, not by checking they answered. 8 tasks in
+  3 families: `exec` (write fn → import + run hidden asserts), `mutation` (write
+  tests → must PASS on a correct impl and FAIL on a mutant), `keyword` (must name
+  the concept). Calls the live gateway's `POST /api/chat` (SSE) per agent, honours
+  each agent's system prompt, writes JSON + Markdown to `reports/benchmark/`.
+  Run: `python3 scripts/benchmark/progbench.py --agents coder,tester --tasks gen_two_sum`.
+- `tests/test_progbench.py` (29, hermetic): task-bank integrity, extraction
+  (last fenced block), exec grading good/bad/timeout, mutation grading
+  strong/weak/crash, keyword grouping, `call_agent` SSE parse (monkeypatched),
+  `fetch_agents`, `summarize`, `render_markdown`. No network.
+  NOTE: loading the script by path needs `sys.modules[name] = mod` BEFORE
+  `exec_module` (dataclass annotation resolution).
+- RESULT (live :8000, 20 framework agents × 8 tasks, 1656s): **144/160 = 90%
+  pass@1, 0 errors**. Per task: tests_slugify **35%** (mutation — the hard one);
+  gen_merge_intervals/gen_lru_cache/tool_git_history 95%; two_sum/palindrome/
+  binary_search/sql_injection 100%. Per agent: tester/debugger/designer/devops/
+  recovery 8/8; analyst 6/8; the rest 7/8. Report:
+  `reports/benchmark/progbench-20261017-173148.{json,md}`.
+- SLOW-CALL NOTE: a few calls take 35-105s (provider 429 → rotate/cooldown), so a
+  full 20×8 run ≈ 27 min. Not a harness bug.
+- `scripts/benchmark/agent-benchmark.sh` FIXED: hardcoded `:8080` → `${BASE}`
+  (`PORT=${NEXUS_PORT:-8000}`); member count now read live from `/api/status`
+  (`council_members`) instead of a hardcoded "5".
+
+## Phase 1 — shared Knowledge Base (training layer 2) (2026-10-18)
+- Implements `docs/AGENT_TRAINING_PLAN.md` §1 layer 2 (hot memory): project
+  knowledge lives in ONE place and is injected into an agent's instructions
+  before a task — exactly the way `AGENTS.md` auto-loads into every zyvo session.
+- `src/knowledge/base.py` + `src/knowledge/__init__.py` (stdlib-only,
+  phone-safe). `KnowledgeDoc(name,title,content,path,category,tags,pinned)` with
+  `.tokens` / `.to_dict`; `KnowledgeBase(seed_dir=SEED_DIR, user_dir=KB_DIR, *,
+  create=True)`; `SEED_DIR = <repo>/knowledge`, `KB_DIR = ~/.config/nexus/knowledge`
+  (user doc WINS on a name clash), `DEFAULT_LIMIT=4`. Methods: `_discover` /
+  `_cache` / `refresh` / `list_docs` / `all_docs` / `load` / `pinned` / `_score`
+  / `search` / `select` (pinned first, dedupe, limit) / `render` / `for_agent`
+  / `stats`; module helpers `get_knowledge_base` / `reset_knowledge_base` /
+  `normalize_token` / `tokenize` / `parse_front_matter`. Front-matter keys:
+  `title`, `category`, `tags`, `pinned`. Scoring = weighted token overlap
+  (title+tags ×2, body ×1) with Arabic-aware normalisation (أ/إ/آ→ا, ى→ي, ة→ه,
+  harakat stripped) and ar+en stopwords.
+- Seed docs `<repo>/knowledge/`: `nexus-core.md`, `gates.md`, `conventions.md`
+  (those three pinned) + `training-model.md`.
+- Bugs found + fixed while testing: (1) `_TOKEN_RE` lacked `A-Z` and lowercased
+  AFTER the match, so `"Rules"` tokenised to `"ules"` — `.lower()` must run
+  BEFORE the match; (2) the ctor was `(base_dir, seed_dir)` (order/name trap) →
+  renamed to `(seed_dir=SEED_DIR, user_dir=KB_DIR)`; (3) dead empty-guard removed
+  from `_score`.
+- `tests/test_knowledge.py` (31, hermetic temp dirs, no home touch) → 100% on
+  `src/knowledge`. Commits `5ad036d` feat · `13f8920` test.
+- NOT yet wired: nothing injects `for_agent()` into a prompt yet (that is P2,
+  skills-first injection) and there is no `/api/knowledge` route.
+- Gate after Phase 1: ruff clean · mypy **157** · annotations **157** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2732 passed,
+  1 skipped @ 100.00%** (8916 stmts, 1898 branches, 0 missed).
+- Council 16-metric bench finished (10m45s, live 6-member council on `:8000`):
+  **16/16 passed, 0 failed** → `reports/benchmark/benchmark-20261017-173922.{json,md}`.
+
+## Phase 2 — knowledge → prompt injection + `/api/knowledge` + wiring (2026-10-18)
+- Wires the P1 Knowledge Base into agents (layer 2 becomes ACTIVE) on branch
+  `feature/novamind-factory`. COMMITTED as 3 concern-split commits + a memory
+  commit: `eb7bb85` feat(knowledge) for_agent()+inject_into_prompt() ·
+  `61f4dc8` feat(api) /api/knowledge endpoints · `e7767c6` feat(wiring) inject in
+  chat + build. Modified `src/knowledge/{base,__init__}.py`; NEW
+  `src/knowledge/{inject,api}.py` + `tests/test_knowledge_{for_agent,api}.py` +
+  `tests/test_wiring_{chat,build}.py`; wired `nexus_agent.py` +
+  `src/council/builder.py` + `unified_agent.py`.
+- `base.py`: `UNIVERSAL_DOCS=("nexus-core","conventions")` (always injected);
+  `select(agent_id, task, limit, category)` order = **universal → other pinned →
+  category doc → relevance hits** (dedupe, then truncate); NEW
+  `category_doc(agent_id, category)` (match category → name → tag); `for_agent`
+  now takes `category`.
+- `inject.py` (stdlib): `inject_into_prompt(agent, task, *, kb=None, limit,
+  include_task=True, instructions=None)` = `[instructions|agent_prompt, knowledge
+  block, "### المهمّة\\n"+task]` joined by `\\n\\n` (empty sections dropped).
+  `include_task=False` keeps the task for relevance selection but omits it from
+  the text (chat: the message is the user turn). `instructions=` overrides the
+  agent prompt (builder already owns its instruction text).
+  `knowledge_block(agent, task, *, kb, limit)` = the bare block.
+  Helpers `agent_name` (name/id/agent_id/class), `agent_prompt`
+  (system_prompt/identity/prompt), `agent_category` (group). Duck-typed — NO
+  `src.agents` import (keeps knowledge↔agents decoupled).
+- `api.py`: `build_router(kb)` (routes `GET /api/knowledge` list + `GET
+  /api/knowledge/{name}` content/404) + `register(app, kb=None)` which does
+  `app.router.routes.extend(router.routes)` (the deferred-include_router fix, so
+  it works through the gateway MOUNT). **`api` is NOT imported in `__init__`** —
+  keeps the KB importable without FastAPI.
+- `unified_agent.py` tail: guarded `from src.knowledge.api import register;
+  register(app)` with `KNOWLEDGE_OK`/`KNOWLEDGE_ERR` (mirrors the training mount).
+- WIRING: `nexus_agent.py::_agent_system(agent_id, task)` composes the agent's
+  system prompt + KB block (`include_task=False`, task only for selection);
+  `_agent_for()` factors the roster lookup; a broken KB degrades to the plain
+  prompt (never breaks chat). `src/council/builder.py::_compose_blueprint_prompt`
+  prepends the KB block to the builder instructions; `_blueprint_prompt` now
+  routes through it (the question reaches the model via the task section);
+  falls back to instructions + question if the layer is missing.
+- GATES GREEN: ruff clean · mypy **159** · annotations **159** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2780 passed,
+  1 skipped @ 100.00%** (src/council/builder.py + src/knowledge 100%).
+- LIVE VERIFIED (spare `NEXUS_PORT=8096`; the :8000 runit service NOT restarted):
+  `/api/knowledge` → 4 docs/3 pinned, `/{name}` content, unknown → 404. `coder`
+  system prompt = 5822 chars incl. the gates doc + `make check`; builder
+  blueprint prompt carries the KB header + task. LIVE `/api/chat` (agent=coder)
+  answered **"make check"** + the exact gate composition + the `dev_check.sh`
+  `--cov` warning — all read from the KB (first attempt hit a provider 429 OTPM;
+  the second succeeded via groq_01).
+
+
+## P2 — skills layer (layer 3): repo seed + prompt injection + `/api/skills` (2026-10-18)
+- Branch `feature/novamind-factory`. The 5 skills in `~/.config/nexus/skills`
+  were shipped but **read by NOTHING**; now the repo carries its own seed and the
+  agents actually receive their skills.
+- `src/skills/loader.py`: `SEED_DIR = <repo>/skills` (new), `DEFAULT_SKILLS`
+  (5: code-review, security-audit, architecture-review, documentation, testing),
+  `SkillLoader(base_dir=SKILLS_DIR, seed_dir=None)`, `_dirs()` (user dir FIRST,
+  so a user file WINS on a name clash), `list_skills()` = union of both dirs,
+  `sources()`. `seed_dir=None` keeps the old single-dir behaviour.
+- NEW repo seed `skills/<name>/SKILL.md` (5 files, tracked).
+- NEW `src/skills/inject.py`: `DEFAULT_LIMIT=3`, `get_skill_loader()` singleton
+  (`seed_dir=SEED_DIR`) + `reset_skill_loader()`, `agent_skill_names(agent)`
+  (reads `AgentManifest.skills` — the manifest stays the SINGLE source of which
+  skills an agent has), `render_skills()` (header `### المهارات المُفعَّلة (Skills)`
+  + `<!-- skills: … -->`), `skills_block()`, `inject_skills_into_prompt(text,
+  agent, loader, limit)` (empty block → text unchanged; empty text → block only).
+- `src/skills/api.py` (NEW): `GET /api/skills` (count + name/description +
+  sources), `GET /api/skills/{name}` (404 when unknown); `register(app, loader)`
+  uses `app.router.routes.extend(...)` (the deferred-`include_router` fix).
+  `src/skills/__init__.py` exports loader+inject only — `api` is NOT imported
+  there, so the package stays FastAPI-free.
+- WIRING: `nexus_agent.py::_agent_system(agent_id, task)` appends the skills
+  block AFTER the knowledge block; each layer is independently `try/except` so a
+  broken layer degrades to the plain prompt (chat never breaks). `unified_agent.py`
+  tail mounts the routes (`SKILLS_OK`/`SKILLS_ERR`) like training/knowledge.
+- GATES GREEN: ruff clean · mypy **161** · annotations **161** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2815 passed,
+  1 skipped @ 100.00%**; `src/skills` 100% (158 stmts / 56 branches).
+- LIVE (`:8000` after `sv restart nexus-core`, pid 16829): `/api/skills` → 5,
+  `/api/skills/code-review` → 200, unknown → 404, `/api/knowledge` +
+  `/api/training/status` intact, and a real `/api/chat {agent:coder}` answered
+  with the coder's own manifest skills (code-review + testing) → the injection
+  reaches the model.
+- ❗ Editing `unified_agent.py` with a block-shaped edit DUPLICATED the
+  knowledge `try:` line (two `try:` in a row → SyntaxError, and `ENGINE_OK`
+  silently became False → 3 test_nexus_agent failures). Always `ast.parse` the
+  file after a tail edit; `import`-probe a by-path module to catch it.
+- Optional-extra coverage lesson re-applied: a `list_skills()` name that
+  `load()` cannot resolve must be skipped, not fatal — tested explicitly.
+
+## P4.5 (genome) — task outcomes = second genome channel (2026-10-18)
+- Branch `feature/novamind-factory`. The plan's P4.5 genome goal: "مكانة لكل
+  وكيل لا للمجلس فقط". `src/novamind/genome_v2.py` gained a **second, independent
+  result channel** on the SAME agent row, fed by task outcomes instead of council
+  judgements.
+- SHAPE: `empty_genome` gains `task_observations` / `task_successes` /
+  `task_ewma` / `task_duration_avg` / `task_last_ok` / `task_last_duration` /
+  `task_last_quality`. New pure helpers: `evidence(row)` (= `observations` +
+  `task_observations`) and `blend_fitness(j, j_conf, t, t_conf)` (confidence-
+  weighted; a zero-confidence source contributes nothing; no evidence at all ⇒
+  `NEUTRAL_FITNESS`). New `GenomeV2._blended_fitness(row)` recomputes the
+  headline fitness; **a row with no task outcomes takes the exact v1.14.0
+  expression** (`fitness(observations, ewma)`) ⇒ council-only genomes stay
+  byte-identical. `advise()`/`rank()` now order by `evidence()` and `advise()`
+  returns an extra `evidence` field; `stats()` adds `task_observations`.
+  `mutate()` rebuilds through `empty_genome` ⇒ the task channel resets on
+  mutation (self-cooling).
+- API: `observe_outcome(agent_id, ok, *, duration=None, quality=None, task="")`
+  — `ok` is ground truth (a failure is ALWAYS a 0.0 sample; a gate quality can
+  never rescue it), a success takes its optional quality or 1.0; duration is
+  dashboard evidence and is NEVER scored. `observe_result(result, *, quality,
+  task)` is the duck-typed bridge over `.agent`/`.ok`/`.duration_s` (the
+  framework `AgentResult`), plus a module-level `observe_result()` over the
+  shared genome.
+- HISTORY: task events are `{"seq", "event": "task", "ok", "duration",
+  "quality", "task"}` — a separate event kind, so the exact-dict assertions in
+  `tests/test_genome_v2.py` (77 tests, UNTOUCHED) still hold.
+- TWO LATENT BUGS fixed (found by the new tests): (1) `0.0 or NEUTRAL_FITNESS`
+  swallowed a legitimate all-failures EWMA of exactly 0.0 ⇒ explicit `is None`
+  checks; (2) `ewma_update` clamps to `[0, 1]`, which silently corrupted the
+  **duration** average (seconds are unbounded) ⇒ the duration EWMA is computed
+  directly, floored at 0. Also removed a provably dead guard in `observe()`
+  (`matched is not None` already implies the final stance is recognised, so
+  `final_key` was never None there — it blocked 100% branch coverage).
+- TESTS: NEW `tests/test_genome_v2_tasks.py` (44, hermetic) — pure helpers,
+  scoring rules incl. junk duration/quality, the blend, the bridge, mixed-source
+  `advise`/`rank`/`stats`, `to_dict`/`from_dict` round-trip, migration of an old
+  task-less row, and the council engine's `_judge` path. 121 total (77 + 44).
+- COVERAGE PROFILE: `src/novamind/*` is omitted from the repo-wide profile, so
+  the module needs its own — NEW `coverage-genome.ini` (mirrors
+  `coverage-autopilot.ini`). `COVERAGE_RCFILE=coverage-genome.ini python -m
+  pytest tests/test_genome_v2*.py --cov=src.novamind.genome_v2` → **258 stmts /
+  74 branches, 0 missed, 0 partial = 100%**.
+- GATES GREEN: ruff clean · annotations **161** · mypy **161** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2859 passed,
+  1 skipped @ 100.00%** (9121 stmts / 1980 branches); `src/council` 100% and
+  `genome_v2` 100% (the plan's P4.5 genome gate).
+- NOT wired yet (next session): nothing calls `observe_outcome` in production —
+  `FieldLoop` still feeds only the judgement channel, so the task channel is
+  exercised but unpopulated. Wiring the 20 framework agents' real runs into it
+  (and surfacing it in the Academy panel) is the remaining P4.5/P4 work.

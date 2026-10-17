@@ -1014,5 +1014,56 @@ async def genome_reset(agent_id: str):
     return agent
 
 
+# ═══════════════════════════════════════════════════════════
+# P3 — Agent training pipeline: /api/training/*
+# ═══════════════════════════════════════════════════════════
+# The training stack lived in novamind.core.training but nothing served it.
+# ``training.api.register`` adds the routes directly (not via include_router,
+# which stays deferred and would 404 inside the gateway's mount).
+try:
+    from novamind.training.api import register as _register_training
+
+    _register_training(app)
+    TRAINING_OK = True
+except Exception as _training_exc:  # pragma: no cover - never block the app
+    TRAINING_OK = False
+    TRAINING_ERR = str(_training_exc)
+    print(f"⚠️ training routes unavailable: {_training_exc}")
+
+
+# ═══════════════════════════════════════════════════════════
+# P2 — Shared Knowledge Base: /api/knowledge/*
+# ═══════════════════════════════════════════════════════════
+# The KB (layer 2 of the training model) had no HTTP face.  ``knowledge.api``
+# adds the concrete routes directly for the same reason as training: a deferred
+# ``include_router`` placeholder is never expanded inside the gateway's mount.
+try:
+    from src.knowledge.api import register as _register_knowledge
+
+    _register_knowledge(app)
+    KNOWLEDGE_OK = True
+except Exception as _knowledge_exc:  # pragma: no cover - never block the app
+    KNOWLEDGE_OK = False
+    KNOWLEDGE_ERR = str(_knowledge_exc)
+    print(f"⚠️ knowledge routes unavailable: {_knowledge_exc}")
+
+
+# ═══════════════════════════════════════════════════════════
+# P2 — Skills (layer 3): /api/skills/*
+# ═══════════════════════════════════════════════════════════
+# The skill system (repo seed + user override) had no HTTP face either.  Same
+# reason as above: ``include_router`` stays deferred inside the gateway mount,
+# so the concrete routes are added directly.
+try:
+    from src.skills.api import register as _register_skills
+
+    _register_skills(app)
+    SKILLS_OK = True
+except Exception as _skills_exc:  # pragma: no cover - never block the app
+    SKILLS_OK = False
+    SKILLS_ERR = str(_skills_exc)
+    print(f"⚠️ skills routes unavailable: {_skills_exc}")
+
+
 if __name__ == "__main__":
     main()

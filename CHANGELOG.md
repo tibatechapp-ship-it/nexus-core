@@ -2,6 +2,39 @@
 
 All notable changes to this project. Newest first.
 
+## v1.15.0 — 2026-10-18
+**One access guard for the unified server (token + rate limit + audit log), and an honest spec.**
+
+- **`src/security/access.py` (NEW, stdlib-only and FastAPI-free):** one security
+  layer that is unit-testable without a server.
+  `AccessGuard.check(method, path, headers, client)` decides, `record()` writes
+  one JSON line.
+  * **auth** — `NEXUS_AUTH_TOKEN` (empty ⇒ off), compared with
+    `hmac.compare_digest`, header `X-Auth-Token`.
+  * **rate limit** — `NEXUS_RATE_LIMIT`/`NEXUS_RATE_WINDOW` (default **120/60s**),
+    fixed window per `client+path`; refuses with 429 + the seconds left in
+    `Retry-After`.
+  * **audit log** — `NEXUS_AUDIT_LOG` (JSONL path; `off` ⇒ disabled), rotates
+    past `AUDIT_MAX_BYTES`, and **swallows I/O errors** (never fails a request).
+  * Only mutating methods are gated (`POST`/`PUT`/`PATCH`/`DELETE`); reads always pass.
+- **Wired into the gateway** (`nexus_agent.py`) as ONE HTTP middleware in front of
+  every route (workbench + gateway routes + the catch-all engine mount) without
+  touching a single route. `/api/status` now reports `guard` (never the token).
+  The whole layer is switched off with environment variables alone.
+- **`docs/openapi.yaml` is now valid YAML:** three `description` values wrote
+  `{...: ...}` inside a plain scalar, so any real YAML parser (and the Swagger-UI
+  that serves the file) choked on it — the suite never noticed because it read
+  the spec with `re`. Fixed, plus `401`/`429` documented on every mutating route
+  and a `securityScheme` for the token.
+- **Tests:** `tests/test_security_access.py` (29, hermetic: injected clock, temp
+  dirs) = 100% on the module · `tests/test_nexus_agent.py` +6 (token, 429 +
+  `Retry-After`, audit through the real server) · `tests/test_openapi.py` +2
+  (the spec parses with a real YAML parser; every mutating route documents
+  401/429).
+- **Gates:** ruff clean · check_annotations 162 files · mypy 162 files ·
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2896 passed,
+  1 skipped @ 100.00%** (9260 statements).
+
 ## v1.14.0 — 2026-10-18
 **جينوم الوكلاء v2: قياس دقّة الحكم + ربط مراقِب غير مُقحِم بالمجلس.**
 - `src/novamind/genome_v2.py` (جديد): جينوم نقي، stdlib فقط، **hermetic** (بلا

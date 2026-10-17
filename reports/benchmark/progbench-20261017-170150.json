@@ -1,0 +1,69 @@
+{
+  "raw": {
+    "base_url": "http://127.0.0.1:8000",
+    "started": 1792245709.7524376,
+    "duration": 1.1,
+    "agents": [
+      "coder"
+    ],
+    "tasks": [
+      "gen_two_sum",
+      "review_sql_injection"
+    ],
+    "results": [
+      {
+        "agent": "coder",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.58,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.4,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      }
+    ]
+  },
+  "summary": {
+    "overall_pass_at_1": 1.0,
+    "passed": 2,
+    "total": 2,
+    "per_agent": {
+      "coder": {
+        "pass": 2,
+        "total": 2,
+        "pass_at_1": 1.0
+      }
+    },
+    "per_task": {
+      "gen_two_sum": {
+        "pass": 1,
+        "total": 1,
+        "pass_at_1": 1.0
+      },
+      "review_sql_injection": {
+        "pass": 1,
+        "total": 1,
+        "pass_at_1": 1.0
+      }
+    }
+  }
+}

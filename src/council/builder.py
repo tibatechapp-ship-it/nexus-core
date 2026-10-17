@@ -50,6 +50,19 @@ def builds_root() -> str:
     return os.environ.get(ENV_BUILDS) or DEFAULT_BUILDS_DIR
 
 
+def _compose_blueprint_prompt(instructions: str, task: str) -> str:
+    """يحقن معرفة المشروع (الطبقة 2) في برومبت البنّاء قبل نداء LLM.
+
+    يسقط لبرومبت التعليمات + السؤال عند تعذّر طبقة المعرفة، فلا يتعطّل البناء أبدًا.
+    """
+    try:
+        from src.knowledge import inject_into_prompt
+
+        return inject_into_prompt("builder", task, instructions=instructions)
+    except Exception:  # pragma: no cover - defensive: never break the build
+        return f"{instructions}\n\nالسؤال: {task}"
+
+
 def _get(obj: Any, name: str, default: Any = None) -> Any:
     value = getattr(obj, name, None)
     if value is None and isinstance(obj, dict):
@@ -198,16 +211,16 @@ class Builder:
         transcript = _get(result, "transcript", []) or []
         recommendation = extract_recommendation(transcript)
         verdict = _get(result, "verdict", "unknown")
-        return (
+        instructions = (
             "أنت «البنّاء» في مجلس قرارات. حوّل القرار إلى مخرجات ملموسة.\n"
             "أعد **JSON صارماً فقط** (بلا شرح ولا ```) بالشكل:\n"
             '{"title": "...", "kind": "code|plan|doc", "summary": "...", '
             '"steps": ["..."], "files": [{"path": "main.py", "content": "..."}]}\n\n'
             "قواعد: مسارات نسبية فقط بلا ``..``، ملفات نصية، لا أسرار، لا أوامر مدمّرة.\n\n"
-            f"السؤال: {question}\n"
             f"قرار المجلس: {verdict}\n"
-            f"التوصية: {recommendation or '(لا توصية)'}\n"
+            f"التوصية: {recommendation or '(لا توصية)'}"
         )
+        return _compose_blueprint_prompt(instructions, question)
 
     def blueprint_from_llm(self, question: str, result: Any) -> Optional[dict]:
         """يطلب مخطّط JSON من النموذج؛ يعيد ``None`` عند أي فشل."""

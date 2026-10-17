@@ -293,6 +293,34 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
   .agent-pick{max-width:150px}.agent-pick select{max-width:96px}
 }
 @media (max-width:520px){.agent-pick{display:none}}
+
+/* ── Academy (🎓 training dashboard) ─────────────────────────────── */
+.aca-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.aca-tab{cursor:pointer;border:1px solid var(--border);background:#171717;color:var(--dim);
+  padding:6px 12px;border-radius:999px;font-size:12px}
+.aca-tab:hover{color:var(--text);border-color:var(--accent)}
+.aca-tab.on{background:var(--accent);border-color:var(--accent);color:#0d1117;font-weight:600}
+.aca-body{display:none;flex-direction:column;gap:8px;max-height:60vh;overflow:auto}
+.aca-body.on{display:flex}
+.aca-row{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:#171717}
+.aca-row:hover{border-color:var(--accent)}
+.aca-row .t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.aca-row .s{font-size:11px;color:var(--faint);margin-top:3px;line-height:1.5}
+.aca-row .s b{color:var(--dim)}
+.aca-pill{font-size:10px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--dim)}
+.aca-pill.ok{color:#3fb950;border-color:#2e5a38}
+.aca-pill.warn{color:#d29922;border-color:#5a4a20}
+.aca-pill.bad{color:var(--danger);border-color:#5a2a2a}
+.aca-pill.info{color:#6ea8fe;border-color:#26456e}
+.aca-bar{height:6px;border-radius:999px;background:#0e0e0e;overflow:hidden;margin-top:8px}
+.aca-bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .5s}
+.aca-bar.mid i{background:#d29922}
+.aca-bar.low i{background:var(--danger)}
+.aca-empty{color:var(--faint);padding:14px;text-align:center;font-size:12px}
+.aca-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.aca-actions select{background:#0e0e0e;color:var(--text);border:1px solid var(--border);
+  border-radius:999px;padding:6px 10px;font-size:12px}
+.aca-legend{font-size:11px;color:var(--faint)}
 </style>
 </head>
 <body>
@@ -343,6 +371,9 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
       </button>
       <button class="icon-btn" id="btnGenome" aria-label="genome" title="Agent Genome">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4c4 0 4 4 0 4m0-4c4 0 4 4 0 4m0 0c4 0 4 4 0 4m0-4c4 0 4 4 0 4m0 0c4 0 4 4 0 4m0-4c4 0 4 4 0 4M20 4c-4 0-4 4 0 4m0-4c-4 0-4 4 0 4m0 0c-4 0-4 4 0 4m0-4c-4 0-4 4 0 4m0 0c-4 0-4 4 0 4m0-4c-4 0-4 4 0 4M8 4h8M8 8h8M8 12h8M8 16h8M8 20h8"/></svg>
+      </button>
+      <button class="icon-btn" id="btnAcademy" aria-label="academy" title="Agent Academy">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4 2 9l10 5 10-5-10-5z"/><path d="M5 11.5V16c0 1.7 3.1 3 7 3s7-1.3 7-3v-4.5M20 10v5"/></svg>
       </button>
       <button class="icon-btn" id="btnSearch" aria-label="search">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -465,6 +496,28 @@ input.rename{width:100%;background:#1a1a1a;border:1px solid var(--accent);color:
   <div class="genome-detail" id="genomeDetail"></div>
 </div>
 
+<!-- Agent Academy modal (training: stages · lessons · fitness) -->
+<div class="modal wide" id="academyModal">
+  <div class="modal-head">
+    <h2 style="margin:0" data-i18n="academy">🎓 الأكاديمية</h2>
+    <button class="pill ghost" id="acaRefresh" data-i18n="refresh">تحديث</button>
+  </div>
+  <div class="aca-actions">
+    <span class="aca-legend" id="acaSummary" data-i18n="academyHint">دروس الوكلاء ولياقاتهم ومراحل تدريبهم.</span>
+    <div class="grow"></div>
+    <select id="acaAgent"></select>
+    <button class="pill" id="acaEvolve">♻ <span data-i18n="retrain">إعادة تدريب</span></button>
+  </div>
+  <div class="aca-tabs">
+    <div class="aca-tab on" id="acaTabStages" data-i18n="stages">المراحل</div>
+    <div class="aca-tab" id="acaTabLessons" data-i18n="lessons">الدروس</div>
+    <div class="aca-tab" id="acaTabFitness" data-i18n="fitness">اللياقات</div>
+  </div>
+  <div class="aca-body on" id="acaStages"></div>
+  <div class="aca-body" id="acaLessons"></div>
+  <div class="aca-body" id="acaFitness"></div>
+</div>
+
 <div class="toasts" id="toasts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -493,6 +546,17 @@ const I18N={
     standings:"المكانة",runs:"التشغيلات",successRate:"نسبة النجاح",avgLatency:"متوسط الزمن",
     generation:"الجيل",persona:"الشخصية",retrain:"إعادة تدريب",retrainQ:"إعادة تدريب هذا الوكيل؟ (تُصفَّر إحصاءاته)",
     noAgents:"لا يوجد وكلاء بعد",agentSaved:"تم الحفظ ✅",genomeImported:"تم استيراد الجينوم",
+    academy:"🎓 الأكاديمية",academyHint:"دروس الوكلاء ولياقاتهم ومراحل تدريبهم.",
+    refresh:"تحديث",stages:"المراحل",lessons:"الدروس",fitness:"اللياقات",
+    acaNoLessons:"لا توجد دروس بعد — درّب وكيلاً أولاً.",acaNoFitness:"لا توجد لياقات بعد.",
+    acaNoStages:"لا توجد مراحل لهذا الوكيل.",acaHint:"درّب وكيلاً (POST /api/training/run) لتظهر بياناته هنا.",
+    evolveDone:"تمت جولة تطوير",evolveNone:"لا يوجد ما يُطوَّر الآن",confidence:"الثقة",
+    observations:"المشاهدات",agreements:"موافقات",dissent:"مخالفات",action:"الإجراء",
+    acaEvolved:"وكلاء تطوروا",acaMutations:"طفرات",acaTicks:"دورات",acaAbsorbed:"دروس مضافة",
+    module:"وحدة",weight:"الوزن",hours:"الساعات",source:"المصدر",score:"الدرجة",pass:"ناجح",fail:"راسب",
+    apexAction_observe:"مراقبة",apexAction_promote:"ترقية",apexAction_keep:"إبقاء",
+    apexAction_retrain:"إعادة تدريب",apexAction_revise:"مراجعة",apexAction_unknown:"غير معروف",
+    fitnessStatus_elite:"نخبة",fitnessStatus_stable:"مستقر",fitnessStatus_probationary:"تحت المراقبة",
     import:"استيراد",timeline:"الخط الزمني",
     offlineQueued:"لا اتصال — ستُرسل عند العودة",synced:"تمت المزامنة ☁",installApp:"تثبيت التطبيق",queued:"قيد الانتظار"},
   en:{newChat:"New chat",settings:"Settings",language:"Language",online:"Online",offline:"Offline",
@@ -516,10 +580,21 @@ const I18N={
     standings:"Standing",runs:"Runs",successRate:"Success",avgLatency:"Avg latency",
     generation:"Generation",persona:"Persona",retrain:"Retrain",retrainQ:"Retrain this agent? (stats reset)",
     noAgents:"No agents yet",agentSaved:"Saved ✅",genomeImported:"Genome imported",
+    academy:"🎓 Agent Academy",academyHint:"Agent lessons, fitness and training stages.",
+    refresh:"Refresh",stages:"Stages",lessons:"Lessons",fitness:"Fitness",
+    acaNoLessons:"No lessons yet — train an agent first.",acaNoFitness:"No fitness yet.",
+    acaNoStages:"No stages for this agent.",acaHint:"Train an agent (POST /api/training/run) to fill this in.",
+    evolveDone:"Evolution pass done",evolveNone:"Nothing to evolve right now",confidence:"Confidence",
+    observations:"Observations",agreements:"Agreements",dissent:"Dissents",action:"Action",
+    acaEvolved:"agents evolved",acaMutations:"mutations",acaTicks:"ticks",acaAbsorbed:"lessons absorbed",
+    module:"Module",weight:"Weight",hours:"Hours",source:"Source",score:"Score",pass:"pass",fail:"fail",
+    apexAction_observe:"observe",apexAction_promote:"promote",apexAction_keep:"keep",
+    apexAction_retrain:"retrain",apexAction_revise:"revise",apexAction_unknown:"unknown",
+    fitnessStatus_elite:"elite",fitnessStatus_stable:"stable",fitnessStatus_probationary:"probationary",
     import:"Import",timeline:"Timeline",
     offlineQueued:"Offline — will send later",synced:"Synced ☁",installApp:"Install app",queued:"queued"}
 };
-const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces",council:"/api/council",genome:"/api/genome"};
+const API={chat:"/api/chat",agents:"/api/agents",convs:"/api/conversations",traces:"/api/traces",council:"/api/council",genome:"/api/genome",training:"/api/training"};
 const LS={conv:"nm_convs",cur:"nm_cur",lang:"nm_lang",migrated:"nm_migrated"};
 const MAX_CONV=200;
 let useDB=true;              // false = localStorage fallback (API unreachable)
@@ -879,7 +954,8 @@ function renderAgents(){
 /* ============================ overlays ============================ */
 function closeAll(){$("sidebar").classList.remove("open");$("info").classList.remove("open");
   $("backdrop").classList.remove("show");$("searchModal").classList.remove("show");$("settingsModal").classList.remove("show");
-  $("tracesModal").classList.remove("show");$("councilModal").classList.remove("show");$("genomeModal").classList.remove("show");}
+  $("tracesModal").classList.remove("show");$("councilModal").classList.remove("show");$("genomeModal").classList.remove("show");
+  $("academyModal").classList.remove("show");}
 function openSearch(){closeAll();$("searchModal").classList.add("show");$("backdrop").classList.add("show");
   const inp=$("searchInput");inp.value="";searchRender("");inp.focus();}
 async function searchRender(q){
@@ -1170,6 +1246,153 @@ async function importGenomeFile(file){
     renderGenome();
   }catch(e){toast(t("err"),1);}
 }
+/* ============================ agent academy (🎓 training) ============================ */
+/* Backend: GET  /api/training/{status,agents,plan/<id>,lessons,fitness}
+             POST /api/training/evolve  (one evolution pass) */
+let acaTab="stages",acaAgent="";
+function acaPanel(){return $("aca"+acaTab.charAt(0).toUpperCase()+acaTab.slice(1));}
+function acaSelectTab(tab){
+  acaTab=tab;["Stages","Lessons","Fitness"].forEach(n=>{
+    const on=n.toLowerCase()===tab;$("acaTab"+n).classList.toggle("on",on);
+    $("aca"+n).classList.toggle("on",on);});
+  acaRender();
+}
+function acaRow(){const el=document.createElement("div");el.className="aca-row";return el;}
+function acaSet(el,title,sub,pills){
+  el.innerHTML='<div class="t"></div><div class="s"></div>';
+  el.querySelector(".t").textContent=title;
+  el.querySelector(".s").innerHTML=sub||"";
+  (pills||[]).forEach(p=>{
+    const s=document.createElement("span");s.className="aca-pill "+(p.k||"");
+    s.textContent=p.v;el.querySelector(".t").appendChild(s);});
+  return el;
+}
+function acaBar(el,value,cls){
+  const b=document.createElement("div");b.className="aca-bar "+(cls||"");
+  b.innerHTML="<i></i>";el.appendChild(b);
+  requestAnimationFrame(()=>{b.querySelector("i").style.width=Math.round(Math.max(0,Math.min(1,value))*100)+"%";});
+  return b;
+}
+function acaEmpty(box,key){box.innerHTML='<div class="aca-empty">'+t(key)+'</div>';}
+function acaFitnessPill(f){
+  const s=(f.status||"").toLowerCase();
+  const k=s==="elite"?"ok":(s==="probationary"?"bad":(s? "warn":""));
+  return {v:t("fitnessStatus_"+s)||s,k:k};
+}
+function acaActionWord(a){return t("apexAction_"+(a||"unknown"))||a||"";}
+async function openAcademy(){
+  closeAll();
+  $("academyModal").classList.add("show");$("backdrop").classList.add("show");
+  await acaLoadAgents();
+  acaRender();
+}
+async function acaLoadAgents(){
+  const sel=$("acaAgent");
+  let list=[];try{list=(await apiGet(API.training+"/agents")).agents||[];}catch(e){list=[];}
+  if(!list.length){try{list=(await apiGet(API.agents)).tools||[];}catch(e){list=[];}}
+  const ids=list.map(a=>a.agent_id||a.name).filter(Boolean);
+  const prev=sel.value||acaAgent;
+  sel.innerHTML="";
+  if(!ids.length){const o=document.createElement("option");o.value="";o.textContent=t("noAgents");sel.appendChild(o);}
+  ids.forEach(id=>{const o=document.createElement("option");o.value=id;o.textContent=id;sel.appendChild(o);});
+  acaAgent=ids.includes(prev)?prev:(ids[0]||"");
+  sel.value=acaAgent;
+  sel.onchange=()=>{acaAgent=sel.value;acaRender();};
+  return ids;
+}
+async function acaRender(){
+  const box=acaPanel();
+  box.innerHTML='<div class="aca-empty">…</div>';
+  if(acaTab==="stages")await acaRenderStages(box);
+  else if(acaTab==="lessons")await acaRenderLessons(box);
+  else await acaRenderFitness(box);
+  acaRenderSummary();
+}
+async function acaRenderSummary(){
+  const el=$("acaSummary");
+  try{
+    const s=await apiGet(API.training+"/status");
+    const f=s.field||{};
+    el.textContent=(s.agents!=null?s.agents+" "+(state.lang==="ar"?"وكيل":"agents")+" · ":"")+
+      (f.ticks||0)+" "+t("acaTicks")+" · "+(f.absorbed||0)+" "+t("acaAbsorbed")+
+      " · "+(f.mutations||0)+" "+t("acaMutations");
+  }catch(e){el.textContent=t("academyHint");}
+}
+async function acaRenderStages(box){
+  if(!acaAgent){acaEmpty(box,"acaNoStages");return;}
+  let p;try{p=await apiGet(API.training+"/plan/"+encodeURIComponent(acaAgent));}catch(e){acaEmpty(box,"acaNoStages");return;}
+  const mods=p.modules||p.phases||[];
+  if(!mods.length){acaEmpty(box,"acaNoStages");return;}
+  box.innerHTML="";
+  const run=(p.last_run||p.run||null);
+  const done={};(run&&run.phases?run.phases:[]).forEach(x=>{done[x.skill]=x;});
+  mods.forEach((m,i)=>{
+    const name=m.name||m.module||m.skill||("module "+i);
+    const seen=done[name]||done[m.skill]||null;
+    const ok=seen?(seen.score>=0.5):null;
+    const el=acaRow();
+    const pills=[{v:(m.weight!=null?t("weight")+": "+m.weight:t("hours")+": "+(m.hours!=null?m.hours:"?")),k:"info"}];
+    if(seen)pills.push({v:String(Math.round((seen.score||0)*100))+"%",k:ok?"ok":"bad"});
+    acaSet(el,(i+1)+". "+name,
+      (m.min_score!=null?"<b>"+t("score")+"</b> ≥ "+m.min_score+" · ":"")+
+      "<b>"+t("source")+"</b> "+(m.source||m.kind||"-")+
+      (seen?(" · "+(seen.passed?t("pass"):t("fail"))):" · "+t("acaNoStages")),
+      pills);
+    const val=seen?Math.max(0,Math.min(1,seen.score||0)):(m.min_score||0.7);
+    acaBar(el,val,seen?(ok?"":"low"):"mid");
+    box.appendChild(el);
+  });
+}
+async function acaRenderLessons(box){
+  let list=[];
+  try{list=(await apiGet(API.training+"/lessons"+(acaAgent?("?agent_id="+encodeURIComponent(acaAgent)):""))).lessons||[];}catch(e){list=[];}
+  if(!list.length){acaEmpty(box,"acaNoLessons");return;}
+  box.innerHTML="";
+  list.forEach(l=>{
+    const el=acaRow();
+    acaSet(el,l.principle||"",(l.context||"")+
+      '<br><b>'+t("confidence")+'</b> '+Math.round((l.confidence||0)*100)+'%'+
+      ' · <b>'+t("source")+'</b> '+(l.source_outcome||"-")+
+      ' · <b>'+(l.agent_role||"-")+'</b>'+(l.created_at?(" · "+fmt(l.created_at)):""),
+      [{v:(l.source_outcome||""),k:(l.source_outcome==="success"?"ok":(l.source_outcome==="failure"?"bad":"warn"))}]);
+    acaBar(el,l.confidence||0,(l.confidence>=0.75?"":(l.confidence<0.55?"low":"mid")));
+    box.appendChild(el);
+  });
+}
+async function acaRenderFitness(box){
+  let list=[];
+  try{list=(await apiGet(API.training+"/fitness")).agents||[];}catch(e){list=[];}
+  if(!list.length){acaEmpty(box,"acaNoFitness");return;}
+  box.innerHTML="";
+  list.forEach((f,i)=>{
+    const el=acaRow();
+    const pills=[acaFitnessPill(f),{v:"↳ "+acaActionWord(f.action),k:(f.action==="retrain"?"bad":"info")}];
+    if(i<3)pills.unshift({v:rankBadge(i),k:"ok"});
+    if(f.retired)pills.push({v:"retired",k:"warn"});
+    acaSet(el,(f.agent_id||"")+" · "+Math.round((f.fitness||0)*100)+"%",
+      '<b>'+t("observations")+'</b> '+(f.observations||0)+
+      ' · <b>'+t("agreements")+'</b> '+(f.agreements||0)+
+      ' · <b>'+t("dissent")+'</b> '+(f.dissent||0)+
+      ' · <b>'+t("action")+'</b> '+acaActionWord(f.action)+
+      (f.reason?(" — "+f.reason):""),
+      pills);
+    acaBar(el,f.fitness||0,(f.fitness>=0.75?"":(f.fitness<0.55?"low":"mid")));
+    box.appendChild(el);
+  });
+}
+async function acaEvolve(){
+  const btn=$("acaEvolve");const label=btn.textContent;btn.disabled=true;
+  try{
+    const r=await apiSend("POST",API.training+"/evolve",{});
+    if(!r){toast(t("err"),1);}
+    else{
+      const mutated=(r.mutated||[]).length;
+      const evolved=(r.evolved||[]).filter(a=>a.action!=="keep").length;
+      toast("♻ "+(mutated?t("acaEvolved")+": "+mutated:(evolved?t("evolveDone"):t("evolveNone"))));
+    }
+    await acaRender();
+  }finally{btn.disabled=false;btn.textContent=label;}
+}
 function toast(msg,isErr){
   const el=document.createElement("div");el.className="toast"+(isErr?" err":"");el.textContent=msg;
   $("toasts").appendChild(el);setTimeout(()=>{el.style.opacity="0";el.style.transition="opacity .3s";setTimeout(()=>el.remove(),300)},2200);
@@ -1249,6 +1472,12 @@ function bind(){
   $("councilStart").onclick=startCouncil;
   $("councilHistory").onclick=toggleCouncilHistory;
   $("btnGenome").onclick=openGenome;
+  $("btnAcademy").onclick=openAcademy;
+  $("acaRefresh").onclick=()=>acaRender();
+  $("acaEvolve").onclick=acaEvolve;
+  $("acaTabStages").onclick=()=>acaSelectTab("stages");
+  $("acaTabLessons").onclick=()=>acaSelectTab("lessons");
+  $("acaTabFitness").onclick=()=>acaSelectTab("fitness");
   $("genomeExport").onclick=exportGenome;
   $("genomeImportBtn").onclick=()=>$("genomeFile").click();
   $("genomeFile").onchange=e=>{const f=e.target.files&&e.target.files[0];if(f)importGenomeFile(f);e.target.value="";};

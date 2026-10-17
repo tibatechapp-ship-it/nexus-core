@@ -1,0 +1,2550 @@
+{
+  "raw": {
+    "base_url": "http://127.0.0.1:8000",
+    "started": 1792245852.2188368,
+    "duration": 1655.9,
+    "agents": [
+      "architect",
+      "coder",
+      "reviewer",
+      "tester",
+      "debugger",
+      "planner",
+      "analyst",
+      "researcher",
+      "designer",
+      "estimator",
+      "security_auditor",
+      "performance",
+      "documentation",
+      "refactor",
+      "compliance",
+      "orchestrator",
+      "devops",
+      "monitor",
+      "recovery",
+      "reporter"
+    ],
+    "tasks": [
+      "gen_two_sum",
+      "gen_palindrome",
+      "gen_merge_intervals",
+      "gen_lru_cache",
+      "debug_binary_search",
+      "tests_slugify",
+      "review_sql_injection",
+      "tool_git_history"
+    ],
+    "results": [
+      {
+        "agent": "architect",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 45.83,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 3.37,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.4,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.46,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.36,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_01",
+        "elapsed": 1.87,
+        "error": "",
+        "grade": {
+          "ref": [
+            16,
+            1
+          ],
+          "mut": [
+            16,
+            10
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 54.84,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "architect",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.58,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 37.56,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.23,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.34,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.9,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 35.83,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_01",
+        "elapsed": 2.18,
+        "error": "",
+        "grade": {
+          "ref": [
+            22,
+            1
+          ],
+          "mut": [
+            22,
+            13
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 55.17,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "coder",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.45,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.38,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.36,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 8.08,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.9,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 21.67,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_02",
+        "elapsed": 0.68,
+        "error": "",
+        "grade": {
+          "ref": null,
+          "mut": null,
+          "reason": "NO_TESTS"
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 1.11,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "reviewer",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 2.62,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.41,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.38,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 1.61,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.5,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.33,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 1.6,
+        "error": "",
+        "grade": {
+          "ref": [
+            18,
+            0
+          ],
+          "mut": [
+            18,
+            11
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 104.31,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "tester",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 3.21,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.29,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 39.19,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.37,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 3.09,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.34,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 2.49,
+        "error": "",
+        "grade": {
+          "ref": [
+            23,
+            0
+          ],
+          "mut": [
+            23,
+            12
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 97.39,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "debugger",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 79.13,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.32,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.35,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": false,
+        "provider": "",
+        "elapsed": 279.74,
+        "error": "TimeoutError: timed out",
+        "grade": {
+          "reason": "NO_RESPONSE"
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 5.24,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.39,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 2.19,
+        "error": "",
+        "grade": {
+          "ref": [
+            20,
+            0
+          ],
+          "mut": [
+            20,
+            14
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 53.44,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "planner",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.51,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.28,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.27,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 2.5,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": false,
+        "provider": "",
+        "elapsed": 28.91,
+        "error": "groq_20: Error code: 429 - {'error': {'message': \"Request too large for model `qwen/qwen3.8-27b` in organization `org_01m33r6jcxezrt1ahmh19bq5gs` service tier `on_demand` on output tokens per minute (OTPM): Li",
+        "grade": {
+          "reason": "NO_RESPONSE"
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.5,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_02",
+        "elapsed": 0.58,
+        "error": "",
+        "grade": {
+          "ref": null,
+          "mut": null,
+          "reason": "NO_TESTS"
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.59,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "analyst",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.66,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.28,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.25,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.47,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 10.2,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.65,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_01",
+        "elapsed": 20.9,
+        "error": "",
+        "grade": {
+          "ref": null,
+          "mut": null,
+          "reason": "NO_TESTS"
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 1.98,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "researcher",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 10.38,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 1.14,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 1.08,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.44,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.56,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 8.69,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 2.69,
+        "error": "",
+        "grade": {
+          "ref": [
+            19,
+            0
+          ],
+          "mut": [
+            19,
+            9
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 38.09,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "designer",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 9.82,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.28,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 2.51,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.34,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.61,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.45,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_02",
+        "elapsed": 2.19,
+        "error": "",
+        "grade": {
+          "ref": [
+            22,
+            1
+          ],
+          "mut": [
+            22,
+            13
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 1.9,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "estimator",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 39.61,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.56,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 2.64,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 2.83,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.43,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 7.64,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_04",
+        "elapsed": 10.36,
+        "error": "",
+        "grade": {
+          "ref": [
+            16,
+            1
+          ],
+          "mut": [
+            16,
+            8
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.84,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "security_auditor",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 13.37,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 9.12,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 3.35,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 3.5,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 5.94,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 9.99,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_01",
+        "elapsed": 5.57,
+        "error": "",
+        "grade": {
+          "ref": null,
+          "mut": null,
+          "reason": "NO_TESTS"
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 1.57,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "performance",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.55,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 13.91,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 3.35,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.36,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 8.81,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 9.63,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_01",
+        "elapsed": 6.96,
+        "error": "",
+        "grade": {
+          "ref": [
+            29,
+            2
+          ],
+          "mut": [
+            29,
+            16
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 39.21,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "documentation",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.71,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.4,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.33,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.54,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 1.41,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.48,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_02",
+        "elapsed": 1.72,
+        "error": "",
+        "grade": {
+          "ref": [
+            18,
+            2
+          ],
+          "mut": [
+            18,
+            13
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 15.07,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "refactor",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 1.11,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 35.79,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 3.07,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.48,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.58,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 0.63,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_03",
+        "elapsed": 0.56,
+        "error": "",
+        "grade": {
+          "ref": null,
+          "mut": null,
+          "reason": "NO_TESTS"
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_05",
+        "elapsed": 14.04,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "compliance",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.98,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 0.66,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 7.88,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 1.37,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.56,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 0.68,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_04",
+        "elapsed": 1.66,
+        "error": "",
+        "grade": {
+          "ref": null,
+          "mut": null,
+          "reason": "NO_TESTS"
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.44,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "orchestrator",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.46,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.36,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.22,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.45,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.45,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.31,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 4.16,
+        "error": "",
+        "grade": {
+          "ref": [
+            21,
+            0
+          ],
+          "mut": [
+            21,
+            9
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 1.37,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "devops",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_03",
+        "elapsed": 16.51,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.61,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 6.14,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.83,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 1.72,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 8.81,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": false,
+        "provider": "groq_02",
+        "elapsed": 6.55,
+        "error": "",
+        "grade": {
+          "ref": [
+            25,
+            2
+          ],
+          "mut": [
+            25,
+            16
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_04",
+        "elapsed": 43.04,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "monitor",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.59,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.29,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 0.37,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.36,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 18.13,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.58,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 2.01,
+        "error": "",
+        "grade": {
+          "ref": [
+            21,
+            0
+          ],
+          "mut": [
+            21,
+            13
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 7.05,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "recovery",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 8.01,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "gen_two_sum",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.48,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "gen_palindrome",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.32,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "gen_merge_intervals",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.43,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "gen_lru_cache",
+        "category": "codegen",
+        "ok": true,
+        "provider": "groq_02",
+        "elapsed": 4.71,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "debug_binary_search",
+        "category": "debugging",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.38,
+        "error": "",
+        "grade": {
+          "returncode": 0,
+          "stdout": "PASS\n",
+          "stderr": ""
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "tests_slugify",
+        "category": "testing",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 57.28,
+        "error": "",
+        "grade": {
+          "ref": [
+            17,
+            0
+          ],
+          "mut": [
+            17,
+            11
+          ],
+          "reason": ""
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "review_sql_injection",
+        "category": "security",
+        "ok": true,
+        "provider": "groq_01",
+        "elapsed": 0.47,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            true
+          ]
+        }
+      },
+      {
+        "agent": "reporter",
+        "task": "tool_git_history",
+        "category": "tooling",
+        "ok": false,
+        "provider": "groq_01",
+        "elapsed": 52.08,
+        "error": "",
+        "grade": {
+          "groups": [
+            true,
+            false
+          ]
+        }
+      }
+    ]
+  },
+  "summary": {
+    "overall_pass_at_1": 0.9,
+    "passed": 144,
+    "total": 160,
+    "per_agent": {
+      "architect": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "coder": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "reviewer": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "tester": {
+        "pass": 8,
+        "total": 8,
+        "pass_at_1": 1.0
+      },
+      "debugger": {
+        "pass": 8,
+        "total": 8,
+        "pass_at_1": 1.0
+      },
+      "planner": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "analyst": {
+        "pass": 6,
+        "total": 8,
+        "pass_at_1": 0.75
+      },
+      "researcher": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "designer": {
+        "pass": 8,
+        "total": 8,
+        "pass_at_1": 1.0
+      },
+      "estimator": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "security_auditor": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "performance": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "documentation": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "refactor": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "compliance": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "orchestrator": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "devops": {
+        "pass": 8,
+        "total": 8,
+        "pass_at_1": 1.0
+      },
+      "monitor": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      },
+      "recovery": {
+        "pass": 8,
+        "total": 8,
+        "pass_at_1": 1.0
+      },
+      "reporter": {
+        "pass": 7,
+        "total": 8,
+        "pass_at_1": 0.875
+      }
+    },
+    "per_task": {
+      "gen_two_sum": {
+        "pass": 20,
+        "total": 20,
+        "pass_at_1": 1.0
+      },
+      "gen_palindrome": {
+        "pass": 20,
+        "total": 20,
+        "pass_at_1": 1.0
+      },
+      "gen_merge_intervals": {
+        "pass": 19,
+        "total": 20,
+        "pass_at_1": 0.95
+      },
+      "gen_lru_cache": {
+        "pass": 19,
+        "total": 20,
+        "pass_at_1": 0.95
+      },
+      "debug_binary_search": {
+        "pass": 20,
+        "total": 20,
+        "pass_at_1": 1.0
+      },
+      "tests_slugify": {
+        "pass": 7,
+        "total": 20,
+        "pass_at_1": 0.35
+      },
+      "review_sql_injection": {
+        "pass": 20,
+        "total": 20,
+        "pass_at_1": 1.0
+      },
+      "tool_git_history": {
+        "pass": 19,
+        "total": 20,
+        "pass_at_1": 0.95
+      }
+    }
+  }
+}
