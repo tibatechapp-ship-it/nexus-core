@@ -369,7 +369,10 @@ class TrainingEngine:
             import importlib
 
             genome_v2 = None
-            for module_name in ("novamind.genome_v2", "src.novamind.genome_v2"):
+            # ``src.`` first — same spelling as the Council engine, so both
+            # share ONE process-wide genome (one file, two names = two copies).
+            for module_name in ("src.novamind.genome_v2",
+                                "novamind.genome_v2"):
                 try:
                     genome_v2 = importlib.import_module(module_name)
                     break

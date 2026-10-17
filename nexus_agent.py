@@ -34,6 +34,7 @@ import json
 import math
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
@@ -396,6 +397,26 @@ def api_agents() -> Dict[str, Any]:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# P4.5 — قناة نتائج المهام: كل تشغيل حقيقي يغذّي جينوم الوكيل
+#   (المجلس يغذّي قناة الحُكم؛ هذه قناة ثانية مستقلة على نفس الصفّ)
+# ═══════════════════════════════════════════════════════════════════════
+def _record_task_outcome(agent_id: str, ok: bool, duration: float,
+                         task: str = "") -> None:
+    """Fold one real run into the genome's task channel (fail-safe).
+
+    Observability only: a missing or broken genome must never fail a request,
+    so every error is swallowed here.
+    """
+    try:
+        from src.novamind.genome_v2 import get_genome_v2
+
+        get_genome_v2().observe_outcome(agent_id, ok, duration=duration,
+                                       task=task[:200])
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # /api/chat — دردشة موحّدة: LLM حقيقي عبر LLMRouter، بثّ SSE
 # (plan → chunk → [DONE]) ليتوافق مع عميل CLI الحالي
 # ═══════════════════════════════════════════════════════════════════════
@@ -403,26 +424,40 @@ def api_agents() -> Dict[str, Any]:
 def api_chat(req: ChatRequest) -> Any:
     message = (req.message or "").strip()[:4000]
     system = _agent_system(req.agent, message)
+    agent_id = req.agent or "default"
 
     def gen() -> Iterator[str]:
-        yield _sse({"type": "plan", "agent": req.agent or "default",
-                    "conversation_id": req.conversation_id})
-        if not message:
-            yield _sse({"type": "chunk", "content": "(رسالة فارغة)"})
-            yield _sse("[DONE]")
-            return
+        """SSE: plan → chunk → [DONE] (+ قناة الجينوم في ``finally``)."""
+        started = time.monotonic()
+        ok = False
+        ran = False
         try:
-            res = get_router().generate(message, system=system, role="fast")
-            text = (res.get("text") or "").strip()
-            if res.get("ok") and text:
-                yield _sse({"type": "chunk", "content": text,
-                            "provider": res.get("provider", "")})
-            else:
+            yield _sse({"type": "plan", "agent": req.agent or "default",
+                        "conversation_id": req.conversation_id})
+            if not message:
+                yield _sse({"type": "chunk", "content": "(رسالة فارغة)"})
+                return
+            ran = True
+            try:
+                res = get_router().generate(message, system=system,
+                                            role="fast")
+                text = (res.get("text") or "").strip()
+                if res.get("ok") and text:
+                    ok = True
+                    yield _sse({"type": "chunk", "content": text,
+                                "provider": res.get("provider", "")})
+                else:
+                    yield _sse({"type": "error",
+                                "content": res.get("error")
+                                or "لا يوجد مزود متاح"})
+            except Exception as e:  # pragma: no cover - defensive
                 yield _sse({"type": "error",
-                            "content": res.get("error") or "لا يوجد مزود متاح"})
-        except Exception as e:  # pragma: no cover - defensive
-            yield _sse({"type": "error", "content": f"{type(e).__name__}: {e}"})
-        yield _sse("[DONE]")
+                            "content": f"{type(e).__name__}: {e}"})
+            yield _sse("[DONE]")
+        finally:
+            if ran:
+                _record_task_outcome(agent_id, ok, time.monotonic() - started,
+                                     task=message)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",

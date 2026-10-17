@@ -12,6 +12,7 @@ them is safe and fast.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import types
 from collections.abc import Generator
@@ -29,6 +30,19 @@ _ADVERSARIAL_DIR: Path = _TESTS_DIR / "adversarial"
 for _entry in (str(_ADVERSARIAL_DIR), str(_TESTS_DIR)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
+
+# The access guard (src/security/access.py) auto-enables itself when
+# NEXUS_AUTH_TOKEN is present in the environment. The suite assumes it is OFF,
+# so a developer's local guard config (an exported shell var, or a `.env` the
+# app re-reads via load_dotenv) must not leak in — otherwise mutating requests
+# inside the tests come back 401. Clear it before any test module imports.
+for _guard_var in (
+    "NEXUS_AUTH_TOKEN",
+    "NEXUS_RATE_LIMIT",
+    "NEXUS_RATE_WINDOW",
+    "NEXUS_AUDIT_LOG",
+):
+    os.environ.pop(_guard_var, None)
 
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
