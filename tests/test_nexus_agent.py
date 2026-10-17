@@ -233,3 +233,68 @@ def test_chat_streams_chunk_then_done(env):
     assert '"type": "plan"' in joined
     assert "ردّ تجريبي" in joined
     assert "data: [DONE]" in joined
+
+
+# ── access guard: token + rate limit + audit ──────────────────────────────
+
+def test_status_reports_the_access_guard(env):
+    """``/api/status`` يحمل حالة الحارس (بلا تسريب التوكن أبداً)."""
+    _mod, client, _store = env
+    guard = client.get("/api/status").json()["guard"]
+    assert isinstance(guard["auth"], bool)
+    assert guard["rate"] >= 0 and guard["window"] >= 0.0
+    assert guard["header"] == "x-auth-token"
+    assert guard["methods"] == ["DELETE", "PATCH", "POST", "PUT"]
+    assert guard["audit"] is None or isinstance(guard["audit"], str)
+
+
+def test_reads_stay_open_when_a_token_is_required(env):
+    """المصادقة تحمي الطرق المتغيّرة فقط — القراءات تمرّ دائماً."""
+    mod, client, _store = env
+    mod.GUARD.token = "s3cret"
+    assert client.get("/api/status").status_code == 200
+    assert client.get("/api/health").status_code == 200
+
+
+def test_mutating_calls_need_the_token(env):
+    mod, client, _store = env
+    mod.GUARD.token = "s3cret"
+    denied = client.post("/api/council/debate", json={"topic": "قرار"})
+    assert denied.status_code == 401
+    assert denied.json()["ok"] is False
+    assert "x-auth-token" in denied.json()["error"]
+    ok = client.post("/api/council/debate", json={"topic": "قرار"},
+                     headers={"X-Auth-Token": "s3cret"})
+    assert ok.status_code == 200
+
+
+def test_a_bad_token_is_refused_before_the_handler_runs(env):
+    """حتى مسار غير موجود يردّ 401 لا 404 عندما تكون المصادقة فعّالة."""
+    mod, client, _store = env
+    mod.GUARD.token = "s3cret"
+    resp = client.post("/api/definitely-not-a-route", json={})
+    assert resp.status_code == 401
+
+
+def test_rate_limit_returns_429_with_retry_after(env):
+    from src.security.access import RateLimiter
+
+    mod, client, _store = env
+    mod.GUARD.limiter = RateLimiter(1, 30.0)
+    assert client.post("/api/chat", json={"message": "hi"}).status_code == 200
+    limited = client.post("/api/chat", json={"message": "hi"})
+    assert limited.status_code == 429
+    assert limited.json()["error"] == "rate limit exceeded"
+    assert 0 < int(limited.headers["Retry-After"]) <= 30
+
+
+def test_audit_log_records_every_request(env, tmp_path):
+    from src.security.access import AuditLog
+
+    mod, client, _store = env
+    target = tmp_path / "audit.jsonl"
+    mod.GUARD.audit = AuditLog(target)
+    client.get("/api/status")
+    text = target.read_text(encoding="utf-8")
+    assert '"/api/status"' in text and '"status": 200' in text
+    assert '"method": "GET"' in text
