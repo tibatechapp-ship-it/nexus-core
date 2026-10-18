@@ -253,7 +253,8 @@ def _capture_outcomes(monkeypatch, calls: list) -> None:
         def observe_outcome(self, agent_id, ok, *, duration=None,  # noqa: ANN001
                             quality=None, task=""):  # noqa: ANN001
             calls.append({"agent": agent_id, "ok": ok,
-                          "duration": duration, "task": task})
+                          "duration": duration, "task": task,
+                          "quality": quality})
 
     monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2",
                         lambda: _Recorder())
@@ -468,3 +469,234 @@ def test_engine_ui_route_serves_unified_ui(env):
     assert "text/html" in resp.headers["content-type"]
     assert resp.text.lstrip()[:15].lower().startswith("<!doctype html")
     assert len(resp.text) > 1000
+
+
+# ── المرحلة 1: الذاكرة طويلة المدى + التقييم الذاتي ─────────────────────
+
+class _ScriptedRouter:
+    """Router whose Nth ``generate`` call returns ``replies[n-1]`` (no network)."""
+
+    providers: list = []
+
+    def __init__(self, replies):  # noqa: ANN001
+        self.replies = list(replies)
+        self.calls: list = []
+
+    def generate(self, prompt, system="", **kwargs):  # noqa: ANN001, ANN003
+        self.calls.append({"prompt": prompt, "system": system})
+        idx = min(len(self.calls) - 1, len(self.replies) - 1)
+        return self.replies[idx]
+
+
+def _ok(text):  # noqa: ANN201
+    return {"ok": True, "text": text, "provider": "fake", "elapsed": 0.0}
+
+
+def _fail():  # noqa: ANN201
+    return {"ok": False, "error": "لا مزود"}
+
+
+def _inject_store(mod, tmp_path):  # noqa: ANN201
+    """Fresh interaction store bound to a temp DB (module global, no singleton)."""
+    from src.learning.interactions import InteractionStore
+
+    store = InteractionStore(str(tmp_path / "phase1.db"))
+    mod._INTERACTION_STORE = store
+    return store
+
+
+def _sse_events(client, payload):  # noqa: ANN201
+    with client.stream("POST", "/api/chat", json=payload) as r:
+        assert r.status_code == 200
+        return [ln for ln in r.iter_lines() if ln.startswith("data:")]
+
+
+def test_chat_poor_answer_is_reflected_rated_and_retried_once(env, tmp_path,
+                                                              monkeypatch):
+    """إجابة «ركيكة» ⇒ تقييم poor + إعادة صياغة واحدة + حفظ كامل التفاصيل."""
+    mod, client, _store = env
+    ix = _inject_store(mod, tmp_path)
+    router = _ScriptedRouter([
+        _ok("جواب ضعيف أول"),
+        _ok('{"rating": "poor", "reason": "أمثلة ناقصة"}'),
+        _ok("جواب ممتاز بعد إعادة الصياغة"),
+        _ok('{"rating": "excellent", "reason": "واضح"}'),
+    ])
+    monkeypatch.setattr(mod, "get_router", lambda: router)
+
+    lines = _sse_events(client, {"message": "اكتب دالة تحقق", "agent": "coder"})
+    joined = "\n".join(lines)
+
+    # البثّ يحمل نصّ إعادة المحاولة، لا الأصلي
+    assert "جواب ممتاز بعد إعادة الصياغة" in joined
+    assert "جواب ضعيف أول" not in joined
+    assert '"retried": true' in joined
+    assert '"rating": "poor"' in joined
+    # 4 استدعاءات: إجابة + تقييم + إعادة + إعادة تقييم — لا أكثر
+    assert len(router.calls) == 4
+    assert router.calls[2]["prompt"] == "اكتب دالة تحقق"  # إعادة الصياغة
+
+    (row,) = ix.recent()
+    assert row["self_rating"] == "poor"
+    assert row["retry_used"] == 1
+    assert row["retried_rating"] == "excellent"
+    assert row["lesson"] == "أمثلة ناقصة"
+    assert row["signal_ok"] == 1
+    # نجاح صافٍ لكن الإجابة الأولى ركيكة ثم نجحت إعادة الصياغة ⇒ متوافق
+    assert row["awareness_gap"] == 0
+
+
+def test_chat_a_good_answer_is_not_retried(env, tmp_path, monkeypatch):
+    """تقييم good/excellent لا يطلق إعادة المحاولة أبداً."""
+    mod, client, _store = env
+    ix = _inject_store(mod, tmp_path)
+    router = _ScriptedRouter([
+        _ok("جواب جيد كافٍ"),
+        _ok('{"rating": "good", "reason": "مقبول"}'),
+    ])
+    monkeypatch.setattr(mod, "get_router", lambda: router)
+
+    lines = _sse_events(client, {"message": "اكتب اختبار", "agent": "analyst"})
+    joined = "\n".join(lines)
+
+    assert "جواب جيد كافٍ" in joined
+    assert '"retried": false' in joined
+    assert len(router.calls) == 2  # إجابة + تقييم فقط
+
+    (row,) = ix.recent()
+    assert row["self_rating"] == "good"
+    assert row["retry_used"] == 0 and row["retried_rating"] is None
+    assert row["lesson"] is None  # الدرس يُحفظ لـpoor فقط
+
+
+def test_chat_unparseable_reflection_keeps_the_answer_and_skips_retry(
+        env, tmp_path, monkeypatch):
+    """تقييم غير قابل للقراءة ⇒ بلا rating، بلا إعادة، والإجابة تصل كما هي."""
+    mod, client, _store = env
+    ix = _inject_store(mod, tmp_path)
+    router = _ScriptedRouter([
+        _ok("الجواب الأصلي"),
+        _ok("لا أستطيع التقييم الآن"),
+        _ok("جواب بديل لا يجب أن يظهر"),  # أبداً لا يُستدعى
+    ])
+    monkeypatch.setattr(mod, "get_router", lambda: router)
+
+    lines = _sse_events(client, {"message": "سؤال ما"})
+    joined = "\n".join(lines)
+
+    assert "الجواب الأصلي" in joined
+    assert "جواب بديل" not in joined
+    assert len(router.calls) == 2
+
+    (row,) = ix.recent()
+    assert row["self_rating"] is None and row["retry_used"] == 0
+    assert row["awareness_gap"] is None
+
+
+def test_chat_with_a_dead_provider_still_saves_the_failed_row(env, tmp_path,
+                                                              monkeypatch):
+    """مزود ميّت ⇒ صفّ حفظ فشلاً (signal_ok=0)، والبثّ يحمل error لا انهياراً.
+
+    ملاحظة: مسار الفشل لا يصل إلى التقييم الذاتي أصلاً (ok=False يقفّز)،
+    ومصفوفة فجوة الوي مغطّاة في الوحدة (test_interactions.py).
+    """
+    mod, client, _store = env
+    ix = _inject_store(mod, tmp_path)
+
+    class _FailingRouter:
+        providers: list = []
+
+        def generate(self, prompt, system="", **kwargs):  # noqa: ANN001, ANN003
+            return _fail()
+
+    monkeypatch.setattr(mod, "get_router", lambda: _FailingRouter())
+    lines = _sse_events(client, {"message": "سؤال ما"})
+    joined = "\n".join(lines)
+    assert '"type": "error"' in joined
+    assert "data: [DONE]" in joined
+
+    (row,) = ix.recent()
+    assert row["signal_ok"] == 0
+
+
+def test_similar_past_interactions_are_folded_into_the_agent_prompt(
+        env, tmp_path):
+    """ذاكرة الميدان تُحقن في نصّ النظام عند تشابه السؤال."""
+    mod, client, _store = env
+    ix = _inject_store(mod, tmp_path)
+    ix.save(agent_id="analyst", question="اكتب دالة تحقق من كلمة السر",
+            answer="استخدم hmac.compare_digest ولا تستخدم md5",
+            signal_ok=True, self_rating="good")
+
+    system = mod._agent_system("coder", "اكتب دالة تحقق قوية")
+    assert "ذاكرة الميدان" in system
+    assert "compare_digest" in system
+
+    # لا شيء مشابه ⇒ بلا كتلة
+    assert "ذاكرة الميدان" not in mod._agent_system("coder", "نصيحة عن الطقس")
+
+
+def test_agent_prompt_skips_memory_for_an_empty_task_or_a_disabled_store(
+        env, tmp_path):
+    mod, client, _store = env
+    ix = _inject_store(mod, tmp_path)
+    ix.save(agent_id="a", question="اكتب دالة", answer="x", signal_ok=True)
+
+    # مهمة فارغة ⇒ لا استرجاع
+    assert "ذاكرة الميدان" not in mod._agent_system("coder", "   ")
+    # store معطّل ⇒ لا كتلة ولا انهيار
+    mod._INTERACTION_STORE = False
+    assert "ذاكرة الميدان" not in mod._agent_system("coder", "اكتب دالة")
+
+
+def test_chat_survives_a_disabled_or_broken_interaction_store(env, monkeypatch):
+    """مخزن معطّل/مهشّر لا يكسر البثّ أبداً."""
+    mod, client, _store = env
+
+    class _BrokenStore:
+        def similar(self, *_a, **_k):  # noqa: ANN001, ANN201
+            raise RuntimeError("db gone")
+
+        def save(self, *_a, **_k):  # noqa: ANN001, ANN201
+            raise RuntimeError("db gone")
+
+    for injected in (False, _BrokenStore()):
+        mod._INTERACTION_STORE = injected
+        lines = _sse_events(client, {"message": "مرحبا", "agent": "coder"})
+        joined = "\n".join(lines)
+        assert "ردّ تجريبي" in joined and "data: [DONE]" in joined
+
+
+def test_chat_quality_reaches_the_genome_from_the_self_rating(env, monkeypatch):
+    """جودة التقييم الذاتي تُغذّي قناة الجينوم (excellent=1.0)."""
+    _mod, client, _store = env
+    calls: list = []
+    _capture_outcomes(monkeypatch, calls)
+    router = _ScriptedRouter([
+        _ok("جواب ممتاز"),
+        _ok('{"rating": "excellent", "reason": "رائع"}'),
+    ])
+    monkeypatch.setattr(_mod, "get_router", lambda: router)
+
+    with client.stream("POST", "/api/chat",
+                       json={"message": "سؤال", "agent": "coder"}) as r:
+        assert r.status_code == 200
+        list(r.iter_lines())
+
+    assert len(calls) == 1
+    assert calls[0]["quality"] == 1.0  # excellent
+
+
+def test_chat_without_a_rating_keeps_the_legacy_quality(env, monkeypatch):
+    """بلا تقييم ⇒ quality=None (سلوك v1.16 بلا تغيير)."""
+    _mod, client, _store = env
+    calls: list = []
+    _capture_outcomes(monkeypatch, calls)
+
+    with client.stream("POST", "/api/chat",
+                       json={"message": "سؤال", "agent": "coder"}) as r:
+        assert r.status_code == 200
+        list(r.iter_lines())
+
+    assert len(calls) == 1
+    assert calls[0]["quality"] is None

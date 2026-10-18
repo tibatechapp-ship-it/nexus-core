@@ -802,6 +802,14 @@ async def engine_ui() -> HTMLResponse:
 #    قبله فتفوز، والمحرّك يلتقط كل ما تبقّى (conversations / traces /
 #    pipeline / workspace / offline). الترتيب = العقد نفسه.
 # ═══════════════════════════════════════════════════════════════════════
+# ✅ v3.2.0: exec sandbox — يجب أن يكون قبل app.mount('/')
+try:
+    from exec_sandbox import router as exec_router
+    app.include_router(exec_router)
+    print('✅ exec_sandbox مركّب')
+except Exception as _exec_e:
+    print(f'⚠️ exec_sandbox لم يُركّب: {_exec_e}')
+
 if ENGINE_OK:
     app.mount("/", _engine.app)
 
@@ -837,6 +845,12 @@ def acquire_instance_lock(port: int) -> Optional[Any]:
     handle.flush()
     return handle
 
+
+# WIP v3.2.0 (جلسة أخرى): /simple.html — يبقى كما هو حتى يُسلَّم صاحبه
+from fastapi.responses import FileResponse
+@app.get("/simple.html")
+def serve_simple():
+    return FileResponse("web/simple.html")
 
 def main() -> None:
     port = int(os.environ.get("NEXUS_PORT", "8080"))
