@@ -1804,7 +1804,7 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   `stash@{0} "wip: exec_sandbox v3.2.0 mount"` + patch backup
   `$TMPDIR/wip-nexus-lock.patch` → popped AFTER the lock commits (see below).
 
-## Ollama Cloud wiring (2026-10-18) — feature/novamind-factory, UNCOMMITTED
+## Ollama Cloud wiring (2026-10-18) — feature/novamind-factory — SHIPPED
 - tyba wrote `ollama_client.py` (`call_ollama` → POST https://ollama.com/api/chat,
   Bearer `OLLAMA_API_KEY` from env, default model `gemma4:31b`, timeout 30,
   errors returned as `"Error: …"` strings not exceptions) + `ollama_router.py`
@@ -1825,3 +1825,20 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   with cwd=repo root, fine). Not committed (tyba reviews first).
 - `git status` was `UU nexus_agent.py` (stale index from the earlier stash-pop
   conflict) → cleared with `git reset -- nexus_agent.py` (nothing staged).
+- **SHIPPED** as `1240e07` "feat(ollama): wire Ollama chat + provider settings
+  into the engine" (5 files, +153: the 3 Ollama files + AGENTS.md + the two
+  extend blocks in `unified_agent.py`), pushed to origin + gitlab
+  (`3917306..1240e07`). The foreign `web_page_router` `include_router` block in
+  `unified_agent.py` was SPLIT OUT of the commit: filter lines 1072-1079 out →
+  `git add unified_agent.py` → restore the full file (the working tree keeps
+  the foreign WIP unstaged).
+- ❗ **`/sw.js` on :8000 is NOT `web/sw.js`** — the parent `main.py` embeds the
+  whole worker (`_SW_JS`, v1.11, network-first, API passthrough, 1047B) and its
+  route WINS over the engine mount (parent-routes-win contract). The foreign
+  cache-first rewrite in `web/sw.js` (v3.2.0) is therefore **never served by
+  the service** — editing/bumping it would be a no-op on :8000.
+  Browser-verified (headless CDP, fresh profile, `/ui`): SW registered,
+  `activated`, `controller: true`, shell assets `/` `/icon.svg` `/manifest.json`
+  all 200, zero JS errors, no "Connection error" bubble → no SW fix needed.
+  `main.py:459` serves the embedded worker without `Cache-Control`, but SW
+  update checks bypass the HTTP cache by spec.
