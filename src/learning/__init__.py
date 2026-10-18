@@ -40,7 +40,23 @@ from src.learning.experience_collector import (
     ExperienceCollector,
     Outcome,
 )
+from src.learning.interactions import (
+    InteractionStore,
+    default_interaction_db_path,
+    get_interaction_store,
+    reset_interaction_store,
+)
 from src.learning.lesson import Lesson, LessonExtractor
+from src.learning.reflection import (
+    RATINGS,
+    awareness_gap,
+    build_reflection_prompt,
+    build_retry_system,
+    memory_block,
+    parse_reflection,
+    rating_score,
+    should_retry,
+)
 from src.learning.lesson_store import (
     LessonDatabase,
     LessonInjector,
@@ -81,8 +97,20 @@ __all__ = [
     "LearningCycle",
     "LearningOrchestrator",
     "Outcome",
+    "RATINGS",
     "SchedulePolicy",
+    "InteractionStore",
+    "awareness_gap",
+    "build_reflection_prompt",
+    "build_retry_system",
+    "default_interaction_db_path",
     "default_lesson_db_path",
+    "get_interaction_store",
+    "memory_block",
+    "parse_reflection",
     "polarity",
+    "rating_score",
     "render_lessons",
+    "reset_interaction_store",
+    "should_retry",
 ]
