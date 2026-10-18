@@ -1842,3 +1842,64 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   all 200, zero JS errors, no "Connection error" bubble → no SW fix needed.
   `main.py:459` serves the embedded worker without `Cache-Control`, but SW
   update checks bypass the HTTP cache by spec.
+
+## Phase 1 — long-term memory + self-evaluation (2026-10-18) — SHIPPED
+- Branch `feature/novamind-factory`, 4 concern-split commits `c4fd2bb..cdf3ee2`,
+  pushed origin+gitlab. **NOT merged, no version bump** (CHANGELOG `## Unreleased`).
+- NEW `src/learning/interactions.py`: SQLite WAL store of every ok chat run
+  (question+answer+signal_ok+self_rating+reason/lesson+retry_used/retried_rating
+  +awareness_gap). `similar()` = Arabic-aware weighted token-overlap (empty
+  answers excluded, recency tie-break, k clamped 1..10). Singleton +
+  `NEXUS_INTERACTIONS_DB`.
+- NEW `src/learning/reflection.py` (pure, never raises): JSON-contract-first
+  rating parser with keyword fallback (excellent>good>poor); `rating_score`
+  (1.0/0.75/0.4) → `genome_v2.observe_outcome(quality=)`; `should_retry`
+  (ONE retry); `awareness_gap` (1=confident-claim-on-failure, 0=recovered-or-
+  honest-poor, else None); `memory_block` → prompt.
+- GATEWAY (`nexus_agent.py`, failure-isolated at all 3 layers): ok answer →
+  reflect → poor ⇒ one re-generation (retried text is what streams, SSE
+  backward-compatible) → save + genome(quality from FIRST rating). Broken/
+  disabled store ⇒ plain prompt, never breaks stream.
+- GATES: ruff (my files) · mypy 164 · annotations 164 · full gate **2975 passed**
+  (1 pre-existing foreign-WIP failure `test_academy_js_parses_as_javascript`
+  from the other session's `web/unified_ui.html` — proven foreign by stashing it).
+- Coverage: interactions 100% (84 stmts/16 br) · reflection 100% (73/28).
+- LIVE verified (:8000 after `sv restart`): coder chat → poor + retry +
+  full row in `data/interactions.db` (self_rating=poor, retry_used=1,
+  lesson, signal_ok=1, retried_rating). Test-authoring lessons: (1) default-
+  bound clock args need explicit injection; (2) a "broken JSON" test must
+  still match the regex (include braces); (3) a JSON with an empty rating
+  reaches `_find_rating("")` → keyword scan of the raw text.
+
+## Phase 2 — tool use (المحور 3) — Day 1 (2026-10-18)
+- Branch `feature/novamind-factory` (HEAD was `cdf3ee2` = origin = gitlab = full
+  Phase 1). tyba's plan: 5 days — D1 tools.py + config (3 tools) · D2
+  query_memory/execute_code + react_agent · D3 orchestrator (CLASSIFY decides
+  agents; label rules %; ±5°) · D4 multi_agent_consensus (≥2 agents, ≥3 votes,
+  agree ≥66% = توصية قوية) + tools SSE wiring + Explain · D5 tests/docs/KPIs
+  (quality ≥9.0/10, tool-use ≥30%, response ≤20s).
+- ❗ NAME COLLISION: `src/learning/orchestrator.py` ALREADY EXISTS (old
+  `LearningOrchestrator` Phase 4, exported from `__init__`) ⇒ Phase-2's
+  multi-agent file needs a DIFFERENT name (e.g. `collab.py`) — unres 3.
+- D1 SHIPPED (files, this session): `src/learning/tools.py` (search_web,
+  read_file, get_current_time + Day-2 stubs query_memory/execute_code),
+  `tools_config.json` (root, 5 tools; only the 3 Day-1 tools enabled),
+  `src/learning/__init__.py` (+14 tool exports), `tests/test_learning_tools.py`
+  (32). Safety: `safe_execute(name, …) -> ToolResult` NEVER raises — unknown /
+  disabled / crashing tool ⇒ ok=False + Arabic error; config-gated caps injected
+  (search max_results, read allowed_roots); `is_safe_path` = resolve(strict)
+  + is_file + is_relative_to + size ≤256KB (traversal + symlink-escape + oversize
+  all refused); Explain line built in `safe_execute`
+  (`[استخدمت {name} للبحث عن "{detail}"]`).
+- Design: `_ddg_fetch` split into network wrapper + pure `_parse_ddg(html)` so
+  the parser is testable without network; fetcher/clock/store/runner all
+  injectable ⇒ 100% coverage offline. `execute_code` = honest
+  NotImplementedError stub (Day 2 flips the config flag + wires exec_sandbox).
+- GATES: ruff (my files) clean · mypy 165 · annotations 165 · full gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **3007 passed,
+  100.00%** (9570 stmts) + 1 skipped (ed25519) + 1 KNOWN FOREIGN failure
+  `test_academy_js_parses_as_javascript` (dirty `web/unified_ui.html` WIP).
+  `tools.py` itself = 100% (150 stmts / 44 branches).
+- NOT done D1: SSE Explain wiring (D4), react_agent (D2), KPI measurement (D5).
+- Bottom-block items tyba pasted (Ollama/provider_settings commit+push, sw.js
+  check) = ALREADY DONE in `1240e07` + earlier sw verification — verify-only.
