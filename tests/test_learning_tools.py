@@ -7,6 +7,9 @@ unreachable network must yield ``[]``).
 
 from __future__ import annotations
 
+import sys
+sys.path.insert(0, '.')
+
 import json
 from pathlib import Path
 
@@ -438,7 +441,7 @@ def test_execute_code_wraps_a_non_dict_sandbox_result(monkeypatch):
         ExecReq = _Req
         _run = staticmethod(lambda lang, spec, req, timeout, t0: "RAW")
 
-    monkeypatch.setitem(__import__("sys").modules, "exec_sandbox", _FakeSandbox())
+    monkeypatch.setitem(__import__("sys").modules, "tools.exec_sandbox", _FakeSandbox())
     out = tools_mod.execute_code("python", "x")
     assert out == {"result": "RAW"}
 

@@ -294,7 +294,7 @@ def _default_exec_runner(language: str, code: str, *, timeout: int = 10
     missing/broken sandbox surfaces as ``RuntimeError`` (→ ``ok=False``).
     """
     try:
-        from exec_sandbox import LANGS, ExecReq, _run  # noqa: PLC0415
+        from tools.exec_sandbox import LANGS, ExecReq, _run  # noqa: PLC0415
     except Exception as exc:  # pragma: no cover - depends on opt-in extra
         raise RuntimeError(f"بيئة التنفيذ غير متوفرة: {exc}") from exc
     lang = (language or "").strip().lower()

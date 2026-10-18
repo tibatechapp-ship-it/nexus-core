@@ -18,6 +18,12 @@ carrying an ``explain`` line.  Day 2 adds :class:`~src.learning.react_agent.
 ReActAgent`, a Thought→Action→Observation→Answer loop driven by an injectable
 think callable.
 
+Day 3 (Multi-Agent Orchestration) — :mod:`src.learning.collab`:
+``classify_question`` (five-family bucketing with an injectable classifier
+and a pure keyword fallback) · ``consult`` (answer → critique → bounded
+revision) · ``multi_agent_consensus`` (parallel answers → synthesized
+consensus, a failing agent is skipped).
+
 Phase 3 — :class:`LessonStore` + :class:`LessonInjector`: rank the stored
 lessons against a task and fold the relevant ones into an agent's prompt
 (:func:`render_lessons`), closing the learn → apply loop.
@@ -39,6 +45,12 @@ from src.learning.anti_forgetting import (
     Conflict,
     ConsolidationResult,
     polarity,
+)
+from src.learning.collab import (
+    CATEGORIES,
+    classify_question,
+    consult,
+    multi_agent_consensus,
 )
 from src.learning.experience_collector import (
     DAY,
@@ -106,6 +118,7 @@ from src.learning.tools import (
 )
 
 __all__ = [
+    "CATEGORIES",
     "DAY",
     "DEFAULT_MIN_CONFIDENCE",
     "KNOWN_ACTION_TYPES",
@@ -137,6 +150,8 @@ __all__ = [
     "awareness_gap",
     "build_reflection_prompt",
     "build_retry_system",
+    "classify_question",
+    "consult",
     "default_config",
     "default_interaction_db_path",
     "default_lesson_db_path",
@@ -146,6 +161,7 @@ __all__ = [
     "list_tools",
     "load_tools_config",
     "memory_block",
+    "multi_agent_consensus",
     "parse_action",
     "parse_reflection",
     "polarity",

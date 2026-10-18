@@ -86,3 +86,7 @@ web/settings.html
 web/simple.html
 web/ui_exec.js
 web_page.py
+legacy/
+data/
+*.db
+*.log
