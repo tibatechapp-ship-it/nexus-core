@@ -2,6 +2,37 @@
 
 All notable changes to this project. Newest first.
 
+## Unreleased
+**Phase 1 — long-term memory + self-evaluation (المرحلة 1).**
+
+- NEW `src/learning/interactions.py`: SQLite-backed field memory (WAL,
+  `interactions` table) storing every successful `/api/chat` run as
+  question + answer + signal_ok + self_rating + reason/lesson +
+  retry_used/retried_rating + awareness_gap. `similar()` does weighted
+  token-overlap retrieval (Arabic-aware normalisation, empty answers
+  excluded); `recent()`/`count()`/`stats()` for dashboards; per-process
+  singleton with `NEXUS_INTERACTIONS_DB` override.
+- NEW `src/learning/reflection.py`: pure, never-raises post-answer
+  self-evaluation — parses the model's `{"rating","reason"}` JSON first,
+  falls back to a keyword scan (excellent → good → poor priority);
+  `rating_score` (excellent 1.0 / good 0.75 / poor 0.4) feeds
+  `genome_v2.observe_outcome(quality=)`; `should_retry` allows ONE retry;
+  `awareness_gap` detects confident-claims-vs-failure mismatches;
+  `memory_block` renders similar past answers into the agent prompt.
+- Gateway (`nexus_agent.py`): every ok answer is now reflected
+  (role="fast"); a **poor** rating triggers exactly one re-generation
+  (SSE stays backward-compatible — the retried text is the one streamed);
+  the interaction is saved and the genome receives the rating-derived
+  quality. All three layers (store, reflection, genome feed) are
+  failure-isolated — a broken/disabled store never breaks chat.
+- Tests: `tests/test_interactions.py` (43, hermetic — both new modules at
+  100% coverage) + 10 new gateway tests in `tests/test_nexus_agent.py`
+  (poor→retry once, good→no retry, unparseable reflection, dead provider
+  still saves, memory-block injection, disabled/broken store survival,
+  genome quality channel, legacy quality=None without a rating).
+- CHANGELOG note: version stays 1.17.0 here — the release bump lands with
+  the next tagged release, not silently.
+
 ## v1.17.0 — 2026-10-18
 **Academy fitness now shows the task channel.**
 
