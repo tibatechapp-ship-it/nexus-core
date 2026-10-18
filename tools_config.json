@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "tools": {
+    "search_web": {
+      "enabled": true,
+      "max_results": 3
+    },
+    "read_file": {
+      "enabled": true,
+      "allowed_roots": ["."]
+    },
+    "get_current_time": {
+      "enabled": true
+    },
+    "query_memory": {
+      "enabled": false
+    },
+    "execute_code": {
+      "enabled": false,
+      "timeout": 10
+    }
+  }
+}

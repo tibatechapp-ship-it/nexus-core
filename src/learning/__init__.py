@@ -7,8 +7,13 @@ retention pruning and fail-safe recording against the canonical
 :data:`KNOWN_AGENT_ROLES` / :data:`KNOWN_ACTION_TYPES`.
 
 Phase 2 — :class:`LessonExtractor`: distils those experiences into reusable
-:class:`Lesson` principles (via an :class:`~src.core.backend.LLMBackend`),
+:class:`Lesson` principles (via a :class:`~src.core.backend.LLMBackend`),
 merging similar ones and scoring confidence.
+
+Phase 2 (Tool Use) — the Day-1 tool library in :mod:`src.learning.tools`:
+``search_web`` / ``read_file`` / ``get_current_time`` behind a config-gated
+:func:`~src.learning.tools.safe_execute` that never raises and always returns
+a :class:`~src.learning.tools.ToolResult` carrying an ``explain`` line.
 
 Phase 3 — :class:`LessonStore` + :class:`LessonInjector`: rank the stored
 lessons against a task and fold the relevant ones into an agent's prompt
@@ -75,6 +80,21 @@ from src.learning.orchestrator import (
     ExtractionReport,
     LearningOrchestrator,
 )
+from src.learning.tools import (
+    ToolResult,
+    ToolsConfigError,
+    default_config,
+    get_current_time,
+    is_safe_path,
+    list_tools,
+    load_tools_config,
+    query_memory,
+    read_file,
+    safe_execute,
+    save_tools_config,
+    search_web,
+    tool_explain,
+)
 
 __all__ = [
     "DAY",
@@ -100,17 +120,30 @@ __all__ = [
     "RATINGS",
     "SchedulePolicy",
     "InteractionStore",
+    "ToolResult",
+    "ToolsConfigError",
     "awareness_gap",
     "build_reflection_prompt",
     "build_retry_system",
+    "default_config",
     "default_interaction_db_path",
     "default_lesson_db_path",
+    "get_current_time",
     "get_interaction_store",
+    "is_safe_path",
+    "list_tools",
+    "load_tools_config",
     "memory_block",
     "parse_reflection",
     "polarity",
+    "query_memory",
     "rating_score",
+    "read_file",
     "render_lessons",
     "reset_interaction_store",
+    "safe_execute",
+    "save_tools_config",
+    "search_web",
     "should_retry",
+    "tool_explain",
 ]
