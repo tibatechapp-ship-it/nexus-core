@@ -10,7 +10,9 @@ still present, and the NovaMind additions answer.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -395,3 +397,60 @@ def test_audit_log_records_every_request(env, tmp_path):
     text = target.read_text(encoding="utf-8")
     assert '"/api/status"' in text and '"status": 200' in text
     assert '"method": "GET"' in text
+
+
+# ── single-instance lock (يمنع نسختين من البوابة) ─────────────────────────
+
+def test_instance_lock_is_exclusive_per_port_and_released_on_close(
+        env, tmp_path, monkeypatch):
+    """قفل واحد لكل منفذ: النسخة الثانية تُرفض، والإغلاق يُفلت القفل."""
+    mod, _client, _store = env
+    monkeypatch.setenv("NEXUS_LOCK_DIR", str(tmp_path))
+
+    first = mod.acquire_instance_lock(8123)
+    assert first is not None
+    # نفس المنفذ، فتحة ثانية (= نسخة أخرى) ⇒ تُرفض
+    assert mod.acquire_instance_lock(8123) is None
+    # الملف يحمل pid الحامل (دليل حيّ لمن يملك القفل)
+    assert (tmp_path / "nexus-agent-8123.lock").read_text().strip() == str(os.getpid())
+
+    first.close()  # إغلاق = موت العملية = فلتة flock
+    second = mod.acquire_instance_lock(8123)
+    assert second is not None
+    second.close()
+
+    # منفذ مختلف لا يتقاطع مع هذا القفل أبداً
+    other = mod.acquire_instance_lock(8124)
+    assert other is not None
+    other.close()
+
+
+def test_main_refuses_to_start_when_another_instance_holds_the_lock(
+        env, tmp_path, monkeypatch):
+    """نسخة ثانية تنتهي بـ SystemExit(1) قبل uvicorn — لا يتيم ولا تكرار."""
+    mod, _client, _store = env
+    monkeypatch.setenv("NEXUS_LOCK_DIR", str(tmp_path))
+    monkeypatch.setenv("NEXUS_PORT", "8131")
+
+    holder = mod.acquire_instance_lock(8131)
+    assert holder is not None
+    with pytest.raises(SystemExit) as excinfo:
+        mod.main()
+    assert excinfo.value.code == 1
+    holder.close()
+
+
+def test_main_starts_when_the_lock_is_free(env, tmp_path, monkeypatch):
+    """بلا نسخة ثانية ⇒ main() تصل إلى uvicorn.run على المنفذ الصحيح."""
+    mod, _client, _store = env
+    monkeypatch.setenv("NEXUS_LOCK_DIR", str(tmp_path))
+    monkeypatch.setenv("NEXUS_PORT", "8132")
+
+    calls: list = []
+    fake_uvicorn = types.SimpleNamespace(
+        run=lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
+
+    mod.main()
+    assert len(calls) == 1
+    assert calls[0][1]["port"] == 8132

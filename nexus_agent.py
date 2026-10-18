@@ -29,6 +29,7 @@ Pydantic تحتاج أنواعاً حقيقية عند التعريف — يجع
 """
 
 import asyncio
+import fcntl
 import importlib.util
 import json
 import math
@@ -654,9 +655,43 @@ if ENGINE_OK:
 # ═══════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
+def acquire_instance_lock(port: int) -> Optional[Any]:
+    """حاجز النسخة الواحدة لهذا المنفذ — توقّف أي محاولة تشغيل ثانية.
+
+    تُعيد الفتحة المقفلة (أبقها مربوطة باسم في ``main`` — يُفلت ``flock``
+    تلقائياً عند موت العملية)، أو ``None`` إذا كانت نسخة أخرى من البوابة
+    تخدم هذا المنفذ بالفعل. هذا ما يوقف التكرار بين runit (``sv restart``)
+    و ``nexus start`` (``nohup``): النسخة الثانية ترفض الإقلاع بدل أن
+    تُنتج نسخة يتيمة على نفس المنفذ.
+    """
+    lock_dir = Path(os.environ.get("NEXUS_LOCK_DIR") or str(BASE_DIR / "logs"))
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        handle = (lock_dir / f"nexus-agent-{port}.lock").open("a+")
+    except OSError as exc:  # pragma: no cover - defensive
+        # لا مكان للقفل ⇒ نكمل بلا حاجز (سيحكم ربط المنفذ إن حاول نسختان)
+        print(f"⚠️ تعذّر فتح ملف القفل ({exc}) — بلا حاجز نسخة واحدة")
+        return open(os.devnull, "a+")  # type: ignore[return-value]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()  # نسخة أخرى تحمل القفل — لا نُبقيه مفتوحاً
+        return None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"{os.getpid()}\n")
+    handle.flush()
+    return handle
+
+
 def main() -> None:
-    import uvicorn
     port = int(os.environ.get("NEXUS_PORT", "8080"))
+    _lock = acquire_instance_lock(port)  # noqa: F841 — يبقى حيّاً هنا = القفل محفوظ
+    if _lock is None:
+        print(f"⛔ نسخة أخرى من البوابة تعمل بالفعل على :{port} — توقّف.")
+        print("   أوقفها أولاً:  sv stop nexus-core   أو   nexus stop")
+        raise SystemExit(1)
+    import uvicorn
     print(f"🚀 Nexus-Core Unified v{_wb._app_version()} على :{port}")
     print(f"   Workbench : ✅ {len(app.routes)} route")
     print("   Engine    : " + (
