@@ -1803,3 +1803,25 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - `nexus_agent.py` WIP isolation: their exec-sandbox mount was stashed as
   `stash@{0} "wip: exec_sandbox v3.2.0 mount"` + patch backup
   `$TMPDIR/wip-nexus-lock.patch` → popped AFTER the lock commits (see below).
+
+## Ollama Cloud wiring (2026-10-18) — feature/novamind-factory, UNCOMMITTED
+- tyba wrote `ollama_client.py` (`call_ollama` → POST https://ollama.com/api/chat,
+  Bearer `OLLAMA_API_KEY` from env, default model `gemma4:31b`, timeout 30,
+  errors returned as `"Error: …"` strings not exceptions) + `ollama_router.py`
+  (`POST /api/ollama/chat` → `{reply, provider:"ollama"}`) +
+  `provider_settings.py` (`POST /api/settings/provider` → writes `{PROVIDER}_API_KEY=`
+  into `.env`, min length 10). `.env` carries a working `OLLAMA_API_KEY`.
+- His own uncommitted tail blocks in `unified_agent.py` used
+  `app.include_router(...)` — the deferred-router trap (fastapi 0.143.0) →
+  these would 404 through the gateway mount. FIXED: both blocks now do
+  `app.router.routes.extend(<router>.routes)` + `PROVIDER_SETTINGS_OK` /
+  `OLLAMA_ROUTES_OK` flags (same pattern as training/knowledge/skills).
+- LIVE on :8000 (sv restart, single process): `POST /api/ollama/chat` no token
+  → 401 (guard), with token → **200 `{"reply":"مرحبا","provider":"ollama"}`**
+  (real cloud reply); `POST /api/settings/provider` → 200 + `.env` intact
+  (idempotent rewrite with the same key). GET → 405 (path present, method-gated).
+- ⚠ `.env` is loaded by BOTH `main.py:28` and `unified_agent.py:32` (dotenv);
+  `provider_settings` writes the RELATIVE `.env` (CWD-dependent — service runs
+  with cwd=repo root, fine). Not committed (tyba reviews first).
+- `git status` was `UU nexus_agent.py` (stale index from the earlier stash-pop
+  conflict) → cleared with `git reset -- nexus_agent.py` (nothing staged).

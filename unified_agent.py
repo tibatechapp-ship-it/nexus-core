@@ -1067,3 +1067,28 @@ except Exception as _skills_exc:  # pragma: no cover - never block the app
 
 if __name__ == "__main__":
     main()
+
+
+try:
+    from provider_settings import router as provider_router
+    # extend وليس include_router: البوابة تصل الـengine عبر Mount،
+    # وFastAPI 0.143 يؤجّل include_router ⇒ المسارات لا تُوسَّع وتعطي 404.
+    app.router.routes.extend(provider_router.routes)
+    PROVIDER_SETTINGS_OK = True
+    print('✅ Provider Settings loaded')
+except Exception as _e:
+    PROVIDER_SETTINGS_OK = False
+    PROVIDER_SETTINGS_ERR = str(_e)
+    print(f'⚠️ Provider Settings failed: {_e}')
+
+
+
+try:
+    from ollama_router import router as ollama_router
+    app.router.routes.extend(ollama_router.routes)
+    OLLAMA_ROUTES_OK = True
+    print('✅ Ollama Router loaded')
+except Exception as _e:
+    OLLAMA_ROUTES_OK = False
+    OLLAMA_ROUTES_ERR = str(_e)
+    print(f'⚠️ Ollama Router failed: {_e}')
