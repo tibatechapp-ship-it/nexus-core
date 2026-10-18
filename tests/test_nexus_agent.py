@@ -454,3 +454,17 @@ def test_main_starts_when_the_lock_is_free(env, tmp_path, monkeypatch):
     mod.main()
     assert len(calls) == 1
     assert calls[0][1]["port"] == 8132
+
+
+def test_engine_ui_route_serves_unified_ui(env):
+    """/ui تخدم لوحة المحرّك (unified_ui.html) من منفذ البوابة نفسه.
+
+    الوالد يفوز بـ "/" (index.html)، فبدون هذا المسار لا يمكن الوصول إلى
+    مجلس/الجينوم/الأكاديمية من البوابة الموحّدة.
+    """
+    _mod, client, _store = env
+    resp = client.get("/ui")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert resp.text.lstrip()[:15].lower().startswith("<!doctype html")
+    assert len(resp.text) > 1000

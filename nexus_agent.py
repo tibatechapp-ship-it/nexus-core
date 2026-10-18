@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -641,6 +641,17 @@ def api_mcp_tools() -> Dict[str, Any]:
         for t in specs
     ]
     return {"ok": True, "total": len(tools), "tools": tools}
+
+
+# لوحة المحرّك الموحّدة (web/unified_ui.html): الوالد يفوز بـ "/" لذا يحتاج
+# المحرك مساراً صريحاً — /ui = نفس الصفحة التي يخدمها unified_agent وحده
+# (المجلس الحيّ + الجينوم + الأكاديمية) على منفذ الخدمة نفسه.
+@app.get("/ui", response_class=HTMLResponse)
+async def engine_ui() -> HTMLResponse:
+    ui_path = BASE_DIR / "web" / "unified_ui.html"
+    if ui_path.exists():
+        return HTMLResponse(ui_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>web/unified_ui.html not found</h1>", status_code=404)
 
 
 # ═══════════════════════════════════════════════════════════════════════
