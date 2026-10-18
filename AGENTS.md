@@ -1743,5 +1743,63 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   checks → `gh pr merge --merge` → `git fetch origin main:main` (ff, no checkout ⇒
   no WIP abort) → tag the RELEASE commit → push tag to both + `git push gitlab
   main` → Release notes = `sed -n '/^## vX/,/^## vY/p' CHANGELOG.md | sed '$d'`.
-- NEXT (v1.17.0): surface `task_observations` in the Academy fitness tab + feed
+- ✅ **مُصدَّر v1.17.0 (2026-10-18):** `FieldLoop.fitness()` تُرجع الآن قناة
+  المهام (`task_observations/successes/rate/ewma/duration_avg/last_ok/…` +
+  `evidence = أحكام + مهام`)؛ الوكلاء بلا مهام يُرجعون `null` (لا 0.5 مصطنع)؛
+  `acaJudgeLine`/`acaTaskLine` في لوحة Academy (سطران لكل صف، AR+EN).
+  البوابة: 2920 passed @ **100.00%**. Commits `f8fda82..de12ae9` على
+  `feature/novamind-factory` → **PR #21 مدموج** → `main` = **`075120a`**
+  (local+origin+gitlab)؛ الوسم **`v1.17.0`** عند `de12ae9` على المرجعين؛
+  **GitHub Release v1.17.0 (Latest)**. الخدمة بعد `sv restart`: `/api/health`
+  = **1.17.0**. ⚠ جلسة سابقة زعمت الإصدار قبل أن يحدث — تحقّق دائماً بـ
+  `git log origin/main..HEAD` + `git tag -l v1.17.0` + `gh release view` قبل
+  أن تصدق أن نسخة صدرت.
   the task channel from the 20 real framework agents' runs.
+
+## Single-instance gateway lock (2026-10-18) — feature/novamind-factory
+- PROBLEM: `sv restart nexus-core` used to leave duplicate `nexus_agent.py`
+  (stale orphan holding the port; recurring pkill/orphan traps all season).
+  ROOT CAUSE: `uvicorn.run` had no duplicate-start guard and two launch paths
+  (runit + nohup) could race.
+- FIX in `nexus_agent.py`: `acquire_instance_lock(port)` — `fcntl.flock(fd,
+  LOCK_EX|LOCK_NB)` on `logs/nexus-agent-{port}.lock` (dir override
+  `NEXUS_LOCK_DIR`), writes pid on success; conflict → `None`; open failure →
+  fail-open handle on `/dev/null` (service availability never depends on the
+  lock file). `main()`: port → `_lock = acquire_instance_lock(port)  # noqa:
+  F841` (dummy name keeps the fd alive for pyflakes) → `None` ⇒ print ⛔ +
+  hint (`sv stop nexus-core` / `nexus stop`) + `SystemExit(1)` → THEN
+  `import uvicorn` (a refused instance never imports it).
+- Tests `tests/test_nexus_agent.py` +3 (8123/8124 exclusivity + release,
+  8131 refusal code 1, 8132 free-start with a fake `sys.modules["uvicorn"]`)
+  → file now **27 passed**.
+- `scripts/bin/nexus` (repo copy) made service-aware: `PORT="${NEXUS_PORT:
+  -8000}"`, `RUNIT_SVC=nexus-core`, `RUNIT_LOG=$PREFIX/var/log/nexus-core/
+  current` (svlogd); start = runit-first (`sv status` grep `^run:`/`^down:`
+  — rc: running→0, missing→1 with `fail:` text) else pgrep gateway/unified
+  else `sv up` else nohup; stop = **`sv stop` BEFORE pkill** (runsv respawns
+  a pkill'd service); status gained a `runit:` line; logs prefer `$RUNIT_LOG`.
+  `sv status` line format: `run: nexus-core: (pid N) TTTs; run: log: (pid M)`.
+- ❗ GOTCHA (this session): the shell env carries stale **`NOVAMIND_PORT=8080`
+ ** (no rc file sets it — comes from the zyvo session env). The launcher's
+  old `NEXUS_PORT:-NOVAMIND_PORT:-8000` chain honored it → hit the legacy
+  server on :8080 whose `/api/status` = `{"detail":"Not Found"}` → stats all
+  `?`. FIX: `PORT="${NEXUS_PORT:-8000}"` only; `NOVAMIND_PORT` is passed
+  solely to the manual `unified_agent.py` fallback.
+- ❗ `~/bin/nexus` = a SEPARATE older copy (9382B, Oct 16, no gateway
+  awareness) — `command -v nexus` resolves THERE → must `cp` the repo copy
+  after edits (same lesson as zyvo-telegram: ~/bin copies are not symlinks).
+- Foreign WIP (other session, NEVER committed by me): `M web/unified_ui.html`
+  breaks `test_academy_js_parses_as_javascript` (its extraction gets a stray
+  `</script>` → node SyntaxError). PROVEN theirs: stash `web/unified_ui.html`
+  → suite 10/10 green → popped back. Theirs also: `M unified_agent.py`
+  (+8 web_page_router), `M web/sw.js`, untracked `exec_sandbox.py`
+  (ruff E401/E701), `web/{simple.html,ui_exec.js}`, `web_page.py` — and an
+  orphan legacy `unified_agent.py` pid on **:8080** (ppid=1, v10, 79 agents)
+  that I deliberately did NOT kill (may be their dev server).
+- GATES (before commit): ruff (excluding their `exec_sandbox.py`/
+  `web_page.py`) clean · annotations 162 · mypy 162 · full
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2922 passed,
+  1 skipped + the 1 proven foreign-WIP failure above**.
+- `nexus_agent.py` WIP isolation: their exec-sandbox mount was stashed as
+  `stash@{0} "wip: exec_sandbox v3.2.0 mount"` + patch backup
+  `$TMPDIR/wip-nexus-lock.patch` → popped AFTER the lock commits (see below).
