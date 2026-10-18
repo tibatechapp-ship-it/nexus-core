@@ -188,7 +188,10 @@ def test_safe_execute_refuses_unknown_and_disabled_tools():
     unknown = safe_execute("not_a_tool")
     assert unknown.ok is False and "غير معروفة" in unknown.error
 
-    disabled = safe_execute("execute_code", "python", "print(1)")
+    disabled_cfg = default_config()
+    disabled_cfg["tools"]["execute_code"]["enabled"] = False
+    disabled = safe_execute("execute_code", "python", "print(1)",
+                            config=disabled_cfg)
     assert disabled.ok is False and "معطّلة" in disabled.error
     assert disabled.tool == "execute_code"
 
@@ -254,18 +257,51 @@ def test_query_memory_reads_the_phase1_store(tmp_path):
     assert rows and "hmac" in rows[0]["answer"]
 
 
-def test_execute_code_is_an_honest_day2_stub():
+def test_safe_execute_injects_query_memory_limit_from_config():
+    seen: dict = {}
+
+    def _spy(keyword, *, store=None, limit=5):  # noqa: ANN001, ANN201
+        seen["limit"] = limit
+        return []
+
+    import src.learning.tools as tools_mod
+
+    orig = tools_mod._REGISTRY["query_memory"]
+    tools_mod._REGISTRY["query_memory"] = (_spy, lambda a, k: "")
+    try:
+        cfg = _cfg(query_memory={"enabled": True, "limit": 3})
+        safe_execute("query_memory", "كلمة", config=cfg)
+    finally:
+        tools_mod._REGISTRY["query_memory"] = orig
+    assert seen["limit"] == 3
+
+
+def test_execute_code_runs_python_through_the_real_sandbox():
     from src.learning.tools import execute_code
 
-    with pytest.raises(NotImplementedError):
-        execute_code("python", "print(1)")
+    out = execute_code("python", "print(2+2)")
+    assert "4" in str(out.get("stdout", ""))
 
 
-def test_day2_tools_are_registered_but_disabled_by_default():
+def test_execute_code_rejects_an_unsupported_language():
+    from src.learning.tools import execute_code
+
+    with pytest.raises(ValueError):
+        execute_code("cobol", "x")
+
+
+def test_execute_code_rejects_an_empty_language():
+    from src.learning.tools import execute_code
+
+    with pytest.raises(ValueError):
+        execute_code("", "x")
+
+
+def test_day2_tools_are_enabled_by_default():
     cfg = default_config()
-    assert cfg["tools"]["query_memory"]["enabled"] is False
-    assert cfg["tools"]["execute_code"]["enabled"] is False
-    assert safe_execute("query_memory", "x").ok is False
+    assert cfg["tools"]["query_memory"]["enabled"] is True
+    assert cfg["tools"]["execute_code"]["enabled"] is True
+    assert cfg["tools"]["execute_code"]["timeout"] == 10
 
 
 # ── coverage: remaining honest branches ───────────────────────────────────
@@ -373,9 +409,261 @@ def test_query_memory_defaults_to_the_singleton_store(monkeypatch):
     assert rows[0]["k"] == 20  # clamped to the 1..20 band
 
 
+# ── execute_code (Day 2) ──────────────────────────────────────────────────
+def test_execute_code_caps_the_output_at_10kb():
+    from src.learning.tools import EXEC_OUTPUT_MAX, execute_code
+
+    out = execute_code("python", "print('x' * 20000)")
+    assert len(out["stdout"]) == EXEC_OUTPUT_MAX
+
+
 def test_execute_code_runs_through_an_injected_runner():
     from src.learning.tools import execute_code
 
     out = execute_code("python", "print(1)",
                        runner=lambda lang, code: {"lang": lang, "code": code})
     assert out == {"lang": "python", "code": "print(1)"}
+
+
+def test_execute_code_wraps_a_non_dict_sandbox_result(monkeypatch):
+    """A non-dict sandbox return is preserved under a ``result`` key."""
+    import src.learning.tools as tools_mod
+
+    class _Req:
+        def __init__(self, **kw):  # noqa: ANN003
+            self.timeout = kw["timeout"]
+
+    class _FakeSandbox:
+        LANGS = {"python": "py"}
+        ExecReq = _Req
+        _run = staticmethod(lambda lang, spec, req, timeout, t0: "RAW")
+
+    monkeypatch.setitem(__import__("sys").modules, "exec_sandbox", _FakeSandbox())
+    out = tools_mod.execute_code("python", "x")
+    assert out == {"result": "RAW"}
+
+
+def test_execute_code_executes_real_python_via_the_default_runner():
+    from src.learning.tools import execute_code
+
+    out = execute_code("python", "import sys; print(3*7)")
+    assert "21" in str(out.get("stdout", ""))
+
+
+def test_execute_code_honours_a_short_timeout():
+    from src.learning.tools import execute_code
+
+    out = execute_code("python", "while True: pass", timeout=1)
+    assert out.get("timed_out") is True
+
+
+def test_safe_execute_injects_execute_code_timeout_from_config():
+    import src.learning.tools as tools_mod
+
+    seen: dict = {}
+
+    def _spy(lang, code, timeout=10):  # noqa: ANN001, ANN201
+        seen["timeout"] = timeout
+        return {}
+
+    orig = tools_mod._REGISTRY["execute_code"]
+    tools_mod._REGISTRY["execute_code"] = (_spy, lambda a, k: "")
+    try:
+        cfg = _cfg(execute_code={"enabled": True, "timeout": 3})
+        safe_execute("execute_code", "python", "x", config=cfg)
+    finally:
+        tools_mod._REGISTRY["execute_code"] = orig
+    assert seen["timeout"] == 3
+
+
+def test_safe_execute_defaults_execute_code_timeout_when_config_omits_it():
+    import src.learning.tools as tools_mod
+
+    seen: dict = {}
+
+    def _spy(lang, code, timeout=10):  # noqa: ANN001, ANN201
+        seen["timeout"] = timeout
+        return {}
+
+    orig = tools_mod._REGISTRY["execute_code"]
+    tools_mod._REGISTRY["execute_code"] = (_spy, lambda a, k: "")
+    try:
+        cfg = _cfg(execute_code={"enabled": True})
+        safe_execute("execute_code", "python", "x", config=cfg)
+    finally:
+        tools_mod._REGISTRY["execute_code"] = orig
+    assert seen["timeout"] == 10
+
+
+def test_safe_execute_keeps_an_explicit_execute_code_timeout():
+    """A caller-supplied ``timeout`` must win over the config default."""
+    import src.learning.tools as tools_mod
+
+    seen: dict = {}
+
+    def _spy(lang, code, timeout=10):  # noqa: ANN001, ANN201
+        seen["timeout"] = timeout
+        return {}
+
+    orig = tools_mod._REGISTRY["execute_code"]
+    tools_mod._REGISTRY["execute_code"] = (_spy, lambda a, k: "")
+    try:
+        cfg = _cfg(execute_code={"enabled": True, "timeout": 3})
+        safe_execute("execute_code", "python", "x", timeout=7, config=cfg)
+    finally:
+        tools_mod._REGISTRY["execute_code"] = orig
+    assert seen["timeout"] == 7
+
+
+# ── parse_action (Day 2) ──────────────────────────────────────────────────
+def test_parse_action_skips_a_paren_token_that_is_not_a_tool():
+    """A regex-matchable token that is not a tool is skipped for a real one."""
+    from src.learning.react_agent import parse_action
+
+    assert parse_action("foo(1, 2) ثم query_memory(nexus)") == (
+        "query_memory", ["nexus"], {})
+
+
+def test_parse_action_returns_none_for_empty_and_tool_free_thought():
+    from src.learning.react_agent import parse_action
+
+    assert parse_action("") is None
+    assert parse_action("   ") is None
+    assert parse_action("إن الإجابة هي 4") is None
+
+
+def test_parse_action_treats_an_unbalanced_call_as_the_rest_of_the_line():
+    from src.learning.react_agent import parse_action
+
+    assert parse_action("execute_code(python, print(1)") == (
+        "execute_code", ["python", "print(1)"], {})
+
+
+def test_parse_action_finds_a_bare_tool():
+    from src.learning.react_agent import parse_action
+
+    assert parse_action("get_current_time()") == ("get_current_time", [], {})
+
+
+def test_parse_action_reads_positional_args():
+    from src.learning.react_agent import parse_action
+
+    assert parse_action("query_memory(nexus, limit=5)") == (
+        "query_memory", ["nexus"], {"limit": 5})
+
+
+def test_parse_action_keeps_nested_parens_in_the_payload():
+    from src.learning.react_agent import parse_action
+
+    tool, args, kwargs = parse_action("execute_code(python, print(2+2))")
+    assert tool == "execute_code"
+    assert args == ["python", "print(2+2)"]
+    assert kwargs == {}
+
+
+def test_parse_action_reads_keyword_args():
+    from src.learning.react_agent import parse_action
+
+    tool, args, kwargs = parse_action(
+        "execute_code(python, print(1), timeout=3)")
+    assert (tool, args, kwargs) == ("execute_code", ["python", "print(1)"],
+                                    {"timeout": 3})
+
+
+def test_parse_action_coerces_literals():
+    from src.learning.react_agent import parse_action
+
+    _, args, kwargs = parse_action(
+        'read_file("/a/b.txt", flag=true, missing=none, ratio=2.5, s=\'hi\')')
+    assert args == ["/a/b.txt"]
+    assert kwargs == {"flag": True, "missing": None, "ratio": 2.5, "s": "hi"}
+
+
+# ── ReActAgent (Day 2) ────────────────────────────────────────────────────
+def _tool_agent(thoughts, results=None):  # noqa: ANN001, ANN201
+    """A scripted think() plus a capture list for what safe_execute received."""
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def think(question, transcript):  # noqa: ANN001
+        return thoughts[len(transcript)] if len(transcript) < len(thoughts) \
+            else "إجابة افتراضية"
+
+    return think, calls
+
+
+def test_react_answer_without_tools_is_final_on_first_step():
+    from src.learning.react_agent import ReActAgent
+
+    think, _ = _tool_agent(["الإجابة 4"])
+    res = ReActAgent(think, config=_cfg()).run("ما 2+2؟")
+    assert res.answer == "الإجابة 4"
+    assert res.used_steps == 1
+    assert res.stopped_by == "answer"
+    assert res.steps[0]["action"] is None
+
+
+def test_react_runs_a_tool_then_answers():
+    from src.learning.react_agent import ReActAgent
+
+    def think(question, transcript):  # noqa: ANN001
+        if not transcript:
+            return "سألت الوقت get_current_time()"
+        return "الآن " + str(transcript[-1]["observation"]["value"])
+
+    res = ReActAgent(think, config=_cfg()).run("كم الساعة؟")
+    assert res.used_steps == 2
+    assert res.steps[0]["action"] == "get_current_time"
+    assert res.steps[0]["observation"]["ok"] is True
+    assert res.answer.startswith("الآن ")
+
+
+def test_react_never_raises_on_a_crashing_tool_and_falls_back():
+    from src.learning.react_agent import ReActAgent
+
+    def think(question, transcript):  # noqa: ANN001
+        return "جرّب execute_code(python, boom)"
+
+    def _boom(*a, **k):  # noqa: ANN001, ANN003
+        raise RuntimeError("kaboom")
+
+    res = ReActAgent(think, config=_cfg(), execute=_boom).run("شغّل")
+    assert res.stopped_by == "max_steps"
+    assert res.steps[0]["observation"]["ok"] is False
+    assert "kaboom" in res.steps[0]["observation"]["error"]
+    assert res.answer  # fallback text, never empty, never an exception
+
+
+def test_react_stops_at_max_steps_when_the_model_never_answers():
+    from src.learning.react_agent import ReActAgent
+
+    def think(question, transcript):  # noqa: ANN001
+        return "أعد get_current_time()"
+
+    res = ReActAgent(think, config=_cfg(), max_steps=3).run("دائماً")
+    assert res.stopped_by == "max_steps"
+    assert res.used_steps == 3
+
+
+def test_react_treats_a_none_thought_as_no_answer():
+    from src.learning.react_agent import ReActAgent
+
+    res = ReActAgent(lambda q, t: None, config=_cfg()).run("s")
+    assert res.stopped_by == "no_answer"
+    assert res.answer  # fallback string, still not empty
+
+
+def test_react_fallback_uses_successful_observations():
+    from src.learning.react_agent import ReActAgent
+
+    def think(question, transcript):  # noqa: ANN001
+        return "شغّل execute_code(python, print(42))"
+
+    res = ReActAgent(think, config=_cfg(), max_steps=2).run("n")
+    assert "42" in res.answer
+
+
+def test_react_result_is_a_value_object():
+    from src.learning.react_agent import ReActResult
+
+    assert bool(ReActResult(question="q", answer="a")) is True
+    assert bool(ReActResult(question="q", answer="")) is False

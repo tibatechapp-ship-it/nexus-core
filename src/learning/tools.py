@@ -1,19 +1,17 @@
-"""Phase 2 Day 1 — the agent tool library (Tool Use محور 3).
+"""Phase 2 (Tool Use) — the agent tool library.
 
-Five tools are planned across Day 1–2.  Day 1 ships the three that need no
-cross-module state:
+Five tools, all gated by one config file and one never-raising entry point:
 
 * :func:`search_web` — bounded web search (injectable fetcher → hermetic).
 * :func:`read_file`      — read a text file confined to an allowed root.
 * :func:`get_current_time` — injectable clock, ISO-8601 + unix.
+* :func:`query_memory`   — recall past interactions (Phase-1 :class:`InteractionStore`).
+* :func:`execute_code`   — run code in the subprocess sandbox (:mod:`exec_sandbox`).
 
-Day 2 will add :func:`query_memory` (reads :class:`~src.learning.interactions.
-InteractionStore`) and :func:`execute_code` (delegates to ``exec_sandbox``).
+Security + transparency (the additions that sit on top of the tools):
 
-Security + transparency (the two additions that sit on top of the tools):
-
-* :data:`TOOLS_CONFIG` / :func:`load_tools_config` / :func:`save_tools_config`
-  — a JSON file that turns each tool on/off and caps its arguments.
+* :func:`load_tools_config` / :func:`save_tools_config` — a JSON file that
+  turns each tool on/off and caps its arguments.
 * :func:`safe_execute` — the ONLY entry point an agent should call; it refuses
   a tool that is unknown or disabled in the config and never raises, returning
   a :class:`ToolResult` instead.
@@ -21,8 +19,9 @@ Security + transparency (the two additions that sit on top of the tools):
   such as ``[استخدمت search_web للبحث عن "q"]`` so the UI can show which tool
   ran and why.
 
-The whole module is stdlib-only and free of network/clock/FS side effects at
-import time, so it stays inside the phone-safe framework gate.
+Side-effect rule: nothing touches the network, the clock, the FS, or the real
+sandbox at *import* time — every such dependency is an injectable keyword, so
+the whole module stays inside the phone-safe framework gate at 100% coverage.
 """
 
 from __future__ import annotations
@@ -37,6 +36,8 @@ from typing import Any, Callable
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
+    "EXEC_OUTPUT_MAX",
+    "MAX_MEMORY_LIMIT",
     "MAX_READ_BYTES",
     "SEARCH_DEFAULT_MAX",
     "SEARCH_MAX_RESULTS",
@@ -60,6 +61,8 @@ __all__ = [
 SEARCH_MAX_RESULTS = 10          # absolute ceiling on hits returned
 SEARCH_DEFAULT_MAX = 3           # the signature default the spec asks for
 MAX_READ_BYTES = 256 * 1024      # 256 KB per read_file
+MAX_MEMORY_LIMIT = 20            # clamp for query_memory's ``limit``
+EXEC_OUTPUT_MAX = 10 * 1024      # 10 KB cap on captured stdout/stderr (Day 2)
 DEFAULT_CONFIG_PATH = Path(
     os.environ.get("NEXUS_TOOLS_CONFIG", "tools_config.json")
 )
@@ -71,17 +74,15 @@ class ToolsConfigError(RuntimeError):
 
 # ── config ────────────────────────────────────────────────────────────────
 def default_config() -> dict[str, Any]:
-    """The baseline config: every Day-1 tool enabled, Day-2 tools stubbed."""
+    """Baseline config: all five tools enabled; caps come from here."""
     return {
         "version": 1,
         "tools": {
             "search_web": {"enabled": True, "max_results": SEARCH_DEFAULT_MAX},
             "read_file": {"enabled": True, "allowed_roots": ["."]},
             "get_current_time": {"enabled": True},
-            # Day 2 — present so the config is the single source of truth for
-            # what exists; safe_execute refuses them until they are built.
-            "query_memory": {"enabled": False},
-            "execute_code": {"enabled": False, "timeout": 10},
+            "query_memory": {"enabled": True, "limit": 5},
+            "execute_code": {"enabled": True, "timeout": 10},
         },
     }
 
@@ -272,37 +273,64 @@ def get_current_time(*, clock: Callable[[], float] | None = None
 
 def query_memory(keyword: str, *, store: Any = None, limit: int = 5
                  ) -> list[dict[str, Any]]:
-    """Day 2 — recall past interactions by ``keyword`` (via Phase-1 store).
+    """Recall past interactions by ``keyword`` (Phase-1 :class:`InteractionStore`).
 
-    Not yet wired into :func:`safe_execute`; it is built now so Day 2 only has
-    to flip the config flag.  ``store`` is injectable for hermetic tests.
+    ``store`` is injectable for hermetic tests; the default is the process-wide
+    singleton.  ``limit`` is clamped to ``[1, MAX_MEMORY_LIMIT]``.
     """
     if store is None:
         from src.learning.interactions import get_interaction_store
 
         store = get_interaction_store()
-    rows = store.similar(keyword, k=max(1, min(int(limit), 20)))
+    rows = store.similar(keyword, k=max(1, min(int(limit), MAX_MEMORY_LIMIT)))
     return [dict(r) for r in rows]
 
 
-def execute_code(language: str, code: str,
-                 *, runner: Callable[..., dict] | None = None
-                 ) -> dict[str, Any]:
-    """Day 2 — run ``code`` in the sandbox.  Stub until then.
+def _default_exec_runner(language: str, code: str, *, timeout: int = 10
+                         ) -> dict[str, Any]:
+    """Run ``code`` in the real subprocess sandbox (``exec_sandbox._run``).
 
-    Raises a clear ``NotImplementedError`` so ``safe_execute`` returns an
-    honest ``ok=False`` instead of a confusing ImportError.  Kept out of the
-    enabled set until Day 2 hardens the runner (memory/timeout caps live in
-    ``exec_sandbox``).
+    Built lazily so importing this module never pulls in FastAPI/pydantic.  A
+    missing/broken sandbox surfaces as ``RuntimeError`` (→ ``ok=False``).
     """
-    if runner is None:
-        raise NotImplementedError("execute_code تُجهَّز في اليوم 2")
-    return dict(runner(language, code))
+    try:
+        from exec_sandbox import LANGS, ExecReq, _run  # noqa: PLC0415
+    except Exception as exc:  # pragma: no cover - depends on opt-in extra
+        raise RuntimeError(f"بيئة التنفيذ غير متوفرة: {exc}") from exc
+    lang = (language or "").strip().lower()
+    if lang not in LANGS:
+        raise ValueError(f"لغة غير مدعومة: {language}")
+    req = ExecReq(language=lang, code=code, timeout=max(1, min(int(timeout), 10)))
+    t0 = time.monotonic()
+    result = _run(lang, LANGS[lang], req, req.timeout, t0)
+    # Enforce the 10 KB output cap regardless of what the sandbox returned.
+    if isinstance(result, dict):
+        for key in ("stdout", "stderr"):
+            if isinstance(result.get(key), str) and len(result[key]) > EXEC_OUTPUT_MAX:
+                result[key] = result[key][:EXEC_OUTPUT_MAX]
+        return dict(result)
+    return {"result": result}
+
+
+def execute_code(language: str, code: str, *, timeout: int = 10,
+                 runner: Callable[[str, str], dict] | None = None
+                 ) -> dict[str, Any]:
+    """Run ``code`` in the subprocess sandbox under a strict 10s timeout.
+
+    ``runner(language, code) -> dict`` is injectable for hermetic tests; the
+    default delegates to the real ``exec_sandbox._run`` core (never the HTTP
+    layer) and honours ``timeout``.  Output is capped at :data:`EXEC_OUTPUT_MAX`
+    (10 KB).  A bad language, a timeout, or a broken sandbox all surface as an
+    exception that :func:`safe_execute` converts to ``ok=False``.
+    """
+    if runner is not None:
+        return dict(runner(language, code))
+    return _default_exec_runner(language, code, timeout=timeout)
 
 
 # ── the registry + safe_execute ───────────────────────────────────────────
-# name → (callable, explain-detail extractor).  Day-2 tools are present but
-# disabled in the config, so safe_execute refuses them until they are ready.
+# name → (callable, explain-detail extractor).  All five tools are enabled in
+# the shipped config; safe_execute still refuses any tool it does not find.
 _REGISTRY: dict[str, tuple[Callable[..., Any], Callable[..., str]]] = {
     "search_web": (
         search_web,
@@ -368,12 +396,17 @@ def safe_execute(tool_name: str, *args: Any,
                           error=f"أداة غير مُجهّزة: {tool_name}")
     fn, detail_of = entry
     explain = tool_explain(tool_name, detail=detail_of(args, kwargs))
-    # Day-1 tools read their caps straight from the config settings.
+    # Each tool reads its caps straight from the config settings when the
+    # caller did not pass them explicitly.
     if tool_name == "search_web" and "max_results" not in kwargs:
         kwargs["max_results"] = int(settings.get("max_results", SEARCH_DEFAULT_MAX))
     elif tool_name == "read_file" and "allowed_roots" not in kwargs:
         roots = settings.get("allowed_roots") or ["."]
         kwargs["allowed_roots"] = list(roots)
+    elif tool_name == "query_memory" and "limit" not in kwargs:
+        kwargs["limit"] = int(settings.get("limit", 5))
+    elif tool_name == "execute_code" and "timeout" not in kwargs:
+        kwargs["timeout"] = int(settings.get("timeout", 10))
     try:
         value = fn(*args, **kwargs)
     except Exception as exc:  # noqa: BLE001 - the gate must never raise

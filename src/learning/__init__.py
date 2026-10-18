@@ -10,10 +10,13 @@ Phase 2 — :class:`LessonExtractor`: distils those experiences into reusable
 :class:`Lesson` principles (via a :class:`~src.core.backend.LLMBackend`),
 merging similar ones and scoring confidence.
 
-Phase 2 (Tool Use) — the Day-1 tool library in :mod:`src.learning.tools`:
-``search_web`` / ``read_file`` / ``get_current_time`` behind a config-gated
-:func:`~src.learning.tools.safe_execute` that never raises and always returns
-a :class:`~src.learning.tools.ToolResult` carrying an ``explain`` line.
+Phase 2 (Tool Use) — the tool library in :mod:`src.learning.tools`:
+``search_web`` / ``read_file`` / ``get_current_time`` / ``query_memory`` /
+``execute_code`` behind a config-gated :func:`~src.learning.tools.safe_execute`
+that never raises and always returns a :class:`~src.learning.tools.ToolResult`
+carrying an ``explain`` line.  Day 2 adds :class:`~src.learning.react_agent.
+ReActAgent`, a Thought→Action→Observation→Answer loop driven by an injectable
+think callable.
 
 Phase 3 — :class:`LessonStore` + :class:`LessonInjector`: rank the stored
 lessons against a task and fold the relevant ones into an agent's prompt
@@ -80,6 +83,12 @@ from src.learning.orchestrator import (
     ExtractionReport,
     LearningOrchestrator,
 )
+from src.learning.react_agent import (
+    MAX_STEPS_DEFAULT,
+    ReActAgent,
+    ReActResult,
+    parse_action,
+)
 from src.learning.tools import (
     ToolResult,
     ToolsConfigError,
@@ -116,8 +125,11 @@ __all__ = [
     "LessonValidator",
     "LearningCycle",
     "LearningOrchestrator",
+    "MAX_STEPS_DEFAULT",
     "Outcome",
     "RATINGS",
+    "ReActAgent",
+    "ReActResult",
     "SchedulePolicy",
     "InteractionStore",
     "ToolResult",
@@ -134,6 +146,7 @@ __all__ = [
     "list_tools",
     "load_tools_config",
     "memory_block",
+    "parse_action",
     "parse_reflection",
     "polarity",
     "query_memory",

@@ -13,10 +13,11 @@
       "enabled": true
     },
     "query_memory": {
-      "enabled": false
+      "enabled": true,
+      "limit": 5
     },
     "execute_code": {
-      "enabled": false,
+      "enabled": true,
       "timeout": 10
     }
   }
