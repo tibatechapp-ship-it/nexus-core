@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import tempfile
 import types
 from collections.abc import Generator
 from pathlib import Path
@@ -43,6 +44,15 @@ for _guard_var in (
     "NEXUS_AUDIT_LOG",
 ):
     os.environ.pop(_guard_var, None)
+
+# Phase-1 interaction memory (src/learning/interactions.py) resolves its DB
+# from $NEXUS_INTERACTIONS_DB → $NEXUS_DB sibling → <repo>/data. Without this
+# the suite would write into the repo's real data/interactions.db; give every
+# run a private temp database instead (a deliberate per-test path still wins).
+os.environ.setdefault(
+    "NEXUS_INTERACTIONS_DB",
+    str(Path(tempfile.gettempdir()) / f"nexus-test-interactions-{os.getpid()}.db"),
+)
 
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
