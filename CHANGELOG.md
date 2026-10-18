@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.17.0 — 2026-10-18
+**Academy fitness now shows the task channel.**
+
+- `FieldLoop.fitness()` rows carry the **real task channel** the framework
+  agents feed on every `/api/chat` run: `task_observations`, `task_successes`,
+  `task_rate`, `task_ewma`, `task_duration_avg`, `task_last_ok`,
+  `task_last_duration` and `task_last_quality`, plus `evidence = judgements +
+  tasks` — the count the advice thresholds actually use.
+- Agents with **no** task outcomes report **null** task fields (not the genome's
+  neutral 0.5), so the dashboard never shows a fabricated 50%.
+- Junk stored values (nan, strings, bools) are coerced by `_as_int`/`_as_float`
+  so a damaged row renders instead of taking the panel down.
+- The Academy fitness tab paints **two lines per row** (`acaJudgeLine` +
+  `acaTaskLine`): council judgements, agreements, dissent and summed evidence;
+  then the real task runs (or an explicit "no tasks" pill), with six new
+  AR+EN i18n keys.
+- Commits: `f8fda82` · `e943960` · `67a111b` · `758f032`.
+- Gate: 2920 passed, 1 skipped @ 100.00% coverage (floor 95). Live verified on
+  the spare `:8011` engine and the production `:8000` gateway.
+
 ## v1.16.0 — 2026-10-18
 **The genome's task channel is live — every real agent run now feeds it.**
 

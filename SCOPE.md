@@ -1,7 +1,7 @@
 # 📋 SCOPE.md — Nexus-Core Boundaries
 
 **آخر تحديث:** 2026-10-18
-**الإصدار الحالي:** v1.16.0
+**الإصدار الحالي:** v1.17.0
 **HEAD:** طرف الفرع `feature/novamind-factory` (بلا رقم ثابت — الرقم الثابت يتقادم؛ استخدم `git log -1 --oneline`)
 
 ---
@@ -64,7 +64,7 @@
 
 ## 📊 الحالة
 
-- الإصدار: v1.16.0
+- الإصدار: v1.17.0
 - الفرع: feature/novamind-factory (أُعيد تسميته مرّتين في 2026-10-18: `feature/zyvo-workspace` → `feature/novamind-agent` → `feature/novamind-factory` — التسمية الأخيرة بموافقة tyba لمسارات التدريب/المهارات)
 - tracked: 1040 ملف
 - modified: 0 (clean)

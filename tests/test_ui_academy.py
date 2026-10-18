@@ -116,6 +116,24 @@ def test_action_and_status_labels_are_translated(html: str) -> None:
         assert f"fitnessStatus_{status}:" in html
 
 
+def test_fitness_tab_shows_the_task_channel(html: str) -> None:
+    """A fitness row paints BOTH channels: council judgements and real tasks.
+
+    The task channel is what a framework agent feeds on every ``/api/chat``
+    run, so the panel must render it (and say "no tasks" honestly instead of
+    showing a neutral 50% as if the agent had been measured by tasks).
+    """
+    for name in ("acaJudgeLine", "acaTaskLine", "acaScore"):
+        assert f"function {name}(" in html
+    for key in ('t("judgements")', 't("tasks")', 't("acaEvidence")',
+                't("acaNoTasks")', 't("acaAvgTime")', 't("acaLastTask")'):
+        assert key in html
+    for field in ("f.task_observations", "f.task_successes", "f.task_rate",
+                  "f.task_duration_avg", "f.task_last_ok", "f.evidence"):
+        assert field in html
+    assert "acaJudgeLine(f)+'<br>'+acaTaskLine(f)" in html
+
+
 def test_academy_js_parses_as_javascript(html: str, tmp_path: Path) -> None:
     """Feed the inline script to a real JS parser when one is available.
 

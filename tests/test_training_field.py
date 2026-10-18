@@ -319,6 +319,81 @@ def test_fitness_rows_carry_evidence_and_advice(loop: FieldLoop, genome: Any) ->
     assert row["retired"] is False
 
 
+def test_fitness_rows_expose_the_task_channel(loop: FieldLoop, genome: Any) -> None:
+    """Real task outcomes appear beside the judgement ones (v1.17.0)."""
+    genome.observe_outcome("coder", True, duration=2.0, task="one")
+    genome.observe_outcome("coder", True, duration=4.0, task="two")
+    genome.observe_outcome("coder", False, duration=6.0, task="three")
+    row = [r for r in loop.fitness() if r["agent_id"] == "coder"][0]
+    assert row["task_observations"] == 3
+    assert row["task_successes"] == 2
+    assert row["task_rate"] == pytest.approx(2 / 3, abs=1e-4)
+    # EWMA, not a mean: the first outcome anchors, then α=0.35 pulls it down
+    assert row["task_ewma"] == pytest.approx(0.65, abs=1e-4)
+    assert row["task_duration_avg"] == pytest.approx(3.855, abs=1e-3)
+    assert row["task_last_ok"] is False
+    assert row["task_last_duration"] == pytest.approx(6.0)
+    # the judgement channel is untouched by a task run
+    assert row["observations"] == 0
+    assert row["evidence"] == 3
+
+
+def test_fitness_evidence_sums_both_channels(loop: FieldLoop, genome: Any) -> None:
+    """``evidence`` is the number the advice thresholds actually count."""
+    for _ in range(GENOME.MIN_OBSERVATIONS):
+        genome.observe("coder", "yes", "yes")
+    for _ in range(3):
+        genome.observe_outcome("coder", True, duration=1.0)
+    row = loop.fitness()[0]
+    assert row["observations"] == GENOME.MIN_OBSERVATIONS
+    assert row["task_observations"] == 3
+    assert row["evidence"] == GENOME.MIN_OBSERVATIONS + 3
+
+
+def test_fitness_judgement_rows_have_no_task_evidence(
+    loop: FieldLoop, genome: Any
+) -> None:
+    """A council-only agent is honestly reported as untested by tasks."""
+    genome.observe("analyst", "yes", "yes")
+    row = [r for r in loop.fitness() if r["agent_id"] == "analyst"][0]
+    assert row["task_observations"] == 0
+    assert row["task_successes"] == 0
+    assert row["task_rate"] is None
+    assert row["task_ewma"] is None
+    assert row["task_duration_avg"] is None
+    assert row["task_last_ok"] is None
+    assert row["evidence"] == row["observations"]
+
+
+def test_fitness_tolerates_junk_task_values(tmp_path: Path) -> None:
+    """A damaged row renders instead of crashing the dashboard."""
+    loop = FieldLoop(lesson_db=tmp_path / "lessons.db")
+
+    class Damaged:
+        """A genome whose stored row holds junk in every task field."""
+
+        def rank(self, **kwargs: Any) -> Any:
+            return [{
+                "agent_id": "coder",
+                "observations": "junk",
+                "task_successes": float("nan"),
+                "task_last_ok": "yes",
+                "task_duration_avg": "slow",
+            }]
+
+        def advise(self, agent_id: str) -> Any:
+            return {"action": "keep", "reason": ""}
+
+    loop._genome = Damaged()
+    row = loop.fitness()[0]
+    assert row["observations"] == 0
+    assert row["task_successes"] == 0
+    assert row["task_ewma"] is None
+    assert row["task_duration_avg"] is None
+    assert row["task_last_ok"] is None
+    assert row["evidence"] == 0
+
+
 def test_fitness_includes_retired_agents(loop: FieldLoop, genome: Any) -> None:
     """A retired agent stays visible (its history is why it was retired)."""
     genome.observe("retired_one", "yes", "yes")

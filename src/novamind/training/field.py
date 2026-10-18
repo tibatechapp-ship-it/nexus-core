@@ -29,6 +29,7 @@ guarded, so the loop degrades gracefully instead of taking a training run down.
 from __future__ import annotations
 
 import importlib
+import math
 import os
 import threading
 import time
@@ -86,6 +87,27 @@ def _clamp_limit(limit: int) -> int:
     except (TypeError, ValueError):
         return _MAX_LIMIT
     return max(_MIN_LIMIT, min(value, _MAX_LIMIT))
+
+
+def _as_int(value: Any) -> int:
+    """Best-effort int for a possibly-absent/junk stored value."""
+    if isinstance(value, bool) or value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _as_float(value: Any) -> Optional[float]:
+    """Best-effort finite float, ``None`` for missing/junk/non-finite."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
 
 
 def _learning(name: str) -> Any:
@@ -356,6 +378,14 @@ class FieldLoop:
         agreements, dissents, streak) plus the genome's own next action, so a
         dashboard can show *why* an agent would be re-trained instead of just a
         score.
+
+        The genome scores TWO independent result sources on the same row:
+        council judgements (``observations``/``agreements``/``dissent``) and
+        real task outcomes (``task_observations``/``task_successes``/
+        ``task_rate``/…).  ``evidence`` is their sum — the number the advice
+        thresholds actually count — so a dashboard can tell "3 judgements, 0
+        tasks" from "0 judgements, 3 tasks" instead of showing one number that
+        hides which channel spoke.
         """
         if not self.genome_enabled:
             return []
@@ -375,17 +405,33 @@ class FieldLoop:
                 advice = genome.advise(agent_id)
             except Exception:
                 advice = {}
+            observations = _as_int(row.get("observations"))
+            task_observations = _as_int(row.get("task_observations"))
+            successes = _as_int(row.get("task_successes"))
+            last_ok = row.get("task_last_ok")
             out.append({
                 "agent_id": agent_id,
                 "fitness": float(row.get("fitness", _NEUTRAL_FITNESS)),
                 "status": str(row.get("status", "")),
-                "observations": int(row.get("observations", 0)),
-                "agreements": int(row.get("agreements", 0)),
-                "dissent": int(row.get("dissent", 0)),
-                "streak": int(row.get("streak", 0)),
-                "best_streak": int(row.get("best_streak", 0)),
-                "generation": int(row.get("generation", 1)),
+                "observations": observations,
+                "agreements": _as_int(row.get("agreements")),
+                "dissent": _as_int(row.get("dissent")),
+                "streak": _as_int(row.get("streak")),
+                "best_streak": _as_int(row.get("best_streak")),
+                "generation": _as_int(row.get("generation")) or 1,
                 "retired": bool(row.get("retired", False)),
+                # judgement evidence (council) + task evidence (real runs)
+                "evidence": observations + task_observations,
+                "task_observations": task_observations,
+                "task_successes": successes,
+                "task_rate": (round(successes / task_observations, 4)
+                              if task_observations else None),
+                "task_ewma": (_as_float(row.get("task_ewma"))
+                              if task_observations else None),
+                "task_duration_avg": _as_float(row.get("task_duration_avg")),
+                "task_last_ok": last_ok if isinstance(last_ok, bool) else None,
+                "task_last_duration": _as_float(row.get("task_last_duration")),
+                "task_last_quality": _as_float(row.get("task_last_quality")),
                 "action": str(advice.get("action", "")),
                 "reason": str(advice.get("reason", "")),
             })

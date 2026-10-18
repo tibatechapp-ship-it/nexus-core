@@ -593,6 +593,8 @@ const I18N={
     acaNoStages:"لا توجد مراحل لهذا الوكيل.",acaHint:"درّب وكيلاً (POST /api/training/run) لتظهر بياناته هنا.",
     evolveDone:"تمت جولة تطوير",evolveNone:"لا يوجد ما يُطوَّر الآن",confidence:"الثقة",
     observations:"المشاهدات",agreements:"موافقات",dissent:"مخالفات",action:"الإجراء",
+    judgements:"أحكام",tasks:"مهام",acaEvidence:"الدليل",acaAvgTime:"متوسط الزمن",
+    acaNoTasks:"بلا مهام",acaLastTask:"آخر مهمة",
     acaEvolved:"وكلاء تطوروا",acaMutations:"طفرات",acaTicks:"دورات",acaAbsorbed:"دروس مضافة",
     module:"وحدة",weight:"الوزن",hours:"الساعات",source:"المصدر",score:"الدرجة",pass:"ناجح",fail:"راسب",
     apexAction_observe:"مراقبة",apexAction_promote:"ترقية",apexAction_keep:"إبقاء",
@@ -627,6 +629,8 @@ const I18N={
     acaNoStages:"No stages for this agent.",acaHint:"Train an agent (POST /api/training/run) to fill this in.",
     evolveDone:"Evolution pass done",evolveNone:"Nothing to evolve right now",confidence:"Confidence",
     observations:"Observations",agreements:"Agreements",dissent:"Dissents",action:"Action",
+    judgements:"Judgements",tasks:"Tasks",acaEvidence:"Evidence",acaAvgTime:"Avg time",
+    acaNoTasks:"no tasks",acaLastTask:"Last task",
     acaEvolved:"agents evolved",acaMutations:"mutations",acaTicks:"ticks",acaAbsorbed:"lessons absorbed",
     module:"Module",weight:"Weight",hours:"Hours",source:"Source",score:"Score",pass:"pass",fail:"fail",
     apexAction_observe:"observe",apexAction_promote:"promote",apexAction_keep:"keep",
@@ -1400,6 +1404,26 @@ async function acaRenderLessons(box){
     box.appendChild(el);
   });
 }
+function acaScore(v){return (v==null||isNaN(v))?0:Number(v);}
+/* line 1 = the judgement channel (council verdicts) + total evidence */
+function acaJudgeLine(f){
+  return '<b>'+t("judgements")+'</b> '+acaScore(f.observations)+
+    ' · <b>'+t("agreements")+'</b> '+acaScore(f.agreements)+
+    ' · <b>'+t("dissent")+'</b> '+acaScore(f.dissent)+
+    ' · <b>'+t("acaEvidence")+'</b> '+acaScore(f.evidence);
+}
+/* line 2 = the task channel (real /api/chat runs), honestly "no tasks" */
+function acaTaskLine(f){
+  const n=acaScore(f.task_observations);
+  if(!n)return '<b>'+t("tasks")+'</b> <span class="aca-pill">'+t("acaNoTasks")+'</span>';
+  const rate=Math.round(acaScore(f.task_rate)*100);
+  const bits=[n+' · '+acaScore(f.task_successes)+' ✓ · '+rate+'%'];
+  if(typeof f.task_duration_avg==="number"&&isFinite(f.task_duration_avg))
+    bits.push(t("acaAvgTime")+' '+f.task_duration_avg.toFixed(2)+'s');
+  if(f.task_last_ok!=null)
+    bits.push(t("acaLastTask")+' '+(f.task_last_ok?'<span class="aca-pill ok">✓</span>':'<span class="aca-pill bad">✗</span>'));
+  return '<b>'+t("tasks")+'</b> '+bits.join(' · ');
+}
 async function acaRenderFitness(box){
   let list=[];
   try{list=(await apiGet(API.training+"/fitness")).agents||[];}catch(e){list=[];}
@@ -1411,9 +1435,7 @@ async function acaRenderFitness(box){
     if(i<3)pills.unshift({v:rankBadge(i),k:"ok"});
     if(f.retired)pills.push({v:"retired",k:"warn"});
     acaSet(el,(f.agent_id||"")+" · "+Math.round((f.fitness||0)*100)+"%",
-      '<b>'+t("observations")+'</b> '+(f.observations||0)+
-      ' · <b>'+t("agreements")+'</b> '+(f.agreements||0)+
-      ' · <b>'+t("dissent")+'</b> '+(f.dissent||0)+
+      acaJudgeLine(f)+'<br>'+acaTaskLine(f)+
       ' · <b>'+t("action")+'</b> '+acaActionWord(f.action)+
       (f.reason?(" — "+f.reason):""),
       pills);
