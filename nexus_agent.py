@@ -53,6 +53,12 @@ for _p in (str(BASE_DIR), str(BASE_DIR / "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+# `tools/` تحمل وحدات مسطّحة (exec_sandbox، ollama_router…) تُستورَد بأسمائها
+# المجرّدة لا كـ`tools.<name>` — فتحتاج المجلد نفسه على المسار. أُضيف في الذيل
+# (لا الرأس) حتّى لا تُزاحم أسبقية جذر المستودع عند أي تشابه أسماء.
+if str(BASE_DIR / "tools") not in sys.path:
+    sys.path.append(str(BASE_DIR / "tools"))
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1) Workbench (main.py) — يُحمَّل بالمسار تحت اسم خاص (`_nexus_workbench`)
