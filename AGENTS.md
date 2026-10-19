@@ -2021,3 +2021,39 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - Gates: ruff clean · annotations 167 · mypy 167 · real gate
   `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` =
   **3111 passed, 1 skipped @ 99.94%** (was 3105 before the +6 tests).
+
+## 2026-10-19 — `src/verify/` : verification by execution + `/api/verify/*`
+- **Idea**: an agent's answer is only trustworthy when something other than the
+  model checks it. So the verifier RUNS the produced code in the existing exec
+  sandbox and reads the **process exit code** — the exit code is the referee,
+  the model is only advised.
+- **First the (dead) mount**: `POST/GET /api/exec*` were wired in the gateway but
+  the module behind them was unreachable — `tools/exec_sandbox.py` matched the
+  unanchored `.gitignore` rule `exec_sandbox.py`, so it was never tracked (a fresh
+  clone/CI raised `ModuleNotFoundError` and the try/except hid it), and bare-name
+  imports (``from exec_sandbox import ...``) need the `tools/` dir itself on
+  `sys.path` — which the gateway never added. Fixed by anchoring the ignore to
+  `/exec_sandbox.py`, appending `<repo>/tools` to `sys.path` (tail, so the repo
+  root keeps priority) and tracking the module.
+- **`src/verify/engine.py`** (stdlib-only): `verify_by_execution(...)` → frozen
+  `VerificationResult{passed, reason, code, language, attempts, detail}` with
+  honest reasons (`ok`, `not-verified`, `did-not-run`, `timeout`, `exit N`,
+  `invalid-tests`, `runner-error`); `compose_code` (python-only tests);
+  `fix_loop(...)` re-prompts on failure, bounded by `MAX_ATTEMPTS = 6`, stopping
+  early when the fixer returns nothing usable (`not-fixed`); `sandbox_available()`
+  / `sandbox_runner()` keep the sandbox import lazy.
+- **`src/verify/generators.py`**: `build_fix_prompt` · `extract_code` (last fenced
+  block, else the whole reply) · `llm_generate` — a never-raising fixer on the
+  project `LLMRouter`, role `fast`; any error yields `""`.
+- **`src/verify/api.py`**: `GET /api/verify/tools`, `POST /api/verify/run`,
+  `POST /api/verify/fix`. `register(app)` extends `app.router.routes` directly —
+  `include_router` inside a mounted sub-app stays deferred and the routes would
+  404 through the gateway. Mounted in `unified_agent.py` beside
+  knowledge/skills, guarded (`VERIFY_OK`/`VERIFY_ERR`).
+- **Tests**: `tests/test_verify_engine.py` (410 lines) + `tests/test_verify_api.py`
+  (184) = **55 tests**, hermetic (injected `runner`/`generate`; `exec_sandbox`
+  patched in `sys.modules`), real-sandbox cases behind `requires_sandbox`.
+  `src/verify` = **100% coverage**; a regression asserts the concrete routes
+  survive an ASGI `mount("/")`.
+- Gates: ruff clean · annotations 171 · mypy 171 · real gate =
+  **3166 passed, 1 skipped @ 99.94%** (was 3111).
