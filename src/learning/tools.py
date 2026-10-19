@@ -294,7 +294,13 @@ def _default_exec_runner(language: str, code: str, *, timeout: int = 10
     missing/broken sandbox surfaces as ``RuntimeError`` (→ ``ok=False``).
     """
     try:
-        from tools.exec_sandbox import LANGS, ExecReq, _run  # noqa: PLC0415
+        # The sandbox is a sibling module inside the ``tools/`` package dir.  It
+        # is imported by its top-level name (``exec_sandbox``), which requires
+        # ``tools/`` to be on sys.path — the test/server bootstrap adds it.
+        # Importing it as ``tools.exec_sandbox`` instead would make ``tools`` an
+        # undeclared dependency (tripping the supply-chain gate) and break under
+        # the gateway's sys.path edits.
+        from exec_sandbox import LANGS, ExecReq, _run  # noqa: PLC0415
     except Exception as exc:  # pragma: no cover - depends on opt-in extra
         raise RuntimeError(f"بيئة التنفيذ غير متوفرة: {exc}") from exc
     lang = (language or "").strip().lower()

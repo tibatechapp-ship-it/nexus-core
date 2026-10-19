@@ -42,7 +42,9 @@ FRAMEWORK_FILES = [
 ]
 
 # In-tree top-level packages (live under src/, not third-party dependencies).
-IN_TREE_PACKAGES = {"src", "nova", "novamind"}
+# ``exec_sandbox`` = the author-owned repo-root module (mounted by the tracked
+# nexus_agent.py gateway); src/learning/tools.py is its first src/ importer.
+IN_TREE_PACKAGES = {"src", "nova", "novamind", "exec_sandbox"}
 
 # Distribution name → import name, for the packages where they differ.
 _DIST_TO_IMPORT = {

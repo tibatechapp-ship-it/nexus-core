@@ -32,6 +32,14 @@ for _entry in (str(_ADVERSARIAL_DIR), str(_TESTS_DIR)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
+# The ``tools/`` package dir holds the exec sandbox (``exec_sandbox.py``), which
+# is imported by its top-level name (``exec_sandbox``).  Put ``tools/`` on
+# sys.path up-front so those imports resolve regardless of collection order and
+# regardless of how the process was bootstrapped.
+_TOOLS_DIR: Path = ROOT / "tools"
+if _TOOLS_DIR.is_dir() and str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
 # The access guard (src/security/access.py) auto-enables itself when
 # NEXUS_AUTH_TOKEN is present in the environment. The suite assumes it is OFF,
 # so a developer's local guard config (an exported shell var, or a `.env` the
