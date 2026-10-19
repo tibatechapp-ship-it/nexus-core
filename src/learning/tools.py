@@ -252,7 +252,8 @@ def _ddg_fetch(query: str) -> list[dict[str, str]]:
     req = urllib.request.Request(
         url, headers={"User-Agent": "nexus-core/2.0 (+local agent)"}
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+    # Fixed https constant (no user-controlled scheme) → not a real B310 risk.
+    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310  # nosec B310
         html = resp.read(200_000).decode("utf-8", "ignore")
     return _parse_ddg(html)
 
