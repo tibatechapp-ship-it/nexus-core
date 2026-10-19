@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.20.0 — 2026-10-19
+
+- **The genome now survives restarts and knows the whole roster.** Previously
+  `src/novamind/genome_v2.py` kept fitness in memory only, so every service
+  restart wiped it, and the 20 framework agents were invisible in
+  `/api/training/fitness` until they happened to run.
+- New `src/novamind/genome_store.py` — the single disk touch-point (the genome
+  module itself stays pure, no I/O). `load`/`save` (atomic) /`install`;
+  `install(agent_ids)` restores the saved genome, seeds the roster from
+  `src/agents/manifest.py::all_manifests()`, and installs a save hook that
+  persists every mutation. Path order: `$NEXUS_GENOME_PATH` → sibling of the
+  training DB → `<repo>/data/genome.json` → temp dir. A missing/corrupt file
+  degrades to an empty genome; a failed save never raises.
+- `genome_v2` gained `adopt(other)` (in-place take-over that preserves
+  identity), `set_persistence_hook(hook)` and `set_genome_v2(genome)`. A restore
+  mutates the shared singleton rather than swapping it, because the council
+  engine, the field loop and the gateway all hold a reference to the one genome.
+- `nexus_agent.py` installs the layer at startup (`main()` only), logging the
+  agent / judgement / task counts.
+
 ## v1.19.0 — 2026-10-19
 
 - **Verification by execution — agent output is RUN, not trusted, and repaired
