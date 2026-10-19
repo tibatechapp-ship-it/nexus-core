@@ -97,6 +97,26 @@ requires_vec = pytest.mark.skipif(
 )
 
 
+def sandbox_available() -> bool:
+    """True when the top-level ``exec_sandbox`` module can be located.
+
+    ``tools/exec_sandbox.py`` is a local-only helper (gitignored) so it is
+    absent from clean checkouts / CI.  Tests that actually run code through the
+    real sandbox must be skipped there rather than fail.
+    """
+    try:
+        return importlib.util.find_spec("exec_sandbox") is not None
+    except Exception:
+        return False
+
+
+#: Skip marker for any test that needs the real ``exec_sandbox`` runner.
+requires_sandbox = pytest.mark.skipif(
+    not sandbox_available(),
+    reason="exec_sandbox module (tools/exec_sandbox.py) not present",
+)
+
+
 def _load(name: str, filename: str) -> types.ModuleType:
     """Import a hyphenated script by path under a valid module name."""
     path = ROOT / filename
