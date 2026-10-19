@@ -11,6 +11,21 @@ from collections import Counter
 log = logging.getLogger("MemoryEngine")
 
 
+def _memory_dir() -> Path:
+    """جذر قاعدة الذاكرة: ``NOVAMIND_HOME`` إن ضُبط، وإلا مسار قابل للكتابة.
+
+    على Android/Termux المسار القديم ``/var/lib/hive`` غير قابل للإنشاء
+    (``EROFS``) فيفشل تحميل الوكلاء كلهم. ``writable_root`` يجرب سلسلة
+    مرشّحين وينتهي بمسار مؤقّت مضمون.
+    """
+    override = os.environ.get("NOVAMIND_HOME")
+    if override:
+        return Path(override)
+    from ..paths import writable_root
+
+    return writable_root(preferred=("/var/lib/hive", "/var/tmp/hive"))
+
+
 class MemoryEngine:
     """Simple, fast, persistent memory for agents."""
 
@@ -27,8 +42,12 @@ class MemoryEngine:
             return
         self._initialized = True
         
-        # Ensure directory exists (NOVAMIND_HOME overrides the legacy path)
-        db_dir = Path(os.environ.get("NOVAMIND_HOME", "/var/lib/hive"))
+        # Ensure the directory exists. NOVAMIND_HOME still overrides the legacy
+        # path, but when it is unset we fall back through a writable-root chain
+        # instead of the bare "/var/lib/hive": on Android/Termux "/" is
+        # read-only and a plain mkdir("/var/...") raises EROFS, which used to
+        # fail every agent load. See novamind.paths.
+        db_dir = _memory_dir()
         db_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = db_dir / "memory.db"
         

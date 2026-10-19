@@ -42,9 +42,22 @@ class AutoWorker:
             check_interval: فترة الفحص بالثواني (افتراضي 30 دقيقة)
         """
         self.check_interval = check_interval
-        self.state_file = Path("/var/log/novamind/auto_worker_state.json")
+        self.state_file = self._state_path()
         self.state = self._load_state()
         self.running = True
+
+    @staticmethod
+    def _state_path() -> Path:
+        """مسار الحالة على جذر قابل للكتابة (انظر novamind.paths)."""
+        override = os.environ.get("NEXUS_AUTO_WORKER_STATE")
+        if override:
+            return Path(override)
+        from ..paths import writable_path
+
+        return writable_path(
+            "auto_worker_state.json",
+            preferred=("/var/log/novamind", "/var/tmp/novamind"),
+        )
 
     def _load_state(self) -> dict:
         if self.state_file.exists():
