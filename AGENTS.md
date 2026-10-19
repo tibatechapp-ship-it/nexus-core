@@ -2118,3 +2118,34 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   `NEXUS_GENOME_PATH` to a per-pid temp file so tests never touch the real genome.
 - Gates: ruff clean · annotations 171 · mypy 171 · real gate =
   **3201 passed, 1 skipped @ 99.94%**.
+
+## 2026-10-19 — tech-debt: writable-root fallback + self-healing monitoring
+- Branch `feature/techdebt-fixes`. Two real, reproducible defects fixed.
+- **Defect 1 — `/var` assumptions broke agent loading.** `MemoryEngine` used
+  `Path(os.environ.get("NOVAMIND_HOME", "/var/lib/hive"))`; on Termux `/` is
+  read-only (EROFS) so `mkdir` raised `OSError`, and that alone failed
+  `tests/novamind/smoke/test_all_agents_smoke.py::test_no_load_errors`
+  (`factory.get("architect")` → `None`). Six modules shared the pattern.
+  FIX: NEW `src/novamind/paths.py` — `writable_root()`/`writable_path()` try
+  `$NEXUS_DATA_DIR` → `/var/lib/nexus` → `/var/tmp/nexus` → `~/.cache/nexus` →
+  `tempdir/nexus`, never raise, warn once. Wired into `memory/engine.py`
+  (`NOVAMIND_HOME`), `security/audit.py` (`AUDIT_LOG_FILE`),
+  `security/rbac_audit.py` (**`except OSError`**, not just `PermissionError` —
+  EROFS is `OSError`), `agents/project_manager.py` (`NEXUS_PM_STATE`),
+  `security/auto_worker.py` (`NEXUS_AUTO_WORKER_STATE`),
+  `interface/unified_bot.py` (`NEXUS_BOT_LOG`/`NEXUS_SUPERVISOR_LOG`).
+- **Defect 2 — the monitoring wrapper died on a module reload.**
+  `patch_llm_router()` early-returned on the `_patched` flag; after
+  `importlib.reload(novamind.core.llm_router)` (as
+  `tests/novamind/test_hive_provider_priority.py` does) the NEW `LLMRouter`
+  class was never wrapped → `test_the_gateway_arms_llm_monitoring` failed.
+  FIX: arming is now idempotent **by inspection** — the wrapper carries
+  `_nexus_monitored`, and `patch_llm_router()` re-wraps the *current*
+  `LLMRouter.generate` whenever it is unmarked. The gateway re-arms explicitly
+  on load so a reload that happened before it cannot defeat monitoring.
+- Tests: `tests/test_paths_fallback.py` (16) + `tests/nexus/test_monitoring.py`
+  (+3). Full suite **3374 passed, 1 skipped, 0 failed** (was 1 failed);
+  gate `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` =
+  **3219 passed, 2 skipped @ 99.94%**; ruff/annotations/mypy 171 clean.
+- LESSON: a `_flag`-guarded idempotency check lies after a reload — mark the
+  ARTIFACT (the wrapper) and inspect it, don't trust the module-level flag.
