@@ -7,6 +7,7 @@ from .council import (
     consensus,
     influence,
     jaccard,
+    judgement_stances,
     position,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "consensus",
     "influence",
     "jaccard",
+    "judgement_stances",
     "position",
 ]

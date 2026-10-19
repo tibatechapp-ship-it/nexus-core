@@ -157,7 +157,7 @@ def get_council() -> Any:
     global _council
     if _council is None:
         _council = Council(router=get_router(), store=get_store_singleton(),
-                           genome=get_genome())
+                           genome=get_genome(), judge=_record_council_judgements)
     return _council
 
 
@@ -520,6 +520,23 @@ def _record_task_outcome(agent_id: str, ok: bool, duration: float,
         pass
 
 
+def _record_council_judgements(stances: Dict[str, str]) -> None:
+    """Mirror one Living-Council debate into genome_v2 (fail-safe).
+
+    يُغلَق الفرق بين المخزنين: المجلس الرسمي كان يغذّي ``Genome`` v1 فقط، فلم
+    تكن جودة أحكامه ظاهرةً في لوحة الأكاديمية. الأعضاء المصنَّفون في جهة الحُكم
+    (``approve``) يُحتسبون موافقة، والبقيّة (``reject``) دَيناً. خطأٌ هنا لا
+    يجوز أن يُسقط مداولة أبداً.
+    """
+    try:
+        from src.novamind.genome_v2 import get_genome_v2
+
+        if stances:
+            get_genome_v2().observe_council(stances, "approve")
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # P4.5 — جينوم الوكلاء: استرجاع المحفوظ + بذر العشرين + حفظ تلقائي
 #   منطق القرص كلّه في src/novamind/genome_store.py، والجينوم يبقى نقياً.
@@ -541,6 +558,25 @@ def _install_genome_layer() -> None:
         from src.novamind.genome_store import install
 
         genome = install(agent_ids=sorted(all_manifests()))
+
+        # ── Fix "two names for one file" trap ─────────────────────────
+        # pyproject.toml puts BOTH "." and "src" on pythonpath, so
+        # `import novamind.genome_v2` and `import src.novamind.genome_v2`
+        # load the SAME FILE as TWO modules with TWO `_DEFAULT` singletons.
+        # Council imports via bare `novamind.council`, so its judgements
+        # land in the non-persisted copy. Unify them here.
+        import sys as _sys
+        _canonical = _sys.modules.get("src.novamind.genome_v2")
+        _stale     = _sys.modules.get("novamind.genome_v2")
+        if _canonical is not None and _stale is not None and _stale is not _canonical:
+            _stale.set_genome_v2(_canonical.get_genome_v2())
+            _hook = getattr(_canonical, "_HOOK", None)
+            if _hook is not None:
+                _stale.set_persistence_hook(_hook)
+            _sys.modules["novamind.genome_v2"] = _canonical
+        elif _canonical is not None and _stale is None:
+            # Pre-emptive: future `import novamind.genome_v2` uses canonical.
+            _sys.modules["novamind.genome_v2"] = _canonical
         GENOME_OK = True
         GENOME_ERR = None
         stats = genome.stats()

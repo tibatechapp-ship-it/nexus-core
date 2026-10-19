@@ -262,3 +262,15 @@ def pytest_terminal_summary(
         write_line(line)
     if REPORT.broken_count:
         write_line(f"  {REPORT.broken_count} vector(s) BROKEN — see ADVERSARIAL.md")
+
+@pytest.fixture(autouse=True)
+def _reset_nexus_agent_globals():
+    """Reset global state in nexus_agent so tests don't leak into each other."""
+    try:
+        import nexus_agent
+        nexus_agent._council = None
+        nexus_agent.GENOME_OK = False
+        nexus_agent.GENOME_ERR = None
+    except ImportError:
+        pass
+    yield
