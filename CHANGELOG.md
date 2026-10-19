@@ -2,6 +2,31 @@
 
 All notable changes to this project. Newest first.
 
+## v1.20.2 — 2026-10-20 — genome bridge: the Living Council feeds genome_v2
+
+### Added
+- The flagship 6-member Living Council (`/api/council/debate`) now mirrors every
+  debate's member judgements into **genome_v2** (the store behind
+  `/api/training/fitness` and the Academy panel), instead of feeding the v1
+  SQLite genome alone. `genome_v2.observe_council(stances, "approve")` is called
+  through a new opt-in `judge=` sink on `Council`.
+- Pure helper `judgement_stances()` in `src/novamind/council/council.py` maps
+  each member's `standing_delta` to a genome_v2 stance (`approve`/`reject`),
+  tolerating malformed rows.
+
+### Fixed
+- **Two names for one genome file.** `pyproject.toml` puts both `.` and `src` on
+  `pythonpath`, so `novamind.genome_v2` and `src.novamind.genome_v2` were two
+  module objects holding two in-memory genomes. `_install_genome_layer()` now
+  adopts the canonical copy into the bare name (state + persistence hook) and
+  registers it in `sys.modules` under both names.
+
+### Tests
+- `tests/test_council.py` (+6) and `tests/test_nexus_agent.py` (+7), including an
+  app-level end-to-end assertion that one debate reaches genome_v2, a broken-sink
+  fail-safe, and both alias branches. Gate `--ignore=tests/novamind`
+  **3234 passed, 1 skipped @ 99.94%**.
+
 ## v1.20.1 — 2026-10-19 — tech-debt: writable paths + self-healing monitoring
 
 ### Fixed
