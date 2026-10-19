@@ -3,6 +3,29 @@
 All notable changes to this project. Newest first.
 
 ## Unreleased
+**Phase 2 / Day 3 — collab + tools import isolation (المرحلة 2 — اليوم 3).**
+
+- NEW `src/learning/collab.py`: `classify_question` (intent → label rules %),
+  `consult` (±5° multi-agent consultation), `multi_agent_consensus`
+  (≥2 agents, ≥3 votes, agree ≥66% = strong recommendation / توصية قوية).
+  LLM import is lazy (`novamind.core.llm_router`) — module stays phone-safe.
+- Day-2 tool relocation: `execute_code` / `query_memory` live in
+  `src/learning/tools.py` with `tools/` as the author-owned sandbox package.
+- **FIX (exec-sandbox import isolation)**: `_default_exec_runner` now imports
+  the sandbox by its top-level name (`from exec_sandbox import …`) instead of
+  `from tools.exec_sandbox import …`. The package-qualified import made
+  `tools` an undeclared dependency — tripping the adversarial supply-chain
+  gate — and broke under the gateway's `sys.path` edits (7 Day-2 tests failed
+  with `ModuleNotFoundError: No module named 'tools.exec_sandbox'` when
+  `nexus_agent.py` was imported first). Fixes: `tests/conftest.py` puts the
+  repo-root `tools/` dir on `sys.path` up-front (order-independent), the one
+  monkeypatch key in `tests/test_learning_tools.py` follows
+  (`sys.modules["exec_sandbox"]`), and the supply-chain gate's in-tree list
+  gains `exec_sandbox` (author-owned repo-root module).
+- Tests: `tests/test_learning_collab.py` (15) + Day-2 suites — full gate
+  **3048 passed, 1 skipped, 100.00% coverage** (floor 99), ruff/mypy/
+  annotations clean.
+
 **Phase 1 — long-term memory + self-evaluation (المرحلة 1).**
 
 - NEW `src/learning/interactions.py`: SQLite-backed field memory (WAL,

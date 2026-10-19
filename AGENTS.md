@@ -1903,3 +1903,44 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - NOT done D1: SSE Explain wiring (D4), react_agent (D2), KPI measurement (D5).
 - Bottom-block items tyba pasted (Ollama/provider_settings commit+push, sw.js
   check) = ALREADY DONE in `1240e07` + earlier sw verification — verify-only.
+
+## Phase 2 — Day 3 collab + exec-sandbox import isolation (2026-10-18)
+- Day-3 FEATURE committed earlier as **`6a455b8`** "feat(learning): complete
+  Day 3 - collab + tools relocation" (6 files): NEW `src/learning/collab.py`
+  (`classify_question` label-rules %, `consult` ±5°, `multi_agent_consensus`
+  ≥2 agents/≥3 votes/agree ≥66% = توصية قوية; lazy `novamind.core.llm_router`
+  import) + `tests/test_learning_collab.py` (15) + tools relocation.
+- ❗ **THE GATE WAS RED AFTER D3: 8 failed** = adversarial
+  `test_supply_chain_imports_are_stdlib_only` (`undeclared dependency:
+  ['tools']`) + 7 Day-2 tests (`test_nexus_agent` loaded first →
+  `ModuleNotFoundError: No module named 'tools.exec_sandbox'`).
+- **ROOT CAUSE (proven empirically this session, both directions)**: the repo
+  has TWO `tools` packages — root `tools/` (exec_sandbox, NO `__init__.py` =
+  namespace portion) and `src/tools/` (framework, HAS `__init__.py` = regular
+  package). Python's finder: a regular package found on ANY later sys.path
+  entry **beats** a namespace portion earlier → `import tools` resolves to
+  `src/tools/` ⇒ `from tools.exec_sandbox import` ALWAYS fails under pytest
+  (`pythonpath = [".", "src"]`) and under the gateway (src inserted at 0) —
+  EXCEPT when `sys.modules["tools.exec_sandbox"]` is pre-seeded (which is
+  exactly why only the monkeypatched non-dict test passed on D3). And the
+  supply-chain gate statically sees top-level `tools` = undeclared.
+- **FIX (5 files, UNCOMMITTED — tyba reviews)**: `src/learning/tools.py`
+  back to top-level `from exec_sandbox import` (+ rationale comment) ·
+  `tests/conftest.py` puts `<repo>/tools/` dir on `sys.path` up-front
+  (order-independent) · `tests/test_learning_tools.py:444` monkeypatch key
+  → `sys.modules["exec_sandbox"]` · `tests/adversarial/test_security.py`
+  `IN_TREE_PACKAGES += {"exec_sandbox"}` (author-owned repo-root module; that
+  edit pre-existed in the tree) · `CHANGELOG.md` Unreleased += Day-3 section.
+- GATES after fix: targeted 95/95 · full `pytest --cov --cov-fail-under=99
+  --ignore=tests/novamind` = **3048 passed, 1 skipped, 100.00%** (floor 99
+  PASS; 1 skip = ed25519 on device) · `ruff check` (3 files) clean · `mypy
+  src/learning/tools.py` clean · annotations **167 files** OK ·
+  `test_version_sync + test_openapi` 14 passed (CHANGELOG edit safe).
+- OPEN (honest): the RUNNING gateway imports the sandbox via its own
+  `from exec_sandbox import router` (`nexus_agent.py:807`) — needs
+  `<repo>/tools/` on sys.path at runtime (the foreign exec-sandbox WIP mount
+  may add it); without it execute_code degrades to `ok=False` by design
+  (never raises). Skill: `python-package-shadow-diagnosis`.
+- Plan status: D1 ✅ · D2 ✅ · **D3 committed (collab) + gate now green
+  (isolation fix)** · D4 next (consensus SSE wiring + Explain) · D5 last.
+  NO commit made this session (per plan: report → Direct Stop).
