@@ -217,6 +217,13 @@ _nexus_get_monitor: Optional[Callable[[], Any]] = None
 try:
     from src.nexus.monitoring import get_monitor as _nexus_get_monitor
 
+    # أعِد التسلّح صريحًا (self-healing): لو كان ``src.nexus`` مُستوردًا سابقًا
+    # فلا يُعاد تشغيل جسم الوحدة عند هذا الاستيراد، ولو أُعيد تحميل
+    # ``novamind.core.llm_router`` بعد التسلّح الأول لضاع اللفّ. نداء صريح
+    # يلفّ الصنف الحالي (idempotent بالفحص) فيبقى التتبّع فعّالًا دائمًا.
+    from src.nexus.monitoring_patch import patch_llm_router as _rearm_monitoring
+
+    _rearm_monitoring()
     MONITORING_OK = True
 except Exception as _mon_e:  # pragma: no cover - defensive
     MONITORING_ERR = f"{type(_mon_e).__name__}: {_mon_e}"

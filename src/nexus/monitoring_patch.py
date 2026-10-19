@@ -7,12 +7,24 @@ import functools
 
 _patched = False
 
+#: علامة توضع على الغلاف كي نتعرّف عليه لاحقًا (أدقّ من فحص __wrapped__).
+_MARKER = "_nexus_monitored"
+
+
+def _is_wrapped(generate: Any) -> bool:
+    """هل الدالة الحالية غلاف المراقبة؟ (idempotency by inspection)."""
+    return getattr(generate, _MARKER, False) is True
+
 
 def patch_llm_router() -> Any:
-    """يلفّ LLMRouter.generate() ليتتبع الاستدعاءات."""
+    """يلفّ LLMRouter.generate() ليتتبع الاستدعاءات.
+
+    idempotent *بالفحص* لا بالعلم فقط: لا يكفي متغيّر ``_patched`` لأن
+    ``importlib.reload(novamind.core.llm_router)`` يُنشئ صنف ``LLMRouter``
+    جديدًا لم يُلفّ بعد بينما يبقى ``_patched`` على True → كانت إعادة التسلّح
+    تفشل صامتة. لذا نفحص دالة ``generate`` الحالية ونلفّها إن لم تكن مُلفّفة.
+    """
     global _patched
-    if _patched:
-        return True
 
     try:
         from novamind.core.llm_router import LLMRouter
@@ -21,7 +33,12 @@ def patch_llm_router() -> Any:
         print(f"⚠️ Patch فشل: {e}")
         return False
 
-    original_generate = LLMRouter.generate
+    current = LLMRouter.generate
+    if _is_wrapped(current):
+        _patched = True
+        return True
+
+    original_generate = current
 
     @functools.wraps(original_generate)
     def monitored_generate(self: Any, prompt: Any ="", system: Any ="", provider: Any =None, **kwargs: Any) -> Any:
@@ -70,6 +87,7 @@ def patch_llm_router() -> Any:
                 pass
             raise
 
+    setattr(monitored_generate, _MARKER, True)
     LLMRouter.generate = monitored_generate
     _patched = True
     return True
