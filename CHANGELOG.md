@@ -2,6 +2,40 @@
 
 All notable changes to this project. Newest first.
 
+## v1.19.0 — 2026-10-19
+
+- **Verification by execution — agent output is RUN, not trusted, and repaired
+  under the process exit code's judgement.** New `src/verify/` (stdlib-only)
+  with `verify_by_execution(...)`, a bounded `fix_loop(...)` and a tolerant
+  `extract_code(...)`, served as `GET /api/verify/tools`,
+  `POST /api/verify/run`, `POST /api/verify/fix`. The engine runs the code in the
+  existing exec sandbox and decides by `exit_code`; the model only proposes a
+  repair. `VerificationResult` carries an explicit machine-readable `reason`
+  (`ok`, `not-verified`, `did-not-run`, `timeout`, `exit N`, `invalid-tests`,
+  `runner-error`, `not-fixed`) — no path claims success without a real run.
+- **The exec sandbox is reachable at last.** `/api/exec*` were wired but the
+  module behind them could not be imported: `tools/exec_sandbox.py` matched the
+  unanchored `.gitignore` rule `exec_sandbox.py` (so a fresh clone raised
+  `ModuleNotFoundError`, hidden by a try/except) and the bare-name import needs
+  the `tools/` directory itself on `sys.path`. Anchored the ignore to
+  `/exec_sandbox.py`, tracked the module and added `<repo>/tools` to `sys.path`.
+- **Repair-loop fixes (found by proving the loop live):** the raw model reply
+  (a fenced block) reached the interpreter, so Python parsed the fences and the
+  loop reported a misleading failure — extraction now happens at the model
+  boundary; the sandbox import is self-sufficient from any entry point; an
+  unmeasurable run returns the real reason instead of `not-fixed`; and the loop
+  stops when the fixer repeats the same code.
+- **Proof on the running service (:8000):** `POST /api/verify/fix`
+  `{add returns a-b, tests assert add(1,2)==3}` → **passed=true · reason=ok ·
+  attempts=2 · exit 1 → exit 0 · clean code**.
+- Tests: `tests/test_verify_engine.py` + `tests/test_verify_api.py` = **66**,
+  hermetic (injected runner/generator) with real-sandbox cases behind
+  `requires_sandbox`; a regression asserts the routes survive an ASGI
+  `mount("/")`. `src/verify` = **100% coverage**.
+- Gates: ruff clean · annotations 171 · mypy 171 · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` =
+  **3177 passed, 1 skipped @ 99.94%**.
+
 ## Unreleased
 
 (nothing yet — next changes land here)
