@@ -33,6 +33,9 @@ from src.learning.tools import (
     tool_explain,
 )
 
+from tests.conftest import requires_sandbox
+
+
 
 def _hits(n: int = 4) -> list[dict[str, str]]:
     return [
@@ -142,9 +145,15 @@ def test_is_safe_path_is_none_for_junk_and_directories(tmp_path):
 
 # ── get_current_time ──────────────────────────────────────────────────────
 def test_get_current_time_uses_the_injected_clock():
-    out = get_current_time(clock=lambda: 1_000_000.0)
-    assert out["unix"] == 1_000_000.0
-    assert out["iso"] == "1970-01-12T16:46:40"  # 1e6 s after the epoch
+    from datetime import datetime
+
+    clock_val = 1_000_000.0
+    out = get_current_time(clock=lambda: clock_val)
+    assert out["unix"] == clock_val
+    # isoformat() renders LOCAL time — derive expected the same way so the
+    # test is TZ-independent (passes in UTC on CI and +3 on-device alike).
+    expected = datetime.fromtimestamp(clock_val).isoformat(timespec="seconds")
+    assert out["iso"] == expected
 
 
 # ── config ────────────────────────────────────────────────────────────────
@@ -279,6 +288,7 @@ def test_safe_execute_injects_query_memory_limit_from_config():
     assert seen["limit"] == 3
 
 
+@requires_sandbox
 def test_execute_code_runs_python_through_the_real_sandbox():
     from src.learning.tools import execute_code
 
@@ -286,6 +296,7 @@ def test_execute_code_runs_python_through_the_real_sandbox():
     assert "4" in str(out.get("stdout", ""))
 
 
+@requires_sandbox
 def test_execute_code_rejects_an_unsupported_language():
     from src.learning.tools import execute_code
 
@@ -293,6 +304,7 @@ def test_execute_code_rejects_an_unsupported_language():
         execute_code("cobol", "x")
 
 
+@requires_sandbox
 def test_execute_code_rejects_an_empty_language():
     from src.learning.tools import execute_code
 
@@ -413,6 +425,7 @@ def test_query_memory_defaults_to_the_singleton_store(monkeypatch):
 
 
 # ── execute_code (Day 2) ──────────────────────────────────────────────────
+@requires_sandbox
 def test_execute_code_caps_the_output_at_10kb():
     from src.learning.tools import EXEC_OUTPUT_MAX, execute_code
 
@@ -446,6 +459,7 @@ def test_execute_code_wraps_a_non_dict_sandbox_result(monkeypatch):
     assert out == {"result": "RAW"}
 
 
+@requires_sandbox
 def test_execute_code_executes_real_python_via_the_default_runner():
     from src.learning.tools import execute_code
 
@@ -453,6 +467,7 @@ def test_execute_code_executes_real_python_via_the_default_runner():
     assert "21" in str(out.get("stdout", ""))
 
 
+@requires_sandbox
 def test_execute_code_honours_a_short_timeout():
     from src.learning.tools import execute_code
 
@@ -655,6 +670,7 @@ def test_react_treats_a_none_thought_as_no_answer():
     assert res.answer  # fallback string, still not empty
 
 
+@requires_sandbox
 def test_react_fallback_uses_successful_observations():
     from src.learning.react_agent import ReActAgent
 
@@ -741,8 +757,6 @@ def test_consensus_drops_duplicate_agent_names():
 
 
 def test_consensus_rejects_below_the_two_agent_floor():
-    import pytest
-
     from src.learning.tools import consensus
 
     with pytest.raises(ValueError):
