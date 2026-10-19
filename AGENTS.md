@@ -2086,3 +2086,35 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - LESSON: when a component answers correctly but the pipeline fails, suspect the
   **boundary** (what is actually handed downstream) before blaming the model —
   and prove a layer from a BARE entry point, not only from inside the gateway.
+
+### 2026-10-19 — P4.5: seed the 20 agents + persist the genome (v1.20.0)
+- The genome (`src/novamind/genome_v2.py`) was **in-memory only**: every
+  `sv restart` wiped fitness/lessons, and the 20 framework agents never appeared
+  in `/api/training/fitness` until they happened to run. Both gaps closed.
+- NEW `src/novamind/genome_store.py` — the ONLY disk touch-point (the genome
+  module stays pure, no I/O/clock):
+  * `load` / `save` (atomic: temp file + `os.replace` + `fsync`) / `install`.
+  * `install(agent_ids, path=None, *, genome=None)` restores the saved genome,
+    **seeds the 20** from `src/agents/manifest.py::all_manifests()`, and installs
+    a **save hook** so every mutation is persisted ⇒ survives restarts.
+  * Path order: `$NEXUS_GENOME_PATH` → sibling of `$NEXUS_TRAINING_DB`/`$NEXUS_DB`
+    → `<repo>/data/genome.json` → temp dir. `load` is tolerant (missing/corrupt/
+    wrong-shape ⇒ empty genome), `save` never raises.
+- `genome_v2` gained `adopt(other)` (in-place take-over, identity preserved),
+  `set_persistence_hook(hook)`, `set_genome_v2(genome)`, `_notify()` after each
+  mutator. A restore must **mutate the shared singleton**, never swap it — the
+  council engine, field loop and gateway all hold a reference to the one genome.
+- WIRING: `nexus_agent.py` `_install_genome_layer()` (called from `main()` only)
+  → `install(agent_ids=sorted(all_manifests()))`; logs
+  `Genome : ✅ {n} وكيل · {h} حُكم · {m} مهمّة`.
+- LIVE BUG found + fixed while proving: `_repo_root()` used `parents[3]` (one
+  level ABOVE the repo) → genome written to `$HOME/data/genome.json`. The store
+  sits at `<repo>/src/novamind/genome_store.py` ⇒ correct = `parents[2]`. Added
+  regression `test_repo_root_is_the_actual_checkout`.
+- PROOF (live `:8000`): `/api/training/fitness` **count=20**; one `/api/chat`
+  `{agent:coder}` → `task_observations 0→1`, `fitness 0.5→0.5833`, file created;
+  **survives `sv restart`** (count 20, coder 0.5833/rate 1.0).
+- Tests: `tests/test_genome_store.py` (24, hermetic). `tests/conftest.py` sets
+  `NEXUS_GENOME_PATH` to a per-pid temp file so tests never touch the real genome.
+- Gates: ruff clean · annotations 171 · mypy 171 · real gate =
+  **3201 passed, 1 skipped @ 99.94%**.
