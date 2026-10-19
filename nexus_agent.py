@@ -1004,6 +1004,64 @@ def acquire_instance_lock(port: int) -> Optional[Any]:
 def serve_simple():
     return FileResponse("web/simple.html")
 
+
+# ═══════════════════════════════════════════════════════════════════
+# v1.21.1 — Orchestrator plan endpoint (read-only, no side effects)
+# ═══════════════════════════════════════════════════════════════════
+@app.post("/api/orchestrator/plan")
+async def _orchestrator_plan(req: Dict[str, Any]):
+    """Classify + route a request WITHOUT executing it (v1.21.1).
+
+    Returns {agent, risk, risk_reason, router_reason} so callers can measure
+    how often the jury gate is actually needed.
+    """
+    from src.orchestrator.orchestrator import Orchestrator
+    from src.novamind.council.council import COUNCIL_MEMBERS
+
+    request = (req or {}).get("request", "")
+    if not isinstance(request, str) or not request.strip():
+        return {"ok": False, "error": "empty request"}
+
+    try:
+        orch = Orchestrator(
+            genome=get_genome(),
+            jury_members=list(COUNCIL_MEMBERS),
+        )
+        plan = orch.plan(request)
+        return {
+            "ok": True,
+            "request": plan.request,
+            "agent": plan.agent,
+            "risk": plan.risk.value,
+            "risk_reason": plan.risk_reason,
+            "router_reason": plan.router_reason,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Move orchestrator route before catch-all Mount (v1.21.1)
+# The workbench adds a Mount("/{path}") that shadows any route
+# registered after it. Reorder so our /api/orchestrator/plan is reachable.
+# ═══════════════════════════════════════════════════════════════════
+def _nexus_reorder_orchestrator_route() -> None:
+    """Move /api/orchestrator/plan before the first Mount in app.routes."""
+    from starlette.routing import Mount
+    mount_idx = next(
+        (i for i, r in enumerate(app.routes) if isinstance(r, Mount)), None)
+    our_idx = next(
+        (i for i, r in enumerate(app.routes)
+         if "/api/orchestrator/plan" in str(getattr(r, "path", ""))), None)
+    if mount_idx is not None and our_idx is not None and our_idx > mount_idx:
+        route = app.routes.pop(our_idx)
+        app.routes.insert(mount_idx, route)
+
+
+_nexus_reorder_orchestrator_route()
+
 def main() -> None:
     port = int(os.environ.get("NEXUS_PORT", "8080"))
     _lock = acquire_instance_lock(port)  # noqa: F841 — يبقى حيّاً هنا = القفل محفوظ
