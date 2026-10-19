@@ -670,3 +670,235 @@ def test_react_result_is_a_value_object():
 
     assert bool(ReActResult(question="q", answer="a")) is True
     assert bool(ReActResult(question="q", answer="")) is False
+
+
+# ── consensus (Day 4): agreement score + multi-agent wrap ─────────────────
+def _fake_ask(answers: dict[str, str]):  # noqa: ANN202
+    def ask(agent: str, question: str) -> str:
+        return answers.get(agent, f"إجابة {agent} عن {question}")
+    return ask
+
+
+def test_agreement_is_one_for_identical_answers_and_zero_for_opposite():
+    from src.learning.tools import _agreement
+
+    assert _agreement(["نفس الإجابة", "نفس الإجابة"]) == 1.0
+    assert _agreement(["آمن تماما", "خطير جدا"]) == 0.0
+    assert _agreement(["وحيدة"]) == 0.0  # fewer than two → no pairwise score
+
+
+def test_jaccard_counts_shared_tokens_over_the_union():
+    from src.learning.tools import _jaccard
+
+    assert _jaccard("", "") == 1.0  # degenerate agree (both empty)
+    assert _jaccard("hello world", "hello world") == 1.0
+    assert _jaccard("hello", "world") == 0.0
+    # 1 shared / 3 in the union
+    assert abs(_jaccard("red blue", "red green") - 1 / 3) < 1e-9
+
+
+def test_tokens_are_arabic_aware_and_case_folded():
+    from src.learning.tools import _tokens
+
+    assert _tokens("Hello HELLO") == {"hello"}
+    assert "مرحبا" in _tokens("مرحبا بالعالم")
+
+
+def test_consensus_hermetic_with_injected_fns():
+    from src.learning.tools import consensus
+
+    ask = _fake_ask({"analyst": "الخطة الأولى آمنة ومستقرة وسريعة",
+                     "planner": "الخطة الأولى آمنة ومستقرة وسريعة",
+                     "reviewer": "الخطة الأولى آمنة ومستقرة وسريعة"})
+    out = consensus("هل المشروع آمن؟",
+                    agents=["analyst", "planner", "reviewer"],
+                    ask_fn=ask,
+                    synthesize_fn=lambda q, ans: "التوصية: " + " | ".join(ans))
+
+    assert set(out) == {"consensus", "individual_answers", "agents_used",
+                        "agreement", "strong"}
+    assert out["agents_used"] == ["analyst", "planner", "reviewer"]
+    assert out["consensus"].startswith("التوصية: ")
+    assert len(out["individual_answers"]) == 3
+    assert out["agreement"] == 1.0
+    assert out["strong"] is True  # 3 answers at full agreement → توصية قوية
+
+
+def test_consensus_respects_explicit_agent_subset():
+    from src.learning.tools import consensus
+
+    out = consensus("سؤال", agents=["analyst", "critic"],
+                    ask_fn=_fake_ask({}), synthesize_fn=lambda q, a: a[0])
+    assert out["agents_used"] == ["analyst", "critic"]
+
+
+def test_consensus_drops_duplicate_agent_names():
+    from src.learning.tools import consensus
+
+    out = consensus("سؤال", agents=["analyst", "analyst", "critic"],
+                    ask_fn=_fake_ask({}), synthesize_fn=lambda q, a: a[0])
+    assert out["agents_used"] == ["analyst", "critic"]
+
+
+def test_consensus_rejects_below_the_two_agent_floor():
+    import pytest
+
+    from src.learning.tools import consensus
+
+    with pytest.raises(ValueError):
+        consensus("سؤال", agents=["solo"], ask_fn=_fake_ask({}),
+                  synthesize_fn=lambda q, a: a[0])
+
+
+def test_consensus_strong_is_false_with_too_few_or_too_divergent():
+    from src.learning.tools import consensus
+
+    # only two answers → below STRONG_MIN_ANSWERS even at full agreement
+    two = consensus("س", agents=["analyst", "planner"],
+                    ask_fn=_fake_ask({"analyst": "نفس", "planner": "نفس"}),
+                    synthesize_fn=lambda q, a: a[0])
+    assert two["strong"] is False
+
+    # three answers that all disagree → below STRONG_AGREEMENT
+    divergent = consensus(
+        "س",
+        agents=["analyst", "planner", "reviewer"],
+        ask_fn=_fake_ask({"analyst": "أحب الزيت", "planner": "الشمس حارّة",
+                          "reviewer": "طائر أزرق يطير بعيدا"}),
+        synthesize_fn=lambda q, a: a[0],
+    )
+    assert divergent["strong"] is False
+    assert divergent["agreement"] < 0.66
+
+
+def test_consensus_skips_a_failing_agent_and_still_agrees():
+    from src.learning.tools import consensus
+
+    def flaky(agent: str, question: str) -> str:
+        if agent == "reviewer":
+            raise RuntimeError("dead agent")
+        return "الخطة آمنة والاستعداد جيد"
+
+    out = consensus("س", agents=["analyst", "planner"],
+                    ask_fn=flaky, synthesize_fn=lambda q, a: a[0])
+    assert out["agents_used"] == ["analyst", "planner"]  # reviewer skipped
+    assert len(out["individual_answers"]) == 2
+
+
+def test_consensus_all_agents_failing_is_an_empty_result_not_an_error():
+    from src.learning.tools import consensus
+
+    def dead(agent: str, question: str) -> str:
+        raise RuntimeError("all dead")
+
+    out = consensus("س", agents=["analyst", "planner"], ask_fn=dead,
+                    synthesize_fn=lambda q, a: a[0])
+    assert out == {"consensus": "", "individual_answers": [], "agents_used": [],
+                   "agreement": 0.0, "strong": False}
+
+
+def test_consensus_synthesis_failure_degrades_to_a_plain_join():
+    from src.learning.tools import consensus
+
+    def bad_synth(question: str, answers: list[str]) -> str:
+        raise RuntimeError("synth down")
+
+    out = consensus("س", agents=["analyst", "planner"],
+                    ask_fn=_fake_ask({"analyst": "أ", "planner": "ب"}),
+                    synthesize_fn=bad_synth)
+    assert out["consensus"] == "أ\nب"  # collab's documented join fallback
+
+
+def test_safe_execute_runs_consensus_and_explains_it():
+    cfg = _cfg()
+    cfg["tools"]["consensus"]["agents"] = ["analyst", "planner"]
+    out = safe_execute("consensus", question="سؤال", ask_fn=_fake_ask({}),
+                       synthesize_fn=lambda q, a: a[0], config=cfg)
+    assert out.ok is True
+    assert out.tool == "consensus"
+    assert "consensus" in out.explain
+
+
+def test_safe_execute_injects_consensus_agents_from_config():
+    seen: dict[str, object] = {}
+
+    def spy(question, agents=None, *, ask_fn, synthesize_fn):  # noqa: ANN001, ANN202
+        seen["agents"] = list(agents or [])
+        return {"consensus": "", "individual_answers": [], "agents_used": list(agents or [])}
+
+    import src.learning.tools as tools_mod
+
+    orig = tools_mod._REGISTRY["consensus"]
+    tools_mod._REGISTRY["consensus"] = (spy, orig[1])
+    try:
+        cfg = _cfg()
+        cfg["tools"]["consensus"]["agents"] = ["analyst", "critic"]
+        safe_execute("consensus", "سؤال", ask_fn=_fake_ask({}),
+                     synthesize_fn=lambda q, a: a[0], config=cfg)
+    finally:
+        tools_mod._REGISTRY["consensus"] = orig
+    assert seen["agents"] == ["analyst", "critic"]
+
+
+def test_consensus_is_enabled_by_default_and_in_the_config_file():
+    import json
+    from pathlib import Path
+
+    from src.learning.tools import DEFAULT_CONSENSUS_AGENTS, default_config
+
+    tools = default_config()["tools"]
+    assert "consensus" in tools
+    assert tools["consensus"]["enabled"] is True
+    assert tools["consensus"]["agents"] == list(DEFAULT_CONSENSUS_AGENTS)
+
+    shipped = json.loads(Path("tools_config.json").read_text(encoding="utf-8"))
+    assert "consensus" in shipped["tools"]
+    assert shipped["tools"]["consensus"]["enabled"] is True
+
+
+def test_consensus_is_exported_and_registered():
+    from src.learning.tools import _REGISTRY, list_tools
+
+    assert "consensus" in _REGISTRY
+    assert "consensus" in list_tools()
+    import src.learning as pkg
+    assert "consensus" in pkg.__all__
+    assert hasattr(pkg, "consensus")
+
+
+def test_llm_fallbacks_raise_on_empty_reply():
+    class _EmptyRouter:
+        def generate(self, *a, **k):  # noqa: ANN002, ANN003, ANN202
+            return ""
+
+    import sys
+    import types
+
+    fake = types.ModuleType("novamind.core.llm_router")
+    fake.LLMRouter = _EmptyRouter
+    mod_a = types.ModuleType("novamind")
+    mod_b = types.ModuleType("novamind.core")
+    saved = {k: sys.modules.get(k) for k in ("novamind", "novamind.core",
+                                            "novamind.core.llm_router")}
+    sys.modules["novamind"] = mod_a
+    sys.modules["novamind.core"] = mod_b
+    sys.modules["novamind.core.llm_router"] = fake
+    try:
+        from src.learning.tools import _llm_ask, _llm_synthesize
+
+        try:
+            _llm_ask("analyst", "سؤال")
+            raise AssertionError("expected _llm_ask to raise on empty")
+        except RuntimeError:
+            pass
+        try:
+            _llm_synthesize("سؤال", ["أ", "ب"])
+            raise AssertionError("expected _llm_synthesize to raise on empty")
+        except RuntimeError:
+            pass
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v

@@ -19,6 +19,10 @@
     "execute_code": {
       "enabled": true,
       "timeout": 10
+    },
+    "consensus": {
+      "enabled": true,
+      "agents": ["analyst", "planner", "reviewer"]
     }
   }
 }

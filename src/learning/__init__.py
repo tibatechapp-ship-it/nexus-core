@@ -12,7 +12,8 @@ merging similar ones and scoring confidence.
 
 Phase 2 (Tool Use) — the tool library in :mod:`src.learning.tools`:
 ``search_web`` / ``read_file`` / ``get_current_time`` / ``query_memory`` /
-``execute_code`` behind a config-gated :func:`~src.learning.tools.safe_execute`
+``execute_code`` / ``consensus`` behind a config-gated
+:func:`~src.learning.tools.safe_execute`
 that never raises and always returns a :class:`~src.learning.tools.ToolResult`
 carrying an ``explain`` line.  Day 2 adds :class:`~src.learning.react_agent.
 ReActAgent`, a Thought→Action→Observation→Answer loop driven by an injectable
@@ -104,6 +105,7 @@ from src.learning.react_agent import (
 from src.learning.tools import (
     ToolResult,
     ToolsConfigError,
+    consensus,
     default_config,
     get_current_time,
     is_safe_path,
@@ -175,4 +177,5 @@ __all__ = [
     "search_web",
     "should_retry",
     "tool_explain",
+    "consensus",
 ]
