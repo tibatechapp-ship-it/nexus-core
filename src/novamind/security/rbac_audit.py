@@ -32,10 +32,16 @@ class RBACAudit:
         self.file = Path(log_file or default_path)
         try:
             self.file.parent.mkdir(parents=True, exist_ok=True)
-        except PermissionError:
-            # Fallback: local log
-            self.file = Path("/tmp/rbac_audit.jsonl")
-            logger.warning("Cannot write to %s, using /tmp", default_path)
+        except OSError:
+            # Fallback: مسار قابل للكتابة. نلتقط OSError وليس PermissionError
+            # فقط لأن Android/Termux يرفع EROFS (Read-only file system) على
+            # "/" وهو OSError لا PermissionError.
+            from ..paths import writable_path
+
+            self.file = writable_path(
+                "rbac_audit.jsonl", preferred=("/var/log/hive", "/var/tmp/hive")
+            )
+            logger.warning("Cannot write to %s, using %s", default_path, self.file)
 
         self.total_events = 0
         self.denied_events = 0

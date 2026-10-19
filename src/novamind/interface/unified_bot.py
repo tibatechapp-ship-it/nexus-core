@@ -713,11 +713,13 @@ async def cmd_logs(update, context):
     # args: [service_name, num_lines]
     args = context.args or []
     num_lines = 20
-    log_file = "/var/log/novamind-bot.log"
+    # مسارات قراءة سجلات النظام: تبقى الافتراضية على الخادم، مع تجاوز اختياري
+    # بالبيئة (على Termux لا يوجد /var فنتجاوزها عند الحاجة).
+    log_file = os.environ.get("NEXUS_BOT_LOG", "/var/log/novamind-bot.log")
 
     if args:
         if args[0].lower() == "supervisor":
-            log_file = "/var/log/supervisord.log"
+            log_file = os.environ.get("NEXUS_SUPERVISOR_LOG", "/var/log/supervisord.log")
         if len(args) >= 2:
             try:
                 num_lines = max(5, min(100, int(args[1])))

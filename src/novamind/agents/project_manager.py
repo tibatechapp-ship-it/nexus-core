@@ -4,8 +4,19 @@ from datetime import datetime
 from pathlib import Path
 import json
 import logging
+import os
 
 log = logging.getLogger("ProjectManager")
+
+
+def _state_path() -> Path:
+    """مسار حالة مدير المشاريع على جذر قابل للكتابة (انظر novamind.paths)."""
+    override = os.environ.get("NEXUS_PM_STATE")
+    if override:
+        return Path(override)
+    from ..paths import writable_path
+
+    return writable_path("pm_state.json", preferred=("/var/log/novamind", "/var/tmp/novamind"))
 
 
 class ProjectManager(BaseAgent):
@@ -21,7 +32,7 @@ class ProjectManager(BaseAgent):
 
     def __init__(self):
         super().__init__()
-        self.state_file = Path("/var/log/novamind/pm_state.json")
+        self.state_file = _state_path()
         self.state = self._load_state()
 
     def _load_state(self):
