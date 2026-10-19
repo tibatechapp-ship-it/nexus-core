@@ -13,8 +13,10 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 __all__ = [
@@ -31,6 +33,9 @@ PYTHON = "python"
 
 #: سقف محاولات الإصلاح — تنفيذات فعلية، لا نداءات LLM.
 MAX_ATTEMPTS = 6
+
+#: بدايات أسباب تعني «لم نُقس شيئاً»: الصندوق أو الاختبارات نفسها، لا الكود.
+_UNMEASURABLE = ("runner-error", "invalid-tests")
 
 #: توقيع المُشغّل: ``(code, language, stdin, timeout) -> dict``.
 Runner = Callable[[str, str, str, int], dict]
@@ -79,8 +84,23 @@ def compose_code(code: str, tests: str = "", language: str = PYTHON) -> str:
     return f"{body}\n\n{probe}"
 
 
+def _ensure_tools_path() -> None:
+    """يُضيف مجلد ``tools/`` إلى مسار الاستيراد — حتى نعمل من أي مدخل.
+
+    صندوق التنفيذ في ``<repo>/tools/exec_sandbox.py`` ويُستورَد باسم مجرّد
+    (``from exec_sandbox import …``)، فمن دون هذا السطر يعمل فقط حين تُضيف
+    الجهة المستدعية المجلد (البوابة)، ويفشل من أي مدخل آخر بخطأ مضلّل
+    «No module named 'exec_sandbox'» يُقرأ كأنّ الكود هو المشكلة.
+    """
+    tools = Path(__file__).resolve().parents[2] / "tools"
+    text = str(tools)
+    if tools.is_dir() and text not in sys.path:
+        sys.path.append(text)
+
+
 def sandbox_available() -> bool:
     """هل صندوق التنفيذ قابل للاستيراد الآن؟ (بلا استيراد فعلي ثقيل)."""
+    _ensure_tools_path()
     try:
         import exec_sandbox  # noqa: F401  (frozen probe — لا نُبقيه)
     except Exception:
@@ -96,7 +116,8 @@ def sandbox_runner(
     يرفع استثناءً فقط حين يكون الصندوق نفسه غير متاح أو اللغة غير مدعومة —
     و``verify_by_execution`` يحوّل ذلك إلى فشل مفهوم (``runner-error``).
     """
-    from exec_sandbox import ALIASES, LANGS, ExecReq, MAX_TIMEOUT, _run
+    _ensure_tools_path()
+    from exec_sandbox import ALIASES, LANGS, ExecReq, MAX_TIMEOUT, _run  # noqa: E402
 
     lang = ALIASES.get(language.lower().strip(), language.lower().strip())
     if lang not in LANGS:
@@ -213,6 +234,17 @@ def fix_loop(
             return _build(
                 True, "ok", code=current, language=language, detail=history, attempts=done
             )
+        if outcome.reason.startswith(_UNMEASURABLE):
+            # لم نُشغّل شيئاً (صندوق غائب / اختبارات غير صالحة) ⇒ لا مَعنى
+            # لطلب إصلاح كود، والسبب الحقيقي هو سبب التنفيذ لا سبب المُصلِح.
+            return _build(
+                False,
+                outcome.reason,
+                code=current,
+                language=language,
+                detail=history,
+                attempts=done,
+            )
         if done == limit or generate is None:
             break
         try:
@@ -222,6 +254,8 @@ def fix_loop(
             break
         if not isinstance(proposed, str) or not proposed.strip():
             break
+        if proposed.strip() == current.strip():
+            break  # نفس الكود ⇒ نفس النتيجة حتماً (المُشغّل والاختبارات ثابتة)
         current = proposed
     return _build(
         False, "not-fixed", code=current, language=language, detail=history, attempts=done
