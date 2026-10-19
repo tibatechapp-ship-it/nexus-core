@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "agents": {
+    "architect":        {"domain": "engineering.design",   "scope": ["system design", "architecture review"], "not_scope": ["write code"],   "input_schema": {"requirements": "string"}, "output_schema": {"design": "string"}},
+    "coder":            {"domain": "engineering.code",     "scope": ["write code", "fix bug", "refactor"],   "not_scope": ["deploy"],       "input_schema": {"task": "string"},         "output_schema": {"code": "string"}},
+    "debugger":         {"domain": "engineering.code",     "scope": ["diagnose", "fix bug"],                 "not_scope": ["design"],       "input_schema": {"error": "string", "code": "string"}, "output_schema": {"fix": "string"}},
+    "refactor":         {"domain": "engineering.code",     "scope": ["restructure code"],                    "not_scope": ["add feature"],  "input_schema": {"code": "string"},         "output_schema": {"code": "string"}},
+    "tester":           {"domain": "engineering.testing",  "scope": ["write tests", "run tests"],            "not_scope": ["modify source"], "input_schema": {"code": "string"},        "output_schema": {"tests": "string", "passed": "bool"}},
+    "reviewer":         {"domain": "engineering.review",   "scope": ["code review"],                         "not_scope": ["write code"],   "input_schema": {"code": "string"},         "output_schema": {"approved": "bool", "issues": "list"}},
+    "analyst":          {"domain": "data.analysis",        "scope": ["analyze data", "find patterns"],       "not_scope": ["write code"],   "input_schema": {"data": "string"},         "output_schema": {"findings": "string"}},
+    "estimator":        {"domain": "product.planning",     "scope": ["estimate effort", "cost"],             "not_scope": ["implement"],    "input_schema": {"task": "string"},         "output_schema": {"effort": "string"}},
+    "planner":          {"domain": "product.planning",     "scope": ["plan tasks", "breakdown"],             "not_scope": ["implement"],    "input_schema": {"goal": "string"},         "output_schema": {"plan": "list"}},
+    "researcher":       {"domain": "research.web",         "scope": ["search", "fact-check"],                "not_scope": ["write code"],   "input_schema": {"query": "string"},        "output_schema": {"findings": "string"}},
+    "documentation":    {"domain": "docs.writing",         "scope": ["write docs", "add docstring"],          "not_scope": ["modify logic"], "input_schema": {"subject": "string"},      "output_schema": {"docs": "string"}},
+    "compliance":       {"domain": "security.compliance",  "scope": ["check policy", "audit"],                "not_scope": ["modify code"],  "input_schema": {"target": "string"},       "output_schema": {"passed": "bool"}},
+    "security_auditor": {"domain": "security.audit",       "scope": ["find vulnerabilities"],                 "not_scope": ["fix code"],     "input_schema": {"code": "string"},         "output_schema": {"issues": "list"}},
+    "performance":      {"domain": "engineering.perf",     "scope": ["profile", "optimize"],                 "not_scope": ["add feature"],  "input_schema": {"code": "string"},         "output_schema": {"improvement": "string"}},
+    "devops":           {"domain": "ops.deploy",           "scope": ["configure ci", "deploy"],               "not_scope": ["write app code"], "input_schema": {"target": "string"},     "output_schema": {"status": "string"}},
+    "monitor":          {"domain": "ops.monitoring",       "scope": ["watch metrics", "alert"],               "not_scope": ["fix"],          "input_schema": {"target": "string"},       "output_schema": {"status": "string"}},
+    "recovery":         {"domain": "ops.recovery",         "scope": ["rollback", "restore"],                  "not_scope": ["add feature"],  "input_schema": {"incident": "string"},     "output_schema": {"status": "string"}},
+    "designer":         {"domain": "creative.ui",          "scope": ["design ui", "ux review"],               "not_scope": ["backend code"], "input_schema": {"spec": "string"},         "output_schema": {"design": "string"}},
+    "reporter":         {"domain": "docs.reporting",       "scope": ["generate report", "summarize"],         "not_scope": ["analyze deeply"], "input_schema": {"data": "string"},       "output_schema": {"report": "string"}},
+    "orchestrator":     {"domain": "meta.orchestration",   "scope": ["route tasks"],                          "not_scope": ["execute tasks"], "input_schema": {"request": "string"},     "output_schema": {"agent": "string"}}
+  }
+}
