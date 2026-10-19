@@ -1,0 +1,5 @@
+# CODEOWNERS — default reviewers for this repository.
+#
+# GitHub user account (not an org), so owners are user handles:
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+* @tibatechapp-ship-it
