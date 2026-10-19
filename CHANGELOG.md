@@ -6,6 +6,29 @@ All notable changes to this project. Newest first.
 
 (nothing yet — next changes land here)
 
+## v1.18.1 — 2026-10-19
+
+- **Wiring — the call-monitoring layer (`src/nexus/`) goes live.** It was
+  complete and fully tested but imported by nothing, so no LLM call was ever
+  recorded (the only writer was a stale `calls_2026-10-14.jsonl`). The gateway
+  now arms it on start — importing `src.nexus` auto-patches `LLMRouter.generate`
+  via `monitoring_patch` — and serves it:
+  `GET /api/monitoring/today`, `GET /api/monitoring/session`,
+  `POST /api/monitoring/clear` (token-gated), plus
+  `/api/status.components.monitoring`. Every route degrades to
+  `{"ok": false, "error": …}` instead of crashing.
+- Routes live under `/api/monitoring/*` (not `/api/metrics`) because the engine
+  already owns `GET /api/metrics` — a different, never-fed observability counter
+  system with no tokens/cost.
+- Verified live on `:8000`: one `POST /api/chat {agent: coder}` moved the counter
+  from 0 → **2 calls, 1796 tokens, $0.00009** (provider `groq_01`; the chat and
+  its reflection call both traverse `LLMRouter.generate`), and
+  `calls_2026-10-19.jsonl` was written. `POST /api/monitoring/clear` returns
+  **401 without `X-Auth-Token`**, 200 with it.
+- Tests: **+6** in `tests/test_nexus_agent.py` (43 in the file) covering the
+  armed wrapper, the recorded call, `/api/status`, the routes, and both
+  degradation paths. Real gate: **3111 passed, 1 skipped**.
+
 ## v1.18.0 — 2026-10-19
 
 - **PR #22 merged (squash)** — Day 4 `consensus` tool + Hyper-Agent 2.0 with
