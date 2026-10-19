@@ -2149,3 +2149,36 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   **3219 passed, 2 skipped @ 99.94%**; ruff/annotations/mypy 171 clean.
 - LESSON: a `_flag`-guarded idempotency check lies after a reload — mark the
   ARTIFACT (the wrapper) and inspect it, don't trust the module-level flag.
+
+## 2026-10-20 — genome bridge: the Living Council feeds genome_v2 (v1.20.2)
+- Branch `hotfix/genome-two-names` (off `main` `1cd507f`). Closes the design gap
+  found on 2026-10-19: the flagship 6-member Living Council
+  (`novamind.council.Council`, `/api/council/debate`) fed the **v1** `Genome`
+  (SQLite, `/api/genome`) and **never** reached **genome_v2**
+  (`data/genome.json`, `/api/training/fitness` + the 🎓 Academy panel), so the
+  council's own judgement quality was invisible there.
+- `src/novamind/council/council.py`: NEW pure `judgement_stances(inf)` — each
+  member's `standing_delta` (>0 on the verdict side) → `"approve"`, else
+  `"reject"`; junk/unknown rows are tolerated, never invented. `Council.__init__`
+  gained an opt-in `judge: Any = None`; after the v1 genome feed it calls
+  `self.judge(judgement_stances(inf))` inside a `try/except` — **no judge ⇒
+  byte-identical behaviour**, a broken sink can never break a debate.
+- `nexus_agent.py`: `_record_council_judgements(stances)` mirrors one debate into
+  genome_v2 via `observe_council(stances, "approve")` (fail-safe);
+  `get_council()` injects it as `judge=`.
+- `_install_genome_layer()` also **retires the two-name singleton split** at
+  startup: `pyproject` puts both `.` and `src` on `pythonpath`, so
+  `novamind.genome_v2` and `src.novamind.genome_v2` were two module objects with
+  two in-memory genomes. The canonical (`src.`) copy is now adopted by the bare
+  name *in place* (`set_genome_v2` + hook transfer) and registered in
+  `sys.modules` under both names, so a later `import novamind.genome_v2` cannot
+  resurrect a second genome. Two branches, both unit-tested.
+- Tests: `tests/test_council.py` (+6: mapping, junk tolerance, judge injected,
+  no-judge back-compat, broken judge, app-level debate) and
+  `tests/test_nexus_agent.py` (+7: sink, empty, broken genome, factory injection,
+  end-to-end debate → genome, alias adoption + pre-emption). Gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **3234 passed,
+  1 skipped @ 99.94%**; ruff/mypy/annotations clean.
+- LIVE (service :8000, real Groq debate, not offline): `/api/council/debate`
+  moved genome_v2 `observations 3 → 9` (+6, one per member) and the 6 council
+  members appear in `data/genome.json` — done, not claimed.
