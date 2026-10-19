@@ -8,7 +8,7 @@ class RiskLevel(str, Enum):
     MED = "med"
     HIGH = "high"
 
-    def __lt__(self, other: "RiskLevel") -> bool:
+    def __lt__(self, other: "RiskLevel") -> bool:  # type: ignore[override]
         order = {"low": 0, "med": 1, "high": 2}
         return order[self.value] < order[other.value]
 

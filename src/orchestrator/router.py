@@ -1,7 +1,7 @@
 """Router — deterministic agent selection."""
 from __future__ import annotations
 import re
-from typing import Optional, Set
+from typing import Any, Optional, Set
 from .registry import AgentSpec, AgentRegistry, get_registry
 
 _WORD = re.compile(r"[a-z][a-z0-9]+")
@@ -22,7 +22,7 @@ def route(
     request: str,
     *,
     registry: Optional[AgentRegistry] = None,
-    genome: Optional[object] = None,
+    genome: Optional[Any] = None,
 ) -> str:
     if not request or not isinstance(request, str) or not request.strip():
         return "coder"
@@ -45,7 +45,7 @@ def route_with_reason(
     request: str,
     *,
     registry: Optional[AgentRegistry] = None,
-    genome: Optional[object] = None,
+    genome: Optional[Any] = None,
 ) -> dict:
     if not request or not isinstance(request, str) or not request.strip():
         return {"agent": "coder", "score": 0.0, "tokens": [], "alternatives": []}

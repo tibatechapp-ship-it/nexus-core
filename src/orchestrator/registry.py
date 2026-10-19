@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[2] / "skills_registry.json"
 
@@ -27,14 +27,14 @@ class AgentRegistry:
         self,
         path: Optional[Path] = None,
         *,
-        manifests: Optional[Dict[str, object]] = None,
+        manifests: Optional[Mapping[str, object]] = None,
     ) -> None:
         self.path = path or _REGISTRY_PATH
         self._specs: Dict[str, AgentSpec] = {}
         self._by_domain: Dict[str, List[str]] = {}
         self._load(manifests)
 
-    def _load(self, manifests: Optional[Dict[str, object]]) -> None:
+    def _load(self, manifests: Optional[Mapping[str, object]]) -> None:
         if not self.path.exists():
             raise RegistryError(f"registry not found: {self.path}")
         try:
