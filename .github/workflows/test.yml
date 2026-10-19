@@ -20,6 +20,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     env:
       NOVAMIND_HOME: ${{ github.workspace }}
+      TZ: UTC
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -86,6 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NOVAMIND_HOME: ${{ github.workspace }}
+      TZ: UTC
     steps:
       - name: Checkout
         uses: actions/checkout@v7

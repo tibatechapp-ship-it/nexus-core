@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+# Deterministic clock for every job (any time-formatted assertion sees UTC).
+env:
+  TZ: UTC
+
 jobs:
   # ── Lint / type-check / syntax across supported Python versions ───────────
   lint:
