@@ -24,7 +24,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
-__all__ = ["CouncilMember", "COUNCIL_MEMBERS", "Council", "jaccard", "consensus"]
+__all__ = ["CouncilMember", "COUNCIL_MEMBERS", "Council", "jaccard", "consensus",
+           "position", "influence", "judgement_stances"]
 
 
 # ── tunables ─────────────────────────────────────────────────────────────────
@@ -177,16 +178,39 @@ def influence(members: List[CouncilMember], latest: Dict[str, str],
     }
 
 
+def judgement_stances(inf: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    """Express each member's influence as a genome_v2 stance.
+
+    The Living Council already decided, for every member, whether its position
+    landed on the verdict side (``standing_delta`` = +1) or against it (−1).
+    genome_v2 expresses the same evidence binarily, so a member placed on the
+    verdict side is ``"approve"`` and any other member is ``"reject"`` — judged
+    against the same ``"approve"`` final, equality *is* agreement.  Unknown
+    members are skipped, never invented.
+    """
+    out: Dict[str, str] = {}
+    for mid, d in (inf or {}).items():
+        if not mid:
+            continue
+        try:
+            delta = int((d or {}).get("standing_delta", 0) or 0)
+        except (TypeError, ValueError):
+            delta = 0
+        out[str(mid)] = "approve" if delta > 0 else "reject"
+    return out
+
+
 # ── the council engine ───────────────────────────────────────────────────────
 class Council:
     """Runs a live multi-agent debate and synthesises a verdict."""
 
     def __init__(self, router: Any = None, store: Any = None,
                  members: Optional[List[CouncilMember]] = None,
-                 genome: Any = None) -> None:
+                 genome: Any = None, judge: Any = None) -> None:
         self.router = router
         self.store = store
         self.genome = genome
+        self.judge = judge
         self.members = list(members) if members else list(COUNCIL_MEMBERS)
         self._live = self._has_live_provider(router)
         self._provider_failed = False
@@ -396,6 +420,14 @@ class Council:
                     latency_ms=int(elapsed_map.get(m.id, 0.0) * 1000),
                     detail={"session": sid},
                 )
+        # Mirror the same judgement into genome_v2 (the Academy's store) so the
+        # flagship council's accuracy is visible there too.  Optional: no judge
+        # injected → behaviour is byte-identical to before.
+        if self.judge is not None and inf:
+            try:
+                self.judge(judgement_stances(inf))
+            except Exception:  # a broken sink must never break a debate
+                pass
         if self.store is not None and sid:
             self.store.update_council_session(
                 sid, status="done", verdict=verdict["text"],
