@@ -313,6 +313,24 @@ def test_extract_code_handles_empty_input() -> None:
     assert G.extract_code("") == ""
 
 
+def test_extract_code_tolerates_a_space_after_the_fence() -> None:
+    assert G.extract_code("``` python\nprint(1)\n```") == "print(1)"
+
+
+def test_extract_code_accepts_more_than_three_markers_and_tildes() -> None:
+    assert G.extract_code("````python\nprint(1)\n````") == "print(1)"
+    assert G.extract_code("~~~python\nprint(1)\n~~~") == "print(1)"
+
+
+def test_extract_code_uses_an_unterminated_fence_tail() -> None:
+    assert G.extract_code("```python\nprint(1)\nprint(2)") == "print(1)\nprint(2)"
+
+
+def test_extract_code_returns_nothing_for_an_empty_fence() -> None:
+    assert G.extract_code("```\n```") == ""
+    assert G.extract_code("```python") == ""
+
+
 def test_build_fix_prompt_includes_task_reason_and_error() -> None:
     res = E.VerificationResult(
         passed=False,
@@ -354,7 +372,137 @@ def test_llm_generate_unwraps_a_router_dict() -> None:
             return {"ok": True, "text": "```\nprint(1)\n```"}
 
     out = G.llm_generate("t", "x", _pass_result(), "SYS", router=FakeRouter())
-    assert G.extract_code(out) == "print(1)"
+    assert out == "print(1)"
+
+
+def test_llm_generate_extracts_code_from_a_fenced_reply() -> None:
+    """ريجريشن: ردّ النموذج مُسيَّج دائماً؛ تمريره خاماً = خطأ نحوي مؤكّد."""
+
+    class FencedRouter:
+        def generate(self, prompt: str, system: str = "", role: str = "fast") -> dict:
+            return {"ok": True, "text": "```python\ndef add(a, b):\n    return a + b\n```"}
+
+    out = G.llm_generate("t", "x", _pass_result(), router=FencedRouter())
+    assert out == "def add(a, b):\n    return a + b"
+    assert "```" not in out
+
+
+def test_the_repair_loop_runs_the_code_a_real_llm_reply_would_produce() -> None:
+    """السياج لا يصل إلى المُفسِّر: الردّ المُسيَّج يُصلح فعلاً (محاولة 2).
+
+    هذا هو الفشل الحيّ نفسه: أوّل تنفيذ يفشل، والمُصلِح يجيب كتلة مُسيَّجة —
+    قبل الإصلاح كانت الكتلة تُنفَّذ فتفشل بخطأ نحوي، الآن تنجح.
+    """
+
+    class FencedRouter:
+        def generate(self, prompt: str, system: str = "", role: str = "fast") -> dict:
+            return {"ok": True, "text": "```python\nFIXED\n```"}
+
+    seen: list[str] = []
+
+    def run(code: str, language: str, stdin: str, timeout: int) -> dict:
+        seen.append(code)
+        return dict(_PASS if "FIXED" in code else _FAIL)
+
+    res = E.fix_loop(
+        "t",
+        "broken",
+        max_attempts=3,
+        runner=run,
+        generate=lambda task, code, outcome, system: G.llm_generate(
+            task, code, outcome, router=FencedRouter()
+        ),
+    )
+    assert res.passed is True
+    assert res.attempts == 2
+    assert res.code == "FIXED"
+    assert seen[1] == "FIXED"
+
+
+def test_fix_loop_reports_the_real_reason_when_nothing_could_be_measured() -> None:
+    """صندوق غائب ⇒ السبب `runner-error` لا `not-fixed`، وبلا إصلاح مُهدر.
+
+    قبل الإصلاح كان فشل الصندوق يُقرأ كأنّ الكود لم يُصلَح (سبب مضلّل)،
+    وكان الـLLM يُنادى عبثاً على كود لا يمكن قياسه أصلاً.
+    """
+
+    def run(code: str, language: str, stdin: str, timeout: int) -> dict:
+        raise RuntimeError("No module named 'exec_sandbox'")
+
+    calls: list[str] = []
+
+    def generate(task: str, code: str, outcome: object, system: str) -> str:
+        calls.append("asked")
+        return "anything"
+
+    res = E.fix_loop("t", "broken", max_attempts=4, runner=run, generate=generate)
+    assert res.passed is False
+    assert res.reason.startswith("runner-error")
+    assert res.attempts == 1
+    assert calls == []  # لا نطلب إصلاحاً لشيء لم يُقس
+    assert res.code == "broken"
+
+
+def test_fix_loop_reports_invalid_tests_without_asking_the_llm() -> None:
+    """اختبارات على لغة غير مدعومة = خطأ في الاختبار نفسه، لا في الكود."""
+
+    def run(code: str, language: str, stdin: str, timeout: int) -> dict:  # pragma: no cover
+        raise AssertionError("لا يجب تنفيذ شيء")
+
+    calls: list[str] = []
+    res = E.fix_loop(
+        "t",
+        "console.log(1)",
+        language="javascript",
+        tests="assert true",
+        runner=run,
+        generate=lambda task, code, outcome, system: calls.append("asked") or "x",
+    )
+    assert res.passed is False
+    assert res.reason.startswith("invalid-tests")
+    assert res.attempts == 1
+    assert calls == []
+
+
+def test_sandbox_runner_finds_the_tools_directory_on_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`exec_sandbox` يُستورَد باسم مجرّد ⇒ علينا إضافة `tools/` بأنفسنا.
+
+    الريجريشن الحيّ: من مدخل لا يُعدّ مسار الاستيراد (نصّ/سكربت/اختبار) كان
+    الاستيراد يفشل ويظهر كأنّ الكود لا يُصلَح.
+    """
+
+    import sys as _sys
+
+    monkeypatch.setattr(_sys, "path", [p for p in _sys.path if "tools" not in p])
+    E._ensure_tools_path()
+    assert any(p.endswith("tools") for p in _sys.path)
+    assert E.sandbox_available() is True
+
+
+def test_ensure_tools_path_is_idempotent() -> None:
+    from pathlib import Path
+
+    tools = str(Path(E.__file__).resolve().parents[2] / "tools")
+    before = sys.path.count(tools)
+    E._ensure_tools_path()
+    E._ensure_tools_path()
+    assert sys.path.count(tools) == before + (0 if before else 1)
+
+
+def test_fix_loop_stops_when_the_repair_repeats_the_same_code() -> None:
+    """المُصلِح يعيد الكود نفسه ⇒ نفس النتيجة حتماً، فلا نحرق محاولة أخرى."""
+
+    def run(code: str, language: str, stdin: str, timeout: int) -> dict:
+        return dict(_FAIL)
+
+    res = E.fix_loop(
+        "t", "broken", max_attempts=4, runner=run, generate=lambda task, code, result, system: code
+    )
+    assert res.passed is False
+    assert res.attempts == 1  # التنفيذات = 1 (لم يُجرَّب كود جديد أصلاً)
+    assert len(res.detail) == 1
 
 
 def test_llm_generate_returns_empty_when_the_router_gives_no_text() -> None:
