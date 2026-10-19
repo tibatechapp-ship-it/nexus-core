@@ -700,3 +700,115 @@ def test_chat_without_a_rating_keeps_the_legacy_quality(env, monkeypatch):
 
     assert len(calls) == 1
     assert calls[0]["quality"] is None
+
+
+# ── المراقبة (src/nexus): الطبقة كانت غير موصولة، الآن صارت حيّة ──────────
+
+def test_the_gateway_arms_llm_monitoring(env):
+    """استيراد البوابة يُسلّح لفّ ``LLMRouter.generate`` (تتبّع تلقائي).
+
+    مهم: الصيغة القانونية هي ``novamind.core.llm_router`` (بلا ``src.``) —
+    هي التي تستخدمها كل مواضع الإنتاج؛ ``src.novamind...`` كائن وحدة آخر
+    (فخّ "ملف واحد باسمين") فاللفّ لا يصل إليه.
+    """
+    from novamind.core.llm_router import LLMRouter
+    from src.nexus import monitoring_patch
+
+    mod, _client, _store = env
+    assert mod.MONITORING_OK is True, mod.MONITORING_ERR
+    assert monitoring_patch._patched is True
+    # اللفّ فعّال: الأصل محفوظ تحت __wrapped__ (functools.wraps)
+    assert getattr(LLMRouter.generate, "__wrapped__", None) is not None
+
+
+def test_the_llm_wrapper_records_a_call_into_the_monitor(tmp_path, monkeypatch):
+    """اللفّ يسجّل استدعاءً حقيقياً: المزود، التوكن، الزمن، والتكلفة."""
+    from novamind.core.llm_router import LLMRouter
+    from src.nexus import monitoring as mon_mod
+    from src.nexus import monitoring_patch
+
+    monitor = mon_mod.Monitor(log_dir=str(tmp_path / "metrics"))
+    monkeypatch.setattr(mon_mod, "get_monitor", lambda: monitor)
+
+    def _fake_generate(self, prompt="", system="", provider=None, **kwargs):  # noqa: ANN001, ANN003
+        return {"ok": True, "provider": "groq_01", "model": "qwen",
+                "text": "ردّ" * 20}
+
+    monkeypatch.setattr(LLMRouter, "generate", _fake_generate)
+    monkeypatch.setattr(monitoring_patch, "_patched", False)
+    assert monitoring_patch.patch_llm_router() is True
+
+    assert LLMRouter.generate(object(), prompt="سؤال", system="sys")["ok"] is True
+
+    stats = monitor.get_session_stats()
+    assert stats["total_calls"] == 1
+    assert stats["successes"] == 1
+    assert stats["by_provider"]["groq_01"]["calls"] == 1
+    assert stats["total_tokens"] > 0
+    assert stats["total_cost_usd"] > 0.0
+
+
+def test_status_reports_the_monitoring_component(env):
+    _mod, client, _store = env
+    assert client.get("/api/status").json()["components"]["monitoring"] is True
+
+
+def test_metrics_routes_read_the_monitor(env, tmp_path, monkeypatch):
+    """``/api/monitoring/*`` تقرأ نفس الكائن الحيّ: اليومي، الجلسة، والمسح."""
+    from src.nexus.monitoring import Monitor
+
+    mod, client, _store = env
+    monitor = Monitor(log_dir=str(tmp_path / "metrics"))
+    monkeypatch.setattr(mod, "_nexus_get_monitor", lambda: monitor)
+    monitor.log_call(provider="groq", model="qwen", elapsed=1.0, ok=True,
+                     prompt="a" * 40, response="b" * 40)
+
+    today = client.get("/api/monitoring/today").json()
+    assert today["ok"] is True and today["scope"] == "today"
+    assert today["stats"]["total_calls"] == 1
+    assert today["stats"]["total_tokens"] > 0
+    assert today["stats"]["total_cost_usd"] > 0.0
+
+    session = client.get("/api/monitoring/session").json()
+    assert session["ok"] is True and session["scope"] == "session"
+    assert session["stats"]["total_calls"] == 1
+
+    assert client.post("/api/monitoring/clear").json() == {"ok": True, "cleared": 1}
+    assert client.get("/api/monitoring/today").json()["stats"]["total_calls"] == 0
+
+
+def test_metrics_degrade_when_monitoring_is_unavailable(env, monkeypatch):
+    """طبقة معطّلة ⇒ ``ok=false`` صريح، لا 500 ولا انهيار."""
+    mod, client, _store = env
+    monkeypatch.setattr(mod, "_nexus_get_monitor", None)
+
+    for path in ("/api/monitoring/today", "/api/monitoring/session"):
+        body = client.get(path).json()
+        assert body["ok"] is False and body["stats"] is None
+        assert body["error"]
+
+    cleared = client.post("/api/monitoring/clear").json()
+    assert cleared["ok"] is False and cleared["cleared"] == 0
+
+
+def test_metrics_survive_a_broken_monitor(env, monkeypatch):
+    """مراقب مهشّر لا يُسقط البوابة — كل مسار يُبلّغ بفشله بنفسه."""
+    mod, client, _store = env
+
+    class _Boom:
+        def get_today_stats(self):  # noqa: ANN201
+            raise RuntimeError("metrics gone")
+
+        def get_session_stats(self):  # noqa: ANN201
+            raise RuntimeError("metrics gone")
+
+        def clear_today(self):  # noqa: ANN201
+            raise RuntimeError("metrics gone")
+
+    monkeypatch.setattr(mod, "_nexus_get_monitor", lambda: _Boom())
+    for path in ("/api/monitoring/today", "/api/monitoring/session"):
+        body = client.get(path).json()
+        assert body["ok"] is False and "RuntimeError" in body["error"]
+    cleared = client.post("/api/monitoring/clear").json()
+    assert cleared["ok"] is False and cleared["cleared"] == 0
+
