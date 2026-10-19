@@ -5,7 +5,12 @@
 set -uo pipefail
 PROJECT="$HOME/nexus-core"
 LOG_DIR="$PROJECT/logs"
-PORT="${NOVAMIND_PORT:-8080}"
+# المنفذ الافتراضي = منفذ الخدمة الفعلي (runit: NEXUS_PORT=8000).
+# NOVAMIND_PORT (القديم، 8080) لا يُستخدم لتحديد البوابة — يُمرَّر فقط
+# لعملية unified_agent اليدوية في مسار الرجوع.
+PORT="${NEXUS_PORT:-8000}"
+RUNIT_SVC="nexus-core"
+RUNIT_LOG="$PREFIX/var/log/nexus-core/current"
 
 G='\033[0;32m'; R='\033[0;31m'; Y='\033[1;33m'; C='\033[0;36m'; B='\033[1m'; N='\033[0m'
 log() { echo -e "${G}[$(date +%H:%M:%S)]${N} $*"; }
@@ -20,12 +25,22 @@ check_project() { [ -d "$PROJECT" ] || { err "المشروع غير موجود";
 cmd_start() {
     line; title "  🚀 بدء Nexus-Core"; line
     check_project
-    if pgrep -f "nexus_agent.py" >/dev/null; then
-        log "البوابة الموحّدة تعمل بالفعل"
+    local svline; svline=$(sv status "$RUNIT_SVC" 2>/dev/null || true)
+    if echo "$svline" | grep -q '^run:'; then
+        log "✅ البوابة الموحّدة تعمل بالفعل (runit: $RUNIT_SVC) — $svline"
+    elif pgrep -f "nexus_agent.py" >/dev/null; then
+        log "البوابة الموحّدة تعمل بالفعل (nexus status للتفاصيل)"
     elif pgrep -f "unified_agent.py" >/dev/null; then
         log "NovaMind يعمل بالفعل"
+    elif echo "$svline" | grep -q '^down:'; then
+        log "🚀 تشغيل عبر runit ($RUNIT_SVC) — الخدمة موجودة ومتوقفة..."
+        sv up "$RUNIT_SVC"
+        sleep 5
+        sv status "$RUNIT_SVC" 2>/dev/null | grep -q '^run:' \
+            && log "✅ البوابة الموحّدة تعمل (runit، المنفذ :$PORT)" \
+            || { err "❌ فشل تشغيل الخدمة"; tail -10 "$RUNIT_LOG" 2>/dev/null; return 1; }
     else
-        log "🚀 تشغيل البوابة الموحّدة (Workbench + NovaMind)..."
+        log "🚀 تشغيل البوابة الموحّدة يدوياً (لا خدمة runit)..."
         NOVAMIND_PORT="$PORT" NEXUS_PORT="$PORT" PYTHONPATH=src/novamind:src:. nohup python3 nexus_agent.py > "$LOG_DIR/nexus.log" 2>&1 &
         sleep 5
         if pgrep -f "nexus_agent.py" >/dev/null; then
@@ -43,8 +58,14 @@ cmd_start() {
 
 cmd_stop() {
     line; title "  🛑 إيقاف"; line
+    # أولاً: أوقف الخدمة المراقَبة — pkill وحده سيُعاد إصلاحها من runsv
+    if sv status "$RUNIT_SVC" 2>/dev/null | grep -q '^run:'; then
+        log "إيقاف الخدمة (runit: $RUNIT_SVC)"
+        sv stop "$RUNIT_SVC"
+    fi
+    # ثمّ: أي نسخة متبقّية (nohup / يتيمة)
     for proc in "nexus_agent.py" "unified_agent.py"; do
-        pgrep -f "$proc" >/dev/null && { log "إيقاف $proc"; pkill -f "$proc" 2>/dev/null; }
+        pgrep -f "$proc" >/dev/null && { log "إيقاف نسخة متبقّية: $proc"; pkill -f "$proc" 2>/dev/null; }
     done
     sleep 2
     command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock 2>/dev/null
@@ -56,6 +77,8 @@ cmd_restart() { cmd_stop; sleep 2; cmd_start; }
 cmd_status() {
     line; title "  📊 حالة Nexus-Core"; line;     echo ""
     echo -e "${C}═══ العمليات ═══${N}"
+    local svline; svline=$(sv status "$RUNIT_SVC" 2>/dev/null || true)
+    [ -n "$svline" ] && echo -e "  ${C}runit:${N} $svline"
     if pgrep -f "nexus_agent.py" >/dev/null; then
         PID=$(pgrep -f "nexus_agent.py" | head -1)
         MEM=$(ps -o rss= -p "$PID" 2>/dev/null | awk '{print int($1/1024)" MB"}')
@@ -104,7 +127,9 @@ except: pass
 
 cmd_logs() {
     line; title "  📄 سجلات Nexus-Core"; line
-    if [ -f "$LOG_DIR/nexus.log" ]; then tail -20 "$LOG_DIR/nexus.log"
+    # runit يكتب عبر svlogd ($PREFIX/var/log/nexus-core) — هو الأحدث دائماً
+    if [ -f "$RUNIT_LOG" ]; then tail -20 "$RUNIT_LOG"
+    elif [ -f "$LOG_DIR/nexus.log" ]; then tail -20 "$LOG_DIR/nexus.log"
     elif [ -f "$LOG_DIR/novamind.log" ]; then tail -20 "$LOG_DIR/novamind.log"
     else echo "لا يوجد سجل"; fi
 }

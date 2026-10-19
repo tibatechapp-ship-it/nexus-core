@@ -7,8 +7,23 @@ retention pruning and fail-safe recording against the canonical
 :data:`KNOWN_AGENT_ROLES` / :data:`KNOWN_ACTION_TYPES`.
 
 Phase 2 — :class:`LessonExtractor`: distils those experiences into reusable
-:class:`Lesson` principles (via an :class:`~src.core.backend.LLMBackend`),
+:class:`Lesson` principles (via a :class:`~src.core.backend.LLMBackend`),
 merging similar ones and scoring confidence.
+
+Phase 2 (Tool Use) — the tool library in :mod:`src.learning.tools`:
+``search_web`` / ``read_file`` / ``get_current_time`` / ``query_memory`` /
+``execute_code`` / ``consensus`` behind a config-gated
+:func:`~src.learning.tools.safe_execute`
+that never raises and always returns a :class:`~src.learning.tools.ToolResult`
+carrying an ``explain`` line.  Day 2 adds :class:`~src.learning.react_agent.
+ReActAgent`, a Thought→Action→Observation→Answer loop driven by an injectable
+think callable.
+
+Day 3 (Multi-Agent Orchestration) — :mod:`src.learning.collab`:
+``classify_question`` (five-family bucketing with an injectable classifier
+and a pure keyword fallback) · ``consult`` (answer → critique → bounded
+revision) · ``multi_agent_consensus`` (parallel answers → synthesized
+consensus, a failing agent is skipped).
 
 Phase 3 — :class:`LessonStore` + :class:`LessonInjector`: rank the stored
 lessons against a task and fold the relevant ones into an agent's prompt
@@ -32,6 +47,12 @@ from src.learning.anti_forgetting import (
     ConsolidationResult,
     polarity,
 )
+from src.learning.collab import (
+    CATEGORIES,
+    classify_question,
+    consult,
+    multi_agent_consensus,
+)
 from src.learning.experience_collector import (
     DAY,
     KNOWN_ACTION_TYPES,
@@ -40,7 +61,23 @@ from src.learning.experience_collector import (
     ExperienceCollector,
     Outcome,
 )
+from src.learning.interactions import (
+    InteractionStore,
+    default_interaction_db_path,
+    get_interaction_store,
+    reset_interaction_store,
+)
 from src.learning.lesson import Lesson, LessonExtractor
+from src.learning.reflection import (
+    RATINGS,
+    awareness_gap,
+    build_reflection_prompt,
+    build_retry_system,
+    memory_block,
+    parse_reflection,
+    rating_score,
+    should_retry,
+)
 from src.learning.lesson_store import (
     LessonDatabase,
     LessonInjector,
@@ -59,8 +96,31 @@ from src.learning.orchestrator import (
     ExtractionReport,
     LearningOrchestrator,
 )
+from src.learning.react_agent import (
+    MAX_STEPS_DEFAULT,
+    ReActAgent,
+    ReActResult,
+    parse_action,
+)
+from src.learning.tools import (
+    ToolResult,
+    ToolsConfigError,
+    consensus,
+    default_config,
+    get_current_time,
+    is_safe_path,
+    list_tools,
+    load_tools_config,
+    query_memory,
+    read_file,
+    safe_execute,
+    save_tools_config,
+    search_web,
+    tool_explain,
+)
 
 __all__ = [
+    "CATEGORIES",
     "DAY",
     "DEFAULT_MIN_CONFIDENCE",
     "KNOWN_ACTION_TYPES",
@@ -80,9 +140,42 @@ __all__ = [
     "LessonValidator",
     "LearningCycle",
     "LearningOrchestrator",
+    "MAX_STEPS_DEFAULT",
     "Outcome",
+    "RATINGS",
+    "ReActAgent",
+    "ReActResult",
     "SchedulePolicy",
+    "InteractionStore",
+    "ToolResult",
+    "ToolsConfigError",
+    "awareness_gap",
+    "build_reflection_prompt",
+    "build_retry_system",
+    "classify_question",
+    "consult",
+    "default_config",
+    "default_interaction_db_path",
     "default_lesson_db_path",
+    "get_current_time",
+    "get_interaction_store",
+    "is_safe_path",
+    "list_tools",
+    "load_tools_config",
+    "memory_block",
+    "multi_agent_consensus",
+    "parse_action",
+    "parse_reflection",
     "polarity",
+    "query_memory",
+    "rating_score",
+    "read_file",
     "render_lessons",
+    "reset_interaction_store",
+    "safe_execute",
+    "save_tools_config",
+    "search_web",
+    "should_retry",
+    "tool_explain",
+    "consensus",
 ]

@@ -32,7 +32,10 @@ src/            framework (stdlib-only, phone-safe, fully tested)
   mcp/          Model Context Protocol server/client + agent bridge (30 tools)
   council/      Council workbench engine (3 members) + Craft code generation
   novamind/     former novamind package (opt-in `novamind` extras)
-tests/          framework suite (1848 tests @ 98.9%) + tests/novamind/ (opt-in)
+hyper_agent.py  Hyper-Agent 2.0 — autonomous coding agent (BUG-1..9, JSONL logs)
+connectors/     BYOK LLM adapters (openai/anthropic/groq/ollama/deepseek/gemini)
+hyper_app/      Hyper-Agent API surface (POST /api/agent/start)
+tests/          framework suite (3105 tests @ 99%) + tests/novamind/ (opt-in)
 main.py         Council workbench server (FastAPI) + index.html console
 zyvo-*.py       standalone Telegram + voice assistants
 docs/           framework + novamind documentation
@@ -48,7 +51,7 @@ consistently in `pyproject.toml`, `scripts/check_annotations.py` and the
 coverage config.
 
 ```bash
-make check     # ruff check .  +  mypy (103 files)  +  annotations  +  1848 tests @ 98.9%
+make check     # ruff check .  +  mypy (167 files)  +  annotations  +  3105 tests @ 99%
 ```
 
 An adversarial red-team suite (`tests/adversarial`, 92 vectors / 8 categories)
@@ -178,7 +181,47 @@ working when the network drops.
   for navigations.
 - **Offline queue** — when you send a message while offline it is queued in
   IndexedDB (badge `⏳ n` in the composer), and replayed automatically the
-  moment the connection returns.
+   moment the connection returns.
+
+## Hyper-Agent 2.0 — autonomous coding agent (BYOK)
+
+A self-driving coding loop: the LLM proposes one JSON action per turn
+(`CODE` / `TEST` / `DONE` / `ERROR`), the harness executes it in a subprocess
+sandbox (CPU / FSIZE / NPROC rlimits — no `RLIMIT_AS`, so it also runs on
+Android), and `verify_goal` gates the exit. Every iteration is appended to a
+JSONL log (`NEXUS_HYPER_LOG`, else `LOG_PATH`) so a whole cycle can be
+replayed line by line.
+
+- **`hyper_agent.py`** — the loop itself. The nine known failure modes
+  (BUG-1..9) are designed out from birth: history is *replaced*, not
+  appended (BUG-1); Ollama is capped with `num_predict: 4000` (BUG-2);
+  a stall detector ends a frozen run (BUG-3); results never leak
+  `raw_result` (BUG-4); `last_parse_error` is fed back to the model so it
+  can correct its JSON (BUG-5); children run under `sys.executable`
+  (BUG-7); `verify_goal` must pass before `DONE` is accepted (BUG-8).
+- **`connectors/`** — bring-your-own-key LLM adapters behind one contract
+  (`{"ok": bool, "reply"|"error": str}`): `openai`, `anthropic`, `groq`,
+  `ollama`, `deepseek`, `gemini`. `connectors.registry.create_connector`
+  resolves by name; an unknown provider raises `ValueError`. Keys come from
+  the usual env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+  `GROQ_API_KEY_1`, `OLLAMA_API_KEY`, …).
+- **`hyper_app/`** — the API surface: `POST /api/agent/start`
+  (`goal`, `max_iterations` clamped 1–20, `user_config` defaulting to
+  `{"provider": "ollama"}`) plus `hyper_app/services/llm_factory.py`, the
+  BYOK factory over the connector registry.
+- **Tests** — `tests/test_hyper_agent.py` + `tests/test_byok_integration.py`
+  (41 hermetic tests, stub LLM, no network). Coverage: `hyper_agent.py`
+  99%, `src/learning` 100%.
+
+```bash
+# run the loop's own tests
+PYTHONPATH=.:src python3 -m pytest tests/test_hyper_agent.py tests/test_byok_integration.py -q
+
+# drive one goal through the API (needs a configured provider key)
+curl -X POST http://127.0.0.1:8000/api/agent/start \
+  -H 'Content-Type: application/json' \
+  -d '{"goal": "write a fibonacci function with tests", "max_iterations": 5}'
+```
 
 ## Verify before shipping (must all pass)
 

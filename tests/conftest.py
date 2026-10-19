@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import tempfile
 import types
 from collections.abc import Generator
 from pathlib import Path
@@ -31,6 +32,14 @@ for _entry in (str(_ADVERSARIAL_DIR), str(_TESTS_DIR)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
+# The ``tools/`` package dir holds the exec sandbox (``exec_sandbox.py``), which
+# is imported by its top-level name (``exec_sandbox``).  Put ``tools/`` on
+# sys.path up-front so those imports resolve regardless of collection order and
+# regardless of how the process was bootstrapped.
+_TOOLS_DIR: Path = ROOT / "tools"
+if _TOOLS_DIR.is_dir() and str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
 # The access guard (src/security/access.py) auto-enables itself when
 # NEXUS_AUTH_TOKEN is present in the environment. The suite assumes it is OFF,
 # so a developer's local guard config (an exported shell var, or a `.env` the
@@ -43,6 +52,15 @@ for _guard_var in (
     "NEXUS_AUDIT_LOG",
 ):
     os.environ.pop(_guard_var, None)
+
+# Phase-1 interaction memory (src/learning/interactions.py) resolves its DB
+# from $NEXUS_INTERACTIONS_DB → $NEXUS_DB sibling → <repo>/data. Without this
+# the suite would write into the repo's real data/interactions.db; give every
+# run a private temp database instead (a deliberate per-test path still wins).
+os.environ.setdefault(
+    "NEXUS_INTERACTIONS_DB",
+    str(Path(tempfile.gettempdir()) / f"nexus-test-interactions-{os.getpid()}.db"),
+)
 
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
@@ -76,6 +94,26 @@ def vec_extension_available() -> bool:
 requires_vec = pytest.mark.skipif(
     not vec_extension_available(),
     reason="sqlite-vec extension (vec0) not installed",
+)
+
+
+def sandbox_available() -> bool:
+    """True when the top-level ``exec_sandbox`` module can be located.
+
+    ``tools/exec_sandbox.py`` is a local-only helper (gitignored) so it is
+    absent from clean checkouts / CI.  Tests that actually run code through the
+    real sandbox must be skipped there rather than fail.
+    """
+    try:
+        return importlib.util.find_spec("exec_sandbox") is not None
+    except Exception:
+        return False
+
+
+#: Skip marker for any test that needs the real ``exec_sandbox`` runner.
+requires_sandbox = pytest.mark.skipif(
+    not sandbox_available(),
+    reason="exec_sandbox module (tools/exec_sandbox.py) not present",
 )
 
 

@@ -1743,5 +1743,239 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   checks → `gh pr merge --merge` → `git fetch origin main:main` (ff, no checkout ⇒
   no WIP abort) → tag the RELEASE commit → push tag to both + `git push gitlab
   main` → Release notes = `sed -n '/^## vX/,/^## vY/p' CHANGELOG.md | sed '$d'`.
-- NEXT (v1.17.0): surface `task_observations` in the Academy fitness tab + feed
+- ✅ **مُصدَّر v1.17.0 (2026-10-18):** `FieldLoop.fitness()` تُرجع الآن قناة
+  المهام (`task_observations/successes/rate/ewma/duration_avg/last_ok/…` +
+  `evidence = أحكام + مهام`)؛ الوكلاء بلا مهام يُرجعون `null` (لا 0.5 مصطنع)؛
+  `acaJudgeLine`/`acaTaskLine` في لوحة Academy (سطران لكل صف، AR+EN).
+  البوابة: 2920 passed @ **100.00%**. Commits `f8fda82..de12ae9` على
+  `feature/novamind-factory` → **PR #21 مدموج** → `main` = **`075120a`**
+  (local+origin+gitlab)؛ الوسم **`v1.17.0`** عند `de12ae9` على المرجعين؛
+  **GitHub Release v1.17.0 (Latest)**. الخدمة بعد `sv restart`: `/api/health`
+  = **1.17.0**. ⚠ جلسة سابقة زعمت الإصدار قبل أن يحدث — تحقّق دائماً بـ
+  `git log origin/main..HEAD` + `git tag -l v1.17.0` + `gh release view` قبل
+  أن تصدق أن نسخة صدرت.
   the task channel from the 20 real framework agents' runs.
+
+## Single-instance gateway lock (2026-10-18) — feature/novamind-factory
+- PROBLEM: `sv restart nexus-core` used to leave duplicate `nexus_agent.py`
+  (stale orphan holding the port; recurring pkill/orphan traps all season).
+  ROOT CAUSE: `uvicorn.run` had no duplicate-start guard and two launch paths
+  (runit + nohup) could race.
+- FIX in `nexus_agent.py`: `acquire_instance_lock(port)` — `fcntl.flock(fd,
+  LOCK_EX|LOCK_NB)` on `logs/nexus-agent-{port}.lock` (dir override
+  `NEXUS_LOCK_DIR`), writes pid on success; conflict → `None`; open failure →
+  fail-open handle on `/dev/null` (service availability never depends on the
+  lock file). `main()`: port → `_lock = acquire_instance_lock(port)  # noqa:
+  F841` (dummy name keeps the fd alive for pyflakes) → `None` ⇒ print ⛔ +
+  hint (`sv stop nexus-core` / `nexus stop`) + `SystemExit(1)` → THEN
+  `import uvicorn` (a refused instance never imports it).
+- Tests `tests/test_nexus_agent.py` +3 (8123/8124 exclusivity + release,
+  8131 refusal code 1, 8132 free-start with a fake `sys.modules["uvicorn"]`)
+  → file now **27 passed**.
+- `scripts/bin/nexus` (repo copy) made service-aware: `PORT="${NEXUS_PORT:
+  -8000}"`, `RUNIT_SVC=nexus-core`, `RUNIT_LOG=$PREFIX/var/log/nexus-core/
+  current` (svlogd); start = runit-first (`sv status` grep `^run:`/`^down:`
+  — rc: running→0, missing→1 with `fail:` text) else pgrep gateway/unified
+  else `sv up` else nohup; stop = **`sv stop` BEFORE pkill** (runsv respawns
+  a pkill'd service); status gained a `runit:` line; logs prefer `$RUNIT_LOG`.
+  `sv status` line format: `run: nexus-core: (pid N) TTTs; run: log: (pid M)`.
+- ❗ GOTCHA (this session): the shell env carries stale **`NOVAMIND_PORT=8080`
+ ** (no rc file sets it — comes from the zyvo session env). The launcher's
+  old `NEXUS_PORT:-NOVAMIND_PORT:-8000` chain honored it → hit the legacy
+  server on :8080 whose `/api/status` = `{"detail":"Not Found"}` → stats all
+  `?`. FIX: `PORT="${NEXUS_PORT:-8000}"` only; `NOVAMIND_PORT` is passed
+  solely to the manual `unified_agent.py` fallback.
+- ❗ `~/bin/nexus` = a SEPARATE older copy (9382B, Oct 16, no gateway
+  awareness) — `command -v nexus` resolves THERE → must `cp` the repo copy
+  after edits (same lesson as zyvo-telegram: ~/bin copies are not symlinks).
+- Foreign WIP (other session, NEVER committed by me): `M web/unified_ui.html`
+  breaks `test_academy_js_parses_as_javascript` (its extraction gets a stray
+  `</script>` → node SyntaxError). PROVEN theirs: stash `web/unified_ui.html`
+  → suite 10/10 green → popped back. Theirs also: `M unified_agent.py`
+  (+8 web_page_router), `M web/sw.js`, untracked `exec_sandbox.py`
+  (ruff E401/E701), `web/{simple.html,ui_exec.js}`, `web_page.py` — and an
+  orphan legacy `unified_agent.py` pid on **:8080** (ppid=1, v10, 79 agents)
+  that I deliberately did NOT kill (may be their dev server).
+- GATES (before commit): ruff (excluding their `exec_sandbox.py`/
+  `web_page.py`) clean · annotations 162 · mypy 162 · full
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **2922 passed,
+  1 skipped + the 1 proven foreign-WIP failure above**.
+- `nexus_agent.py` WIP isolation: their exec-sandbox mount was stashed as
+  `stash@{0} "wip: exec_sandbox v3.2.0 mount"` + patch backup
+  `$TMPDIR/wip-nexus-lock.patch` → popped AFTER the lock commits (see below).
+
+## Ollama Cloud wiring (2026-10-18) — feature/novamind-factory — SHIPPED
+- tyba wrote `ollama_client.py` (`call_ollama` → POST https://ollama.com/api/chat,
+  Bearer `OLLAMA_API_KEY` from env, default model `gemma4:31b`, timeout 30,
+  errors returned as `"Error: …"` strings not exceptions) + `ollama_router.py`
+  (`POST /api/ollama/chat` → `{reply, provider:"ollama"}`) +
+  `provider_settings.py` (`POST /api/settings/provider` → writes `{PROVIDER}_API_KEY=`
+  into `.env`, min length 10). `.env` carries a working `OLLAMA_API_KEY`.
+- His own uncommitted tail blocks in `unified_agent.py` used
+  `app.include_router(...)` — the deferred-router trap (fastapi 0.143.0) →
+  these would 404 through the gateway mount. FIXED: both blocks now do
+  `app.router.routes.extend(<router>.routes)` + `PROVIDER_SETTINGS_OK` /
+  `OLLAMA_ROUTES_OK` flags (same pattern as training/knowledge/skills).
+- LIVE on :8000 (sv restart, single process): `POST /api/ollama/chat` no token
+  → 401 (guard), with token → **200 `{"reply":"مرحبا","provider":"ollama"}`**
+  (real cloud reply); `POST /api/settings/provider` → 200 + `.env` intact
+  (idempotent rewrite with the same key). GET → 405 (path present, method-gated).
+- ⚠ `.env` is loaded by BOTH `main.py:28` and `unified_agent.py:32` (dotenv);
+  `provider_settings` writes the RELATIVE `.env` (CWD-dependent — service runs
+  with cwd=repo root, fine). Not committed (tyba reviews first).
+- `git status` was `UU nexus_agent.py` (stale index from the earlier stash-pop
+  conflict) → cleared with `git reset -- nexus_agent.py` (nothing staged).
+- **SHIPPED** as `1240e07` "feat(ollama): wire Ollama chat + provider settings
+  into the engine" (5 files, +153: the 3 Ollama files + AGENTS.md + the two
+  extend blocks in `unified_agent.py`), pushed to origin + gitlab
+  (`3917306..1240e07`). The foreign `web_page_router` `include_router` block in
+  `unified_agent.py` was SPLIT OUT of the commit: filter lines 1072-1079 out →
+  `git add unified_agent.py` → restore the full file (the working tree keeps
+  the foreign WIP unstaged).
+- ❗ **`/sw.js` on :8000 is NOT `web/sw.js`** — the parent `main.py` embeds the
+  whole worker (`_SW_JS`, v1.11, network-first, API passthrough, 1047B) and its
+  route WINS over the engine mount (parent-routes-win contract). The foreign
+  cache-first rewrite in `web/sw.js` (v3.2.0) is therefore **never served by
+  the service** — editing/bumping it would be a no-op on :8000.
+  Browser-verified (headless CDP, fresh profile, `/ui`): SW registered,
+  `activated`, `controller: true`, shell assets `/` `/icon.svg` `/manifest.json`
+  all 200, zero JS errors, no "Connection error" bubble → no SW fix needed.
+  `main.py:459` serves the embedded worker without `Cache-Control`, but SW
+  update checks bypass the HTTP cache by spec.
+
+## Phase 1 — long-term memory + self-evaluation (2026-10-18) — SHIPPED
+- Branch `feature/novamind-factory`, 4 concern-split commits `c4fd2bb..cdf3ee2`,
+  pushed origin+gitlab. **NOT merged, no version bump** (CHANGELOG `## Unreleased`).
+- NEW `src/learning/interactions.py`: SQLite WAL store of every ok chat run
+  (question+answer+signal_ok+self_rating+reason/lesson+retry_used/retried_rating
+  +awareness_gap). `similar()` = Arabic-aware weighted token-overlap (empty
+  answers excluded, recency tie-break, k clamped 1..10). Singleton +
+  `NEXUS_INTERACTIONS_DB`.
+- NEW `src/learning/reflection.py` (pure, never raises): JSON-contract-first
+  rating parser with keyword fallback (excellent>good>poor); `rating_score`
+  (1.0/0.75/0.4) → `genome_v2.observe_outcome(quality=)`; `should_retry`
+  (ONE retry); `awareness_gap` (1=confident-claim-on-failure, 0=recovered-or-
+  honest-poor, else None); `memory_block` → prompt.
+- GATEWAY (`nexus_agent.py`, failure-isolated at all 3 layers): ok answer →
+  reflect → poor ⇒ one re-generation (retried text is what streams, SSE
+  backward-compatible) → save + genome(quality from FIRST rating). Broken/
+  disabled store ⇒ plain prompt, never breaks stream.
+- GATES: ruff (my files) · mypy 164 · annotations 164 · full gate **2975 passed**
+  (1 pre-existing foreign-WIP failure `test_academy_js_parses_as_javascript`
+  from the other session's `web/unified_ui.html` — proven foreign by stashing it).
+- Coverage: interactions 100% (84 stmts/16 br) · reflection 100% (73/28).
+- LIVE verified (:8000 after `sv restart`): coder chat → poor + retry +
+  full row in `data/interactions.db` (self_rating=poor, retry_used=1,
+  lesson, signal_ok=1, retried_rating). Test-authoring lessons: (1) default-
+  bound clock args need explicit injection; (2) a "broken JSON" test must
+  still match the regex (include braces); (3) a JSON with an empty rating
+  reaches `_find_rating("")` → keyword scan of the raw text.
+
+## Phase 2 — tool use (المحور 3) — Day 1 (2026-10-18)
+- Branch `feature/novamind-factory` (HEAD was `cdf3ee2` = origin = gitlab = full
+  Phase 1). tyba's plan: 5 days — D1 tools.py + config (3 tools) · D2
+  query_memory/execute_code + react_agent · D3 orchestrator (CLASSIFY decides
+  agents; label rules %; ±5°) · D4 multi_agent_consensus (≥2 agents, ≥3 votes,
+  agree ≥66% = توصية قوية) + tools SSE wiring + Explain · D5 tests/docs/KPIs
+  (quality ≥9.0/10, tool-use ≥30%, response ≤20s).
+- ❗ NAME COLLISION: `src/learning/orchestrator.py` ALREADY EXISTS (old
+  `LearningOrchestrator` Phase 4, exported from `__init__`) ⇒ Phase-2's
+  multi-agent file needs a DIFFERENT name (e.g. `collab.py`) — unres 3.
+- D1 SHIPPED (files, this session): `src/learning/tools.py` (search_web,
+  read_file, get_current_time + Day-2 stubs query_memory/execute_code),
+  `tools_config.json` (root, 5 tools; only the 3 Day-1 tools enabled),
+  `src/learning/__init__.py` (+14 tool exports), `tests/test_learning_tools.py`
+  (32). Safety: `safe_execute(name, …) -> ToolResult` NEVER raises — unknown /
+  disabled / crashing tool ⇒ ok=False + Arabic error; config-gated caps injected
+  (search max_results, read allowed_roots); `is_safe_path` = resolve(strict)
+  + is_file + is_relative_to + size ≤256KB (traversal + symlink-escape + oversize
+  all refused); Explain line built in `safe_execute`
+  (`[استخدمت {name} للبحث عن "{detail}"]`).
+- Design: `_ddg_fetch` split into network wrapper + pure `_parse_ddg(html)` so
+  the parser is testable without network; fetcher/clock/store/runner all
+  injectable ⇒ 100% coverage offline. `execute_code` = honest
+  NotImplementedError stub (Day 2 flips the config flag + wires exec_sandbox).
+- GATES: ruff (my files) clean · mypy 165 · annotations 165 · full gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **3007 passed,
+  100.00%** (9570 stmts) + 1 skipped (ed25519) + 1 KNOWN FOREIGN failure
+  `test_academy_js_parses_as_javascript` (dirty `web/unified_ui.html` WIP).
+  `tools.py` itself = 100% (150 stmts / 44 branches).
+- NOT done D1: SSE Explain wiring (D4), react_agent (D2), KPI measurement (D5).
+- Bottom-block items tyba pasted (Ollama/provider_settings commit+push, sw.js
+  check) = ALREADY DONE in `1240e07` + earlier sw verification — verify-only.
+
+## Phase 2 — Day 3 collab + exec-sandbox import isolation (2026-10-18)
+- Day-3 FEATURE committed earlier as **`6a455b8`** "feat(learning): complete
+  Day 3 - collab + tools relocation" (6 files): NEW `src/learning/collab.py`
+  (`classify_question` label-rules %, `consult` ±5°, `multi_agent_consensus`
+  ≥2 agents/≥3 votes/agree ≥66% = توصية قوية; lazy `novamind.core.llm_router`
+  import) + `tests/test_learning_collab.py` (15) + tools relocation.
+- ❗ **THE GATE WAS RED AFTER D3: 8 failed** = adversarial
+  `test_supply_chain_imports_are_stdlib_only` (`undeclared dependency:
+  ['tools']`) + 7 Day-2 tests (`test_nexus_agent` loaded first →
+  `ModuleNotFoundError: No module named 'tools.exec_sandbox'`).
+- **ROOT CAUSE (proven empirically this session, both directions)**: the repo
+  has TWO `tools` packages — root `tools/` (exec_sandbox, NO `__init__.py` =
+  namespace portion) and `src/tools/` (framework, HAS `__init__.py` = regular
+  package). Python's finder: a regular package found on ANY later sys.path
+  entry **beats** a namespace portion earlier → `import tools` resolves to
+  `src/tools/` ⇒ `from tools.exec_sandbox import` ALWAYS fails under pytest
+  (`pythonpath = [".", "src"]`) and under the gateway (src inserted at 0) —
+  EXCEPT when `sys.modules["tools.exec_sandbox"]` is pre-seeded (which is
+  exactly why only the monkeypatched non-dict test passed on D3). And the
+  supply-chain gate statically sees top-level `tools` = undeclared.
+- **FIX (5 files, UNCOMMITTED — tyba reviews)**: `src/learning/tools.py`
+  back to top-level `from exec_sandbox import` (+ rationale comment) ·
+  `tests/conftest.py` puts `<repo>/tools/` dir on `sys.path` up-front
+  (order-independent) · `tests/test_learning_tools.py:444` monkeypatch key
+  → `sys.modules["exec_sandbox"]` · `tests/adversarial/test_security.py`
+  `IN_TREE_PACKAGES += {"exec_sandbox"}` (author-owned repo-root module; that
+  edit pre-existed in the tree) · `CHANGELOG.md` Unreleased += Day-3 section.
+- GATES after fix: targeted 95/95 · full `pytest --cov --cov-fail-under=99
+  --ignore=tests/novamind` = **3048 passed, 1 skipped, 100.00%** (floor 99
+  PASS; 1 skip = ed25519 on device) · `ruff check` (3 files) clean · `mypy
+  src/learning/tools.py` clean · annotations **167 files** OK ·
+  `test_version_sync + test_openapi` 14 passed (CHANGELOG edit safe).
+- OPEN (honest): the RUNNING gateway imports the sandbox via its own
+  `from exec_sandbox import router` (`nexus_agent.py:807`) — needs
+  `<repo>/tools/` on sys.path at runtime (the foreign exec-sandbox WIP mount
+  may add it); without it execute_code degrades to `ok=False` by design
+  (never raises). Skill: `python-package-shadow-diagnosis`.
+- Plan status: D1 ✅ · D2 ✅ · **D3 committed (collab) + gate now green
+  (isolation fix)** · D4 next (consensus SSE wiring + Explain) · D5 last.
+  NO commit made this session (per plan: report → Direct Stop).
+
+## 2026-10-19 — CI fully green: skipif guard + TZ-independent time test
+- **Result**: PR #22 Tests job went from **8 failed / 3006 passed** →
+  **0 failed / 3007 passed, 35 skipped**; CI (lint/mypy/annotations) = success.
+  Local full gate: `pytest --cov --cov-fail-under=95 --ignore=tests/novamind`
+  = **3105 passed, 1 skipped @ 99.94%**.
+- **4 concern-split commits** (tip `ff9d222`):
+  `0685d88` fix(ci) E402 · `49f6b11` test(conftest) requires_sandbox ·
+  `35cef49` test(learning) skipif + TZ · `ff9d222` ci TZ=UTC.
+- **Fix 1 — E402 (`nexus_agent.py`)**: the late
+  `from fastapi.responses import FileResponse` (in the foreign `/simple.html`
+  WIP block) was merged into the top-level `fastapi.responses` import and the
+  late line deleted. Only the IMPORT moved; the endpoint code is untouched.
+  `ruff check nexus_agent.py` → clean.
+- **Fix 2 — `requires_sandbox` (tests/conftest.py)**: `tools/exec_sandbox.py`
+  is gitignored → absent on CI → 7 tests failed with
+  `No module named 'exec_sandbox'`. Added a MODULE-LEVEL skipif marker
+  (`importlib.util.find_spec("exec_sandbox") is not None`) right after
+  `requires_vec`, and decorated only the tests that hit the REAL sandbox
+  (6 `test_execute_code_*` + `test_react_fallback_uses_successful_observations`).
+  Tests that inject a fake/runner are NOT decorated (they already passed).
+  ⚠ The probe MUST be computed at conftest IMPORT time (module level), not in a
+  fixture or `pytest_configure` — same lesson as `requires_vec`.
+- **Fix 3 — TZ-dependent time test**: `test_get_current_time_uses_the_injected_clock`
+  hardcoded `"1970-01-12T16:46:40"` = UTC+3 only, so it failed on CI's UTC.
+  `get_current_time()` renders **local** time (`datetime.fromtimestamp`), so the
+  expected value is now derived the same way (`datetime.fromtimestamp(1e6).isoformat(...)`)
+  → passes in UTC and +3 alike. TZ-INDEPENDENT beats rewriting the literal.
+- **Fix 4 — `TZ: UTC` pin (hygiene)**: top-level `env: TZ: UTC` in
+  `.github/workflows/ci.yml` (new block) + both job-level `env:` blocks in
+  `test.yml`, so any FUTURE time assertion is deterministic.
+- Lesson: when a CI "failure" is env-only (missing gitignored helper, host TZ),
+  fix it with a GUARD or an ENV-INDEPENDENT assertion — never by deleting the
+  test and never by pinning a single timezone into the expected literal.
+  Skill: `ci-skipif-and-tz-independent-tests`.

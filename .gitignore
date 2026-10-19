@@ -66,3 +66,27 @@ ollama_keys.txt
 
 # Benchmark run logs (generated; keep the JSON/Markdown reports)
 reports/benchmark/*.log
+
+# ═══ مؤقت: ملفات جلسات قديمة (لن تُرفع) ═══
+apply_lessons.py
+audit_report.md
+evaluator_config.json
+exec_sandbox.py
+generate_lessons.py
+learned_lessons.json
+qualitative_evaluator.py
+rebuild_personas.py
+run_audit.py
+safe_fix.py
+smart_test.py
+smart_test_v2.py
+suggested_fix.html
+suggested_fix_v2.html
+web/settings.html
+web/simple.html
+web/ui_exec.js
+web_page.py
+legacy/
+data/
+*.db
+*.log

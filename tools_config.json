@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "tools": {
+    "search_web": {
+      "enabled": true,
+      "max_results": 3
+    },
+    "read_file": {
+      "enabled": true,
+      "allowed_roots": ["."]
+    },
+    "get_current_time": {
+      "enabled": true
+    },
+    "query_memory": {
+      "enabled": true,
+      "limit": 5
+    },
+    "execute_code": {
+      "enabled": true,
+      "timeout": 10
+    },
+    "consensus": {
+      "enabled": true,
+      "agents": ["analyst", "planner", "reviewer"]
+    }
+  }
+}

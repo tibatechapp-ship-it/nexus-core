@@ -29,6 +29,7 @@ Pydantic تحتاج أنواعاً حقيقية عند التعريف — يجع
 """
 
 import asyncio
+import fcntl
 import importlib.util
 import json
 import math
@@ -39,7 +40,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    StreamingResponse,
+)
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -248,11 +254,13 @@ def _agent_for(agent_id: Optional[str]) -> Optional[Any]:
 
 
 def _agent_system(agent_id: Optional[str], task: str = "") -> str:
-    """نصّ نظام الوكيل، مدعومًا بقاعدة المعرفة (الطبقة 2) والمهارات (الطبقة 3).
+    """نصّ نظام الوكيل، مدعومًا بقاعدة المعرفة (الطبقة 2) والمهارات (الطبقة 3)
+    وذاكرة الميدان (الطبقة 4، المرحلة 1).
 
     يُحقَن قبل نداء LLM: قاعدة المعرفة تضيف سياق المشروع (بوابات/أعراف/وثيقة
     الفئة)، ثم المهارات تضيف إجراءات الوكيل المُفعَّلة (من بيانه: مراجعة كود،
-    اختبار، تدقيق أمني…) — فتصبح الإجابة على دراية بالمشروع وبمنهج الوكيل.
+    اختبار، تدقيق أمني…)، ثم ذاكرة الميدان تعيد تجارب دردشة سابقة مشابهة —
+    فتصبح الإجابة على دراية بالمشروع وبمنهج الوكيل وبما جرى فعلاً.
     ``include_task=False`` لأن المهمّة هي دور المستخدم نفسه في الدردشة (تُستعمل
     للترجيح لا تُنسَخ في نصّ النظام). تعذّر أي طبقة يُبقي البرومبت الأساسي —
     لا يكسر الدردشة أبداً.
@@ -275,9 +283,14 @@ def _agent_system(agent_id: Optional[str], task: str = "") -> str:
     try:
         from src.skills import inject_skills_into_prompt
 
-        return inject_skills_into_prompt(composed, identity)
+        composed = inject_skills_into_prompt(composed, identity)
     except Exception:  # pragma: no cover - defensive: never break chat
-        return composed
+        pass
+    try:
+        memories = _memory_block(task)
+    except Exception:  # pragma: no cover - defensive: never break chat
+        memories = ""
+    return composed + (f"\n\n{memories}" if memories else "")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -401,17 +414,134 @@ def api_agents() -> Dict[str, Any]:
 #   (المجلس يغذّي قناة الحُكم؛ هذه قناة ثانية مستقلة على نفس الصفّ)
 # ═══════════════════════════════════════════════════════════════════════
 def _record_task_outcome(agent_id: str, ok: bool, duration: float,
-                         task: str = "") -> None:
+                         task: str = "",
+                         rating: Optional[str] = None) -> None:
     """Fold one real run into the genome's task channel (fail-safe).
 
     Observability only: a missing or broken genome must never fail a request,
-    so every error is swallowed here.
+    so every error is swallowed here.  ``rating`` (المرحلة 1) يُدقّق نجاح
+    المهمّة بجودة التقييم الذاتي — excellent=1.0 / good=0.75 / poor=0.4،
+    وبلا تقييم يبقى السلوك القديم كما هو (نجاح صافٍ = 1.0).
     """
     try:
         from src.novamind.genome_v2 import get_genome_v2
 
+        quality: Optional[float] = None
+        if rating:
+            try:
+                from src.learning.reflection import rating_score
+
+                quality = rating_score(rating)
+            except Exception:
+                quality = None
         get_genome_v2().observe_outcome(agent_id, ok, duration=duration,
-                                       task=task[:200])
+                                       task=task[:200], quality=quality)
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# المرحلة 1 — الذاكرة طويلة المدى + التقييم الذاتي
+# كل دالة هنا راصد فاشل آمن: خللها يُبتلع ولا يكسر البثّ أبداً.
+# ═══════════════════════════════════════════════════════════════════════
+_INTERACTION_STORE: Any = None  # المخزن المُخبّأ، أو False بعد أول فشل
+
+
+def _interaction_store() -> Any:
+    """مخزن التفاعلات — ``None`` لو تعذّر (لا إعادة محاولة بعد الفشل)."""
+    global _INTERACTION_STORE
+    if _INTERACTION_STORE is None:
+        try:
+            from src.learning.interactions import get_interaction_store
+
+            _INTERACTION_STORE = get_interaction_store()
+        except Exception:
+            _INTERACTION_STORE = False
+    return _INTERACTION_STORE if _INTERACTION_STORE is not False else None
+
+
+def _memory_block(task: str) -> str:
+    """تفاعلات سابقة مشابهة (أي وكيل) تُحقن في نصّ النظام.
+
+    التذكّر بين الوكّال مشترك عن قصد: درسٌ تعلّمه coder ينفع analyst، والترجيح
+    يقتصرّ على تشابه السؤال.  ``""`` لو لا مخزن أو لا شيء/لا خلل.
+    """
+    try:
+        store = _interaction_store()
+        if store is None or not (task or "").strip():
+            return ""
+        from src.learning.reflection import memory_block
+
+        return memory_block(store.similar(task))
+    except Exception:  # pragma: no cover - defensive
+        return ""
+
+
+def _self_reflect(question: str, answer: str
+                  ) -> tuple[Optional[str], Optional[str]]:
+    """تقييم ذاتي للإجابة: ``(rating, reason)`` أو ``(None, None)`` عند أي خلل."""
+    try:
+        from src.learning.reflection import (
+            REFLECTION_SYSTEM,
+            build_reflection_prompt,
+            parse_reflection,
+        )
+
+        res = get_router().generate(
+            build_reflection_prompt(question, answer),
+            system=REFLECTION_SYSTEM, role="fast")
+        if not res.get("ok"):
+            return None, None
+        return parse_reflection(res.get("text") or "")
+    except Exception:  # pragma: no cover - defensive
+        return None, None
+
+
+def _reflect_answer(question: str, text: str, system: str) -> tuple[
+        str, str, Optional[str], Optional[str], bool, Optional[str]]:
+    """تقييم ذاتي + إعادة محاولة واحدة للإجابة «الراكية».
+
+    يعيد ``(text, answer, rating, reason, retried, retry_rating)``؛ أي خلل
+    يعيد النصّ الأصلي بلا تقييم — البثّ لا ينكسر أبداً.
+    """
+    try:
+        from src.learning.reflection import build_retry_system, should_retry
+
+        rating, reason = _self_reflect(question, text)
+        if not should_retry(rating):
+            return text, text, rating, reason, False, None
+        res2 = get_router().generate(
+            question, system=build_retry_system(system, reason), role="fast")
+        text2 = (res2.get("text") or "").strip()
+        if not (res2.get("ok") and text2):
+            return text, text, rating, reason, False, None
+        retry_rating, _ = _self_reflect(question, text2)
+        return text2, text2, rating, reason, True, retry_rating
+    except Exception:  # pragma: no cover - defensive
+        return text, text, None, None, False, None
+
+
+def _save_interaction(agent_id: str, question: str, answer: str,
+                      signal_ok: bool, rating: Optional[str],
+                      reason: Optional[str], retried: bool,
+                      retry_rating: Optional[str]) -> None:
+    """يحفظ التفاعل في الذاكرة طويلة المدى (رصيدٌ فقط، لا يكسر الطلب)."""
+    try:
+        store = _interaction_store()
+        if store is None:
+            return
+        from src.learning.reflection import awareness_gap
+
+        gap = awareness_gap(rating, signal_ok,
+                            retry_rating if retried else None)
+        store.save(
+            agent_id=agent_id, question=question, answer=answer,
+            signal_ok=signal_ok, self_rating=rating,
+            reflection_reason=reason, retry_used=retried,
+            retried_rating=retry_rating if retried else None,
+            awareness_gap=gap,
+            lesson=reason if rating == "poor" else None,
+        )
     except Exception:  # pragma: no cover - defensive
         pass
 
@@ -427,10 +557,21 @@ def api_chat(req: ChatRequest) -> Any:
     agent_id = req.agent or "default"
 
     def gen() -> Iterator[str]:
-        """SSE: plan → chunk → [DONE] (+ قناة الجينوم في ``finally``)."""
+        """SSE: plan → chunk → [DONE].
+
+        المرحلة 1: تقييم ذاتي بعد كل إجابة، وإعادة محاولة واحدة عند «ركيك»،
+        وحفظ التفاعل كاملًا في الذاكرة طويلة المدى — كلها في الخيط نفسه
+        قبل البثّ (المخرجات مُخزّنة أصلاً) فلا يتغيّر ترتيب الأحداث، وكل
+        طبقة راصد فاشلة تبتلع نفسها في ``finally`` مع قناة الجينوم.
+        """
         started = time.monotonic()
         ok = False
         ran = False
+        rating: Optional[str] = None
+        reason: Optional[str] = None
+        retried = False
+        retry_rating: Optional[str] = None
+        answer = ""
         try:
             yield _sse({"type": "plan", "agent": req.agent or "default",
                         "conversation_id": req.conversation_id})
@@ -444,8 +585,14 @@ def api_chat(req: ChatRequest) -> Any:
                 text = (res.get("text") or "").strip()
                 if res.get("ok") and text:
                     ok = True
+                    (text, answer, rating, reason,
+                     retried, retry_rating) = _reflect_answer(
+                        message, text, system)
                     yield _sse({"type": "chunk", "content": text,
-                                "provider": res.get("provider", "")})
+                                "provider": res.get("provider", ""),
+                                "reflection": {"rating": rating,
+                                               "reason": reason},
+                                "retried": retried})
                 else:
                     yield _sse({"type": "error",
                                 "content": res.get("error")
@@ -456,8 +603,10 @@ def api_chat(req: ChatRequest) -> Any:
             yield _sse("[DONE]")
         finally:
             if ran:
+                _save_interaction(agent_id, message, answer, ok, rating,
+                                  reason, retried, retry_rating)
                 _record_task_outcome(agent_id, ok, time.monotonic() - started,
-                                     task=message)
+                                     task=message, rating=rating)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
@@ -642,11 +791,30 @@ def api_mcp_tools() -> Dict[str, Any]:
     return {"ok": True, "total": len(tools), "tools": tools}
 
 
+# لوحة المحرّك الموحّدة (web/unified_ui.html): الوالد يفوز بـ "/" لذا يحتاج
+# المحرك مساراً صريحاً — /ui = نفس الصفحة التي يخدمها unified_agent وحده
+# (المجلس الحيّ + الجينوم + الأكاديمية) على منفذ الخدمة نفسه.
+@app.get("/ui", response_class=HTMLResponse)
+async def engine_ui() -> HTMLResponse:
+    ui_path = BASE_DIR / "web" / "unified_ui.html"
+    if ui_path.exists():
+        return HTMLResponse(ui_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>web/unified_ui.html not found</h1>", status_code=404)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 3) Engine — mount أخيراً وبقصد: مسارات الوورك‌بنش ومساراتي أعلاه تُسجَّل
 #    قبله فتفوز، والمحرّك يلتقط كل ما تبقّى (conversations / traces /
 #    pipeline / workspace / offline). الترتيب = العقد نفسه.
 # ═══════════════════════════════════════════════════════════════════════
+# ✅ v3.2.0: exec sandbox — يجب أن يكون قبل app.mount('/')
+try:
+    from exec_sandbox import router as exec_router
+    app.include_router(exec_router)
+    print('✅ exec_sandbox مركّب')
+except Exception as _exec_e:
+    print(f'⚠️ exec_sandbox لم يُركّب: {_exec_e}')
+
 if ENGINE_OK:
     app.mount("/", _engine.app)
 
@@ -654,9 +822,48 @@ if ENGINE_OK:
 # ═══════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
+def acquire_instance_lock(port: int) -> Optional[Any]:
+    """حاجز النسخة الواحدة لهذا المنفذ — توقّف أي محاولة تشغيل ثانية.
+
+    تُعيد الفتحة المقفلة (أبقها مربوطة باسم في ``main`` — يُفلت ``flock``
+    تلقائياً عند موت العملية)، أو ``None`` إذا كانت نسخة أخرى من البوابة
+    تخدم هذا المنفذ بالفعل. هذا ما يوقف التكرار بين runit (``sv restart``)
+    و ``nexus start`` (``nohup``): النسخة الثانية ترفض الإقلاع بدل أن
+    تُنتج نسخة يتيمة على نفس المنفذ.
+    """
+    lock_dir = Path(os.environ.get("NEXUS_LOCK_DIR") or str(BASE_DIR / "logs"))
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        handle = (lock_dir / f"nexus-agent-{port}.lock").open("a+")
+    except OSError as exc:  # pragma: no cover - defensive
+        # لا مكان للقفل ⇒ نكمل بلا حاجز (سيحكم ربط المنفذ إن حاول نسختان)
+        print(f"⚠️ تعذّر فتح ملف القفل ({exc}) — بلا حاجز نسخة واحدة")
+        return open(os.devnull, "a+")  # type: ignore[return-value]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()  # نسخة أخرى تحمل القفل — لا نُبقيه مفتوحاً
+        return None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"{os.getpid()}\n")
+    handle.flush()
+    return handle
+
+
+# WIP v3.2.0 (جلسة أخرى): /simple.html — يبقى كما هو حتى يُسلَّم صاحبه
+@app.get("/simple.html")
+def serve_simple():
+    return FileResponse("web/simple.html")
+
 def main() -> None:
-    import uvicorn
     port = int(os.environ.get("NEXUS_PORT", "8080"))
+    _lock = acquire_instance_lock(port)  # noqa: F841 — يبقى حيّاً هنا = القفل محفوظ
+    if _lock is None:
+        print(f"⛔ نسخة أخرى من البوابة تعمل بالفعل على :{port} — توقّف.")
+        print("   أوقفها أولاً:  sv stop nexus-core   أو   nexus stop")
+        raise SystemExit(1)
+    import uvicorn
     print(f"🚀 Nexus-Core Unified v{_wb._app_version()} على :{port}")
     print(f"   Workbench : ✅ {len(app.routes)} route")
     print("   Engine    : " + (
