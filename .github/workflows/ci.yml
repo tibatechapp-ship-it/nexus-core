@@ -69,3 +69,32 @@ jobs:
           fi
           if [ "$fail" -eq 0 ]; then echo "No secrets detected."; fi
           exit $fail
+
+  # ── SAST: Bandit security scan on the agent / BYOK surface ────────────────
+  sast:
+    name: bandit SAST
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install bandit
+
+      # Real gate (NO `|| true`): the job fails on any MEDIUM+ finding in the
+      # security-relevant surface this project owns.  Pre-existing HIGH findings
+      # in the legacy workbench layer (src/agent_loop/tools.py B602 shell=True,
+      # src/orchestrator/agent_cache.py B324 MD5) are tracked separately and are
+      # intentionally outside this scope.
+      - name: Bandit (medium+ severity, agent surface)
+        run: |
+          bandit -r connectors hyper_app hyper_agent.py \
+            src/learning src/knowledge src/skills src/security \
+            -ll -q
