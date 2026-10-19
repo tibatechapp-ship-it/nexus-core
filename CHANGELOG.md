@@ -2,6 +2,31 @@
 
 All notable changes to this project. Newest first.
 
+## v1.20.1 — 2026-10-19 — tech-debt: writable paths + self-healing monitoring
+
+### Fixed
+- **Writable-root fallback (Android/Termux).** Six modules assumed `/var/lib` or
+  `/var/log`; on a phone `/` is read-only, so `mkdir` raised `OSError` and every
+  agent failed to load through the factory. New `src/novamind/paths.py` adds a
+  never-raising fallback chain (`$NEXUS_DATA_DIR` → `/var/lib/nexus` →
+  `/var/tmp/nexus` → `~/.cache/nexus` → `<tempdir>/nexus`), wired into
+  `memory/engine.py`, `security/audit.py`, `security/rbac_audit.py`,
+  `agents/project_manager.py`, `security/auto_worker.py` and
+  `interface/unified_bot.py`, each with its own env override.
+- **`rbac_audit` caught the wrong exception.** `except PermissionError` never
+  fired for EROFS (errno 30 is `OSError`) — now `except OSError`.
+- **The LLM monitoring wrapper died on a module reload.**
+  `patch_llm_router()` early-returned on its own `_patched` flag, so after
+  `importlib.reload(novamind.core.llm_router)` the new `LLMRouter` class was
+  left unwrapped and no call was recorded. Arming is now idempotent by
+  *inspection* (the wrapper carries `_nexus_monitored`) and the gateway re-arms
+  explicitly on load.
+
+### Tests
+- `tests/test_paths_fallback.py` (16) and reload-trap regression tests in
+  `tests/nexus/test_monitoring.py`. Full suite **3374 passed, 1 skipped,
+  0 failed**; gate `--ignore=tests/novamind` **3219 passed @ 99.94%**.
+
 ## v1.20.0 — 2026-10-19
 
 - **The genome now survives restarts and knows the whole roster.** Previously
