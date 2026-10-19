@@ -19,6 +19,7 @@ from src.novamind.council import (
     consensus,
     influence,
     jaccard,
+    judgement_stances,
     position,
 )
 
@@ -199,3 +200,55 @@ def test_stats_counts_council(store: SessionStore) -> None:
     stats = store.stats()
     assert stats["council_sessions"] == 1
     assert stats["council_messages"] == len(COUNCIL_MEMBERS)
+
+
+# ── genome_v2 mirror (the Living Council's judgement channel) ────────────────
+def test_judgement_stances_marks_the_verdict_side_approve() -> None:
+    inf = {
+        "analyst": {"alignment": 0.9, "standing_delta": 1},
+        "critic": {"alignment": 0.1, "standing_delta": -1},
+    }
+    assert judgement_stances(inf) == {"analyst": "approve", "critic": "reject"}
+
+
+def test_judgement_stances_treats_a_zero_delta_as_dissent() -> None:
+    # genome_v2 only counts the verdict side; "no delta" is not an agreement.
+    assert judgement_stances({"x": {"alignment": 0.5,
+                                    "standing_delta": 0}}) == {"x": "reject"}
+
+
+def test_judgement_stances_tolerates_junk_rows() -> None:
+    assert judgement_stances({}) == {}
+    assert judgement_stances(None) == {}
+    # a missing/!int delta and an empty member id are skipped, never invented
+    assert judgement_stances({"": {"standing_delta": 1},
+                              "ok": None,
+                              "bad": {"standing_delta": "oops"}}) == {
+        "ok": "reject", "bad": "reject"}
+
+
+def test_debate_feeds_the_injected_judge() -> None:
+    seen: list[dict] = []
+    council = Council(router=None, store=None, judge=seen.append)
+    council.debate("هل نبني الميزة الآن؟", rounds=1)
+    assert len(seen) == 1
+    assert set(seen[0]) == {m.id for m in COUNCIL_MEMBERS}
+    assert set(seen[0].values()) <= {"approve", "reject"}
+
+
+def test_no_judge_injected_means_no_calls() -> None:
+    council = Council(router=None, store=None)
+    assert council.judge is None
+    # back-compat: the debate still completes with every member ranked
+    result = council.debate("موضوع", rounds=1)
+    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}
+
+
+def test_a_broken_judge_cannot_break_a_debate() -> None:
+    def boom(stances: dict) -> None:
+        raise RuntimeError("genome offline")
+
+    council = Council(router=None, store=None, judge=boom)
+    result = council.debate("موضوع", rounds=1)
+    assert result["verdict"]
+    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}

@@ -812,3 +812,134 @@ def test_metrics_survive_a_broken_monitor(env, monkeypatch):
     cleared = client.post("/api/monitoring/clear").json()
     assert cleared["ok"] is False and cleared["cleared"] == 0
 
+
+
+# ── council judgements reach genome_v2 (the Academy store) ──────────────────
+class _JudgeRecorder:
+    """Capture genome_v2's judgement channel (the real genome is untouched)."""
+
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def observe_council(self, stances, final_verdict):  # noqa: ANN001
+        self.calls.append((dict(stances), final_verdict))
+
+
+def test_council_judgements_reach_the_genome(monkeypatch):
+    mod = _load_unified()
+    rec = _JudgeRecorder()
+    monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2", lambda: rec)
+
+    mod._record_council_judgements({"analyst": "approve", "critic": "reject"})
+
+    assert len(rec.calls) == 1
+    stances, verdict = rec.calls[0]
+    assert stances == {"analyst": "approve", "critic": "reject"}
+    assert verdict == "approve", "the stance vocabulary needs a recognised final"
+
+
+def test_no_judgements_means_no_observation(monkeypatch):
+    mod = _load_unified()
+    rec = _JudgeRecorder()
+    monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2", lambda: rec)
+
+    mod._record_council_judgements({})
+
+    assert rec.calls == []
+
+
+def test_a_broken_genome_never_breaks_the_judgement_sink(monkeypatch):
+    mod = _load_unified()
+
+    def boom():
+        raise RuntimeError("genome offline")
+
+    monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2", boom)
+    mod._record_council_judgements({"analyst": "approve"})  # must not raise
+
+
+def _real_council_module(tmp_path, monkeypatch):
+    """A gateway whose ``get_council`` is the REAL factory (offline router)."""
+    mod = _load_unified()
+    store = SessionStore(tmp_path / "sessions.db")
+    genome = Genome(store)
+    genome.seed()
+    monkeypatch.setattr(mod, "get_store_singleton", lambda: store)
+    monkeypatch.setattr(mod, "get_genome", lambda: genome)
+    monkeypatch.setattr(mod, "get_router", lambda: None)
+    monkeypatch.setattr(mod, "_council", None)
+    return mod
+
+
+def test_the_council_factory_injects_the_judgement_sink(tmp_path, monkeypatch):
+    mod = _real_council_module(tmp_path, monkeypatch)
+
+    council = mod.get_council()
+
+    assert council.judge is mod._record_council_judgements
+    assert council.genome is not None, "the v1 genome must stay wired too"
+
+
+def test_a_real_debate_reaches_the_genome_through_the_app(tmp_path, monkeypatch):
+    mod = _real_council_module(tmp_path, monkeypatch)
+    rec = _JudgeRecorder()
+    monkeypatch.setattr("src.novamind.genome_v2.get_genome_v2", lambda: rec)
+    client = TestClient(mod.app)
+
+    r = client.post("/api/council/debate", json={"topic": "موضوع", "rounds": 1})
+
+    assert r.status_code == 200
+    assert r.json()["ok"] is True, r.json().get("error")
+    assert len(rec.calls) == 1, "one debate = one set of member judgements"
+    assert set(rec.calls[0][0]) == {m.id for m in mod.COUNCIL_MEMBERS}
+
+
+# ── the genome layer keeps ONE singleton across both import spellings ───────
+class _StaleGenomeModule(types.ModuleType):
+    """A second copy of ``genome_v2`` loaded under the bare package name."""
+
+    def __init__(self, genome) -> None:  # noqa: ANN001
+        super().__init__("novamind.genome_v2")
+        self.genome = genome
+        self.hooks: list = []
+
+    def get_genome_v2(self, **_kw):  # noqa: ANN003
+        return self.genome
+
+    def set_genome_v2(self, genome):  # noqa: ANN001
+        self.genome = genome
+        return genome
+
+    def set_persistence_hook(self, hook):  # noqa: ANN001
+        self.hooks.append(hook)
+
+
+def test_the_genome_layer_unifies_a_second_import_spelling(tmp_path, monkeypatch):
+    mod = _load_unified()
+    canonical = importlib.import_module("src.novamind.genome_v2")
+    monkeypatch.setattr("src.novamind.genome_store.install",
+                        lambda **_kw: canonical.get_genome_v2())
+    monkeypatch.setenv("NEXUS_GENOME_PATH", str(tmp_path / "genome.json"))
+    hook = lambda _g: None  # noqa: E731 - sentinel persistence hook
+    monkeypatch.setattr(canonical, "_HOOK", hook, raising=False)
+    stale = _StaleGenomeModule(genome=None)
+    monkeypatch.setitem(sys.modules, "novamind.genome_v2", stale)
+
+    mod._install_genome_layer()
+
+    assert sys.modules["novamind.genome_v2"] is canonical
+    assert stale.genome is canonical.get_genome_v2(), "state must be adopted"
+    assert stale.hooks == [hook], "the autosave hook must follow the state"
+
+
+def test_the_genome_layer_preempts_a_late_bare_import(tmp_path, monkeypatch):
+    mod = _load_unified()
+    canonical = importlib.import_module("src.novamind.genome_v2")
+    monkeypatch.setattr("src.novamind.genome_store.install",
+                        lambda **_kw: canonical.get_genome_v2())
+    monkeypatch.setenv("NEXUS_GENOME_PATH", str(tmp_path / "genome.json"))
+    monkeypatch.delitem(sys.modules, "novamind.genome_v2", raising=False)
+
+    mod._install_genome_layer()
+
+    assert sys.modules["novamind.genome_v2"] is canonical
