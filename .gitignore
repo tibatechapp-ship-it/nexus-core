@@ -71,7 +71,7 @@ reports/benchmark/*.log
 apply_lessons.py
 audit_report.md
 evaluator_config.json
-exec_sandbox.py
+/exec_sandbox.py
 generate_lessons.py
 learned_lessons.json
 qualitative_evaluator.py

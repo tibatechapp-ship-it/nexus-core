@@ -1092,3 +1092,21 @@ except Exception as _e:
     OLLAMA_ROUTES_OK = False
     OLLAMA_ROUTES_ERR = str(_e)
     print(f'⚠️ Ollama Router failed: {_e}')
+
+
+# ═══════════════════════════════════════════════════════════
+# Verification-by-execution: /api/verify/*
+# ═══════════════════════════════════════════════════════════
+# The verify layer turns an agent's output into something CHECKED: it runs the
+# code in the existing exec sandbox and reads the exit code.  Same mount rule as
+# training/knowledge/skills — ``include_router`` stays deferred inside a mount,
+# so the concrete routes are extended in directly.
+try:
+    from src.verify.api import register as _register_verify
+
+    _register_verify(app)
+    VERIFY_OK = True
+except Exception as _verify_exc:  # pragma: no cover - never block the app
+    VERIFY_OK = False
+    VERIFY_ERR = str(_verify_exc)
+    print(f"⚠️ verify routes unavailable: {_verify_exc}")
