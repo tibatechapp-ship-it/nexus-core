@@ -40,7 +40,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    StreamingResponse,
+)
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -847,7 +852,6 @@ def acquire_instance_lock(port: int) -> Optional[Any]:
 
 
 # WIP v3.2.0 (جلسة أخرى): /simple.html — يبقى كما هو حتى يُسلَّم صاحبه
-from fastapi.responses import FileResponse
 @app.get("/simple.html")
 def serve_simple():
     return FileResponse("web/simple.html")
