@@ -62,6 +62,14 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / f"nexus-test-interactions-{os.getpid()}.db"),
 )
 
+# The genome store (src/novamind/genome_store.py) resolves its file the same
+# way, so point it at a private temp file too — a test that installs the genome
+# layer must never rewrite the repo's real data/genome.json.
+os.environ.setdefault(
+    "NEXUS_GENOME_PATH",
+    str(Path(tempfile.gettempdir()) / f"nexus-test-genome-{os.getpid()}.json"),
+)
+
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
 #: The one adversarial verdict ledger, shared for the whole session.
