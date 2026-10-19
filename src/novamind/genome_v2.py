@@ -32,11 +32,16 @@ fitness.
 Pure and hermetic: standard library only, no I/O, no clock, no randomness, no
 database.  Persistence is ``to_dict`` / ``from_dict`` (JSON-ready), which keeps
 the phone gate and CI able to exercise the whole model offline.
+
+Disk persistence lives **outside** this module (:mod:`src.novamind.genome_store`,
+which loads/saves/seeds).  It attaches through the opt-in
+``set_persistence_hook`` observer — unset by default, so the model below stays
+byte-identical until a caller asks for a saved genome.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 __all__ = [
     "CONFIDENCE_K",
@@ -60,6 +65,8 @@ __all__ = [
     "get_genome_v2",
     "observe_result",
     "reset_genome_v2",
+    "set_genome_v2",
+    "set_persistence_hook",
     "stance_of",
     "trait_accuracy",
 ]
@@ -319,6 +326,7 @@ class GenomeV2:
         })
         if len(row["history"]) > HISTORY_LIMIT:
             del row["history"][:len(row["history"]) - HISTORY_LIMIT]
+        _notify(self)
         return dict(row)
 
     def observe_outcome(self, agent_id: str, ok: bool, *,
@@ -395,6 +403,7 @@ class GenomeV2:
         })
         if len(row["history"]) > HISTORY_LIMIT:
             del row["history"][:len(row["history"]) - HISTORY_LIMIT]
+        _notify(self)
         return dict(row)
 
     def observe_result(self, result: Any, *, quality: Optional[float] = None,
@@ -433,6 +442,7 @@ class GenomeV2:
             "note": str(note), "from_generation": generation - 1,
         }]
         self._agents[str(agent_id)] = fresh
+        _notify(self)
         return dict(fresh)
 
     def retire(self, agent_id: str, note: str = "") -> Dict[str, Any]:
@@ -442,6 +452,7 @@ class GenomeV2:
         row["retired"] = True
         row["history"].append({"seq": self._seq, "event": "retired",
                                "note": str(note)})
+        _notify(self)
         return dict(row)
 
     def revive(self, agent_id: str, note: str = "") -> Dict[str, Any]:
@@ -451,6 +462,7 @@ class GenomeV2:
         row["retired"] = False
         row["history"].append({"seq": self._seq, "event": "revived",
                                "note": str(note)})
+        _notify(self)
         return dict(row)
 
     # ── views ────────────────────────────────────────────────────────────
@@ -556,9 +568,48 @@ class GenomeV2:
             genome._agents[str(agent_id)] = base
         return genome
 
+    def adopt(self, other: "GenomeV2") -> "GenomeV2":
+        """Take over ``other``'s state **in place** (keeps object identity).
+
+        The council engine, the field loop and the gateway all hold a reference
+        to the one shared genome, so restoring a saved genome must mutate that
+        singleton rather than swap it for a new object (a swap would leave the
+        other holders talking to the empty copy).  The state is deep-copied via
+        a ``to_dict`` / ``from_dict`` round-trip so ``other`` stays untouched.
+        """
+        fresh = GenomeV2.from_dict(other.to_dict() if other is not None else None)
+        self.alpha = fresh.alpha
+        self._agents = fresh._agents
+        self._seq = fresh._seq
+        return self
+
 
 # ── shared default instance (used by the council engine) ─────────────────────
 _DEFAULT: Optional[GenomeV2] = None
+
+#: Optional side-observer called after every mutation (persistence hook).
+_HOOK: Optional[Callable[[GenomeV2], None]] = None
+
+
+def _notify(genome: GenomeV2) -> None:
+    """Run the persistence hook, if any.  Observability never breaks a caller."""
+    hook = _HOOK
+    if hook is None:
+        return
+    try:
+        hook(genome)
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+def set_persistence_hook(hook: Optional[Callable[[GenomeV2], None]]) -> None:
+    """Install (or clear with ``None``) the after-mutation observer.
+
+    ``None`` is the default, which leaves behaviour byte-identical to the
+    hook-free model — the genome stays pure until someone asks for persistence.
+    """
+    global _HOOK
+    _HOOK = hook
 
 
 def get_genome_v2(*, reset: bool = False) -> GenomeV2:
@@ -567,6 +618,13 @@ def get_genome_v2(*, reset: bool = False) -> GenomeV2:
     if _DEFAULT is None or reset:
         _DEFAULT = GenomeV2()
     return _DEFAULT
+
+
+def set_genome_v2(genome: GenomeV2) -> GenomeV2:
+    """Make ``genome`` the process-wide instance (used when loading from disk)."""
+    global _DEFAULT
+    _DEFAULT = genome
+    return genome
 
 
 def reset_genome_v2() -> GenomeV2:

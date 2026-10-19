@@ -514,6 +514,38 @@ def _record_task_outcome(agent_id: str, ok: bool, duration: float,
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# P4.5 — جينوم الوكلاء: استرجاع المحفوظ + بذر العشرين + حفظ تلقائي
+#   منطق القرص كلّه في src/novamind/genome_store.py، والجينوم يبقى نقياً.
+# ═══════════════════════════════════════════════════════════════════════
+GENOME_OK = False
+GENOME_ERR: Optional[str] = None
+
+
+def _install_genome_layer() -> None:
+    """يُحمِّل جينوم الوكلاء من القرص، يبذر الوكّال العشرين، ويفعّل الحفظ.
+
+    يُنادى من :func:`main` فقط (لا عند الاستيراد) حتى لا تكتب حزمة الاختبارات
+    ملفّاً حقيقياً.  راصد فاشل آمن: أي خلل يُطبع ولا يمنع الإقلاع — الجينوم
+    طبقة تعلّم، لا عصب الخدمة.
+    """
+    global GENOME_OK, GENOME_ERR
+    try:
+        from src.agents.manifest import all_manifests
+        from src.novamind.genome_store import install
+
+        genome = install(agent_ids=sorted(all_manifests()))
+        GENOME_OK = True
+        GENOME_ERR = None
+        stats = genome.stats()
+        print(f"   Genome    : ✅ {stats['agents']} وكيل · "
+              f"{stats['observations']} حُكم · {stats['task_observations']} مهمّة")
+    except Exception as exc:  # pragma: no cover - defensive
+        GENOME_OK = False
+        GENOME_ERR = str(exc)
+        print(f"   Genome    : ❌ {exc}")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # المرحلة 1 — الذاكرة طويلة المدى + التقييم الذاتي
 # كل دالة هنا راصد فاشل آمن: خللها يُبتلع ولا يكسر البثّ أبداً.
 # ═══════════════════════════════════════════════════════════════════════
@@ -943,7 +975,7 @@ def main() -> None:
         "✅ unified_agent" if ENGINE_OK else f"❌ {ENGINE_ERR}"))
     print("   Council   : " + (
         f"✅ {len(COUNCIL_MEMBERS)} أعضاء" if COUNCIL_OK else f"❌ {COUNCIL_ERR}"))
-    print(f"   Genome    : {'✅' if COUNCIL_OK else '❌'}")
+    _install_genome_layer()
     print(f"   Agents    : {len(_agent_classes())}")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 
