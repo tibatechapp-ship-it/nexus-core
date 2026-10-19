@@ -3,6 +3,24 @@
 All notable changes to this project. Newest first.
 
 ## Unreleased
+
+(nothing yet — next changes land here)
+
+## v1.18.0 — 2026-10-19
+
+- **PR #22 merged (squash)** — Day 4 `consensus` tool + Hyper-Agent 2.0 with
+  BYOK connectors (OpenAI / Anthropic / Groq / Ollama / DeepSeek / Gemini),
+  the agent API (`POST /api/agent/start`, iteration limits, per-iteration
+  JSONL logging), and the protected exec-sandbox wiring.
+- Security hardening: `bandit` SAST job at MEDIUM+ severity (no `|| true`),
+  `.env.example` (never `.env`), `.github/CODEOWNERS`, and
+  `tools/detect_env_imports.py` (AST guard against import-time env reads).
+- **CI now fully green**: the 8 pre-existing Tests failures are fixed —
+  `FileResponse` moved to the top import (E402), `requires_sandbox` skipif
+  guard for the gitignored `tools/exec_sandbox.py`, a TZ-independent
+  `get_current_time` test, and `TZ: UTC` pinned in both workflows.
+  Local gate: **3105 passed, 1 skipped @ 99.94% coverage**.
+
 **Phase 2 / Day 3 — collab + tools import isolation (المرحلة 2 — اليوم 3).**
 
 - NEW `src/learning/collab.py`: `classify_question` (intent → label rules %),
