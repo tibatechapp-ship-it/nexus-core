@@ -1,8 +1,7 @@
 """Router — deterministic agent selection."""
 from __future__ import annotations
 import re
-from typing import Optional
-from .registry import AgentRegistry, get_registry
+from .registry import get_registry
 
 _WORD = re.compile(r"[a-z][a-z0-9]+")
 
@@ -28,8 +27,10 @@ def route(request, *, registry=None, genome=None):
     cands = [n for n, s in scored if s == best]
     if len(cands) > 1 and genome is not None:
         def fit(n):
-            try: return float(genome.fitness_of(n))
-            except Exception: return 0.5
+            try:
+                return float(genome.fitness_of(n))
+            except Exception:
+                return 0.5
         cands = sorted(cands, key=lambda n: (-fit(n), n))
     return cands[0] if cands else "coder"
 

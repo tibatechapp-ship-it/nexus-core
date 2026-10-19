@@ -1,7 +1,6 @@
 """Orchestrator — plan + execute + jury gate."""
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional
 from .risk import RiskLevel, classify, explain
 from .router import route, route_with_reason
 from .registry import get_registry
