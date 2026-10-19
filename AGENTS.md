@@ -1979,3 +1979,45 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   fix it with a GUARD or an ENV-INDEPENDENT assertion — never by deleting the
   test and never by pinning a single timezone into the expected literal.
   Skill: `ci-skipif-and-tz-independent-tests`.
+
+## 2026-10-19 — Phase 1 wiring: the call-monitoring layer goes live (v1.18.1)
+- **The gap**: `src/nexus/` (call monitoring: tokens / latency / cost per
+  provider, JSONL per day, 7 tests, 100% covered) was COMPLETE but **unwired** —
+  nothing in the service imported it, so zero calls were ever logged. The only
+  writer was a stale `calls_2026-10-14.jsonl` from an older run.
+- **The wiring** (`nexus_agent.py`, +67): a guarded module-level
+  `from src.nexus.monitoring import get_monitor` block (`MONITORING_OK` /
+  `MONITORING_ERR`, `_nexus_get_monitor`) — importing it runs `src/nexus/__init__`,
+  which **auto-patches `LLMRouter.generate`** via `monitoring_patch`, so every real
+  LLM call is recorded. Three read-only routes + one mutating route:
+  `GET /api/monitoring/today`, `GET /api/monitoring/session`,
+  `POST /api/monitoring/clear`; `/api/status` gains `components.monitoring`.
+  Failures degrade to `{"ok": false, "error": ...}` — never a crash.
+- **Route-prefix decision**: the ENGINE already owns `GET /api/metrics`
+  (`novamind.core.observability.metrics.snapshot()` — a *different*, call-counter
+  system that is never fed and has no tokens/cost). To avoid prefix ambiguity the
+  new routes live under `/api/monitoring/*` (module name = route name).
+- **Live proof (the oracle is the counter, not the unit test)**: after
+  `sv restart nexus-core` — `/api/monitoring/today` = 0 calls → one
+  `POST /api/chat {agent: coder}` → **2 calls, 1796 tokens, $0.00009, provider
+  groq_01** (chat + its reflection call both traverse `LLMRouter.generate`), and
+  `calls_2026-10-19.jsonl` written. `POST /api/monitoring/clear` = **401 without
+  `X-Auth-Token`**, 200 with → `{"cleared": 2}` and the stats reset.
+- **Tests** (+112, 6 new in `tests/test_nexus_agent.py`): the gateway arms
+  monitoring, the wrapper records a call into the monitor, `/api/status` reports
+  the component, the routes read the monitor, and both degradation paths
+  (monitoring unavailable / monitor raises).
+- ❗ **Import-spelling trap hit again**: the first version of the tests patched
+  `src.novamind.core.llm_router.LLMRouter` while production wraps
+  `novamind.core.llm_router.LLMRouter` — **two distinct module objects** ("one
+  file, two names") → 2 tests failed (`__wrapped__` is None / 0 calls). Production
+  is uniformly on the `novamind.*` spelling; tests now use it. Skill:
+  `python-prod-singleton-import-alias`.
+- **Correction to an earlier "unwired" scan**: `src/certification` is NOT dead —
+  `src/novamind/training/engine.py:500` imports `certification.signer` (and
+  `src.certification.signer`) *dynamically* via `importlib`, which a plain text
+  grep of import lines misses. Always include string-based imports in a dead-code
+  audit.
+- Gates: ruff clean · annotations 167 · mypy 167 · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` =
+  **3111 passed, 1 skipped @ 99.94%** (was 3105 before the +6 tests).
