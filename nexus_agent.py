@@ -199,6 +199,24 @@ if GUARD is not None:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# المراقبة (src/nexus) — تتبّع استدعاءات LLM: التوكن، الزمن، التكلفة
+# ═══════════════════════════════════════════════════════════════════════
+# الطبقة كانت مكتملة ومُختبَرة لكن **غير موصولة**: لا شيء يستوردها في الخدمة،
+# فلا يُسجَّل أيّ استدعاء. استيراد ``src.nexus`` يُسلّح تلقائياً لفَّ
+# ``LLMRouter.generate`` (عبر ``monitoring_patch``) فيُسجَّل كل استدعاء حقيقي.
+# أيّ فشل استيراد يُعطّل هذه الطبقة فقط ولا يكسر الخدمة (نمط التدهور ذاته).
+MONITORING_OK = False
+MONITORING_ERR = ""
+_nexus_get_monitor: Optional[Callable[[], Any]] = None
+try:
+    from src.nexus.monitoring import get_monitor as _nexus_get_monitor
+
+    MONITORING_OK = True
+except Exception as _mon_e:  # pragma: no cover - defensive
+    MONITORING_ERR = f"{type(_mon_e).__name__}: {_mon_e}"
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Models + helpers
 # ═══════════════════════════════════════════════════════════════════════
 class ChatRequest(BaseModel):
@@ -336,6 +354,7 @@ def api_status() -> Dict[str, Any]:
             "workbench": getattr(_wb, "get_council_bridge", None) is not None,
             "builder": getattr(_wb, "Builder", None) is not None,
             "craft": True,
+            "monitoring": MONITORING_OK,
             "council": COUNCIL_OK,
             "council_members": len(COUNCIL_MEMBERS) if COUNCIL_OK else 0,
             "genome": COUNCIL_OK,
@@ -391,6 +410,54 @@ def api_diag() -> Dict[str, Any]:
         "engine_routes": sorted(engine_paths),
         "sys_path_head": sys.path[:6],
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# /api/monitoring/* — قراءة مراقبة الاستدعاءات (توكن/زمن/تكلفة). للقراءة فقط.
+# ملاحظة: المُحرّك يملك ``/api/metrics`` (عدّادات observability مختلفة تماماً)،
+# فالمسار هنا ``/api/monitoring/*`` لتفادي أيّ التباس في البادئة.
+# ═══════════════════════════════════════════════════════════════════════
+def _metrics_unavailable() -> Dict[str, Any]:
+    """شكل الفشل الموحّد: ``ok=false`` + سبب صريح، بلا انهيار."""
+    return {"ok": False, "error": MONITORING_ERR or "monitoring disabled",
+            "stats": None}
+
+
+@app.get("/api/monitoring/today")
+def api_metrics_today() -> Dict[str, Any]:
+    """إحصاء استدعاءات LLM المُسجَّلة اليوم (يُقرأ من ملفّ المراقبة)."""
+    if _nexus_get_monitor is None:
+        return _metrics_unavailable()
+    try:
+        stats = _nexus_get_monitor().get_today_stats()
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}", "stats": None}
+    return {"ok": True, "scope": "today", "stats": stats}
+
+
+@app.get("/api/monitoring/session")
+def api_metrics_session() -> Dict[str, Any]:
+    """إحصاء استدعاءات هذه الجلسة (في الذاكرة، بلا ملفّ)."""
+    if _nexus_get_monitor is None:
+        return _metrics_unavailable()
+    try:
+        stats = _nexus_get_monitor().get_session_stats()
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}", "stats": None}
+    return {"ok": True, "scope": "session", "stats": stats}
+
+
+@app.post("/api/monitoring/clear")
+def api_metrics_clear() -> Dict[str, Any]:
+    """يحذف سجلّ اليوم ويعيد عدد الاستدعاءات المحذوفة."""
+    if _nexus_get_monitor is None:
+        return {"ok": False, "error": MONITORING_ERR or "monitoring disabled",
+                "cleared": 0}
+    try:
+        cleared = int(_nexus_get_monitor().clear_today())
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}", "cleared": 0}
+    return {"ok": True, "cleared": cleared}
 
 
 # ═══════════════════════════════════════════════════════════════════════
