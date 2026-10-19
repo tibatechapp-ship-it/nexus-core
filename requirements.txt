@@ -1,4 +1,27 @@
-filelock==4.2.4
-pytest
+# nexus-core — dependencies
+#
+# SOURCE OF TRUTH: pyproject.toml  [project.optional-dependencies]
+# This file mirrors the `dev` + `voice` extras so a plain
+# `pip install -r requirements.txt` gives a working development setup.
+# It is NOT read by CI, the Makefile, or the build — CI installs the same
+# extras explicitly via `pip install -e ".[dev,novamind]"`. Keep both in sync.
+#
+# Install everything declared here:
+#   pip install -e ".[dev,voice]"
+# Fully-pinned lock (optional, generates exact transitive versions):
+#   pip install pip-tools
+#   pip-compile --extra dev --extra voice --output-file requirements.txt pyproject.toml
+
+# ── dev  (tests + TUI snapshots) ───────────────────────────────────────────
+pytest>=7
 pytest-cov
-pytest-benchmark
+pytest-textual-snapshot
+textual>=0.80
+pytest-asyncio>=0.24
+pytest-benchmark>=5.3.0
+hypothesis>=6.169.0
+syrupy>=4
+
+# ── voice  (optional voice features) ───────────────────────────────────────
+gTTS>=2.5.0
+SpeechRecognition>=3.10.0
