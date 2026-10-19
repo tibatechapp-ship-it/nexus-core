@@ -8,7 +8,7 @@ class RiskLevel(str, Enum):
     MED = "med"
     HIGH = "high"
 
-    def __lt__(self, other):
+    def __lt__(self, other: "RiskLevel") -> bool:
         order = {"low": 0, "med": 1, "high": 2}
         return order[self.value] < order[other.value]
 
@@ -28,7 +28,7 @@ _LOW_PATTERNS = (
 )
 
 
-def classify(request):
+def classify(request: str) -> RiskLevel:
     if not isinstance(request, str) or not request.strip():
         return RiskLevel.MED
     text = request.lower()
@@ -39,7 +39,7 @@ def classify(request):
     return RiskLevel.MED
 
 
-def explain(request):
+def explain(request: str) -> dict:
     text = (request or "").lower()
     matched_high = [p for p in _HIGH_PATTERNS if p in text]
     matched_low = [p for p in _LOW_PATTERNS if p in text]

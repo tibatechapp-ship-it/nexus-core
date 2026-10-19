@@ -1,23 +1,29 @@
 """Router — deterministic agent selection."""
 from __future__ import annotations
 import re
-from .registry import get_registry
+from typing import Optional, Set
+from .registry import AgentSpec, AgentRegistry, get_registry
 
 _WORD = re.compile(r"[a-z][a-z0-9]+")
 
 
-def _tokenize(text):
+def _tokenize(text: str) -> Set[str]:
     return {w for w in _WORD.findall((text or "").lower()) if len(w) >= 3}
 
 
-def _score(spec, tokens):
+def _score(spec: AgentSpec, tokens: Set[str]) -> float:
     scope_text = " ".join(spec.scope)
     domain_text = spec.domain.replace(".", " ")
     return float(len(tokens & _tokenize(scope_text)) * 2
                  + len(tokens & _tokenize(domain_text)))
 
 
-def route(request, *, registry=None, genome=None):
+def route(
+    request: str,
+    *,
+    registry: Optional[AgentRegistry] = None,
+    genome: Optional[object] = None,
+) -> str:
     if not request or not isinstance(request, str) or not request.strip():
         return "coder"
     reg = registry or get_registry()
@@ -26,7 +32,7 @@ def route(request, *, registry=None, genome=None):
     best = max(s for _, s in scored)
     cands = [n for n, s in scored if s == best]
     if len(cands) > 1 and genome is not None:
-        def fit(n):
+        def fit(n: str) -> float:
             try:
                 return float(genome.fitness_of(n))
             except Exception:
@@ -35,7 +41,12 @@ def route(request, *, registry=None, genome=None):
     return cands[0] if cands else "coder"
 
 
-def route_with_reason(request, *, registry=None, genome=None):
+def route_with_reason(
+    request: str,
+    *,
+    registry: Optional[AgentRegistry] = None,
+    genome: Optional[object] = None,
+) -> dict:
     if not request or not isinstance(request, str) or not request.strip():
         return {"agent": "coder", "score": 0.0, "tokens": [], "alternatives": []}
     reg = registry or get_registry()

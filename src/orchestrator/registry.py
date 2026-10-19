@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, List, Optional
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[2] / "skills_registry.json"
 
@@ -22,19 +23,24 @@ class AgentSpec:
 
 
 class AgentRegistry:
-    def __init__(self, path=None, *, manifests=None):
+    def __init__(
+        self,
+        path: Optional[Path] = None,
+        *,
+        manifests: Optional[Dict[str, object]] = None,
+    ) -> None:
         self.path = path or _REGISTRY_PATH
-        self._specs = {}
-        self._by_domain = {}
+        self._specs: Dict[str, AgentSpec] = {}
+        self._by_domain: Dict[str, List[str]] = {}
         self._load(manifests)
 
-    def _load(self, manifests):
+    def _load(self, manifests: Optional[Dict[str, object]]) -> None:
         if not self.path.exists():
             raise RegistryError(f"registry not found: {self.path}")
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            raise RegistryError(f"invalid JSON: {e}")
+            raise RegistryError(f"invalid JSON: {e}") from e
         specs_raw = raw.get("agents") or {}
         if not isinstance(specs_raw, dict):
             raise RegistryError("registry.agents must be a dict")
@@ -57,25 +63,25 @@ class AgentRegistry:
             if extra:
                 raise RegistryError(f"not in manifest: {sorted(extra)}")
 
-    def get(self, name):
+    def get(self, name: str) -> AgentSpec:
         if name not in self._specs:
             raise KeyError(f"agent not registered: {name!r}")
         return self._specs[name]
 
-    def in_domain(self, domain):
+    def in_domain(self, domain: str) -> List[str]:
         return list(self._by_domain.get(domain, ()))
 
-    def all(self):
+    def all(self) -> List[AgentSpec]:
         return list(self._specs.values())
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._specs)
 
 
-_default = None
+_default: Optional[AgentRegistry] = None
 
 
-def get_registry():
+def get_registry() -> AgentRegistry:
     global _default
     if _default is None:
         try:
