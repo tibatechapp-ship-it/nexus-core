@@ -2057,3 +2057,32 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   survive an ASGI `mount("/")`.
 - Gates: ruff clean · annotations 171 · mypy 171 · real gate =
   **3166 passed, 1 skipped @ 99.94%** (was 3111).
+
+### 2026-10-19 — repair loop fixed: the fence never reaches the interpreter
+- LIVE BUG: `POST /api/verify/fix` returned `passed=false`, `attempts=3`, exit
+  codes `[1, None, None]`, `SyntaxError (line 1)`, `ran=false`. Root cause was
+  NOT "the model answered with non-Python": `llm_generate` returned the **raw**
+  reply and the model always wraps its answer in a fenced block, so the loop fed
+  the **fences** to Python. `extract_code` existed, was tested, and was never
+  called on that path.
+  * `llm_generate` now returns `extract_code(reply)` (dict and str paths).
+  * `extract_code` is tolerant of real model output: space after the opening
+    fence, 3+ backticks, `~~~`, an unterminated fence (use the tail), bare code
+    (whole text), empty fence → no code (never the markers).
+- Two more defects fixed while proving it from a BARE entry point:
+  * the sandbox import only worked when the caller had already added
+    `<repo>/tools` to `sys.path` (the gateway does; scripts/tests do not) →
+    `_ensure_tools_path()` now adds it before the bare-name import.
+  * `fix_loop` now returns the REAL reason for an unmeasurable run
+    (`runner-error` / `invalid-tests`) instead of the misleading `not-fixed`,
+    and never asks the model to fix something that cannot be judged; it also
+    stops when the fixer repeats the same code (identical input ⇒ identical
+    result).
+- PROOF (live `:8000`, after `sv restart nexus-core`): `POST /api/verify/fix`
+  `{add-returns-a-b, tests assert add(1,2)==3}` → **passed=true · reason=ok ·
+  attempts=2 · `[exit 1 → exit 0]` · clean code, no fences**.
+- Gates: ruff clean · annotations 171 · mypy 171 · real gate =
+  **3177 passed, 1 skipped @ 99.94%**; `src/verify` 100% (190 stmts / 42 br).
+- LESSON: when a component answers correctly but the pipeline fails, suspect the
+  **boundary** (what is actually handed downstream) before blaming the model —
+  and prove a layer from a BARE entry point, not only from inside the gateway.
