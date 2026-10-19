@@ -1944,3 +1944,38 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - Plan status: D1 ✅ · D2 ✅ · **D3 committed (collab) + gate now green
   (isolation fix)** · D4 next (consensus SSE wiring + Explain) · D5 last.
   NO commit made this session (per plan: report → Direct Stop).
+
+## 2026-10-19 — CI fully green: skipif guard + TZ-independent time test
+- **Result**: PR #22 Tests job went from **8 failed / 3006 passed** →
+  **0 failed / 3007 passed, 35 skipped**; CI (lint/mypy/annotations) = success.
+  Local full gate: `pytest --cov --cov-fail-under=95 --ignore=tests/novamind`
+  = **3105 passed, 1 skipped @ 99.94%**.
+- **4 concern-split commits** (tip `ff9d222`):
+  `0685d88` fix(ci) E402 · `49f6b11` test(conftest) requires_sandbox ·
+  `35cef49` test(learning) skipif + TZ · `ff9d222` ci TZ=UTC.
+- **Fix 1 — E402 (`nexus_agent.py`)**: the late
+  `from fastapi.responses import FileResponse` (in the foreign `/simple.html`
+  WIP block) was merged into the top-level `fastapi.responses` import and the
+  late line deleted. Only the IMPORT moved; the endpoint code is untouched.
+  `ruff check nexus_agent.py` → clean.
+- **Fix 2 — `requires_sandbox` (tests/conftest.py)**: `tools/exec_sandbox.py`
+  is gitignored → absent on CI → 7 tests failed with
+  `No module named 'exec_sandbox'`. Added a MODULE-LEVEL skipif marker
+  (`importlib.util.find_spec("exec_sandbox") is not None`) right after
+  `requires_vec`, and decorated only the tests that hit the REAL sandbox
+  (6 `test_execute_code_*` + `test_react_fallback_uses_successful_observations`).
+  Tests that inject a fake/runner are NOT decorated (they already passed).
+  ⚠ The probe MUST be computed at conftest IMPORT time (module level), not in a
+  fixture or `pytest_configure` — same lesson as `requires_vec`.
+- **Fix 3 — TZ-dependent time test**: `test_get_current_time_uses_the_injected_clock`
+  hardcoded `"1970-01-12T16:46:40"` = UTC+3 only, so it failed on CI's UTC.
+  `get_current_time()` renders **local** time (`datetime.fromtimestamp`), so the
+  expected value is now derived the same way (`datetime.fromtimestamp(1e6).isoformat(...)`)
+  → passes in UTC and +3 alike. TZ-INDEPENDENT beats rewriting the literal.
+- **Fix 4 — `TZ: UTC` pin (hygiene)**: top-level `env: TZ: UTC` in
+  `.github/workflows/ci.yml` (new block) + both job-level `env:` blocks in
+  `test.yml`, so any FUTURE time assertion is deterministic.
+- Lesson: when a CI "failure" is env-only (missing gitignored helper, host TZ),
+  fix it with a GUARD or an ENV-INDEPENDENT assertion — never by deleting the
+  test and never by pinning a single timezone into the expected literal.
+  Skill: `ci-skipif-and-tz-independent-tests`.
