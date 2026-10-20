@@ -2,6 +2,37 @@
 
 All notable changes to this project. Newest first.
 
+## v1.32.0 — 2026-10-21 — security: three verified vulnerabilities fixed
+
+Three real findings, each reproduced against the running code before the fix
+was written. All are reachable without authentication in the default config.
+
+- **C1 — remote code execution via `run_shell` (HIGH)**.
+  `src/agent_loop/tools.py` gated a shell tool with a `startswith` allow-list
+  and then ran the string with `shell=True`. `cat` was on the list, so
+  `run_shell('cat .env')` leaked every provider key, and `ls; cat .env`
+  slipped through the prefix check. Reachable through the orchestrator's
+  `run_shell|execute` routing. **Fix: deleted the tool** — it duplicated the
+  sandboxed `execute_code` in `src/learning/tools.py`. Guard:
+  `tests/security/test_no_run_shell.py`.
+- **C2 — `.env` dump via `safe_path` (HIGH)**.
+  `safe_path` in `unified_agent.py:70` checked only that a path stayed inside
+  the project root; `.env` is inside the root. `GET /api/workspace/file?path=.env`
+  returned the live keys, and five call sites inherited the hole. **Fix:**
+  reused the existing `is_sensitive_file` deny-list (lazy import, same one the
+  tool executor uses). Guard: `tests/security/test_safe_path_blocks_env.py`.
+- **C3 — fail-open auth off loopback (HIGH)**.
+  `AccessGuard.check` gated mutating methods only when a token was configured,
+  so a tokenless gateway bound to `0.0.0.0` (the standalone engine,
+  `unified_agent.py:553`) accepted anonymous writes from the whole LAN —
+  and, chained with C2, an anonymous `.env` read. **Fix: fail closed** — with
+  no token set, mutating routes are loopback-only; a remote client gets 401.
+  Reads stay free; a configured token still works from anywhere; a wrong token
+  is refused even from localhost. Guard:
+  `tests/security/test_fail_closed_auth.py`.
+
+No breaking API changes. The loopback dev workflow is unchanged.
+
 ## Unreleased — 2026-10-20 — security: STRIDE audit + 3 fixes
 
 - **Security audit (STRIDE)** — full threat model + executable PoC suite:
