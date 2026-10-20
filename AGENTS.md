@@ -2294,3 +2294,53 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - Bundle: `~/backups/nexus-core/nexus-core-v1.29.0.bundle` (2.8M, `--all`).
 - **NEXT (v1.30)**: the maintenance metrics `by_priority` breakdown is a
   placeholder (`# TODO(v1.30)`) — wire real priority counts from the genome.
+
+## 2026-10-20 — v1.30.0 release (real priority ledger; read endpoints pure)
+
+- Branch `feature/v1.30-task-log` → **PR #37 squash-merged → `main` =
+  `594595f`** on local + origin + gitlab. Commits: `7ab6f9b` feat(maintenance)
+  (task_log NEW + api + task_generator + scripts/generate_tasks + conftest +
+  tests) · `594595f` `chore(release): v1.30.0` (README + pyproject + openapi +
+  CHANGELOG + SCOPE). Annotated tag **`v1.30.0`** at `594595f`, self-consistent
+  (`git show v1.30.0:pyproject.toml` → 1.30.0), pushed to BOTH.
+  **GitHub Release v1.30.0 (Latest)**.
+- WHAT SHIPPED:
+  · `src/maintenance/task_log.py` (NEW, stdlib-only, leaf): append-only JSONL
+    ledger. `record(*, priority, agent_id="", outcome="generated", reason=None,
+    version=None)` never raises; `aggregate(*, window_days=7, log=None)` returns
+    BOTH a `window` and an `all_time` view + `is_sample_sufficient`
+    (`total_all_time >= NEXUS_MIN_SAMPLE`, default 30). Priority constants
+    `LOW="low"`/`MED="medium"`/`HIGH="high"` (lowercase, English — i18n is a UI
+    concern). Rotation 10 MiB × 5. Path `$NEXUS_TASK_LOG` → `<repo>/data/
+    task_log.jsonl` → tempdir.
+  · `# TODO(v1.30)` CLOSED: `/api/maintenance/metrics` now serves REAL
+    `by_priority` counts (was a placeholder) + `by_priority_all_time`.
+- **DOUBLE-RECORD DEFECT FIXED** (found while proving): `generate_tasks()` used
+  to write the ledger at generation time AND `scripts/generate_tasks.py` wrote it
+  again after execution → `--apply --max 2` inflated `low` (GET polluted state).
+  FIX = planner is now PURE (no `from . import task_log` / no `record`); the
+  ledger is written ONLY by `scripts/generate_tasks.py` after a real execute.
+  Regression: `test_generate_tasks_does_not_write_ledger` +
+  `test_tasks_route_does_not_write_ledger`.
+- **LESSON (recorded)**: *read endpoints must be pure* — a GET may not change
+  state. Test = call the GET twice and assert state before == after.
+- **CONSTRAINT HELD** (unchanged): `/api/maintenance/*` stay OUT of
+  `docs/openapi.yaml` — the drift guard scans `main.py` only → adding them =
+  phantom-route CI failure. They are documented in `docs/api.md` instead.
+- **GATES**: ruff · mypy/annotations **184** · gate recorded **3442 passed,
+  1 skipped @ 99.69%**; `test_task_log + test_maintenance` = 54 passed;
+  `test_version_sync + test_openapi` = 14 passed. README updated
+  (3445 tests, 99.69%, 184 files).
+- **LIVE** (service :8000, pid 17577 after `sv restart nexus-core`):
+  `/api/health` = 1.30.0; `/api/maintenance/metrics` → `by_priority
+  {low:2,medium:0,high:0}`, `all_time` same, `tasks{sample_sufficient:false}` —
+  real numbers, not a placeholder. CI `39429745139` SUCCESS · Tests
+  `39429745134` SUCCESS.
+- **FACT (accepted, not a bug)**: HIGH = 0 is EXPECTED — `task_generator` never
+  auto-generates HIGH tasks (a deliberate safety decision). `high_pct` is not a
+  contract field; derive it as `by_priority.high / tasks.total_all_time`.
+- **REMOVED FROM SCOPE (tyba, verified)**: no v1.30.1. Two claimed bugs were
+  artifacts of a browser screenshot (machine-translated keys) — the live HTTP
+  contract has lowercase English keys and never had a missing `high_pct`.
+  *Never diagnose API behaviour from a browser screenshot; read the contract
+  with `curl`.*

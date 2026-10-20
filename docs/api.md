@@ -54,6 +54,22 @@ curl -s -X POST http://127.0.0.1:8000/api/craft \
   -d '{"query":"fibonacci in python with a test","review":true}'
 ```
 
+## مسارات البوابة الموحّدة غير الموثّقة في `openapi.yaml` (مقصود)
+`docs/openapi.yaml` يوثّق **واجهة منصة العمل** (`main.py`) وحدها، لأن حارس
+الانحراف `test_spec_paths_match_app_both_ways` يقارن المواصفة بـ`main.app`
+**في الاتجاهين**: أي مسار مذكور وغير منفَّذ في `main.py` = «مسار موهم» يُسقط CI.
+لذلك مسارات البوابة (`nexus_agent.py` + `unified_agent.py`) الحيّة لكنها خارج
+المواصفة **عن قصد** — توثيقها هنا بدلاً من `openapi.yaml`:
+
+| المسار | الطريقة | الوصف |
+|---|---|---|
+| `/api/maintenance/metrics` | GET | صحّة الأسطول: `genome` (8 مفاتيح) + `by_priority{low,medium,high}` الحقيقي من سجلّ المهام + `by_priority_all_time` + `tasks{window_days,total_all_time,failure_pct,sample_sufficient}`. استعلام اختياري `window_days` (افتراضي 7). |
+| `/api/maintenance/tasks` | GET | مهام صيانة مرشّحة (LOW/MED) من حالة الجينوم الحالية. استعلام اختياري `limit`. |
+
+كلاهما **قراءة-فقط ولا يرمي أبداً**: فشل الجينوم أو السجلّ يُرجع أصفاراً صادقة
+بدل خطأ. `sample_sufficient` = «هل بلغ حجم العيّنة حدّ الثقة» (طبقاً لـ
+`NEXUS_MIN_SAMPLE`) — افحصه قبل بناء أي قرار على الأرقام.
+
 ## ملاحظة تشغيلية
 أصول Swagger في `docs/vendor/` — إن غابت، نزّلها مرة:
 ```bash
