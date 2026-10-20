@@ -190,3 +190,39 @@ def expected_agent_count():
         return stats()["agents_total"]
     except Exception:
         return 79  # fallback
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Isolation: redirect novamind runtime data dirs to tmp_path
+# (added 2026-10-20 — v1.27.0 audit, see PR #35)
+# ═══════════════════════════════════════════════════════════════════════
+_REDIRECT_DIRS = {
+    "core.rag.knowledge_graph": ["KG_DIR"],
+    "core.rag.vector_store": ["VECTOR_DIR", "STORE_DIR", "DATA_DIR"],
+}
+
+
+def _aliases(tail):
+    """Yield every importable alias (novamind.X and src.novamind.X)."""
+    import importlib
+    seen = set()
+    for prefix in ("novamind.", "src.novamind."):
+        try:
+            mod = importlib.import_module(prefix + tail)
+        except ImportError:
+            continue
+        if id(mod) not in seen:
+            seen.add(id(mod))
+            yield mod
+
+
+@pytest.fixture(autouse=True)
+def _isolate_novamind_data_dirs(tmp_path, monkeypatch):
+    """Redirect module-level *_DIR globals to per-test tmp_path."""
+    for tail, attrs in _REDIRECT_DIRS.items():
+        for mod in _aliases(tail):
+            for attr in attrs:
+                if hasattr(mod, attr):
+                    target = tmp_path / attr.lower()
+                    target.mkdir(parents=True, exist_ok=True)
+                    monkeypatch.setattr(mod, attr, target, raising=False)
