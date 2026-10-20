@@ -1040,24 +1040,82 @@ async def _orchestrator_plan(req: Dict[str, Any]):
         return {"ok": False, "error": str(e)[:200]}
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# v1.22.0 — Orchestrator execute endpoint (plan + run + jury gate)
+# ═══════════════════════════════════════════════════════════════════════
+def _orchestrator_runner(agent_id: str, request: str) -> Dict[str, Any]:
+    """تشغيل الوكيل المُختار فعلاً — نفس مسار ``/api/chat`` بلا بثّ.
+
+    يعيد ``{"output", "ok"}`` فيُغذّي ``Orchestrator.execute``. أي فشل مزوّد
+    ⇒ ``ok=False`` مع رسالة الخطأ في ``output`` — لا استثناء أبداً (البوابة
+    لا تتعلّق بمزوّد).
+    """
+    system = _agent_system(agent_id, request)
+    try:
+        res = get_router().generate(request, system=system, role="fast")
+    except Exception as e:  # pragma: no cover - defensive
+        return {"output": f"{type(e).__name__}: {e}", "ok": False}
+    text = (res.get("text") or "").strip()
+    if res.get("ok") and text:
+        return {"output": text, "ok": True}
+    return {"output": res.get("error") or "لا يوجد مزود متاح", "ok": False}
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Move orchestrator route before catch-all Mount (v1.21.1)
+@app.post("/api/orchestrator/execute")
+async def _orchestrator_execute(req: Dict[str, Any]):
+    """صنّف + اختر وكيلاً + نفّذ + بوابة هيئة للخطر العالي (v1.22.0).
+
+    مخرَج ``Orchestrator.execute``: ``{plan, jury, output, ok}``. بوابة الهيئة
+    تعمل الآن مع الموجّه الحقيقي عبر ``RouterLLMAdapter`` (تحويل dict→نصّ + معالجة
+    ``json_mode`` الناقص) — وإلا فإن كل عمل عالي الخطورة يُرفض بخطأ نوع.
+    """
+    from src.orchestrator.orchestrator import Orchestrator
+    from src.orchestrator.llm_adapter import adapt_llm
+    from src.novamind.council.council import COUNCIL_MEMBERS
+
+    request = (req or {}).get("request", "")
+    if not isinstance(request, str) or not request.strip():
+        return {"ok": False, "error": "empty request"}
+
+    try:
+        orch = Orchestrator(
+            genome=get_genome(),
+            jury_members=[m.name for m in COUNCIL_MEMBERS],
+            llm=adapt_llm(get_router()),
+        )
+        result = await asyncio.to_thread(
+            lambda: orch.execute(request, runner=_orchestrator_runner))
+        result["ok"] = bool(result.get("ok"))
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Move orchestrator routes before catch-all Mount (v1.21.1, v1.22.0)
 # The workbench adds a Mount("/{path}") that shadows any route
-# registered after it. Reorder so our /api/orchestrator/plan is reachable.
-# ═══════════════════════════════════════════════════════════════════
+# registered after it. Reorder so our /api/orchestrator/* is reachable.
+# ═══════════════════════════════════════════════════════════════════════
+_ORCHESTRATOR_ROUTES = (
+    "/api/orchestrator/plan",
+    "/api/orchestrator/execute",
+)
+
+
 def _nexus_reorder_orchestrator_route() -> None:
-    """Move /api/orchestrator/plan before the first Mount in app.routes."""
+    """Move our /api/orchestrator/* routes before the first Mount."""
     from starlette.routing import Mount
     mount_idx = next(
         (i for i, r in enumerate(app.routes) if isinstance(r, Mount)), None)
-    our_idx = next(
-        (i for i, r in enumerate(app.routes)
-         if "/api/orchestrator/plan" in str(getattr(r, "path", ""))), None)
-    if mount_idx is not None and our_idx is not None and our_idx > mount_idx:
-        route = app.routes.pop(our_idx)
-        app.routes.insert(mount_idx, route)
+    if mount_idx is None:
+        return
+    for want in _ORCHESTRATOR_ROUTES:
+        our_idx = next(
+            (i for i, r in enumerate(app.routes)
+             if want == str(getattr(r, "path", ""))), None)
+        if our_idx is not None and our_idx > mount_idx:
+            route = app.routes.pop(our_idx)
+            app.routes.insert(mount_idx, route)
 
 
 _nexus_reorder_orchestrator_route()
