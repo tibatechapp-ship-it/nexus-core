@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 from .decomposer import SubTask, decompose, merge_outputs
-from .risk import RiskLevel, classify, explain
+from .risk import RiskLevel, classify, explain, risk_key
 from .router import route, route_with_reason
 from .registry import get_registry
 
@@ -154,7 +154,10 @@ class Orchestrator:
                 result["ok"] = False
         result["output"] = merge_outputs(subtasks, outputs)
         # One jury decision over the merged block, at the HIGHEST subtask risk.
-        top_risk = max((s.risk for s in subtasks), default=RiskLevel.LOW)
+        # ``key=risk_key`` is REQUIRED: a bare ``max`` mispicks the highest risk
+        # (``max([HIGH, MED])`` → MED) and would skip the jury on a HIGH task.
+        top_risk = max((s.risk for s in subtasks), key=risk_key,
+                       default=RiskLevel.LOW)
         self._apply_jury(result, top_risk)
         return result
 

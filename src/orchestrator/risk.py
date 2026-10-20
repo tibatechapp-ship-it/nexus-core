@@ -1,17 +1,33 @@
 """Risk classification — deterministic, no LLM."""
 from __future__ import annotations
-from enum import Enum
+from enum import StrEnum
 from typing import Tuple
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
+    """Risk level as a string enum.
+
+    ``StrEnum`` (Python 3.11+) makes ``str(RiskLevel.HIGH) == "high"`` — without
+    it a ``(str, Enum)`` leaks ``"RiskLevel.HIGH"`` through ``str()``/f-strings.
+    """
+
     LOW = "low"
     MED = "med"
     HIGH = "high"
 
-    def __lt__(self, other: "RiskLevel") -> bool:  # type: ignore[override]
-        order = {"low": 0, "med": 1, "high": 2}
-        return order[self.value] < order[other.value]
+
+# Explicit ordering — ``max()`` must never rely on the enum's own comparison.
+RISK_ORDER = {RiskLevel.LOW: 0, RiskLevel.MED: 1, RiskLevel.HIGH: 2}
+
+
+def risk_key(level: RiskLevel) -> int:
+    """Sort key for ``RiskLevel`` — use with ``sorted``/``max``/``min``.
+
+    A plain ``max(levels)`` is unsafe: ``max()`` compares with ``>`` and an enum
+    that only defines ``__lt__`` falls back to str comparison, mispicking the
+    highest risk (``max([HIGH, MED])`` returned ``MED``).
+    """
+    return RISK_ORDER[level]
 
 
 _HIGH_PATTERNS = (
