@@ -1,14 +1,20 @@
-# nexus-core — project review & fix ledger (v1.27.0)
+# nexus-core — project review & fix ledger (v1.27.0, updated to v1.30.0)
 
 > A ground-up evaluation of this repository at the `v1.27.0` release: what it
 > does well, how it actually compares to the open-source agent frameworks,
 > where its real weaknesses are, and what was fixed in the same pass.
 > **Every claim below is backed by a command that was actually run** (see
 > [Verification](#7-verification)).
+>
+> **Update 2026-10-20 (v1.30.0):** the repo advanced v1.27.0 → v1.30.0. The
+> weaknesses W1 (version-guard blind spot) and W2 (narrow spec) both have a
+> landed fix, and the W4 dual-genome split is now explicitly documented (see
+> [§9](#9-addendum-2026-10-20-v1300)). Core verdict and score are unchanged.
 
-Date: 2026-10-20 · Version reviewed: `v1.27.0` (`main` = `0d29cc9`) ·
-Reviewer: Zyvo (automated, on-device in Termux) · Prior review: the v3.0.0
-tyb-zyv-ai review at the top of this file (pre-merge, kept for history).
+Date: 2026-10-20 · Version reviewed: `v1.27.0` (`main` = `0d29cc9`); addendum
+audited at `v1.30.0` (`main` = `594595f`) · Reviewer: Zyvo (automated, on-device
+in Termux) · Prior review: the v3.0.0 tyb-zyv-ai review at the top of this file
+(pre-merge, kept for history).
 
 ---
 
@@ -184,3 +190,33 @@ documented design trade-offs, not bugs.
 **Score: 9.3 / 10** — docked for spec coverage (W2), the gate-scope trade-off
 (W3) and the dual-genome split (W4); every other dimension is production-grade
 for this project's scope and constraints.
+
+---
+
+## 9. Addendum 2026-10-20 (v1.30.0)
+
+The repo moved v1.27.0 → v1.30.0 in three patch/minor releases. What changed for
+the weaknesses tracked above, plus the housekeeping audit done in the same pass:
+
+- **W1 (version-guard blind spot)** — FIXED, already noted in §7. The guard now
+  picks the release tag deterministically (`git tag --points-at HEAD` +
+  semver-max) instead of the arbitrary `git describe --exact-match`.
+- **W2 (narrow spec)** — partially addressed: `/api/maintenance/*` (gateway-only)
+  and the gateway's other mounts are documented in `docs/api.md`, deliberately
+  NOT in `docs/openapi.yaml` (the drift guard scans the workbench app only →
+  adding them would be a phantom-route failure). The spec stays honest and
+  narrow; the human doc carries the rest.
+- **W4 (dual genome)** — now explicitly documented in
+  `docs/genome-stores.md`: the council genome (v1, SQLite) and the fitness
+  genome (v2, JSON) are separate stores with different UIs, bridged since
+  v1.20.2 (a council debate feeds v2). Unifying the storage is a deferred
+  design decision, not a bug.
+- **NEW housekeeping (this pass):**
+  - `.env.example` had drifted — it documented 20 of the 46 env vars the code
+    reads. Now complete, and guarded by a new `tests/test_env_docs.py`
+    (the scanner refuses to pass vacuously).
+  - The tracked `AGENTS.md` had grown to 2346 lines of accumulated release
+    notes; the pre-v1.29 history moved to `docs/legacy/AGENTS_HISTORY.md`
+    (~223 lines remain), stale facts corrected.
+
+No `src/` behaviour changed in this pass — documentation + one new test only.
