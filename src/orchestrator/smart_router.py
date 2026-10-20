@@ -4,21 +4,21 @@ import os
 import sys
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src'))
 
 
-class Complexity(str, Enum):
+class Complexity(StrEnum):
     SIMPLE = "simple"      # وكيل واحد
     STANDARD = "standard"  # 2-3 وكلاء
     COMPLEX = "complex"    # 4+ وكلاء
     CRITICAL = "critical"  # Council
 
 
-class Strategy(str, Enum):
+class Strategy(StrEnum):
     SINGLE = "single"      # وكيل واحد
     SEQUENTIAL = "sequential"  # متسلسل
     PARALLEL = "parallel"  # متوازي (Fanout)

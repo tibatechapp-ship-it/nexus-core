@@ -18,7 +18,7 @@ from typing import Any, Mapping
 
 from ._metrics import load
 
-_RISKS = ("low", "medium", "high")
+_RISKS = ("low", "med", "high")
 
 
 def summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -95,7 +95,7 @@ def render(summary: Mapping[str, Any]) -> str:
         f"single            : {summary['single']}",
         f"avg subtasks/req  : {summary['avg_subtasks']:.2f}",
         "─── risk ───",
-        f"low / medium / high: {summary['risk']['low']} / {summary['risk']['medium']} / {summary['risk']['high']}"
+        f"low / med / high: {summary['risk']['low']} / {summary['risk']['med']} / {summary['risk']['high']}"
         f"   (high {_pct(summary['high_ratio'])})",
         "─── jury ───",
         f"jury fired        : {summary['jury_fired']}  ({_pct(summary['jury_rate'])})",

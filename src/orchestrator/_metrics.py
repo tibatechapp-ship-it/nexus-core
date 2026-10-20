@@ -25,6 +25,11 @@ SCHEMA_VERSION = 2
 MAX_RECORDS = 2000
 _ENV_PATH = "NEXUS_METRICS_PATH"
 
+# Rank map for the subtask fallback. Accepts BOTH spellings of the middle level
+# ("med" = the live RiskLevel value, "medium" = the task_log spelling) so a mixed
+# log can never silently rank a "med" subtask as LOW.
+_RISK_ORDER = {"low": 0, "med": 1, "medium": 1, "high": 2}
+
 
 def _utc_now() -> str:
     """Current UTC time as an ISO-8601 string with a trailing ``Z``."""
@@ -103,9 +108,8 @@ def record(
     agents = [str(s.get("agent", "")) for s in subtasks if s.get("agent")]
     failed = [str(s.get("agent", "")) for s in subtasks if not s.get("ok", True)]
     if risk is None:
-        order = {"low": 0, "medium": 1, "high": 2}
         levels = [str(s.get("risk", "low")) for s in subtasks] or ["low"]
-        risk = max(levels, key=lambda level: order.get(level, 0))
+        risk = max(levels, key=lambda level: _RISK_ORDER.get(level, 0))
     entry: dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "ts": _utc_now(),

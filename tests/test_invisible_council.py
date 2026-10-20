@@ -107,3 +107,32 @@ def test_anything_but_truthy_keeps_it_hidden(monkeypatch, flavour):
     else:
         monkeypatch.delenv("NEXUS_UI_VERBOSE", raising=False)
     assert _public_jury(_verdict()) == {"approved": True, "confidence": 0.9}
+
+
+# ── BUG-C: a decomposed HIGH task MUST reach the jury (v1.31.4) ──────────────
+
+def test_decomposed_high_risk_still_reaches_the_jury(monkeypatch):
+    """Regression for the max() mispick — top_risk must be the HIGHEST subtask.
+
+    Before the fix, ``max([HIGH, MED])`` returned MED, so a decomposed HIGH
+    request silently skipped the jury gate. The runner is a no-op stub and the
+    only assertion is that the jury FIRED.
+    """
+    from src.orchestrator.decomposer import SubTask
+
+    monkeypatch.setenv("NEXUS_COUNCIL_TRACE", "/dev/null")
+    monkeypatch.setenv("NEXUS_UI_VERBOSE", "0")
+
+    orch = Orchestrator(jury_members=["profiler", "analyst"], llm=_FakeLLM())
+    orch.llm = _FakeLLM()
+    subtasks = [
+        SubTask(agent="coder", request="list files", risk=RiskLevel.LOW),
+        SubTask(agent="analyst", request="add comment", risk=RiskLevel.MED),
+        SubTask(agent="recovery", request="delete genome", risk=RiskLevel.HIGH),
+    ]
+    result = orch._execute_many("do three things", subtasks,
+                                lambda agent, req: {"output": f"{agent} ok", "ok": True})
+
+    assert result.get("jury") is not None, "HIGH subtask must convene the jury"
+    assert result["jury"]["approved"] is True
+
