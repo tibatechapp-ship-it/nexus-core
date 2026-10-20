@@ -274,3 +274,14 @@ def _reset_nexus_agent_globals():
     except ImportError:
         pass
     yield
+
+
+def pytest_configure(config):
+    """Set NEXUS_SECURITY_LOG before test collection.
+
+    Runs before test_gatekeeper_audit.py is imported, so the module-level
+    singleton `gatekeeper = SecurityGatekeeper()` reads /tmp/... instead
+    of memory/security_log.jsonl.
+    """
+    import os
+    os.environ.setdefault("NEXUS_SECURITY_LOG", "/tmp/_pytest_security.jsonl")
