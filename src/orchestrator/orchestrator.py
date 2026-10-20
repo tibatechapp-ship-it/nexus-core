@@ -20,6 +20,34 @@ def decompose_enabled() -> bool:
     return os.environ.get("NEXUS_DECOMPOSE", "1").strip().lower() in _TRUE
 
 
+def ui_verbose() -> bool:
+    """Whether internal deliberation may be exposed to callers/UI.
+
+    Default is OFF: the council is a black box. Set ``NEXUS_UI_VERBOSE=1`` for
+    developer/debug mode, where the full verdict (per-juror details) is returned.
+    """
+    return os.environ.get("NEXUS_UI_VERBOSE", "0").strip().lower() in _TRUE
+
+
+#: Verdict fields safe to expose when the council is a black box: the decision
+#: only — never the individual jurors' names, confidences or issues.
+_PUBLIC_JURY_FIELDS = ("approved", "confidence")
+
+
+def _public_jury(verdict: Any) -> Optional[Dict[str, Any]]:
+    """Project a ``JuryVerdict`` down to what a black-box caller may see.
+
+    ``None`` in → ``None`` out. In verbose mode the full verdict is returned
+    unchanged, so the trace/debug path keeps every detail.
+    """
+    if verdict is None:
+        return None
+    full = getattr(verdict, "__dict__", None) or {}
+    if ui_verbose():
+        return dict(full)
+    return {k: full.get(k) for k in _PUBLIC_JURY_FIELDS if k in full}
+
+
 @dataclass
 class Plan:
     request: str
@@ -131,12 +159,18 @@ class Orchestrator:
         return result
 
     def _apply_jury(self, result: Dict[str, Any], risk: RiskLevel) -> None:
-        """Run the jury on ``result["output"]`` when ``risk`` is HIGH."""
+        """Run the jury on ``result["output"]`` when ``risk`` is HIGH.
+
+        The deliberation is a BLACK BOX for callers: by default only the
+        decision (``approved`` + ``confidence``) leaves the API, so no
+        interface can render the individual jurors. Set ``NEXUS_UI_VERBOSE=1``
+        to expose the full verdict (developer/debug mode).
+        """
         if risk != RiskLevel.HIGH or not self.jury_members:
             return
         from src.novamind.council.jury import judge
         v = judge(str(result["output"] or ""), risk=risk,
                   members=self.jury_members, llm=self.llm)
-        result["jury"] = v.__dict__ if v else None
+        result["jury"] = _public_jury(v)
         if v and not v.approved:
             result["ok"] = False

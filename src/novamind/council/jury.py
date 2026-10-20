@@ -1,8 +1,11 @@
 """Jury gate — fires ONLY on HIGH risk. Hardened against prompt injection."""
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List
+import datetime
 import json
+import os
 import re
 from src.orchestrator.risk import RiskLevel
 
@@ -15,6 +18,40 @@ class JuryVerdict:
     members_consulted: int
     members_approved: int
     member_verdicts: Dict[str, Dict[str, Any]]
+
+
+def trace_path() -> Path:
+    """Where the developers-only debate trace is appended.
+
+    ``$NEXUS_COUNCIL_TRACE`` wins; otherwise ``<repo>/data/council_trace.jsonl``
+    (falling back to the temp dir when the repo ``data/`` is not writable).
+    """
+    override = os.environ.get("NEXUS_COUNCIL_TRACE")
+    if override:
+        return Path(override)
+    repo_data = Path(__file__).resolve().parents[3] / "data"
+    if repo_data.is_dir():
+        return repo_data / "council_trace.jsonl"
+    return Path(os.environ.get("TMPDIR", "/tmp")) / "council_trace.jsonl"
+
+
+def write_trace(target: str, verdict: "JuryVerdict") -> None:
+    """Append one line of the full verdict to the developer trace.
+
+    Never raises: losing a trace line must never break a debate.
+    """
+    try:
+        record = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "target": str(target or "")[:200],
+            "verdict": verdict.__dict__,
+        }
+        path = trace_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 def _sanitize_target(text: str) -> str:
@@ -61,16 +98,20 @@ def judge(target, *, risk, members, llm=None):
     verdicts = {m: _invoke_member(m, target, llm) for m in members}
     real = [v for v in verdicts.values() if not v.get("abstain")]
     if not real:
-        return JuryVerdict(approved=False, confidence=0.0,
-                           blocking_issues=["all_members_abstained"],
-                           members_consulted=len(members),
-                           members_approved=0, member_verdicts=verdicts)
+        verdict = JuryVerdict(approved=False, confidence=0.0,
+                              blocking_issues=["all_members_abstained"],
+                              members_consulted=len(members),
+                              members_approved=0, member_verdicts=verdicts)
+        write_trace(str(target or ""), verdict)
+        return verdict
     approved_count = sum(1 for v in real if v["approved"])
     majority = approved_count * 2 > len(real)
     avg_conf = sum(v["confidence"] for v in real) / len(real)
     blocking = sorted({i for v in real if not v["approved"] for i in v["issues"]})
-    return JuryVerdict(approved=majority, confidence=round(avg_conf, 3),
-                       blocking_issues=blocking,
-                       members_consulted=len(members),
-                       members_approved=approved_count,
-                       member_verdicts=verdicts)
+    verdict = JuryVerdict(approved=majority, confidence=round(avg_conf, 3),
+                          blocking_issues=blocking,
+                          members_consulted=len(members),
+                          members_approved=approved_count,
+                          member_verdicts=verdicts)
+    write_trace(str(target or ""), verdict)
+    return verdict
