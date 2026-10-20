@@ -30,7 +30,7 @@ def test_summarize_empty_is_a_complete_shape():
     assert s["total"] == 0
     assert s["decomposed"] == 0 and s["single"] == 0
     assert s["decomposed_ratio"] == 0.0
-    assert s["risk"] == {"low": 0, "medium": 0, "high": 0}
+    assert s["risk"] == {"low": 0, "med": 0, "high": 0}
     assert s["high_ratio"] == 0.0
     assert s["failed_runs"] == 0
     assert s["run_failure_rate"] == 0.0
@@ -60,7 +60,7 @@ def test_summarize_counts_decomposition_risk_and_jury():
 def test_summarize_ignores_an_unknown_risk_level():
     s = dashboard.summarize([_row(risk="weird")])
     # an unrecognised level is skipped, never crashes the summary
-    assert s["risk"] == {"low": 0, "medium": 0, "high": 0}
+    assert s["risk"] == {"low": 0, "med": 0, "high": 0}
     assert s["total"] == 1
 
 
@@ -96,7 +96,7 @@ def test_render_prints_the_five_required_metrics():
     text = dashboard.render(s)
     assert "executions" in text
     assert "decomposed" in text
-    assert "low / medium / high" in text
+    assert "low / med / high" in text
     assert "jury fired" in text
     assert "coder" in text and "fail=" in text
 
@@ -112,8 +112,8 @@ def test_cli_reads_the_configured_metrics_file(tmp_path, monkeypatch, capsys):
     path = tmp_path / "metrics.json"
     monkeypatch.setenv("NEXUS_METRICS_PATH", str(path))
     _metrics.record(request="write a sum fn and test it", ok=True,
-                    decomposed=True, risk="medium",
-                    subtasks=[{"agent": "coder", "ok": True, "risk": "medium"},
+                    decomposed=True, risk="med",
+                    subtasks=[{"agent": "coder", "ok": True, "risk": "med"},
                               {"agent": "tester", "ok": True, "risk": "low"}])
     rc = dashboard.main([])
     out = capsys.readouterr().out

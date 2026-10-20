@@ -362,3 +362,15 @@ def test_metrics_snapshot_includes_by_risk_requests() -> None:
     assert body["ok"] is True
     assert "by_risk_requests" in body
     assert set(body["by_risk_requests"]["by_risk_requests"]) == {"low", "med", "high"}
+
+
+def test_endpoint_returns_med_not_medium() -> None:
+    """The wire contract is "med" — a StrEnum must not serialise it as "medium"
+    (and never as an object). Guards the v1.31.4 enum migration end-to-end."""
+    client, _child, _FastAPI, _build = _api_client()
+    body = client.get("/api/maintenance/metrics").json()
+    keys = body["by_risk_requests"]["by_risk_requests"]
+    assert "med" in keys
+    assert "medium" not in keys
+    assert set(keys) == {"low", "med", "high"}
+
