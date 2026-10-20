@@ -35,7 +35,7 @@ src/            framework (stdlib-only, phone-safe, fully tested)
 hyper_agent.py  Hyper-Agent 2.0 — autonomous coding agent (BUG-1..9, JSONL logs)
 connectors/     BYOK LLM adapters (openai/anthropic/groq/ollama/deepseek/gemini)
 hyper_app/      Hyper-Agent API surface (POST /api/agent/start)
-tests/          framework suite (3400+ tests @ 99%) + tests/novamind/ (opt-in)
+tests/          framework suite (3445 tests @ 99.69%) + tests/novamind/ (opt-in)
 main.py         Council workbench server (FastAPI) + index.html console
 zyvo-*.py       standalone Telegram + voice assistants
 docs/           framework + novamind documentation
