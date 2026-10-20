@@ -140,3 +140,131 @@ def test_generate_tasks_high_guard_drops_candidate(monkeypatch) -> None:
     monkeypatch.setattr(tg, "classify", fake_classify)
     genome = {"agents": {"coder": {"fitness": 0.5}}}
     assert generate_tasks(genome) == []
+
+
+# ─── metrics surface (FastAPI) ──────────────────────────────────────────────
+def _api_client():
+    """A TestClient whose app is mounted, mirroring the gateway layout."""
+    import pytest
+
+    pytest.importorskip("fastapi")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from src.maintenance.api import build_router
+
+    child = FastAPI()
+    child.router.routes.extend(build_router().routes)
+    parent = FastAPI()
+    parent.mount("/", child)
+    return TestClient(parent), child, FastAPI, build_router
+
+
+class _FakeGenome:
+    """Minimal genome stand-in exposing stats() + to_dict()."""
+
+    def stats(self) -> dict:
+        return {"agents": 3, "active": 2, "retired": 1, "observations": 7}
+
+    def to_dict(self) -> dict:
+        return {"agents": {"coder": {"fitness": 0.2}, "tester": {"fitness": 0.9}}}
+
+
+def test_metrics_snapshot_shape_and_zeros() -> None:
+    from src.maintenance.api import metrics_snapshot
+
+    payload = metrics_snapshot(fitness=_FakeGenome())
+    assert payload["ok"] is True
+    assert payload["scope"] == "maintenance"
+    assert payload["genome"]["agents"] == 3
+    assert payload["genome"]["observations"] == 7
+    # The priority breakdown is a stable shape with zero values for now.
+    assert payload["by_priority"] == {"low": 0, "medium": 0, "high": 0}
+
+
+def test_metrics_snapshot_tolerates_a_broken_genome() -> None:
+    from src.maintenance.api import metrics_snapshot
+
+    class _Broken:
+        def stats(self) -> dict:
+            raise RuntimeError("boom")
+
+    payload = metrics_snapshot(fitness=_Broken())
+    assert payload["ok"] is True
+    assert payload["genome"]["agents"] == 0
+
+
+def test_metrics_route_survives_an_asgi_mount() -> None:
+    """The routes must be reachable through a mount (deferred-router guard)."""
+    client, _child, _FastAPI, _build = _api_client()
+    resp = client.get("/api/maintenance/metrics")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and body["scope"] == "maintenance"
+
+
+def test_tasks_route_reports_ok_and_a_list() -> None:
+    client, _child, _FastAPI, _build = _api_client()
+    resp = client.get("/api/maintenance/tasks")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert isinstance(body["tasks"], list)
+
+
+def test_register_extends_concrete_routes() -> None:
+    """register() must extend real paths, never a deferred placeholder."""
+    import pytest
+
+    pytest.importorskip("fastapi")
+    from fastapi import FastAPI
+
+    from src.maintenance.api import register
+
+    app = FastAPI()
+    register(app)
+    paths = {getattr(r, "path", None) for r in app.router.routes}
+    assert "/api/maintenance/metrics" in paths
+    assert "/api/maintenance/tasks" in paths
+
+
+def test_genome_stats_degrades_when_getter_raises(monkeypatch) -> None:
+    import src.novamind.genome_v2 as gv2
+    import src.maintenance.api as api
+
+    def boom():
+        raise RuntimeError("no genome")
+
+    monkeypatch.setattr(gv2, "get_genome_v2", boom)
+    # _genome_stats() must swallow the failure and return an empty mapping
+    assert api._genome_stats() == {}
+    # ...and the public snapshot still answers with zeros
+    payload = api.metrics_snapshot()
+    assert payload["ok"] is True and payload["genome"]["agents"] == 0
+
+
+def test_genome_document_degrades_when_getter_raises(monkeypatch) -> None:
+    import src.novamind.genome_v2 as gv2
+    import src.maintenance.api as api
+
+    def boom():
+        raise RuntimeError("no genome")
+
+    monkeypatch.setattr(gv2, "get_genome_v2", boom)
+    assert api._genome_document() == {}
+
+
+def test_tasks_route_degrades_on_bad_limit(monkeypatch) -> None:
+    """A broken task generator yields an honest error payload, never a 500."""
+    import src.maintenance.api as api
+
+    def boom(_genome, *, limit):
+        raise RuntimeError("generator exploded")
+
+    monkeypatch.setattr(api, "generate_tasks", boom)
+    client, _child, _FastAPI, _build = _api_client()
+    resp = client.get("/api/maintenance/tasks")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False and body["tasks"] == []
+    assert "generator exploded" in body["error"]

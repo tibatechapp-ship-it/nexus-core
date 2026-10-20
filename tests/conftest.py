@@ -277,11 +277,40 @@ def _reset_nexus_agent_globals():
 
 
 def pytest_configure(config):
-    """Set NEXUS_SECURITY_LOG before test collection.
+    """Point the security log at a private temp file before collection.
 
     Runs before test_gatekeeper_audit.py is imported, so the module-level
-    singleton `gatekeeper = SecurityGatekeeper()` reads /tmp/... instead
-    of memory/security_log.jsonl.
+    singleton `gatekeeper = SecurityGatekeeper()` reads a temp file instead of
+    the repo's ``memory/security_log.jsonl``. ``tempfile.gettempdir()`` honours
+    ``$TMPDIR`` (``/tmp`` is not writable on Termux).
     """
-    import os
-    os.environ.setdefault("NEXUS_SECURITY_LOG", "/tmp/_pytest_security.jsonl")
+    os.environ.setdefault(
+        "NEXUS_SECURITY_LOG",
+        str(Path(tempfile.gettempdir()) / "_pytest_security.jsonl"),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _guard_no_runtime_leaks() -> Generator[None, None, None]:
+    """Fail the test if it wrote a runtime artifact into the repo.
+
+    ``memory/`` is gitignored runtime state (the security log and friends).
+    A test that forgets to point an env var at a temp dir would silently
+    pollute the working tree — snapshot it before the test and fail if it
+    changed. Deliberately scoped to ``memory/`` only: the shared ``logs/``
+    dir is used by the app itself and already holds real files, so it is
+    not a reliable leak signal.
+    """
+    watch = ROOT / "memory"
+    before = _snapshot(watch)
+    yield
+    after = _snapshot(watch)
+    leaked = {path: size for path, size in after.items() if before.get(path) != size}
+    assert not leaked, f"test wrote runtime artifacts into memory/: {sorted(leaked)}"
+
+
+def _snapshot(directory: Path) -> dict[str, int]:
+    """Map each file under ``directory`` to its size (empty when absent)."""
+    if not directory.is_dir():
+        return {}
+    return {str(p.relative_to(directory)): p.stat().st_size for p in directory.rglob("*") if p.is_file()}
