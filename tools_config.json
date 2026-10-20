@@ -7,7 +7,9 @@
     },
     "read_file": {
       "enabled": true,
-      "allowed_roots": ["."]
+      "allowed_roots": [
+        "."
+      ]
     },
     "get_current_time": {
       "enabled": true
@@ -22,7 +24,15 @@
     },
     "consensus": {
       "enabled": true,
-      "agents": ["analyst", "planner", "reviewer"]
+      "agents": [
+        "analyst",
+        "planner",
+        "reviewer"
+      ]
+    },
+    "download_file": {
+      "enabled": true,
+      "max_file_size": "2G"
     }
   }
 }
