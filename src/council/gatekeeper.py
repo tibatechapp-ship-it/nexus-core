@@ -29,6 +29,20 @@ INJECTION_PATTERNS = {
         (r"system\s*:\s*override", 200),
         (r"<\|im_start\|>", 190),
         (r"###\s*instruction", 150),
+        # NEW: system prompt extraction
+        (r"(?i)\b(system|initial|hidden|secret)\s+prompt\b", 160),
+        (r"(?i)\b(output|show|print|reveal|repeat|disclose)\b[^.]{0,60}\b(prompt|instruction)s?\b", 150),
+        # NEW: credential theft
+        (r"(?i)\b(api|secret|private|access)\s+keys?\b", 170),
+        (r"(?i)\b(env|environment)\s+(var|variable)s?\b", 150),
+        # NEW: file disclosure
+        (r"/etc/(passwd|shadow|hosts|sudoers)", 180),
+        (r"(?i)\b(print|cat|read|show)\b[^.]{0,40}/(etc|proc|sys)/", 160),
+        # NEW: role hijacking
+        (r"(?i)\byou\s+are\s+(no\s+longer|not)\s+\w+", 170),
+        (r"(?i)\b(disregard|forget|abandon)\s+(your\s+)?(role|persona|rules?|instructions?)", 170),
+        (r"(?i)\b(developer|god|dan|jailbreak|admin)\s+mode\b", 160),
+        (r"(?i)\bapprove\s+everything\b", 150),
     ],
     "dangerous": [
         (r"execute\s+(this\s+)?(command|code)", 120),
@@ -49,6 +63,9 @@ INJECTION_PATTERNS = {
 IMPERSONATION = [
     (r"as\s+(the\s+)?(orchestrator|judge|admin)", 90),
     (r"بصفتي\s+(المدير|القاضي|المشرف)", 90),
+    # NEW: agent name impersonation
+    (r"(?i)\b(profiler|critic|analyst|judge|architect)\s+(has|said|approved|agreed)", 85),
+    (r"(?i)\ball\s+(agents?|members?|others?)\s+(agreed?|approved?|approved that)", 85),
 ]
 
 
