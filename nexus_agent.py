@@ -1061,6 +1061,19 @@ def _orchestrator_runner(agent_id: str, request: str) -> Dict[str, Any]:
     return {"output": res.get("error") or "لا يوجد مزود متاح", "ok": False}
 
 
+def _risk_level_str(value: Any) -> str | None:
+    """Normalize a plan risk to a plain string.
+
+    ``Orchestrator.plan().risk`` is a ``RiskLevel`` enum; ``result["plan"]`` is
+    its ``__dict__``, so the value here can be either the enum (with ``.value``)
+    or a plain string. Returns ``None`` when absent/unknown.
+    """
+    if value is None:
+        return None
+    raw = getattr(value, "value", value)
+    return str(raw)
+
+
 def _record_orchestrator_metric(request: str, result: Dict[str, Any]) -> None:
     """سجّل تنفيذاً واحداً لمقاييس لوحة القيادة (v1.25.0).
 
@@ -1074,13 +1087,13 @@ def _record_orchestrator_metric(request: str, result: Dict[str, Any]) -> None:
 
         subtasks = list(result.get("subtasks") or [])
         plan = result.get("plan") or {}
-        level = plan.get("risk")
+        level = _risk_level_str(plan.get("risk"))
         matched: list[str] = []
         reason = plan.get("risk_reason")
-        if str(level) == "high":
+        if level == "high":
             try:
                 info = explain(request)
-                matched = list(info.get("matched_high") or [])
+                matched = [str(m) for m in (info.get("matched_high") or [])]
                 reason = info.get("reason") or reason
             except Exception:
                 matched = []
