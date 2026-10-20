@@ -79,6 +79,15 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / f"nexus-test-tasks-{os.getpid()}.jsonl"),
 )
 
+# The orchestrator execution metrics (src/orchestrator/_metrics.py) also default
+# to <repo>/data/metrics.json and are appended on every /api/orchestrator/execute
+# call. Point it at a private temp file so a test that exercises that route never
+# writes into the repo's real metrics log (or inherits its rows).
+os.environ.setdefault(
+    "NEXUS_METRICS_PATH",
+    str(Path(tempfile.gettempdir()) / f"nexus-test-metrics-{os.getpid()}.json"),
+)
+
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
 #: The one adversarial verdict ledger, shared for the whole session.

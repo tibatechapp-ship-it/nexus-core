@@ -134,3 +134,19 @@ def test_default_path_falls_back_inside_the_repo(tmp_path, monkeypatch):
     assert resolved.name == "metrics.json"
     # the repo root is the checkout this file lives in
     assert Path(_metrics._repo_root()).is_dir()
+
+
+def test_suite_isolates_metrics_writes_from_the_repo():
+    """The suite must never append to the repo's real ``data/metrics.json``.
+
+    ``NEXUS_METRICS_PATH`` is pinned to a private temp file in ``conftest.py``
+    at import time, so a test that records (directly or via
+    ``/api/orchestrator/execute``) cannot pollute the checkout.
+    """
+    resolved = _metrics.default_metrics_path()
+    repo_data = Path(_metrics._repo_root()) / "data"
+    assert repo_data not in resolved.parents, (
+        f"default metrics path {resolved} still lives under {repo_data}; "
+        "NEXUS_METRICS_PATH must be set to a temp file in conftest.py"
+    )
+
