@@ -2,6 +2,20 @@
 
 All notable changes to this project. Newest first.
 
+## v1.31.3 — 2026-10-20 — fix: HIGH risk reasons were never recorded
+
+- **Bug**: `result["plan"]` is the plan's `__dict__`, so `plan["risk"]` is a
+  `RiskLevel` **enum**, not the plain string `"high"`. The metrics recorder
+  compared `str(enum)` → `"RiskLevel.HIGH"` against `"high"`, never matched, and
+  silently dropped `risk_reason` / `risk_matched` on every real HIGH execution —
+  `high_reasons` was always empty in production (v1.31.2). Fixed with
+  `_risk_level_str()` (unwraps `.value` before the check).
+- **Test gap closed**: the earlier unit test passed a plain `"high"` string and
+  hid the bug. Two endpoint tests now drive the real `Orchestrator` end-to-end:
+  a HIGH request records `risk_reason "high:genome"` + `risk_matched ["genome"]`,
+  and a LOW request omits both.
+- Gate: ruff · mypy · annotations clean · full suite green.
+
 ## v1.31.2 — 2026-10-20 — test isolation + orchestrator risk breakdown
 
 Two focused fixes on the orchestrator metrics log — no behaviour change to any
