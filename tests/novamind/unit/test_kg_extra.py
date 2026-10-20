@@ -1,5 +1,23 @@
-"""Extra KnowledgeGraph tests."""
+"""Extra KnowledgeGraph tests — isolated via tmp_path.
+
+KnowledgeGraph writes JSON to KG_DIR/{name}.json. KG_DIR is a module
+global pointing into the source tree, so tests using literal names
+('ci_test_path', 'ci_test_stats', ...) leaked artifacts under
+src/memory/knowledge_graph/ — invisible to 'make check' because it
+excludes tests/novamind.
+
+Fix: autouse fixture redirects KG_DIR to a per-test tmp_path.
+"""
+import pytest
+
+from novamind.core.rag import knowledge_graph as kgmod
 from novamind.core.rag.knowledge_graph import KnowledgeGraph
+
+
+@pytest.fixture(autouse=True)
+def _isolate_kg_dir(tmp_path, monkeypatch):
+    """Redirect KG_DIR to a per-test temp dir (auto-cleaned by pytest)."""
+    monkeypatch.setattr(kgmod, "KG_DIR", tmp_path)
 
 
 def test_kg_path_finding():
