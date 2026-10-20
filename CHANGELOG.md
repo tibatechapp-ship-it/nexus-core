@@ -2,6 +2,24 @@
 
 All notable changes to this project. Newest first.
 
+## v1.27.0 — 2026-10-20 — maintenance & task generation
+
+The genome now drives housekeeping. New, additive-only layer; no existing
+file or route changes.
+
+- `src/maintenance/task_generator.py`: reads agent fitness from the genome
+  and produces a bounded batch of LOW/MED maintenance requests, weakest
+  fitness first. HIGH-risk candidates are filtered out as a last line of
+  defence — the generator can never emit a destructive task.
+- `scripts/cleanup.py`: dry-run-first repo cleanup (caches + backup junk)
+  with a segment-aware guard that refuses to touch `src/`, `tests/`,
+  `data/genome.json` and `.git`; logs to `data/cleanup.log`.
+- `scripts/generate_tasks.py`: reads `data/genome.json`, asks the generator
+  for a batch (cap 10 via `NEXUS_MAX_TASKS`) and POSTs each to
+  `/api/orchestrator/execute`; dry run by default; logs to
+  `data/generator.log`.
+- `tests/test_maintenance.py`: 18 hermetic tests incl. the HIGH-risk guard.
+
 ## v1.26.1 — 2026-10-20 — invisible council (decision-only by default)
 
 The council's per-juror debate was leaking to every API consumer: the
