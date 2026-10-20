@@ -194,25 +194,4 @@ def build_default_registry() -> Any:
         except Exception as e:
             return f"خطأ: {e}"
 
-    # ═══ 9. run_shell ═══
-    @reg.register(
-        "run_shell",
-        "يشغّل أمر shell بسيط (مقيد بقائمة بيضاء)",
-        {"type": "object",
-         "properties": {"command": {"type": "string"}},
-         "required": ["command"]})
-    def run_shell(command: Any) -> Any:
-        import subprocess
-        # قائمة بيضاء
-        allowed = ["ls", "pwd", "whoami", "date", "echo", "cat",
-                   "git status", "git log", "python --version", "df"]
-        if not any(command.strip().startswith(a) for a in allowed):
-            return f"الأمر غير مسموح: {command}"
-        try:
-            r = subprocess.run(command, shell=True, capture_output=True,
-                              text=True, timeout=10)
-            return (r.stdout or r.stderr)[:500]
-        except Exception as e:
-            return f"خطأ: {e}"
-
     return reg

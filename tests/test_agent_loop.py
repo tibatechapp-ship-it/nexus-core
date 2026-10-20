@@ -217,9 +217,9 @@ def test_registry_register_and_call() -> None:
 
 def test_default_registry_has_all_nine_tools() -> None:
     reg = build_default_registry()
+    # run_shell removed (v1.32, RCE fix — use execute_code instead)
     assert set(reg.tools) == {"search_memory", "remember", "list_agents", "run_agent",
-                              "read_file", "get_time", "write_file", "list_files",
-                              "run_shell"}
+                              "read_file", "get_time", "write_file", "list_files"}
 
 
 def test_tool_get_time_and_file_roundtrip(tmp_path: Path) -> None:
@@ -342,17 +342,3 @@ def test_tool_agents_exception_branches(monkeypatch: pytest.MonkeyPatch) -> None
     assert reg.call("run_agent", {"agent": "x", "prompt": "y"}).startswith("خطأ")
 
 
-def test_tool_run_shell_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
-    reg = build_default_registry()
-    assert "الأمر غير مسموح" in reg.call("run_shell", {"command": "rm -rf /"})
-    assert "الأمر غير مسموح" in reg.call("run_shell", {"command": "  sudo ls"})
-    out = reg.call("run_shell", {"command": "echo hi"})
-    assert "hi" in out
-    # subprocess failure → error branch
-    import subprocess
-
-    def _boom(*a: Any, **k: Any) -> Any:
-        raise OSError("cannot exec")
-
-    monkeypatch.setattr(subprocess, "run", _boom)
-    assert reg.call("run_shell", {"command": "echo hi"}).startswith("خطأ")

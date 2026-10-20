@@ -19,7 +19,7 @@ PATTERNS = {
         r"\b(اقرأ ملف|read_file|cat\s)",
         r"\b(اكتب ملف|write_file|create\s+file)\b",
         r"\b(الوقت|التاريخ|time|date|now)\b",
-        r"\b(شغّل أمر|run_shell|نفذ|execute)\b",
+        r"\b(شغّل أمر|نفذ|execute)\b",
         r"\b(اعرض|اظهر|أرني|show|display)\b.*\b(ملفات|مجلد|files|folder|directory)\b",
     ],
     "decision": [
