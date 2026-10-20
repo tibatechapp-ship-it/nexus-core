@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.24.0 — 2026-10-20 — task decomposition
+
+### Added
+- `src/orchestrator/decomposer.py` — a compound request ("write a sum function
+  **and** test it") is split into ordered subtasks, each routed to its own agent,
+  then merged into one block. Pure module: `split_clauses` (word connectors +
+  punctuation, word-boundary safe so "sand"/"android" survive), `SubTask`,
+  `decompose` (verb/agent lexicon first, the legacy keyword router as fallback,
+  dedupe by agent), `merge_outputs`. Risk is computed per subtask.
+- `Orchestrator.execute()` runs the subtasks in order and applies ONE jury
+  decision over the merged block at the highest subtask risk. New result keys:
+  `decomposed`, `subtasks`, `results`; a runner error is captured per subtask
+  and the overall run is `ok=False` if any subtask failed.
+- `NEXUS_DECOMPOSE=0` disables the feature — the single-agent path stays
+  byte-for-byte identical (no `decomposed` key).
+
+### Fixed
+- `Orchestrator.execute()` now surfaces a captured subtask error in
+  `results[i]["error"]` instead of dropping it.
+
 ## v1.23.0 — 2026-10-20 — version-drift guard + genome bootstrap
 
 ### Added
