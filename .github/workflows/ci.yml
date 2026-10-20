@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # full history + tags, for the version-sync guard
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v7
@@ -49,6 +51,9 @@ jobs:
 
       - name: Type-hint coverage (every function annotated)
         run: python scripts/check_annotations.py
+
+      - name: Version consistency (pyproject == src == openapi == tag)
+        run: python scripts/check_version_sync.py
 
   # ── Security: make sure no secret ever lands in the tree ──────────────────
   secret-scan:
