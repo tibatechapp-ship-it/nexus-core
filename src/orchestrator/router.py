@@ -2,6 +2,7 @@
 from __future__ import annotations
 import re
 from typing import Any, Optional, Set
+from .aliases import expand
 from .registry import AgentSpec, AgentRegistry, get_registry
 
 _WORD = re.compile(r"[a-z][a-z0-9]+")
@@ -27,7 +28,7 @@ def route(
     if not request or not isinstance(request, str) or not request.strip():
         return "coder"
     reg = registry or get_registry()
-    tokens = _tokenize(request)
+    tokens = expand(_tokenize(request))
     scored = [(s.name, _score(s, tokens)) for s in reg.all()]
     best = max(s for _, s in scored)
     cands = [n for n, s in scored if s == best]
@@ -50,9 +51,10 @@ def route_with_reason(
     if not request or not isinstance(request, str) or not request.strip():
         return {"agent": "coder", "score": 0.0, "tokens": [], "alternatives": []}
     reg = registry or get_registry()
-    tokens = _tokenize(request)
+    raw_tokens = _tokenize(request)
+    tokens = expand(raw_tokens)
     scored = [(s.name, _score(s, tokens)) for s in reg.all()]
     best = max(s for _, s in scored)
     chosen = route(request, registry=reg, genome=genome)
-    return {"agent": chosen, "score": best, "tokens": sorted(tokens)[:10],
+    return {"agent": chosen, "score": best, "tokens": sorted(raw_tokens)[:10],
             "alternatives": [n for n, s in scored if s == best and n != chosen][:3]}

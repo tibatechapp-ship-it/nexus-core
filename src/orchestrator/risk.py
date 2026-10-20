@@ -1,6 +1,7 @@
 """Risk classification — deterministic, no LLM."""
 from __future__ import annotations
 from enum import Enum
+from typing import Tuple
 
 
 class RiskLevel(str, Enum):
@@ -15,11 +16,17 @@ class RiskLevel(str, Enum):
 
 _HIGH_PATTERNS = (
     "genome", "genome_v2", "genome_store",
-    "auth", "token", "secret", "password",
+    "auth", "secret", "password",
     "delete", "drop", "truncate",
     "production", "prod", "deploy",
     "migration", "schema",
     "nexus_agent.py", "conftest.py",
+)
+# Words too common to mean "dangerous" on their own — HIGH only when paired
+# with a destructive verb nearby (e.g. "delete ... token", "rotate token").
+_HIGH_CONTEXTUAL = (
+    ("token", ("delete", "drop", "truncate", "rotate", "purge",
+               "remove", "revoke", "leak", "secret", "auth")),
 )
 _LOW_PATTERNS = (
     "add test", "write test", "add comment",
@@ -28,11 +35,22 @@ _LOW_PATTERNS = (
 )
 
 
+def _contextual_high(text: str) -> Tuple[str, ...]:
+    """High-risk words that only fire when a destructive/security verb is near."""
+    hits = []
+    for word, triggers in _HIGH_CONTEXTUAL:
+        if word in text and any(t in text for t in triggers):
+            hits.append(word)
+    return tuple(hits)
+
+
 def classify(request: str) -> RiskLevel:
     if not isinstance(request, str) or not request.strip():
         return RiskLevel.MED
     text = request.lower()
     if any(p in text for p in _HIGH_PATTERNS):
+        return RiskLevel.HIGH
+    if _contextual_high(text):
         return RiskLevel.HIGH
     if any(p in text for p in _LOW_PATTERNS):
         return RiskLevel.LOW
@@ -42,6 +60,7 @@ def classify(request: str) -> RiskLevel:
 def explain(request: str) -> dict:
     text = (request or "").lower()
     matched_high = [p for p in _HIGH_PATTERNS if p in text]
+    matched_high.extend(_contextual_high(text))
     matched_low = [p for p in _LOW_PATTERNS if p in text]
     level = classify(request)
     if matched_high:
