@@ -10,6 +10,7 @@ Returns: allow | warn | block
 """
 import re
 import json
+import os
 import logging
 import unicodedata
 from collections import Counter
@@ -280,7 +281,7 @@ class SecurityGatekeeper:
         ]
 
         self.metrics = Counter()
-        self.log_path = log_path or Path("memory/security_log.jsonl")
+        self.log_path = log_path or Path(os.environ.get("NEXUS_SECURITY_LOG", "memory/security_log.jsonl"))
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     # ═══════════════════════════════════════════════════════════

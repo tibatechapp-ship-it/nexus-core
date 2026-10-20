@@ -35,7 +35,7 @@ src/            framework (stdlib-only, phone-safe, fully tested)
 hyper_agent.py  Hyper-Agent 2.0 — autonomous coding agent (BUG-1..9, JSONL logs)
 connectors/     BYOK LLM adapters (openai/anthropic/groq/ollama/deepseek/gemini)
 hyper_app/      Hyper-Agent API surface (POST /api/agent/start)
-tests/          framework suite (3105 tests @ 99%) + tests/novamind/ (opt-in)
+tests/          framework suite (3408 tests @ 95%) + tests/novamind/ (opt-in)
 main.py         Council workbench server (FastAPI) + index.html console
 zyvo-*.py       standalone Telegram + voice assistants
 docs/           framework + novamind documentation
@@ -51,7 +51,7 @@ consistently in `pyproject.toml`, `scripts/check_annotations.py` and the
 coverage config.
 
 ```bash
-make check     # ruff check .  +  mypy (167 files)  +  annotations  +  3105 tests @ 99%
+make check     # ruff check .  +  mypy (180 files)  +  annotations  +  3408 tests @ 95%
 ```
 
 An adversarial red-team suite (`tests/adversarial`, 92 vectors / 8 categories)
