@@ -2,6 +2,27 @@
 
 All notable changes to this project. Newest first.
 
+## v1.31.2 — 2026-10-20 — test isolation + orchestrator risk breakdown
+
+Two focused fixes on the orchestrator metrics log — no behaviour change to any
+execution path.
+
+- **Test isolation (v1.31.1)**: `conftest.py` pinned only
+  `NEXUS_INTERACTIONS_DB` / `NEXUS_GENOME_PATH` / `NEXUS_TASK_LOG`. The
+  orchestrator metrics (`<repo>/data/metrics.json`, appended on every
+  `/api/orchestrator/execute`) were NOT pinned, so any test exercising that route
+  polluted the checkout. Now `NEXUS_METRICS_PATH` points at a per-pid temp file,
+  with a guard test asserting the resolved default path is not under `<repo>/data`.
+- **Risk breakdown (v1.31.2)**: `_metrics.record` now stamps an ISO-8601 UTC
+  `ts` on every row and, for **HIGH** rows only, keeps `risk_reason` /
+  `risk_matched` (from `risk.explain()`). LOW/MED rows omit the reason keys so all
+  records share one flat shape; legacy v1 rows (no `ts`) still load.
+  `/api/maintenance/metrics` gains **`by_risk_requests`** (`{low,med,high}` counts
+  + `high_ratio` + `high_reasons`), read-only from `_metrics.load()`. Named
+  `by_risk_requests` because the recorded field is a *risk level*, not a priority.
+- Schema version `1 → 2`. Measured write cost p95 = **2.59 ms** (< 5 ms target).
+- Gate: ruff · mypy · annotations clean · **3454 passed, 1 skipped @ 99.66%**.
+
 ## v1.31.0 — 2026-10-20 — docs truth + LESSONS (numbers that can't drift)
 
 A documentation-hygiene release. No `src/` behaviour changed — the value is that
