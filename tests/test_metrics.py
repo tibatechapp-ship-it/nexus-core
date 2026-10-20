@@ -150,3 +150,49 @@ def test_suite_isolates_metrics_writes_from_the_repo():
         "NEXUS_METRICS_PATH must be set to a temp file in conftest.py"
     )
 
+
+# ── schema v2: ts + risk reason (HIGH only) ─────────────────────────────────
+
+def test_record_stamps_an_iso_utc_timestamp(tmp_path):
+    entry = _metrics.record(request="r", ok=True, decomposed=False,
+                            subtasks=[], path=tmp_path / "m.json")
+    assert entry is not None
+    ts = entry["ts"]
+    assert isinstance(ts, str) and ts.endswith("Z")
+    # parses as a real ISO-8601 datetime
+    import datetime
+    datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def test_high_record_keeps_reason_and_matched(tmp_path):
+    entry = _metrics.record(
+        request="delete genome entries", ok=True, decomposed=False, subtasks=[],
+        risk="high", risk_reason="high:genome", risk_matched=["genome"],
+        path=tmp_path / "m.json")
+    assert entry is not None
+    assert entry["risk_reason"] == "high:genome"
+    assert entry["risk_matched"] == ["genome"]
+
+
+def test_non_high_record_omits_the_reason_keys(tmp_path):
+    entry = _metrics.record(
+        request="add a comment", ok=True, decomposed=False, subtasks=[],
+        risk="med", risk_reason="default:med", risk_matched=["ignored"],
+        path=tmp_path / "m.json")
+    assert entry is not None
+    assert "risk_reason" not in entry
+    assert "risk_matched" not in entry
+
+
+def test_old_rows_without_ts_still_load(tmp_path):
+    """Backward compat: a v1 row (no ts / reason keys) is still readable."""
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps([
+        {"schema": 1, "request": "old", "ok": True, "decomposed": False,
+         "n_subtasks": 0, "agents": [], "failed_agents": [], "jury_fired": False,
+         "risk": "low"}
+    ]), encoding="utf-8")
+    rows = _metrics.load(path)
+    assert len(rows) == 1 and rows[0]["request"] == "old"
+    assert "ts" not in rows[0]
+

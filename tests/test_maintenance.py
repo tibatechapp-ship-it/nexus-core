@@ -317,3 +317,48 @@ def test_tasks_route_degrades_on_bad_limit(monkeypatch) -> None:
     body = resp.json()
     assert body["ok"] is False and body["tasks"] == []
     assert "generator exploded" in body["error"]
+
+
+# ─── by_risk_requests (orchestrator traffic) ────────────────────────────────
+def test_by_risk_requests_reads_orchestrator_metrics(monkeypatch, tmp_path) -> None:
+    """10 recorded requests → by_risk_requests.high counts the HIGH ones."""
+    from src.orchestrator import _metrics
+    import src.maintenance.api as api
+
+    path = tmp_path / "metrics.json"
+    for i in range(7):
+        _metrics.record(request=f"low {i}", ok=True, decomposed=False,
+                        subtasks=[{"agent": "coder", "ok": True, "risk": "low"}],
+                        risk="low", path=path)
+    for i in range(3):
+        _metrics.record(request=f"delete genome {i}", ok=True, decomposed=False,
+                        subtasks=[], risk="high",
+                        risk_reason="high:genome", risk_matched=["genome"],
+                        path=path)
+    monkeypatch.setattr(_metrics, "default_metrics_path", lambda: path)
+    risk = api._orchestrator_risk()
+    assert risk["total"] == 10
+    assert risk["by_risk_requests"]["high"] == 3
+    assert risk["by_risk_requests"]["low"] == 7
+    assert risk["high_ratio"] == pytest.approx(0.3)
+    assert risk["high_reasons"] == {"high:genome": 3}
+
+
+def test_by_risk_requests_empty_when_no_log(monkeypatch, tmp_path) -> None:
+    from src.orchestrator import _metrics
+    import src.maintenance.api as api
+
+    monkeypatch.setattr(_metrics, "default_metrics_path",
+                        lambda: tmp_path / "nope.json")
+    risk = api._orchestrator_risk()
+    assert risk["total"] == 0
+    assert risk["by_risk_requests"] == {"low": 0, "med": 0, "high": 0}
+    assert risk["high_ratio"] == 0.0
+
+
+def test_metrics_snapshot_includes_by_risk_requests() -> None:
+    client, _child, _FastAPI, _build = _api_client()
+    body = client.get("/api/maintenance/metrics").json()
+    assert body["ok"] is True
+    assert "by_risk_requests" in body
+    assert set(body["by_risk_requests"]["by_risk_requests"]) == {"low", "med", "high"}
