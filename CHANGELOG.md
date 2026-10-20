@@ -2,6 +2,44 @@
 
 All notable changes to this project. Newest first.
 
+## v1.29.0 — 2026-10-20 — bounded logs, leak guard, fleet-health metrics
+
+Hardening the edges the fleet actually touches: the audit log stops growing
+forever, the test suite fails instead of quietly leaking runtime state into the
+working tree, and the maintenance layer gains an HTTP surface.
+
+- `src/novamind/core/security_gatekeeper.py`: the audit log now rotates by
+  size instead of growing unbounded — `DEFAULT_LOG_MAX_BYTES = 10 MiB` and
+  `DEFAULT_LOG_BACKUPS = 5`, overridable via `NEXUS_SECURITY_LOG_MAX_BYTES` /
+  `NEXUS_SECURITY_LOG_BACKUPS`. `_rotate_if_needed()` runs before each append;
+  `backup_count <= 0` means no retention (the file is removed).
+- `tests/conftest.py`: an autouse `_guard_no_runtime_leaks` fixture fails any
+  test that leaks runtime state into `memory/`; `pytest_configure` points the
+  security log at `tempfile.gettempdir()` so a run never writes into the tree.
+- `src/maintenance/api.py` (NEW): `GET /api/maintenance/metrics` (genome
+  fitness snapshot + task-priority breakdown) and `GET /api/maintenance/tasks`
+  (a bounded batch from `generate_tasks`), mounted via
+  `app.router.routes.extend` so they survive the gateway's ASGI mount. The
+  genome getters degrade to `{}` on any error — the routes never raise.
+
+## v1.28.1 — 2026-10-20 — test isolation (novamind runtime dirs + security log)
+
+Test runs were writing real runtime state into the working tree: the novamind
+suite's directory-based state and a security audit log that had grown to 33 MB
+across eight days — invisible to `git status` (gitignored) and to the framework
+gate (`--ignore=tests/novamind`).
+
+- `SecurityGatekeeper` honours `NEXUS_SECURITY_LOG` before falling back to
+  `memory/security_log.jsonl`, so a test process can be pointed at a temp file.
+  Existing behaviour is preserved when the variable is unset.
+- The novamind tests are isolated from the repo's runtime directories so a run
+  leaves the tree clean.
+
+## v1.28.0 — 2026-10-20 — test isolation (KnowledgeGraph)
+
+The KnowledgeGraph tests wrote into a shared, repo-relative location, so a run
+left state behind. They now use `tmp_path` and clean up after themselves.
+
 ## v1.27.0 — 2026-10-20 — maintenance & task generation
 
 The genome now drives housekeeping. New, additive-only layer; no existing
