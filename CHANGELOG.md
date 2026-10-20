@@ -2,6 +2,37 @@
 
 All notable changes to this project. Newest first.
 
+## v1.23.0 — 2026-10-20 — version-drift guard + genome bootstrap
+
+### Added
+- `scripts/check_version_sync.py` — one guard that keeps the release version
+  consistent everywhere it lives: `pyproject.toml` ↔ `src.__version__` (imported,
+  not text-parsed) ↔ `docs/openapi.yaml info.version` ↔ the exact git tag on HEAD.
+  An **orphan release** (a tag newer than the version files) fails with exit 1.
+- `scripts/feed_genome.py` — bootstraps the agent genome with one representative
+  task per framework agent (20) through `POST /api/chat {agent: <id>}`, then
+  reports which genome rows moved. Uses `/api/chat` deliberately: it names the
+  agent, whereas `/api/orchestrator/execute` routes by keyword and has no
+  `agent_id` field.
+
+### Changed
+- `.github/workflows/ci.yml` — the lint job runs the version guard and now checks
+  out with `fetch-depth: 0` so the git tags are present (a shallow checkout has
+  none, which would fail the guard for the wrong reason).
+
+### Tests
+- `tests/test_check_version_sync.py` (13) — hermetic guards for the readers,
+  semver parsing and the orphan-release rule.
+- Total: **3299 passed, 1 skipped @ 99.77%** coverage.
+
+### Live verification
+- `POST /api/orchestrator/execute` returns `{plan, jury, output, ok}`.
+- HIGH-risk `"delete genome entries from the store"` → jury 6/6 approve, conf 0.95.
+- `scripts/feed_genome.py` → 20/20 agents answered, **20 genome rows moved**
+  (was a single `coder` row).
+- After `sv restart`: genome persists **26 agents · 9 judgements · 26 tasks** —
+  the disk-restore path works end to end.
+
 ## v1.22.0 — 2026-10-20 — orchestrator execute endpoint + jury LLM adapter
 
 ### Added
