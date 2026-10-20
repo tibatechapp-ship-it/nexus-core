@@ -1110,3 +1110,20 @@ except Exception as _verify_exc:  # pragma: no cover - never block the app
     VERIFY_OK = False
     VERIFY_ERR = str(_verify_exc)
     print(f"⚠️ verify routes unavailable: {_verify_exc}")
+
+
+# ═══════════════════════════════════════════════════════════
+# Maintenance metrics: /api/maintenance/*
+# ═══════════════════════════════════════════════════════════
+# Read-only fleet-health view over the genome. Same mount rule as the other
+# layers — ``include_router`` stays deferred inside a mount, so the concrete
+# routes are extended in directly.
+try:
+    from src.maintenance.api import register as _register_maintenance
+
+    _register_maintenance(app)
+    MAINTENANCE_OK = True
+except Exception as _maintenance_exc:  # pragma: no cover - never block the app
+    MAINTENANCE_OK = False
+    MAINTENANCE_ERR = str(_maintenance_exc)
+    print(f"⚠️ maintenance routes unavailable: {_maintenance_exc}")

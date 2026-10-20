@@ -51,7 +51,7 @@ consistently in `pyproject.toml`, `scripts/check_annotations.py` and the
 coverage config.
 
 ```bash
-make check     # ruff check .  +  mypy (180 files)  +  annotations  +  3408 tests @ 95%
+make check     # ruff check .  +  mypy (183 files)  +  annotations  +  3408 tests @ 95%
 ```
 
 An adversarial red-team suite (`tests/adversarial`, 92 vectors / 8 categories)
