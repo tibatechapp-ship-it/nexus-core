@@ -2182,3 +2182,34 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - LIVE (service :8000, real Groq debate, not offline): `/api/council/debate`
   moved genome_v2 `observations 3 → 9` (+6, one per member) and the 6 council
   members appear in `data/genome.json` — done, not claimed.
+
+## 2026-10-20 — v1.24.0 task decomposition (SHIPPED)
+
+- Branch `feature/v1.24-decompose` off `589bad6` (v1.23.0); commits `4be5365`
+  feat · `c04667f` test · `5d994f0` chore(release) v1.24.0 → **PR #29
+  squash-merged → `main` = `81b19e2`** (origin == gitlab). Annotated tag
+  **`v1.24.0` at `81b19e2`** (self-consistent), pushed to BOTH; GitHub
+  **Release v1.24.0 (Latest)**; backup tag `backup/v1.24-decompose-20261020`.
+- WHAT: a compound request ("write a sum function and test it") is split into
+  ordered subtasks, each routed to its own agent, then merged into one block
+  with ONE jury decision at the highest subtask risk.
+  NEW pure `src/orchestrator/decomposer.py` — `split_clauses` (word connectors +
+  punctuation, word-boundary safe so "sand"/"android" survive), `SubTask`,
+  `decompose` (verb/agent lexicon first, legacy keyword router fallback, dedupe
+  by agent, per-subtask risk), `merge_outputs` (`### {title} — {agent}` +
+  honest `_(no output)_`). `orchestrator.py`: `decompose_enabled()`
+  (env `NEXUS_DECOMPOSE`, default on), `Orchestrator.decompose()`, `execute()`
+  → `_execute_one`/`_execute_many` + `_apply_jury()`; new result keys
+  `decomposed`/`subtasks`/`results` (+ per-subtask `error`).
+- `NEXUS_DECOMPOSE=0` = single-agent path byte-identical (no `decomposed` key).
+- GATES: ruff clean · mypy 177 · annotations 177 · `pytest --cov
+  --cov-fail-under=99 --ignore=tests/novamind` = **3332 passed, 1 skipped @
+  99.82%**; `src/orchestrator` 100%; `scripts/check_version_sync.py` aligned.
+- LIVE (spare :8093): simple request → no `decomposed` key; `"write a sum
+  function and test it"` → decomposed=true, `subtasks=['coder','tester']`,
+  merged output. `/api/health` = 1.24.0 (version read live from pyproject — no
+  restart needed).
+- GOTCHA: `gh release view --json isLatest` errors ("Unknown JSON field") —
+  use `gh release list` or trust `--latest` at creation.
+- NEXT (roadmap Phase 2 candidates): ① synthesis layer over decompose (merge is
+  NOT synthesis) ② Fallback Chains ③ Dashboard CLI.
