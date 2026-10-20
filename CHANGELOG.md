@@ -2,6 +2,89 @@
 
 All notable changes to this project. Newest first.
 
+## v1.22.0 — 2026-10-20 — orchestrator execute endpoint + jury LLM adapter
+
+### Added
+- `POST /api/orchestrator/execute` — classify the request, route it to an agent,
+  run that agent for real, and gate HIGH-risk work through the council jury.
+  Returns `{plan, jury, output, ok}`. Runs on a thread so a slow provider never
+  blocks the event loop.
+- `src/orchestrator/llm_adapter.py` — `RouterLLMAdapter` + `adapt_llm`. A thin
+  bridge at the boundary: the jury calls
+  `generate(prompt, json_mode=True, temperature=0.0)` and expects a raw string,
+  while the project router returns a dict and exposes no `json_mode`. The adapter
+  normalises dict→text, retries without `json_mode` on `TypeError`, and fails
+  closed (`""`) so a broken provider can never crash the gate.
+
+### Fixed
+- **Jury ↔ router contract mismatch (latent, production-breaking).** Without the
+  adapter every HIGH-risk verdict failed closed with
+  `TypeError: unexpected keyword argument 'json_mode'` — the gate silently
+  rejected all high-risk work. The adapter is now mandatory on this path.
+- **`CouncilMember` used as a jury dict key.** `judge()` maps members to verdicts
+  and builds a `You are {id}` prompt, so passing `CouncilMember` objects raised
+  `cannot use 'CouncilMember' as a dict key (unhashable type)` on every HIGH-risk
+  call. The endpoint now passes member **names** (`[m.name for m in
+  COUNCIL_MEMBERS]`).
+- Both routes (`/api/orchestrator/plan`, `/api/orchestrator/execute`) are
+  reordered before the workbench catch-all `Mount`; the reorder now matches the
+  path exactly.
+
+### Tests
+- `tests/test_orchestrator_llm_adapter.py` (19): full adapter contract (dict
+  router, `json_mode` retry, native `json_mode`, fail-closed on error/not-ok/
+  None/missing-generate, `adapt_llm` preserve-vs-wrap) + an end-to-end `judge()`
+  verdict through the adapter.
+- `tests/test_orchestrator_execute_api.py` (8): route registration, mount
+  ordering, LOW-risk skips the jury, empty-request rejection, HIGH-risk convenes
+  the jury with the real router (the defect guard), jury rejection fails closed,
+  runner failure reports `ok=false`, plan endpoint intact.
+
+### Migration
+- None. Pure additive; existing `/api/orchestrator/plan` and `/api/*` untouched.
+
+## v1.21.1 — 2026-10-19 — `POST /api/orchestrator/plan`
+
+### Added
+- `POST /api/orchestrator/plan` — classify a request and route it to an agent
+  WITHOUT executing it. One file changed (`nexus_agent.py`, +58).
+
+### Fixed
+- Route shadowing: `/api/orchestrator/plan` was registered after the workbench
+  `Mount("/{path}")` and was unreachable (404). Reordered before the Mount.
+
+### Known limitations (deferred to v1.22)
+- Routing precision: `"modify coder module"` → `analyst` (token mismatch).
+  Aliases / fuzzy matching are a later improvement.
+
+### Tests
+- 3/3 risk classifications exercised (low/med/high); empty request rejected
+  (fail-safe).
+
+## v1.21.0 — 2026-10-19 — orchestrator + the council jury gate
+
+### Added
+- `src/orchestrator/` — deterministic request handling: `risk.py` (LOW/MED/HIGH
+  classification, no LLM), `registry.py` (`AgentSpec` registry),
+  `router.py` (keyword routing over the registry), `orchestrator.py`
+  (`Orchestrator.plan()` + `execute()`).
+- `src/novamind/council/jury.py` — a HIGH-risk-only jury gate with isolated
+  per-member voting (`jury.judge`, `JuryVerdict`), hardened against prompt
+  injection (`_sanitize_target` + explicit CONTEXT boundaries).
+- `skills_registry.json` — 20 agents with domain/scope/schemas.
+- Blood-cell architecture: orchestrator (platelets) / workers (RBC) /
+  council (WBC).
+
+### Changed
+- The council no longer fires on every request — only on `risk=HIGH`.
+
+### Tests
+- 25 new tests: `test_orchestrator_{risk,registry,router,integration}.py` +
+  `test_council_jury.py`.
+
+### Migration
+- None. Pure additive; existing `/api/*` untouched.
+
 ## v1.20.2 — 2026-10-20 — genome bridge: the Living Council feeds genome_v2
 
 ### Added
