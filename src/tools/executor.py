@@ -38,6 +38,7 @@ __all__ = [
     "ToolPolicy",
     "ToolRun",
     "parse_tool_calls",
+    "is_sensitive_file",
 ]
 
 #: The tools the framework itself is allowed to execute (read-only by design).
@@ -48,6 +49,53 @@ SAFE_TOOL_NAMES: frozenset[str] = frozenset({"read", "list", "grep"})
 _SKIP_DIRS: frozenset[str] = frozenset(
     {".git", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "node_modules", ".venv"}
 )
+
+#: Filenames (exact, case-insensitive) that hold live credentials and must never
+#: be served by ``read``/``list``/``grep`` — even when they sit INSIDE the
+#: workspace root. Confining to the root is not enough: a ``.env`` at the root
+#: is still a secret store. (STRIDE finding I4.)
+_SENSITIVE_NAMES: frozenset[str] = frozenset(
+    {
+        ".env",
+        ".env.local",
+        ".env.production",
+        ".env.prod",
+        ".env.dev",
+        ".env.development",
+        "credentials",
+        "credentials.json",
+        "secrets.json",
+        "secrets.yaml",
+        "secrets.yml",
+        "id_rsa",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        ".netrc",
+        ".pgpass",
+        ".git-credentials",
+    }
+)
+
+#: Filename suffixes that are credential stores.
+_SENSITIVE_SUFFIXES: tuple[str, ...] = (".pem", ".key", ".p12", ".pfx", ".keystore")
+
+
+def is_sensitive_file(path: Path) -> bool:
+    """True if ``path`` names a credential/secret store that tools must not read.
+
+    Also treats any dotfile *named like an env file* (``.env.*``) as sensitive so
+    ``.env.bak`` / ``.env.staging`` cannot be read as a side door.
+    """
+    name = path.name.lower()
+    if name == ".env.example":
+        return False  # documentation of variable NAMES, never a live value
+    if name in _SENSITIVE_NAMES:
+        return True
+    if name.startswith(".env."):
+        return True
+    return name.endswith(_SENSITIVE_SUFFIXES)
+
 
 #: Tolerant matcher for model tool-call markers (Postel's law). All of these
 #: forms are accepted:
@@ -228,6 +276,10 @@ class LocalToolExecutor:
         resolved = (candidate if candidate.is_absolute() else self.root / candidate).resolve()
         if resolved != self.root and not resolved.is_relative_to(self.root):
             raise PermissionError(f"path {raw!r} escapes the workspace root {self.root}")
+        if is_sensitive_file(resolved):
+            raise PermissionError(
+                f"path {raw!r} names a credential/secret store — refused"
+            )
         return resolved
 
     def _clamp(self, text: str) -> str:
@@ -359,6 +411,8 @@ def _walk_text_files(start: Path) -> Iterator[Path]:
         if not candidate.is_file():
             continue
         if _SKIP_DIRS.intersection(candidate.parts):
+            continue
+        if is_sensitive_file(candidate):
             continue
         try:
             if candidate.stat().st_size > 1_000_000:

@@ -405,7 +405,9 @@ def api_diag() -> Dict[str, Any]:
     engine_paths = _paths(engine_app) if engine_app is not None else []
     return {
         "ok": True,
-        "loaded_from": str(Path(__file__).resolve()),
+        # STRIDE I1: never disclose absolute server paths to a read caller.
+        # The filename alone is enough for diagnostics; sys.path is a count.
+        "loaded_from": Path(__file__).name,
         "version": _wb._app_version(),
         "port": int(os.environ.get("NEXUS_PORT", "8080")),
         "engine_ok": bool(ENGINE_OK),
@@ -421,7 +423,7 @@ def api_diag() -> Dict[str, Any]:
         "engine_routes_count": len(engine_paths),
         "parent_routes": sorted(parent_paths),
         "engine_routes": sorted(engine_paths),
-        "sys_path_head": sys.path[:6],
+        "sys_path_entries": len(sys.path),
     }
 
 
