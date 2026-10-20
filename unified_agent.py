@@ -68,11 +68,23 @@ IGNORE_DIRS = {
 # Safe path
 # ═══════════════════════════════════════════════════════════
 def safe_path(path: str) -> Path:
+    """Resolve ``path`` inside the project root, refusing secrets.
+
+    Two gates: the path must stay inside :data:`PROJECT_ROOT`, AND it must not
+    name a credential store (``.env``, keys, certs).  The sensitivity check is
+    imported lazily to avoid an import cycle (``src.tools.executor`` pulls in
+    ``src.agents.base``) and is reused as-is so this guard can never drift from
+    the tool executor's deny-list.
+    """
+    from src.tools.executor import is_sensitive_file
+
     p = (PROJECT_ROOT / path).resolve()
     try:
         p.relative_to(PROJECT_ROOT)
     except ValueError:
         raise ValueError(f"'{path}' outside project")
+    if is_sensitive_file(p):
+        raise ValueError(f"'{path}' is a sensitive file")
     return p
 
 
