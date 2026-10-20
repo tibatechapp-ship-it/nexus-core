@@ -2,6 +2,40 @@
 
 All notable changes to this project. Newest first.
 
+## v1.30.0 — 2026-10-20 — real priority ledger (read endpoints stay pure)
+
+The fleet-health view stops lying: `by_priority` was a fixed `{low:0, medium:0,
+high:0}` placeholder, so the metrics endpoint could never show what the
+maintenance layer actually produced. It now reports a REAL breakdown read from
+a new task ledger — and the ledger is written only at the applied boundary, so
+a plain `GET` can never mutate state or double-count.
+
+- `src/maintenance/task_log.py` (NEW): an append-only JSONL ledger
+  (`$NEXUS_TASK_LOG` → `<repo>/data/task_log.jsonl` → tempdir). `record(...)` is
+  non-raising; `aggregate(*, window_days=7, log=None)` returns BOTH a windowed
+  view and the all-time totals (with `failure_pct` and `is_sample_sufficient`,
+  `MIN_SAMPLE = 30`). Rotates by size (10 MiB × 5), reads its path per write.
+- `src/maintenance/api.py`: `metrics_snapshot(*, fitness, log, window_days=7)`
+  now emits the real `by_priority` plus `by_priority_all_time` and a `tasks`
+  block (`window_days`, `total_all_time`, `failure_pct`, `sample_sufficient`).
+  The `# TODO(v1.30)` placeholder is gone. `GET /api/maintenance/metrics`
+  accepts `?window_days=`.
+- `src/maintenance/task_generator.py`: made PURE again — it only PLANS and never
+  writes the ledger. Recording was moved out because the read-only route
+  `GET /api/maintenance/tasks` calls `generate_tasks`, so a ledger append there
+  let a `GET` mutate state and double-count applied tasks.
+- `scripts/generate_tasks.py`: records each task's REAL outcome
+  (`generated`/`failed`) right after `/api/orchestrator/execute` — the single
+  applied boundary that makes `failure_pct` real.
+- `tests/conftest.py`: pins `NEXUS_TASK_LOG` to a per-pid temp file so a test
+  never appends to the repo's real ledger. Regression tests assert that neither
+  `generate_tasks` nor the `GET` route writes the ledger.
+
+**Live proof** (service restarted to load the fix): ledger reset → `low=0`;
+`--apply --max 2` → `low=2` (2 real tasks) and exactly two ledger lines; five
+subsequent `GET /api/maintenance/metrics` calls left `low=2` (no pollution).
+`GET` latency 9-21 ms — no cache needed, so no `TODO(v1.31)`.
+
 ## v1.29.0 — 2026-10-20 — bounded logs, leak guard, fleet-health metrics
 
 Hardening the edges the fleet actually touches: the audit log stops growing
