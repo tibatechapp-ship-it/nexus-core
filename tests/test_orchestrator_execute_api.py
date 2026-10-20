@@ -179,6 +179,45 @@ def test_execute_records_a_metric(env, tmp_path, monkeypatch):
     assert rows[0]["agents"] == ["coder", "tester"]
 
 
+def test_high_execute_records_the_risk_reason(env, tmp_path, monkeypatch):
+    """A HIGH execution records risk_reason + risk_matched (v1.31.2).
+
+    Regression: ``result["plan"]["risk"]`` is a ``RiskLevel`` enum, not the
+    plain string "high" — the recorder must normalize it (``.value``) or the
+    reason keys are silently dropped.
+    """
+    from src.orchestrator import _metrics
+
+    mod, client, _store = env
+    mod.get_router = lambda: _FakeRouter(  # type: ignore[assignment]
+        text='{"approved": true, "confidence": 0.9}')
+    metrics_path = tmp_path / "metrics.json"
+    monkeypatch.setenv("NEXUS_METRICS_PATH", str(metrics_path))
+
+    r = client.post("/api/orchestrator/execute",
+                    json={"request": "delete genome entries from the store"})
+    assert r.json()["ok"] is True
+
+    row = _metrics.load(metrics_path)[-1]
+    assert row["risk"] == "high"
+    assert row["risk_reason"] == "high:genome"
+    assert "genome" in row["risk_matched"]
+
+
+def test_low_execute_omits_the_risk_reason(env, tmp_path, monkeypatch):
+    from src.orchestrator import _metrics
+
+    mod, client, _store = env
+    metrics_path = tmp_path / "metrics.json"
+    monkeypatch.setenv("NEXUS_METRICS_PATH", str(metrics_path))
+
+    client.post("/api/orchestrator/execute",
+                json={"request": "add a comment to the docs"})
+    row = _metrics.load(metrics_path)[-1]
+    assert row["risk"] != "high"
+    assert "risk_reason" not in row
+
+
 def test_a_broken_metrics_log_never_breaks_execution(env, tmp_path, monkeypatch):
     """A failing recorder is swallowed — execution stays ok (v1.25.0)."""
     mod, client, _store = env
