@@ -157,6 +157,38 @@ def test_execute_reports_runner_failure_as_not_ok(env):
     assert body["output"]  # an honest error string, not None
 
 
+def test_execute_records_a_metric(env, tmp_path, monkeypatch):
+    """The endpoint must append one metrics row per execution (v1.25.0)."""
+    from src.orchestrator import _metrics
+
+    mod, client, _store = env
+    metrics_path = tmp_path / "metrics.json"
+    monkeypatch.setenv("NEXUS_METRICS_PATH", str(metrics_path))
+
+    r = client.post("/api/orchestrator/execute",
+                    json={"request": "write a sum function and test it"})
+    assert r.json()["ok"] is True
+
+    rows = _metrics.load(metrics_path)
+    assert len(rows) == 1
+    assert rows[0]["decomposed"] is True
+    assert rows[0]["agents"] == ["coder", "tester"]
+
+
+def test_a_broken_metrics_log_never_breaks_execution(env, tmp_path, monkeypatch):
+    """A failing recorder is swallowed — execution stays ok (v1.25.0)."""
+    mod, client, _store = env
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("metrics exploded")
+
+    monkeypatch.setattr("src.orchestrator._metrics.record", _boom)
+    r = client.post("/api/orchestrator/execute",
+                    json={"request": "write a sum function and test it"})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
 def test_plan_endpoint_still_works(env):
     _mod, client, _store = env
     r = client.post("/api/orchestrator/plan", json={"request": "read the docs"})

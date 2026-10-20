@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.25.0 — 2026-10-20 — orchestrator dashboard (execution metrics)
+
+### Added
+- `src/orchestrator/_metrics.py` — append-only, bounded (`MAX_RECORDS=2000`),
+  never-raising execution log. Every `POST /api/orchestrator/execute` appends
+  one compact record (ok / decomposed / subtasks / agents / failed agents /
+  jury / risk). Path: `$NEXUS_METRICS_PATH` → `<repo>/data/metrics.json` →
+  tempdir. A damaged or unwritable log degrades to a no-op.
+- `src/orchestrator/dashboard.py` — read-only CLI
+  (`python -m src.orchestrator.dashboard`) with a pure `summarize()` and
+  `render()`. Prints executions, decomposed vs single, the risk mix, the jury
+  fire rate, the top agents and per-agent failure rates.
+- `nexus_agent.py` — `_record_orchestrator_metric()` is called right after a
+  successful execute (jury / decomposed / risk read off the result); every
+  error is swallowed so a metrics failure can never break execution.
+
+### Tests
+- `tests/test_metrics.py`, `tests/test_dashboard.py` and two wiring guards in
+  `tests/test_orchestrator_execute_api.py`.
+
 ## v1.24.0 — 2026-10-20 — task decomposition
 
 ### Added
