@@ -2213,3 +2213,44 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
   use `gh release list` or trust `--latest` at creation.
 - NEXT (roadmap Phase 2 candidates): ① synthesis layer over decompose (merge is
   NOT synthesis) ② Fallback Chains ③ Dashboard CLI.
+
+## 2026-10-20 — v1.25.0 orchestrator dashboard (SHIPPED)
+
+- Branch `feature/v1.25-dashboard` off `81b19e2` (v1.24.0); commits `252c707`
+  feat · `69e3808` test · `3d8db29` chore(release) v1.25.0 → **PR #30
+  squash-merged → `main` = `5e25ddb`** (origin == gitlab). Annotated tag
+  **`v1.25.0` at `5e25ddb`** (self-consistent), pushed to BOTH; GitHub
+  **Release v1.25.0 (Latest)**; backup tag `backup/v1.25-dashboard-20261020`;
+  branch deleted local + BOTH remotes.
+- WHAT: every `POST /api/orchestrator/execute` now appends ONE compact record
+  to `data/metrics.json`, and a read-only CLI answers "which feature next?"
+  with real numbers. NEW `src/orchestrator/_metrics.py` — append-only, bounded
+  (`SCHEMA_VERSION=1`, `MAX_RECORDS=2000`), NEVER raises; path =
+  `$NEXUS_METRICS_PATH` → `<repo>/data/metrics.json` → tempdir; `record(...)`
+  + `load()`. NEW `src/orchestrator/dashboard.py` — pure `summarize()` +
+  `render()` + `main()`; prints executions, decomposed vs single, avg
+  subtasks/req, risk mix + high %, jury fire rate, top-5 agents, per-agent
+  failure, total failing runs. `nexus_agent.py`: `_record_orchestrator_metric()`
+  called right after a successful execute (jury/decomposed/risk off the
+  result), every error swallowed → a metrics failure never breaks execution.
+- GATES: ruff clean · mypy **179** · annotations **179** · `pytest --cov
+  --cov-fail-under=95 --ignore=tests/novamind` = **3354 passed, 1 skipped @
+  99.82%**; `src/orchestrator` 100% (both new modules 100%);
+  `scripts/check_version_sync.py` → All versions aligned. CI **16/16 green**
+  (lint 3.11/3.12/3.13 + pytest 3.11/3.12/3.13 + bandit + secret scan;
+  publish-coverage-badge skips on a branch, correctly).
+- LIVE on :8000 (pid 27260 after `sv restart`, `/api/health` = 1.25.0): 4
+  execute calls → `data/metrics.json` 759 B → `python -m
+  src.orchestrator.dashboard` printed all 5 required metric groups
+  (executions 4 · decomposed 2/50% · high risk 1/25% · jury 1/25% · coder/tester
+  2 runs each · 1 failing run/25%).
+- ❗ MYPY VARIANCE LESSON: `load()` returns `list[dict[str, Any]]` but
+  `summarize()` took `list[Mapping[str, Any]]` → `list` is INVARIANT → mypy
+  arg-type error. Fix = take `Sequence[Mapping[str, Any]]` (covariant), not a
+  cast. A one-line parameter type beats widening the producer.
+- DECISION (tyba): **Dashboard CLI before Synthesis** — read-only (zero risk),
+  and it produces the DATA that decides whether synthesis (HIGH risk share),
+  fallback chains (failure rate) or routing aliases come next.
+- NEXT (v1.26 decision, data-driven): HIGH risk >30% → synthesis; failure >10%
+  → fallback chains; bad routing → aliases. Lightweight routing only on Termux
+  (no langgraph: 30MB RAM + 2s cold import).
