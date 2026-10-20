@@ -2,6 +2,34 @@
 
 All notable changes to this project. Newest first.
 
+## v1.31.0 — 2026-10-20 — docs truth + LESSONS (numbers that can't drift)
+
+A documentation-hygiene release. No `src/` behaviour changed — the value is that
+the docs stop lying and stop drifting.
+
+- **`.env.example` completed + guarded**: it documented 20 of the 46 env vars the
+  code reads. All operator-facing vars are now documented (grouped, one comment
+  each) and a new `tests/test_env_docs.py` scans the source and fails if a var is
+  read but undocumented (with named allowlists and a sanity test so it can't pass
+  vacuously).
+- **`AGENTS.md` split**: the tracked root memory had grown to 2346 lines of
+  accumulated release notes. Pre-v1.29 history moved to
+  `docs/legacy/AGENTS_HISTORY.md`; the root file is now ~223 lines and focused.
+  Stale facts corrected along the way.
+- **`docs/LESSONS.md` (NEW)**: durable engineering lessons — *manual metrics in
+  docs always drift*, *gitignore patterns without a leading slash match anywhere*,
+  *read endpoints must be pure*, *never diagnose API behaviour from a screenshot*.
+- **README: numbers no longer drift**: the test count was hand-updated four times
+  in one session. It now reads `3400+ tests @ ~99%` (and `mypy` without a file
+  count) — the precise, always-current value comes from the CI badge / gate run.
+- **`docs/genome-stores.md` (NEW)**: documents the two genome stores (v1 SQLite
+  council genome vs v2 JSON fitness genome), their bridge, and the deferred
+  unification decision.
+- **`docs/PROJECT_REVIEW.md`**: addendum for v1.30.0 (W1 fixed, W2 partial, W4
+  documented).
+- **`.gitignore`**: anchored the `legacy/` rule to `/legacy/` — as an unanchored
+  pattern it silently ignored the new `docs/legacy/AGENTS_HISTORY.md`.
+
 ## v1.30.0 — 2026-10-20 — real priority ledger (read endpoints stay pure)
 
 The fleet-health view stops lying: `by_priority` was a fixed `{low:0, medium:0,
