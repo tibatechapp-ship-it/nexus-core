@@ -34,6 +34,7 @@ from src.maintenance.task_generator import (  # noqa: E402  (root set above)
     MAX_LIMIT,
     generate_tasks,
 )
+from src.maintenance.task_log import record as record_task  # noqa: E402
 
 DEFAULT_BASE = os.environ.get("NEXUS_BASE", "http://127.0.0.1:8000")
 DEFAULT_MAX = 10
@@ -175,6 +176,13 @@ def main(argv: List[str] | None = None) -> int:
         ok = bool(result.get("ok"))
         if not ok:
             failures += 1
+        # The outcome of the real execute is what makes failure_pct real.
+        record_task(
+            priority=task.risk,
+            agent_id=task.agent_id or agent_used,
+            outcome="generated" if ok else "failed",
+            reason=f"status={status}",
+        )
         print(f"      -> ok={ok} status={status} agent={agent_used} subtasks={subtasks}")
         log_lines.append(
             f"    result ok={ok} status={status} agent={agent_used} subtasks={subtasks}"

@@ -1,7 +1,9 @@
 """Maintenance task generation — turn genome state into safe, LOW/MED work.
 
-Pure, stdlib-only, phone-safe. No LLM, no network, no I/O: it maps an agent's
-genome fitness to a candidate maintenance request that the orchestrator can run.
+Stdlib-only, phone-safe. No LLM, no network: it maps an agent's genome fitness to
+a candidate maintenance request that the orchestrator can run. This module is
+PURE — it only PLANS; writing the ledger is the caller's job (see
+``scripts/generate_tasks.py``), so a read-only route can never mutate state.
 
 Design rule (non-negotiable): a generated task must NEVER classify as HIGH risk.
 HIGH requests reach the council jury, and maintenance work is routine by
@@ -136,6 +138,12 @@ def generate_tasks(
     A HIGH-risk task is impossible by construction, but each candidate is still
     filtered through ``risk.classify`` — a future template edit that sneaks a
     dangerous word in is dropped, never emitted.
+
+    This function is PURE: it only PLANS and never writes the ledger. Recording
+    belongs at the APPLIED boundary (``scripts/generate_tasks.py`` after a real
+    ``/api/orchestrator/execute``), because the read-only route
+    ``GET /api/maintenance/tasks`` calls this function — a ledger append here
+    would let a plain GET mutate state and would double-count applied tasks.
     """
     rows = _rows_of(genome)
     ordered = sorted(rows, key=_sort_key)

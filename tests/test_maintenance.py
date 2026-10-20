@@ -1,6 +1,8 @@
 """Tests for the maintenance task generator (pure, stdlib-only)."""
 from __future__ import annotations
 
+import pytest
+
 from src.maintenance.task_generator import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -170,16 +172,36 @@ class _FakeGenome:
         return {"agents": {"coder": {"fitness": 0.2}, "tester": {"fitness": 0.9}}}
 
 
-def test_metrics_snapshot_shape_and_zeros() -> None:
+def test_metrics_snapshot_shape_and_zeros(tmp_path) -> None:
     from src.maintenance.api import metrics_snapshot
 
-    payload = metrics_snapshot(fitness=_FakeGenome())
+    payload = metrics_snapshot(fitness=_FakeGenome(), log=tmp_path / "empty.jsonl")
     assert payload["ok"] is True
     assert payload["scope"] == "maintenance"
     assert payload["genome"]["agents"] == 3
     assert payload["genome"]["observations"] == 7
-    # The priority breakdown is a stable shape with zero values for now.
+    # An empty ledger is a stable shape with zero values.
     assert payload["by_priority"] == {"low": 0, "medium": 0, "high": 0}
+    assert payload["tasks"]["total_all_time"] == 0
+
+
+def test_metrics_snapshot_reports_real_priority_counts(tmp_path, monkeypatch) -> None:
+    """The breakdown reflects the ledger, not a placeholder."""
+    from src.maintenance import task_log
+    from src.maintenance.api import metrics_snapshot
+
+    target = tmp_path / "tasks.jsonl"
+    monkeypatch.setenv("NEXUS_TASK_LOG", str(target))
+    task_log.record(priority="low", agent_id="coder", outcome="generated")
+    task_log.record(priority="low", agent_id="tester", outcome="failed")
+    task_log.record(priority="medium", agent_id="planner", outcome="generated")
+
+    payload = metrics_snapshot(fitness=_FakeGenome(), log=target)
+    assert payload["by_priority"]["low"] == 2
+    assert payload["by_priority"]["medium"] == 1
+    assert payload["by_priority"]["high"] == 0
+    assert payload["tasks"]["total_all_time"] == 3
+    assert payload["tasks"]["failure_pct"] == pytest.approx(33.33, abs=0.01)
 
 
 def test_metrics_snapshot_tolerates_a_broken_genome() -> None:
@@ -210,6 +232,33 @@ def test_tasks_route_reports_ok_and_a_list() -> None:
     body = resp.json()
     assert body["ok"] is True
     assert isinstance(body["tasks"], list)
+
+
+def test_generate_tasks_does_not_write_ledger(tmp_path, monkeypatch) -> None:
+    """Planner must be PURE — no ledger writes without an explicit apply.
+
+    ``generate_tasks`` is called by the READ-ONLY route
+    ``GET /api/maintenance/tasks``, so any append here would let a plain GET
+    mutate state (and double-count applied tasks). This test pins that rule.
+    """
+    monkeypatch.setenv("NEXUS_TASK_LOG", str(tmp_path / "t.jsonl"))
+    from src.maintenance.task_generator import generate_tasks
+
+    genome = {"agents": {"coder": {"fitness": 0.2}, "tester": {"fitness": 0.6}}}
+    tasks = generate_tasks(genome, limit=2)
+    assert len(tasks) == 2  # it still PLANS
+    ledger = tmp_path / "t.jsonl"
+    assert not ledger.exists() or ledger.stat().st_size == 0
+
+
+def test_tasks_route_does_not_write_ledger(tmp_path, monkeypatch) -> None:
+    """Calling the GET route twice must leave the ledger byte-identical."""
+    monkeypatch.setenv("NEXUS_TASK_LOG", str(tmp_path / "t.jsonl"))
+    client, _child, _FastAPI, _build = _api_client()
+    client.get("/api/maintenance/tasks")
+    client.get("/api/maintenance/tasks")
+    ledger = tmp_path / "t.jsonl"
+    assert not ledger.exists() or ledger.stat().st_size == 0
 
 
 def test_register_extends_concrete_routes() -> None:

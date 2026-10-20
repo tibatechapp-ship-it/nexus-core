@@ -1,8 +1,9 @@
 """Maintenance metrics surface — a read-only health view.
 
-Pure aggregation over the genome's own ``stats()``, exposed as JSON so a
-dashboard (or ``curl``) can answer "how healthy is the agent fleet right now?"
-without importing internal state.
+Pure aggregation over the genome's own ``stats()`` plus the maintenance task
+ledger's real priority breakdown, exposed as JSON so a dashboard (or ``curl``)
+can answer "how healthy is the agent fleet right now?" without importing
+internal state.
 
 The module is kept FastAPI-free at import time except for the router builder:
 ``register`` is what the gateway calls, and it uses
@@ -14,10 +15,11 @@ Read-only: it never writes to disk and never mutates the genome.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
 
+from . import task_log
 from .task_generator import DEFAULT_LIMIT, MAX_LIMIT, generate_tasks
 
 __all__ = ["build_router", "metrics_snapshot", "register"]
@@ -52,15 +54,22 @@ def _genome_document() -> Dict[str, Any]:
         return {}
 
 
-def metrics_snapshot(*, fitness: Any = None) -> Dict[str, Any]:
+def metrics_snapshot(
+    *,
+    fitness: Any = None,
+    log: Optional[Any] = None,
+    window_days: int = 7,
+) -> Dict[str, Any]:
     """Compose the maintenance metrics payload.
 
     ``fitness`` is an optional genome-shaped object (``.stats()``) injected for
-    tests; production reads the shared singleton.
+    tests; production reads the shared singleton. ``log`` is an optional override
+    for the task-ledger path (also for tests).
 
-    NOTE: ``by_priority`` is reported as zeros for now because the genome does
-    not yet track a per-priority breakdown — the field is kept so consumers can
-    rely on a stable shape.
+    ``by_priority`` is the REAL breakdown read from the task ledger
+    (``task_log.aggregate``) — a genuine count of generated/failed tasks by
+    priority, not a placeholder. ``by_priority_all_time`` carries the
+    un-windowed totals so a consumer can see the sample size behind the window.
     """
     if fitness is None:
         stats = _genome_stats()
@@ -70,9 +79,19 @@ def metrics_snapshot(*, fitness: Any = None) -> Dict[str, Any]:
         except Exception:
             stats = {}
 
-    # TODO(v1.30): derive a real per-priority breakdown from task history once
-    # the genome records it; today the shape is fixed and the values are zero.
-    by_priority: Dict[str, int] = {"low": 0, "medium": 0, "high": 0}
+    try:
+        ledger = task_log.aggregate(window_days=window_days, log=log)
+    except Exception:
+        ledger = {}
+
+    window = ledger.get("window") or {}
+    all_time = ledger.get("all_time") or {}
+    by_priority: Dict[str, int] = dict(
+        window.get("by_priority") or {"low": 0, "medium": 0, "high": 0}
+    )
+    by_priority_all_time: Dict[str, int] = dict(
+        all_time.get("by_priority") or {"low": 0, "medium": 0, "high": 0}
+    )
 
     return {
         "ok": True,
@@ -88,6 +107,13 @@ def metrics_snapshot(*, fitness: Any = None) -> Dict[str, Any]:
             "mean_fitness": stats.get("mean_fitness"),
         },
         "by_priority": by_priority,
+        "by_priority_all_time": by_priority_all_time,
+        "tasks": {
+            "window_days": int(ledger.get("window_days", window_days) or window_days),
+            "total_all_time": int(all_time.get("total_tasks", 0) or 0),
+            "failure_pct": all_time.get("failure_pct", 0.0),
+            "sample_sufficient": bool(ledger.get("is_sample_sufficient", False)),
+        },
     }
 
 
@@ -96,9 +122,9 @@ def build_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/maintenance/metrics")
-    def maintenance_metrics() -> Dict[str, Any]:
+    def maintenance_metrics(window_days: int = 7) -> Dict[str, Any]:
         """Aggregate fleet-health metrics (read-only, never raises)."""
-        return metrics_snapshot()
+        return metrics_snapshot(window_days=window_days)
 
     @router.get("/api/maintenance/tasks")
     def maintenance_tasks(limit: int = DEFAULT_LIMIT) -> Dict[str, Any]:

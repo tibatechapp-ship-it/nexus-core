@@ -70,6 +70,15 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / f"nexus-test-genome-{os.getpid()}.json"),
 )
 
+# The maintenance task ledger (src/maintenance/task_log.py) resolves its file
+# the same way ($NEXUS_TASK_LOG → <repo>/data/task_log.jsonl → tempdir) and the
+# metrics endpoint reads it. Point it at a private temp file so a test that
+# generates tasks never appends to the repo's real ledger (or inherits one).
+os.environ.setdefault(
+    "NEXUS_TASK_LOG",
+    str(Path(tempfile.gettempdir()) / f"nexus-test-tasks-{os.getpid()}.jsonl"),
+)
+
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
 #: The one adversarial verdict ledger, shared for the whole session.
