@@ -53,6 +53,10 @@ class _FakeRouter:
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     mod = _load_unified()
+    # This suite asserts the FULL verdict contract (per-juror details), which is
+    # a developer/verbose concern — the black box is covered separately in
+    # tests/test_invisible_council.py.
+    monkeypatch.setenv("NEXUS_UI_VERBOSE", "1")
     store = SessionStore(tmp_path / "sessions.db")
     genome = Genome(store)
     genome.seed()
