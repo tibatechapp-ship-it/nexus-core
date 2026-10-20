@@ -132,6 +132,22 @@ def _new_id(prefix: str) -> str:
     return prefix + uuid.uuid4().hex[:16]
 
 
+def _as_int(value: Any, default: int = 0) -> int:
+    """Best-effort int coercion — a hostile import value never raises (T3/D2)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    """Best-effort float coercion — a hostile import value never raises."""
+    try:
+        return float(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
 def default_db_path() -> Path:
     """Resolve the database path.
 
@@ -826,10 +842,20 @@ class SessionStore:
         return out
 
     def genome_import(self, agents: List[Dict[str, Any]]) -> int:
-        """Insert agents (and their events) that are not already present."""
+        """Insert agents (and their events) that are not already present.
+
+        Tolerant at the boundary: a hostile or malformed import payload must
+        never crash the caller (``POST /api/genome/import`` returns 500 today on
+        e.g. ``{"agents": "not-a-list"}``). Non-list input yields an empty
+        import; non-dict rows are skipped. Returns the number imported.
+        """
+        if isinstance(agents, (str, bytes)) or not isinstance(agents, (list, tuple)):
+            return 0
         imported = 0
         now = _now_ms()
         for a in agents:
+            if not isinstance(a, dict):
+                continue
             agent_id = str(a.get("agent_id") or "")
             if not agent_id or self.get_agent(agent_id) is not None:
                 continue
@@ -839,12 +865,12 @@ class SessionStore:
                     "status,runs,successes,failures,latency_sum_ms,consensus_sum,consensus_n,"
                     "standing,created_at,updated_at,meta) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (agent_id, str(a.get("name") or ""), str(a.get("persona") or ""),
-                     int(a.get("generation") or 1), str(a.get("parent_id") or ""),
-                     str(a.get("status") or "active"), int(a.get("runs") or 0),
-                     int(a.get("successes") or 0), int(a.get("failures") or 0),
-                     int(a.get("latency_sum_ms") or 0), float(a.get("consensus_sum") or 0),
-                     int(a.get("consensus_n") or 0), float(a.get("standing") or 0.5),
-                     int(a.get("created_at") or now), int(a.get("updated_at") or now),
+                     _as_int(a.get("generation"), 1), str(a.get("parent_id") or ""),
+                     str(a.get("status") or "active"), _as_int(a.get("runs")),
+                     _as_int(a.get("successes")), _as_int(a.get("failures")),
+                     _as_int(a.get("latency_sum_ms")), _as_float(a.get("consensus_sum")),
+                     _as_int(a.get("consensus_n")), _as_float(a.get("standing"), 0.5),
+                     _as_int(a.get("created_at"), now), _as_int(a.get("updated_at"), now),
                      json.dumps(a.get("meta") or {}, ensure_ascii=False)),
                 )
             imported += 1
