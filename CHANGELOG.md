@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.26.0 — 2026-10-20 — verb-alias routing + token-risk tuning
+
+Live batch data (20 requests) showed 3/20 requests scoring 0.0 — the verb shared
+no word with any agent scope, so the genome tie-break silently handed them to the
+wrong agent (`delete genome entries` → analyst/plan instead of an ops agent).
+
+- **New** `src/orchestrator/aliases.py`: a pure, stdlib-only verb→domain table
+  (`optimize`→performance, `delete`→recovery, `rotate`→audit, …). `expand()` adds
+  the implied words when scoring; `NEXUS_ALIASES=0` disables it (old behaviour).
+- `router.py`: `route()`/`route_with_reason()` score against the expanded tokens;
+  the reported `tokens` stay the raw request tokens (diagnostics unchanged).
+- `risk.py`: a bare `"token"` is no longer a standalone HIGH pattern — it is now
+  contextual (HIGH only beside a destructive/security verb). `token overlap
+  search` is MED again, while `delete the token` stays HIGH.
+- Verified before/after on the four misrouted requests: `delete genome entries`
+  analyst/0.0 → recovery/5.0 · `rotate the auth token` analyst/0.0 →
+  security_auditor/4.0 · `delete all training certificates` analyst/0.0 →
+  recovery/5.0 · `optimize the token overlap search` performance/2.0 (high) →
+  performance/5.0 (med).
+
 ## v1.25.0 — 2026-10-20 — orchestrator dashboard (execution metrics)
 
 ### Added
