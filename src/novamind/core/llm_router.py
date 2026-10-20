@@ -15,6 +15,15 @@ from dataclasses import dataclass
 
 logger = logging.getLogger("llm_router")
 
+# ─── Request budget (v1.32.1) ───
+# The OpenAI SDK default (httpx) is a 600s client timeout — a stalled provider
+# hangs the caller for 10 minutes. We cap it well below that. 60s covers the
+# common slow-but-legit replies (~35-105s observed on groq); override with
+# NEXUS_LLM_TIMEOUT / NEXUS_LLM_RETRIES for a slower deployment.
+DEFAULT_TIMEOUT = float(os.environ.get("NEXUS_LLM_TIMEOUT", "60.0"))
+DEFAULT_RETRIES = int(os.environ.get("NEXUS_LLM_RETRIES", "2"))
+
+
 # ─── Error Memory integration (v1.13.1.1) ───
 try:
     from novamind.error_memory import get_error_memory
@@ -244,7 +253,12 @@ class LLMRouter:
             client = genai.Client(api_key=provider.api_key)
         else:
             from openai import OpenAI
-            client = OpenAI(api_key=provider.api_key, base_url=provider.base_url)
+            client = OpenAI(
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+                timeout=DEFAULT_TIMEOUT,
+                max_retries=DEFAULT_RETRIES,
+            )
 
         self._clients[provider.name] = client
         return client
