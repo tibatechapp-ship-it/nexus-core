@@ -2,6 +2,32 @@
 
 All notable changes to this project. Newest first.
 
+## v1.31.4 — 2026-10-20 — fix: HIGH tasks could bypass the Jury gate (StrEnum)
+
+- **Security-relevant bug (BUG-C)**: the orchestrator picked a decomposed
+  request's overall risk with a bare `max((s.risk for s in subtasks))`. The
+  `RiskLevel` enum defined only `__lt__`, so `max()` — which compares with `>` —
+  fell back to the inherited comparison and returned the **wrong** level:
+  `max([HIGH, MED])` → `MED`. A decomposed **HIGH** request was therefore
+  treated as MED and **silently skipped the Jury gate**. Fixed with an explicit
+  `key=risk_key` (the new, only-safe sort key). Proven before/after:
+  `max([HIGH, LOW, MED])` was `med` → now `high`.
+- **BUG-A/B — `(str, Enum)` leaked `"RiskLevel.HIGH"`**: `str(risk)` returned
+  `"RiskLevel.HIGH"`, so `str(risk) == "high"` was silently False on every
+  boundary. `RiskLevel` / `Complexity` / `Strategy` migrated to **`StrEnum`**
+  (Python ≥3.11) → `str()` now returns the value. The custom `__lt__` (and its
+  `type: ignore`) were removed; `risk_key()`/`RISK_ORDER` added.
+- **Dashboard key mismatch fixed**: `dashboard._RISKS` used `"medium"` while
+  live rows carry `"med"` — the med bucket was **always 0**. Now counted
+  correctly (live proof: `0 → 47`).
+- **API contract unchanged**: `by_risk_requests` stays `{low, med, high}` and
+  `by_priority` stays `{low, medium, high}` (a separate ledger). New guard:
+  `tests/test_risk_enum_contract.py` (+ the `test_endpoint_returns_med_not_medium`
+  integration test and `test_decomposed_high_risk_still_reaches_the_jury`).
+- Gate: ruff · mypy **182** (no ignore) · annotations **184** · `make check` =
+  3463 passed, 1 skipped. **Supersedes v1.31.2** (the earlier risk-reason fix is
+  now structural, not a string-unwrap helper).
+
 ## v1.31.3 — 2026-10-20 — fix: HIGH risk reasons were never recorded
 
 - **Bug**: `result["plan"]` is the plan's `__dict__`, so `plan["risk"]` is a
