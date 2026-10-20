@@ -5,17 +5,17 @@ Sources checked:
   1. pyproject.toml     -> [project].version          (the single source)
   2. src/__init__.py    -> src.__version__            (imported, not parsed)
   3. docs/openapi.yaml  -> info.version
-  4. git tag on HEAD    -> exact-match tag (vX.Y.Z), when on a release commit
+  4. git tag on HEAD    -> release tag (vX.Y.Z) via `git tag --points-at HEAD`
 
 Rationale for each rule:
   * `src.__version__` is computed at import time from pyproject.toml
     (`_read_version()`), so parsing the literal would compare a call
     expression and always fail. Import the module instead.
-  * git is checked with `--exact-match`: `git describe --tags --abbrev=0`
-    returns the NEAREST tag anywhere in history, which is a lower tag on an
-    old branch or a feature branch -> false alarms. We only care whether the
-    current commit IS a release tag, and whether that tag is ahead of
-    pyproject (an orphan release).
+  * git is checked with `git tag --points-at HEAD`, NOT `git describe
+    --tags --exact-match`: describe returns an ARBITRARY tag when several point
+    at the same commit (a `backup/...` maintenance tag alongside the real
+    release tag), so the orphan-release check could read the wrong string. We
+    list every tag at HEAD and keep the semver `v`-tags only.
   * An unreleased working commit (tag behind pyproject) is FINE and expected:
     the version is bumped in the release commit, then tagged.
 
@@ -74,20 +74,48 @@ def read_openapi() -> str:
     raise RuntimeError("info.version not found in docs/openapi.yaml")
 
 
+def _release_version(tag: str) -> str | None:
+    """Return the X.Y.Z of a release tag (``vX.Y.Z``), or None otherwise.
+
+    Only ``v``-prefixed tags that parse as semver count as release tags. This
+    ignores maintenance fixtures such as ``backup/...`` so they can never be
+    mistaken for the released version.
+    """
+    if not tag.startswith("v"):
+        return None
+    try:
+        _semver(tag[1:])
+    except ValueError:
+        return None
+    return tag[1:]
+
+
 def read_git_tag_on_head() -> str | None:
-    """Exact tag pointing at HEAD (without the leading 'v'), or None."""
+    """The release tag (``vX.Y.Z``) pointing at HEAD, or None.
+
+    ``git describe --tags --exact-match`` returns an ARBITRARY tag when several
+    point at the same commit (e.g. a ``backup/...`` fixture tag alongside the
+    real ``vX.Y.Z``), so the orphan-release guard could read the wrong one and
+    fail silently. ``git tag --points-at HEAD`` lists them all; we pick the
+    semver ``v``-tag deterministically.
+    """
     try:
         out = subprocess.run(
-            ["git", "describe", "--tags", "--exact-match"],
+            ["git", "tag", "--points-at", "HEAD"],
             capture_output=True,
             text=True,
             check=True,
             cwd=ROOT,
         )
-        tag = out.stdout.strip()
-        return tag[1:] if tag.startswith("v") else tag
     except Exception:
         return None
+    versions = [
+        v for v in (_release_version(t) for t in out.stdout.split()) if v
+    ]
+    # Deterministic: the highest release tag wins if several point at HEAD.
+    if not versions:
+        return None
+    return max(versions, key=_semver)
 
 
 def main() -> int:
