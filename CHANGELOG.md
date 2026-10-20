@@ -2,6 +2,23 @@
 
 All notable changes to this project. Newest first.
 
+## Unreleased — 2026-10-20 — security: STRIDE audit + 3 fixes
+
+- **Security audit (STRIDE)** — full threat model + executable PoC suite:
+  `docs/security/threat-model-STRIDE.md` + `tests/security/stride/` (29 vectors,
+  6 categories) + `reports/security-audit-2026-10-20.md`. All 29 vectors pass.
+- **HIGH — tool executor read the live `.env`** (Information Disclosure): the
+  confined `read`/`list`/`grep` tools returned any in-root secret store.
+  Fixed with `is_sensitive_file()` deny-list (`.env*`, `id_rsa`, `*.pem`/`key`/
+  `p12`/`pfx`/`keystore`, `credentials*`, `secrets.*`, `.git-credentials`).
+  `.env.example` stays readable.
+- **HIGH — hostile `genome_import` payload → HTTP 500** (Tampering + DoS):
+  a non-list / non-dict / non-numeric payload raised `AttributeError`/`ValueError`.
+  Fixed at the boundary: shape validation + tolerant `_as_int`/`_as_float`.
+- **MEDIUM — `/api/diag` disclosed absolute server paths** (Information
+  Disclosure): `loaded_from` is now a bare filename and `sys.path` a count.
+- Regression guards: `tests/test_stride_fixes.py` (23).
+
 ## v1.31.4 — 2026-10-20 — fix: HIGH tasks could bypass the Jury gate (StrEnum)
 
 - **Security-relevant bug (BUG-C)**: the orchestrator picked a decomposed
