@@ -2,6 +2,25 @@
 
 All notable changes to this project. Newest first.
 
+## v1.26.1 — 2026-10-20 — invisible council (decision-only by default)
+
+The council's per-juror debate was leaking to every API consumer: the
+`POST /api/orchestrator/execute` response carried the full `member_verdicts`
+map on HIGH-risk requests. No shipped page read it, but it was a public
+surface. This release hides the debate at the API boundary by default.
+
+- `src/orchestrator/orchestrator.py`: `_apply_jury` now returns
+  `{"approved", "confidence"}` only. `NEXUS_UI_VERBOSE=1` restores the full
+  verdict (the developer/verbose contract); the flag is truthy-only, so any
+  other value keeps the black-box shape.
+- `src/novamind/council/jury.py`: `judge()` appends the FULL verdict (per-juror
+  detail included) to `data/council_trace.jsonl` (`NEXUS_COUNCIL_TRACE`
+  overrides; never raises) so the debate stays auditable even when it is not
+  served. Voting logic is untouched.
+- No UI change was needed: a repo-wide search found ZERO `.html`/`.js` files
+  reading `member_verdicts` or the `jury` object — the black-box shape breaks
+  nothing.
+
 ## v1.26.0 — 2026-10-20 — verb-alias routing + token-risk tuning
 
 Live batch data (20 requests) showed 3/20 requests scoring 0.0 — the verb shared
