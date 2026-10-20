@@ -1061,6 +1061,30 @@ def _orchestrator_runner(agent_id: str, request: str) -> Dict[str, Any]:
     return {"output": res.get("error") or "لا يوجد مزود متاح", "ok": False}
 
 
+def _record_orchestrator_metric(request: str, result: Dict[str, Any]) -> None:
+    """سجّل تنفيذاً واحداً لمقاييس لوحة القيادة (v1.25.0).
+
+    التسجيل أثر جانبي قارئ-فقط: أي فشل في السجلّ لا يجب أن يكسر التنفيذ أبداً،
+    لذلك كل خطأ مُبتلع. ``decomposed``/``subtasks`` تأتي من نتيجة المُنسّق،
+    والهيئة فُعّلت إن وُجد ``jury`` بمخرَج غير فارغ.
+    """
+    try:
+        from src.orchestrator import _metrics
+
+        subtasks = list(result.get("subtasks") or [])
+        plan = result.get("plan") or {}
+        _metrics.record(
+            request=request,
+            ok=bool(result.get("ok")),
+            decomposed=bool(result.get("decomposed")),
+            subtasks=subtasks,
+            jury_fired=bool(result.get("jury")),
+            risk=plan.get("risk"),
+        )
+    except Exception:  # pragma: no cover - never break execution
+        pass
+
+
 @app.post("/api/orchestrator/execute")
 async def _orchestrator_execute(req: Dict[str, Any]):
     """صنّف + اختر وكيلاً + نفّذ + بوابة هيئة للخطر العالي (v1.22.0).
@@ -1086,6 +1110,7 @@ async def _orchestrator_execute(req: Dict[str, Any]):
         result = await asyncio.to_thread(
             lambda: orch.execute(request, runner=_orchestrator_runner))
         result["ok"] = bool(result.get("ok"))
+        _record_orchestrator_metric(request, result)
         return result
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
