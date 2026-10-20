@@ -22,6 +22,10 @@ from enum import Enum
 
 logger = logging.getLogger("core.security_gatekeeper")
 
+# Security-log rotation defaults (10 MB per file, 5 rotated backups).
+DEFAULT_LOG_MAX_BYTES = 10 * 1024 * 1024
+DEFAULT_LOG_BACKUPS = 5
+
 
 # ═══════════════════════════════════════════════════════════════
 # Enums & Dataclasses
@@ -284,6 +288,11 @@ class SecurityGatekeeper:
         self.log_path = log_path or Path(os.environ.get("NEXUS_SECURITY_LOG", "memory/security_log.jsonl"))
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Log rotation: an unbounded security log grows forever (a phone
+        # left running would fill its storage). Rotate at max_bytes.
+        self.max_bytes = int(os.environ.get("NEXUS_SECURITY_LOG_MAX_BYTES", DEFAULT_LOG_MAX_BYTES))
+        self.backup_count = int(os.environ.get("NEXUS_SECURITY_LOG_BACKUPS", DEFAULT_LOG_BACKUPS))
+
     # ═══════════════════════════════════════════════════════════
     # Helpers
     # ═══════════════════════════════════════════════════════════
@@ -473,10 +482,33 @@ class SecurityGatekeeper:
                 "category": verdict.category,
                 "confidence": verdict.confidence,
             }
+            self._rotate_if_needed()
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception as e:
             logger.warning(f"log failed: {e}")
+
+    def _rotate_if_needed(self) -> None:
+        """Rotate the log when it exceeds max_bytes (best effort, never raises)."""
+        try:
+            if self.max_bytes <= 0 or not self.log_path.exists():
+                return
+            if self.log_path.stat().st_size < self.max_bytes:
+                return
+            if self.backup_count <= 0:
+                self.log_path.unlink()
+                return
+            # Shift .jsonl.N-1 -> .jsonl.N, oldest dropped.
+            oldest = self.log_path.with_name(f"{self.log_path.name}.{self.backup_count}")
+            if oldest.exists():
+                oldest.unlink()
+            for index in range(self.backup_count - 1, 0, -1):
+                src = self.log_path.with_name(f"{self.log_path.name}.{index}")
+                if src.exists():
+                    src.replace(self.log_path.with_name(f"{self.log_path.name}.{index + 1}"))
+            self.log_path.replace(self.log_path.with_name(f"{self.log_path.name}.1"))
+        except Exception as e:  # never let rotation break logging
+            logger.warning(f"log rotation failed: {e}")
 
     def get_metrics(self) -> Dict:
         return dict(self.metrics)
