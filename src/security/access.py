@@ -9,6 +9,8 @@ Defaults are chosen for a phone-bound local server:
 
 * **auth OFF** — nothing to do until ``NEXUS_AUTH_TOKEN`` is set (the gateway
   binds 127.0.0.1); when set, every mutating request needs ``X-Auth-Token``.
+  When it is **not** set, mutating requests are still refused unless they come
+  from loopback — a tokenless server bound to a public interface fails closed.
 * **rate limit ON** — :data:`DEFAULT_RATE` requests per :data:`DEFAULT_WINDOW`
   seconds per client+route; ``NEXUS_RATE_LIMIT=0`` disables it.
 * **audit OFF** — no surprise disk writes; set ``NEXUS_AUDIT_LOG`` to a path to
@@ -20,6 +22,7 @@ dashboards and probes never need a token.
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import os
 import threading
@@ -30,6 +33,31 @@ from typing import Any, Callable, Dict, Mapping, Optional
 
 #: Methods that change state (or spend money) — everything else is a read.
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+#: In-process ASGI transports (FastAPI/Starlette ``TestClient``) report this
+#: sentinel host instead of a socket peer.  It cannot be produced by a real TCP
+#: client, so treating it as local is safe and keeps the in-process test suite
+#: working without a token.
+ASGI_TEST_CLIENT = "testclient"
+
+
+def is_loopback(client: str) -> bool:
+    """True when ``client`` is the local machine (any 127.0.0.0/8 or ``::1``).
+
+    An empty/unknown client is treated as **not** loopback so a missing value
+    fails closed rather than silently opening the gate.  The ASGI test sentinel
+    (:data:`ASGI_TEST_CLIENT`) counts as local — no network client can set it.
+    """
+    if not client:
+        return False
+    if client == ASGI_TEST_CLIENT:
+        return True
+    host = client.split("%", 1)[0]  # strip an IPv6 zone id
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 TOKEN_ENV = "NEXUS_AUTH_TOKEN"
 TOKEN_HEADER = "x-auth-token"
@@ -214,7 +242,13 @@ class AccessGuard:
 
     def check(self, method: str, path: str, headers: Mapping[str, str],
               client: str = "") -> Decision:
-        """Decide one request: reads pass, writes need token + rate budget."""
+        """Decide one request: reads pass, writes need token + rate budget.
+
+        Fail-closed policy when ``NEXUS_AUTH_TOKEN`` is unset: only loopback
+        clients may reach mutating routes.  A tokenless gateway bound to
+        ``0.0.0.0`` therefore still refuses remote writes instead of accepting
+        them anonymously.
+        """
         verb = (method or "").upper()
         if verb not in self.methods:
             return _ALLOWED
@@ -226,6 +260,10 @@ class AccessGuard:
                 provided = ""
             if not (provided and hmac.compare_digest(provided, self.token)):
                 return Decision(False, 401, f"unauthorized: {self.header} required")
+        elif not is_loopback(client):
+            return Decision(
+                False, 401,
+                f"unauthorized: {TOKEN_ENV} required for non-local access")
         if self.limiter is not None:
             wait = self.limiter.allow(f"{client or '-'}|{verb}|{path}")
             if wait > 0.0:
@@ -273,6 +311,7 @@ __all__ = [
     "Decision",
     "RateLimiter",
     "MUTATING_METHODS",
+    "is_loopback",
     "TOKEN_HEADER",
     "TOKEN_ENV",
     "RATE_ENV",

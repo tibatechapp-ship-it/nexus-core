@@ -199,7 +199,7 @@ def test_from_env_can_disable_everything() -> None:
 def test_guard_without_a_limiter_is_free() -> None:
     guard = AccessGuard(limiter=None)
     assert guard.rate_enabled is False
-    assert guard.check("POST", "/api/x", {}).allowed is True
+    assert guard.check("POST", "/api/x", {}, client="127.0.0.1").allowed is True
     assert guard.stats()["rate"] == 0
 
 
@@ -237,14 +237,14 @@ def test_rate_limit_refuses_with_a_retry_after() -> None:
     assert (limited.allowed, limited.status) == (False, 429)
     assert limited.retry_after == 45.0
     assert limited.error == "rate limit exceeded"
-    # another client still has its own budget
-    assert guard.check("POST", "/api/training/run", {}, client="10.0.0.9").allowed
+    # another client still has its own budget (both loopback: auth is off)
+    assert guard.check("POST", "/api/training/run", {}, client="127.0.0.2").allowed
 
 
 def test_a_clientless_request_still_counts() -> None:
     guard = AccessGuard(limiter=RateLimiter(1, 5.0, clock=_Clock()))
-    assert guard.check("POST", "/api/x", {}).allowed is True
-    assert guard.check("POST", "/api/x", {}).allowed is False
+    assert guard.check("POST", "/api/x", {}, client="127.0.0.1").allowed is True
+    assert guard.check("POST", "/api/x", {}, client="127.0.0.1").allowed is False
 
 
 def test_token_is_checked_before_the_rate_budget() -> None:
