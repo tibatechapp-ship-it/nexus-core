@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from src.tools.downloader import download_file
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
@@ -104,6 +105,11 @@ def default_config() -> dict[str, Any]:
             "consensus": {
                 "enabled": True,
                 "agents": list(DEFAULT_CONSENSUS_AGENTS),
+            },
+            "download_file": {
+                "enabled": True,
+                "max_file_size": "2G",
+                "description": "Download files via aria2c (SSRF-protected, resumable)",
             },
         },
     }
@@ -508,6 +514,10 @@ _REGISTRY: dict[str, tuple[Callable[..., Any], Callable[..., str]]] = {
     "consensus": (
         consensus,
         lambda args, kwargs: str(kwargs.get("question") or (args[0] if args else ""))[:80],
+    ),
+    "download_file": (
+        download_file,
+        lambda args, kwargs: str(kwargs.get("url") or (args[0] if args else ""))[:80],
     ),
 }
 
