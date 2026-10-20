@@ -2254,3 +2254,43 @@ Pushed to BOTH remotes (verified ls-remote: both at d6c98a2 + tag 4f25913).
 - NEXT (v1.26 decision, data-driven): HIGH risk >30% → synthesis; failure >10%
   → fallback chains; bad routing → aliases. Lightweight routing only on Termux
   (no langgraph: 30MB RAM + 2s cold import).
+
+## 2026-10-20 — v1.29.0 release (bounded logs + leak guard + maintenance metrics)
+
+- Branch `feature/v1.29.0` (3 commits: `30df162` feat(security) rotation ·
+  `77befed` test(conftest) leak guard · `20f0b37` feat(maintenance) metrics API).
+  **PR #36 squash-merged → `main` = `5fbe578`** on local + origin + gitlab.
+- Release commit **`a5dc348`** `chore(release): v1.29.0` — 4 lockstep files
+  (pyproject 1.27.0→1.29.0, docs/openapi.yaml, CHANGELOG, SCOPE). Annotated tag
+  **`v1.29.0`** (object `b0a2808`) at `a5dc348`, self-consistent
+  (`git show v1.29.0:pyproject.toml` → 1.29.0), on BOTH remotes.
+  `git rev-parse main origin/main gitlab/main v1.29.0^{}` = all `a5dc348`.
+- **GitHub Release v1.29.0 (Latest)** = not draft, not prerelease.
+- **VERSION-CHAIN GAP REPAIRED**: v1.28.0/v1.28.1 had remote tags but pyproject
+  stuck at 1.27.0 (never bumped) → CHANGELOG entries for v1.28.0 (#34
+  `3eca05c`) + v1.28.1 (#35 `9f7d41a`) backfilled with VERIFIED facts, then
+  lockstep bumped to 1.29.0.
+- WHAT SHIPPED:
+  · `src/novamind/core/security_gatekeeper.py`: log rotation
+    (`DEFAULT_LOG_MAX_BYTES=10*1024*1024`, `DEFAULT_LOG_BACKUPS=5`, env
+    `NEXUS_SECURITY_LOG_MAX_BYTES`/`NEXUS_SECURITY_LOG_BACKUPS`,
+    `_rotate_if_needed()` before append; `backup_count<=0` → unlink).
+    `tests/novamind/security/test_gatekeeper_rotation.py` (8).
+  · `tests/conftest.py`: autouse `_guard_no_runtime_leaks` (fails a test that
+    writes runtime state into `memory/`) + `pytest_configure` points the security
+    log at `tempfile.gettempdir()/"_pytest_security.jsonl"`.
+  · `src/maintenance/api.py` (NEW): `GET /api/maintenance/metrics`
+    (genome 8-key stats + `by_priority{low,medium,high}`) +
+    `GET /api/maintenance/tasks` (generate_tasks, ok:false on failure);
+    `register(app)` = `app.router.routes.extend` (deferred-router fix); mounted
+    in `unified_agent.py` (`MAINTENANCE_OK`). 100% coverage.
+- **GATES**: ruff clean · mypy **183** · annotations **183** · real gate
+  `pytest --cov --cov-fail-under=95 --ignore=tests/novamind` = **3416 passed,
+  1 skipped @ 99.78%** (was 3396; README mypy count 180→183).
+- **CONSTRAINT HELD**: did NOT add maintenance paths to `docs/openapi.yaml` —
+  the drift guard `test_spec_paths_match_app_both_ways` scans the workbench
+  `main.py` only (no maintenance routes) → adding them = phantom-route failure.
+  `memory/` clean; `logs/` holds only gitignored service logs + lock files.
+- Bundle: `~/backups/nexus-core/nexus-core-v1.29.0.bundle` (2.8M, `--all`).
+- **NEXT (v1.30)**: the maintenance metrics `by_priority` breakdown is a
+  placeholder (`# TODO(v1.30)`) — wire real priority counts from the genome.
