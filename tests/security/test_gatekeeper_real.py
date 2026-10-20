@@ -5,7 +5,7 @@ If it fails, everything after is compromised.
 """
 import pytest
 
-from src.council.gatekeeper import CouncilGatekeeper, ThreatLevel
+from src.council.gatekeeper import CouncilGatekeeper
 
 
 INJECTION_PAYLOADS = [
