@@ -1070,16 +1070,29 @@ def _record_orchestrator_metric(request: str, result: Dict[str, Any]) -> None:
     """
     try:
         from src.orchestrator import _metrics
+        from src.orchestrator.risk import explain
 
         subtasks = list(result.get("subtasks") or [])
         plan = result.get("plan") or {}
+        level = plan.get("risk")
+        matched: list[str] = []
+        reason = plan.get("risk_reason")
+        if str(level) == "high":
+            try:
+                info = explain(request)
+                matched = list(info.get("matched_high") or [])
+                reason = info.get("reason") or reason
+            except Exception:
+                matched = []
         _metrics.record(
             request=request,
             ok=bool(result.get("ok")),
             decomposed=bool(result.get("decomposed")),
             subtasks=subtasks,
             jury_fired=bool(result.get("jury")),
-            risk=plan.get("risk"),
+            risk=level,
+            risk_reason=reason,
+            risk_matched=matched,
         )
     except Exception:  # pragma: no cover - never break execution
         pass

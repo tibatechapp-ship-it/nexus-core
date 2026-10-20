@@ -54,6 +54,46 @@ def _genome_document() -> Dict[str, Any]:
         return {}
 
 
+def _orchestrator_risk() -> Dict[str, Any]:
+    """Aggregate ``/api/orchestrator/execute`` records by risk level.
+
+    Reads the orchestrator metrics log (``_metrics.load``) and counts how many
+    executed requests fell into each risk level — the honest "by risk" view of
+    orchestrator traffic (the field is ``risk``, hence ``by_risk_requests``, not
+    a fabricated "priority"). Pure read: never writes, tolerates absence.
+    """
+    empty = {
+        "total": 0,
+        "by_risk_requests": {"low": 0, "med": 0, "high": 0},
+        "high_ratio": 0.0,
+        "high_reasons": {},
+    }
+    try:
+        from ..orchestrator import _metrics
+
+        rows = _metrics.load()
+    except Exception:
+        return empty
+    counts = {"low": 0, "med": 0, "high": 0}
+    reasons: Dict[str, int] = {}
+    for row in rows:
+        level = str(row.get("risk", "low"))
+        if level in counts:
+            counts[level] += 1
+        if level == "high":
+            reason = row.get("risk_reason")
+            if reason:
+                key = str(reason)[:40]
+                reasons[key] = reasons.get(key, 0) + 1
+    total = len(rows)
+    return {
+        "total": total,
+        "by_risk_requests": counts,
+        "high_ratio": (counts["high"] / total) if total else 0.0,
+        "high_reasons": reasons,
+    }
+
+
 def metrics_snapshot(
     *,
     fitness: Any = None,
@@ -108,6 +148,7 @@ def metrics_snapshot(
         },
         "by_priority": by_priority,
         "by_priority_all_time": by_priority_all_time,
+        "by_risk_requests": _orchestrator_risk(),
         "tasks": {
             "window_days": int(ledger.get("window_days", window_days) or window_days),
             "total_all_time": int(all_time.get("total_tasks", 0) or 0),

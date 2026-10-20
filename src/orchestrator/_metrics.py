@@ -14,15 +14,23 @@ Design rules (kept intentionally small and dependency-free):
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_RECORDS = 2000
 _ENV_PATH = "NEXUS_METRICS_PATH"
+
+
+def _utc_now() -> str:
+    """Current UTC time as an ISO-8601 string with a trailing ``Z``."""
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
 
 
 def _repo_root() -> Path:
@@ -77,12 +85,19 @@ def record(
     subtasks: list[Mapping[str, Any]],
     jury_fired: bool = False,
     risk: str | None = None,
+    risk_reason: str | None = None,
+    risk_matched: list[str] | None = None,
     path: Path | None = None,
 ) -> dict[str, Any] | None:
     """Append one execution record and return it (or ``None`` if it could not be saved).
 
     ``subtasks`` is the per-subtask result list; ``risk`` is the overall risk
     level when known (falls back to the highest subtask risk).
+
+    ``risk_reason`` / ``risk_matched`` explain WHY the request was classified
+    HIGH (e.g. ``"high:genome"`` + ``["genome"]`` from ``risk.explain()``). They
+    are recorded only when the level is HIGH — a LOW/MED request does not need a
+    reason, and omitting the keys keeps old and new rows the same flat shape.
     """
     target = path or default_metrics_path()
     agents = [str(s.get("agent", "")) for s in subtasks if s.get("agent")]
@@ -93,6 +108,7 @@ def record(
         risk = max(levels, key=lambda level: order.get(level, 0))
     entry: dict[str, Any] = {
         "schema": SCHEMA_VERSION,
+        "ts": _utc_now(),
         "request": request[:200],
         "ok": bool(ok),
         "decomposed": bool(decomposed),
@@ -102,6 +118,11 @@ def record(
         "jury_fired": bool(jury_fired),
         "risk": risk,
     }
+    if str(risk) == "high":
+        if risk_reason:
+            entry["risk_reason"] = str(risk_reason)[:40]
+        if risk_matched:
+            entry["risk_matched"] = [str(m)[:40] for m in risk_matched][:10]
     rows = _load(target)
     rows.append(entry)
     _atomic_write(target, rows[-MAX_RECORDS:])
