@@ -17,6 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logger = logging.getLogger("integration.webhook")
 
+#: Max accepted body size (5MB) — reject early
+MAX_BODY_BYTES = 5 * 1024 * 1024
+
 #: Hosts that are already local — no exposure to the network.
 _LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 
@@ -66,6 +69,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path
         length = int(self.headers.get("Content-Length", 0))
+        if length > MAX_BODY_BYTES:
+            self._json({"error": "payload too large"}, 413)
+            return
         body = self.rfile.read(length) if length else b""
 
         sig = self.headers.get("X-Hub-Signature-256", "")
@@ -107,7 +113,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 class WebhookServer:
     def __init__(self, port: int = 8888, secret: str = "",
-                 host: str = "0.0.0.0"):
+                 host: str = "127.0.0.1"):
         self.port = port
         self.secret = secret
         self.host = host
@@ -163,7 +169,7 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("WEBHOOK_PORT", "8888"))
     secret = os.environ.get("WEBHOOK_SECRET", "")
-    host = os.environ.get("WEBHOOK_HOST", "0.0.0.0")
+    host = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
 
     server = WebhookServer(port=port, secret=secret, host=host)
     server.start(on_pr_event=handle_pr_event)

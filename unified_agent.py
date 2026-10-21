@@ -562,7 +562,8 @@ def main():
     print("=" * 60)
 
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
+    uvicorn.run(app, host=os.getenv("NEXUS_BIND", "127.0.0.1"),
+                port=PORT, log_level="warning")
 
 
 

@@ -1,3 +1,4 @@
+import os
 """A2A HTTP Server — exposes NovaMind agents via A2A protocol."""
 import sys
 import uuid
@@ -44,7 +45,7 @@ if FASTAPI_AVAILABLE:
 class A2AServer:
     """A2A server exposing NovaMind agents."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8000, factory=None):
+    def __init__(self, host: str = "127.0.0.1", port: int = 8000, factory=None):
         self.host = host
         self.port = port
         self._factory = factory
@@ -165,4 +166,4 @@ if __name__ == "__main__":
     import uvicorn
     logging.basicConfig(level=logging.INFO)
     app = create_app()
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=os.getenv("NEXUS_A2A_BIND", "127.0.0.1"), port=8000)

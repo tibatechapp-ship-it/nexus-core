@@ -1,3 +1,4 @@
+import os
 """Hive Dashboard — Minimal Clean."""
 from aiohttp import web
 import logging
@@ -49,7 +50,8 @@ def create_app():
     return app
 
 
-def run_dashboard(host="0.0.0.0", port=8080):
+def run_dashboard(host=None, port=8080):
+    host = host or os.getenv("NEXUS_DASH_BIND", "127.0.0.1")
     app = create_app()
     log.info("Dashboard: http://" + host + ":" + str(port))
     web.run_app(app, host=host, port=port, print=None)
