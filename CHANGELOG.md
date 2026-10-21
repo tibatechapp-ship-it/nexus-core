@@ -2,6 +2,27 @@
 
 All notable changes to this project. Newest first.
 
+## v1.35.0 — 2026-10-21 — structured outputs + BUG-5 fix
+
+### Added
+- **`src/llm/structured.py`** — schema-constrained JSON generation via
+  Ollama's native `format` parameter. JSON parse errors impossible.
+  (`ea9c667`)
+
+### Fixed
+- **BUG-5** — `hyper_agent` retry loop on malformed JSON. Now uses
+  `HYPER_AGENT_SCHEMA` (enum action + additionalProperties=false) so
+  the model cannot invent invalid fields. Falls back to original path
+  for non-local providers. (`c1d8940`)
+
+### Tests
+- 4 hermetic unit tests for `structured.py` (100% coverage). (`78b2430`)
+- 4 schema contract tests for `HYPER_AGENT_SCHEMA`. (`af8cdf6`)
+- 1 live integration test (skipped on CI without Ollama). (`45a8f43`)
+
+### Compatibility
+No breaking changes. All v1.33.0 + v1.34.0 fixes retained.
+
 ## v1.34.0 — 2026-10-21 — performance + retention entry point
 
 ### Added
