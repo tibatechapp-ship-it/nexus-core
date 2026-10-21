@@ -2,6 +2,36 @@
 
 All notable changes to this project. Newest first.
 
+## v1.33.0 — 2026-10-21 — security hardening (C1-C4 + P0 exposure)
+
+Rolls up the security work merged since v1.32.0: four independently reproduced
+fail-open/fail-dangerous findings (C1-C4), a provider-client request budget cap,
+and a final sweep that closed the remaining network-exposure vectors. No breaking
+API changes; the loopback dev workflow is unchanged.
+
+- **C4 — webhook fail-open (HIGH)**. `webhook_server.py` (root-level)
+  `_verify` returned `True` when `WEBHOOK_SECRET` was empty, and the server bound
+  `0.0.0.0` — an unsigned POST reached `pr_reviewer.review_pr`. **Fix (same
+  pattern as C3): fail closed** — empty secret ⇒ verification fails, and the bind
+  host resolves to `127.0.0.1` (with a warning, not a startup refusal — a
+  container orchestrator would crash-loop otherwise). `WEBHOOK_HOST` overrides.
+  Guard: `tests/security/test_webhook_fail_closed.py` (5).
+- **Request budget cap (v1.32.1)**. `src/novamind/core/llm_router.py` built the
+  OpenAI client without a timeout, so the SDK httpx default (600s) let a hung
+  provider block a caller for ten minutes. **Fix:** `DEFAULT_TIMEOUT=60.0` /
+  `DEFAULT_RETRIES=2`, overridable via `NEXUS_LLM_TIMEOUT` / `NEXUS_LLM_RETRIES`.
+  Tests: `tests/test_llm_router_timeout.py` (4).
+- **P0 exposure sweep — remaining vectors closed**. Five loopback-bind fixes:
+  `unified_agent.py` binds `127.0.0.1` (`NEXUS_BIND`; workspace endpoints are
+  unauthenticated by design), `src/novamind/core/a2a/server.py` (`NEXUS_A2A_BIND`),
+  `src/novamind/dashboard/app.py` (`NEXUS_DASH_BIND`), `webhook_server.py`
+  (`MAX_BODY_BYTES=5MB`, 413 before the body is read), and `docker-compose.yml`
+  makes `REDIS_PASSWORD` mandatory (`:?`) and moves Redis from `ports:` to
+  `expose:`. `.env.example` documents the three bind variables.
+
+C1 (RCE via `run_shell`), C2 (`.env` dump via `safe_path`) and C3 (fail-open
+auth off loopback) shipped in v1.32.0 and are unchanged here.
+
 ## v1.32.0 — 2026-10-21 — security: three verified vulnerabilities fixed
 
 Three real findings, each reproduced against the running code before the fix
