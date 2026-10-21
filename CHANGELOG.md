@@ -2,6 +2,25 @@
 
 All notable changes to this project. Newest first.
 
+## v1.37.1 — 2026-10-21 — lint hotfix + honest BUG-9 guard
+
+### Fixed
+- **Ruff lint regressions in v1.37.0** — `make check` failed with 32 errors
+  (E401, E701, E741, F401, F841) in `src/llm/request_log.py` and the three
+  new test files. All resolved; behavior is unchanged.
+- **`tests/test_bug_9_filenames_consistent.py`** — commit `8e3a969` (shipped
+  in v1.37.0) contained `assert len(...) == 0 or True`, which always passes
+  and guards nothing. Rewritten with two real assertions: no
+  `hyper-agent*.py` shadow, and canonical `hyper_agent.py` exists. Also
+  removed the unused `underscore_files` binding and the redundant `**/`
+  glob.
+- **`test_aggregate_counts`** — corrected the expected count from
+  `{"HIGH": 3, "MED": 3, "LOW": 1}` to `{"HIGH": 3, "MED": 4, "LOW": 1}`
+  (the test was wrong, the code was right).
+
+### Verified
+- `make check`: 3598 passed, 1 skipped, 99.24% coverage, all gates green.
+
 ## v1.37.0 — 2026-10-21 — request_log + metrics endpoint
 
 ### Added
