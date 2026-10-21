@@ -44,6 +44,10 @@ _SCHEMA_VERSION = 1
 #: Default number of past interactions recalled into a prompt.
 _DEFAULT_K = 3
 
+#: Max rows ``similar()`` will score.  A recency-bounded window keeps recall
+#: O(window) instead of O(table) while still finding the useful recent answer.
+_SIMILAR_WINDOW = 500
+
 #: Arabic + ASCII punctuation stripped before tokenising (``tokenize`` keeps
 #: ``؟`` inside words because it sits inside the Arabic Unicode block).
 _STRIP = str.maketrans({c: " " for c in "؟،؛!\"'()[]{}«»…ـ/\\|<>*&%$#@+=~`,."})
@@ -101,6 +105,8 @@ class InteractionStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_interactions_agent
                     ON interactions(agent_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_interactions_recent
+                    ON interactions(signal_ok, created_at DESC);
                 """
             )
             # PRAGMA does not accept bound parameters (sqlite3 syntax error);
@@ -170,15 +176,22 @@ class InteractionStore:
         query_tokens = _tokens(question)
         if not query_tokens:
             return []
+        # Cap the candidate window: ``similar()`` runs on every /api/chat and the
+        # table grows without bound.  Scoring every historical row is O(table);
+        # recency-bounded scoring is O(WINDOW) and matches the intent (a recent
+        # successful answer is the useful one).  The sub-select lets SQLite use
+        # ``idx_interactions_recent`` before the token overlap is computed.
         sql = (
-            "SELECT * FROM interactions WHERE signal_ok = 1 "
-            "AND answer != ''"
+            "SELECT * FROM ("
+            "  SELECT * FROM interactions WHERE signal_ok = 1 AND answer != ''"
         )
         params: list[Any] = []
         if agent_id:
             sql += " AND agent_id = ?"
             params.append(agent_id)
-        sql += " ORDER BY created_at DESC"
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(_SIMILAR_WINDOW)
+        sql += ") ORDER BY created_at DESC"
         ranked: list[tuple[float, dict[str, Any]]] = []
         for row in self._rows(sql, params):
             overlap = len(query_tokens & _tokens(str(row.get("question") or "")))
