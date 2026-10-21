@@ -2,6 +2,37 @@
 
 All notable changes to this project. Newest first.
 
+## v1.37.0 — 2026-10-21 — request_log + metrics endpoint
+
+### Added
+- **`src/llm/request_log.py`** — append-only JSONL ledger for LLM/orchestrator
+  traffic. `record(priority, agent_id, outcome, reason)` never raises;
+  `aggregate(window_days=7)` returns honest totals, per-priority counts,
+  failure/high percentages, and a `sample_sufficient` flag (>= 100 requests).
+  Rotation at 10 MiB with 5 backups (mirrors `task_log.py`). Env override
+  via `NEXUS_REQUEST_LOG` + `NEXUS_REQUEST_LOG_MAX_BYTES` for tests.
+- **`GET /api/orchestrator/metrics?window_days=7`** — read-only aggregate
+  of `/api/orchestrator/execute` traffic, sourced from `request_log.aggregate`.
+  Registered in `_ORCHESTRATOR_ROUTES` to survive the catch-all Mount reorder.
+
+### Changed
+- **`/api/orchestrator/execute`** now writes one `request_log` entry per
+  request via `_record_orchestrator_metric`. The existing `_metrics.record`
+  (dashboard + maintenance consumers) is preserved unchanged — recording
+  is additive, not a replacement. `priority` is read from the request body
+  (defaults to `MED`) and passed through to the new log; `agent_id` comes
+  from `subtasks[0].agent`, `outcome` from `result["ok"]`, `reason` from
+  `result["error"]` on failure.
+
+### Tests
+- 7 hermetic tests for `request_log` (tmp_path + env monkeypatch, rotation
+  via `NEXUS_REQUEST_LOG_MAX_BYTES=200`).
+- 2 wiring tests for `/api/orchestrator/execute` (FakeOrch, no live Ollama).
+- 2 endpoint tests for `GET /api/orchestrator/metrics` (env-mocked log).
+
+### Inherited
+All v1.36.0 fixes retained (BUG-1..9, structured outputs, sandbox).
+
 ## v1.36.0 — 2026-10-21 — Hyper-Agent BUG audit
 
 ### Verified already resolved (no code changes needed)
