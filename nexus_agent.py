@@ -1076,7 +1076,7 @@ def _risk_level_str(value: Any) -> str | None:
     return str(raw)
 
 
-def _record_orchestrator_metric(request: str, result: Dict[str, Any]) -> None:
+def _record_orchestrator_metric(request: str, result: Dict[str, Any], priority: str = "MED") -> None:
     """سجّل تنفيذاً واحداً لمقاييس لوحة القيادة (v1.25.0).
 
     التسجيل أثر جانبي قارئ-فقط: أي فشل في السجلّ لا يجب أن يكسر التنفيذ أبداً،
@@ -1109,6 +1109,17 @@ def _record_orchestrator_metric(request: str, result: Dict[str, Any]) -> None:
             risk_reason=reason,
             risk_matched=matched,
         )
+        try:
+            from src.llm import request_log
+            _agent = str(subtasks[0].get("agent", "")) if subtasks else ""
+            request_log.record(
+                priority=priority,
+                agent_id=_agent,
+                outcome="success" if result.get("ok") else "failed",
+                reason=result.get("error") if not result.get("ok") else None,
+            )
+        except Exception:
+            pass
     except Exception:  # pragma: no cover - never break execution
         pass
 
@@ -1138,7 +1149,10 @@ async def _orchestrator_execute(req: Dict[str, Any]):
         result = await asyncio.to_thread(
             lambda: orch.execute(request, runner=_orchestrator_runner))
         result["ok"] = bool(result.get("ok"))
-        _record_orchestrator_metric(request, result)
+        _record_orchestrator_metric(
+            request, result,
+            priority=str((req or {}).get("priority") or "MED"),
+        )
         return result
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
