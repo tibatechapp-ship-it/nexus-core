@@ -1160,7 +1160,8 @@ async def _orchestrator_execute(req: Dict[str, Any]):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    import time
+    return {"status": "ok", "timestamp": time.time()}
 
 @app.get("/api/orchestrator/metrics")
 async def _orchestrator_metrics(window_days: int = 7):
@@ -1185,6 +1186,7 @@ async def _orchestrator_metrics(window_days: int = 7):
 # registered after it. Reorder so our /api/orchestrator/* is reachable.
 # ═══════════════════════════════════════════════════════════════════════
 _ORCHESTRATOR_ROUTES = (
+    "/health",
     "/api/orchestrator/plan",
     "/api/orchestrator/execute",
     "/api/orchestrator/metrics",
