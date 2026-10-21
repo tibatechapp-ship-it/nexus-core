@@ -2,6 +2,23 @@
 
 All notable changes to this project. Newest first.
 
+## v1.34.0 — 2026-10-21 — performance + retention entry point
+
+### Added
+- **scripts/retention.py** — production retention entry point. Dry-run by
+  default, `--apply` to delete, `--json` for cron/systemd. Exit codes:
+  0 ok, 1 error, 2 cancelled. (`b71fbd6`)
+
+### Performance
+- **memory.similar()** — caps at 500-row recency window + new
+  `idx_interactions_signal` index. Prevents full-table scan per chat
+  message. (`7f1c675`)
+- **Council first round** — members fan out via `ThreadPoolExecutor` while
+  preserving emission order. 6 members: 1.77s → 0.25s. (`db76db6`)
+
+### Compatibility
+No breaking changes. All v1.33.0 security fixes remain in effect.
+
 ## v1.33.0 — 2026-10-21 — security hardening (C1-C4 + P0 exposure)
 
 Rolls up the security work merged since v1.32.0: four independently reproduced
