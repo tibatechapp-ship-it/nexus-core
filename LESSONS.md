@@ -49,3 +49,20 @@ NOT perform. Third hallucination observed in this session (v1.37.0 agent,
 
 5. When in doubt, run: `grep -rn 'def run_shell' src/ ` — if no match,
    the "fix" has nothing to fix.
+
+## L7: Local models (qwen3:1.7b) are competent code generators, poor pytest authors
+The local model generated correct assertions for the /health endpoint
+(status 200, status=ok, timestamp exists), but placed them at module
+level instead of inside def test_*() functions. Pytest silently skipped
+them ("no tests ran"). Always wrap generated test code in explicit
+test functions, then run pytest -v to confirm collection. Manual rewrap
+takes 30 seconds and produces proper regression tests.
+
+## L8: FastAPI Mount swallows every route registered after it
+In nexus_agent.py, app.mount("/", StaticFiles(...)) is registered
+early. Any route defined AFTER it (including @app.get("/health")) is
+unreachable, returning 404 despite existing in the source. The
+_ORCHESTRATOR_ROUTES tuple is the central fix: every new route must be
+added there so _nexus_reorder_orchestrator_route() moves it before the
+Mount. This bug lived unnoticed from v1.38.0 to v1.38.1 — only the
+new regression test surfaced it.
