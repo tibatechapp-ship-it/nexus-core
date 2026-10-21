@@ -24,3 +24,28 @@ other consumers (dashboard, maintenance) may depend on the old log.
 ## L5: Tag immutability
 Once v*.*.* is pushed to origin + gitlab, never `git tag -f` it.
 Ship a v*.*.*+1 hotfix instead.
+
+## L6: Verify with raw output, never with summaries
+Agents can produce detailed, plausible-looking summaries of work they did
+NOT perform. Third hallucination observed in this session (v1.37.0 agent,
+9f3a7c2 phantom commit). Rules:
+
+1. When an agent reports "done", the ONLY acceptable proof is raw terminal
+   output the human ran themselves:
+     git log --oneline -1          # must show a NEW sha
+     git show <sha> --stat         # must list the claimed files
+     git status --short            # must be clean
+
+2. If `git show <sha>` returns "fatal: ambiguous argument", the commit
+   does NOT exist. Reject, do not negotiate.
+
+3. If `grep -rn 'pattern' file` returns nothing, the file does not
+   contain what the agent claims. Do not accept "8 files changed" without
+   a matching `git diff --stat`.
+
+4. Security findings must be re-verified by the human. A scanner file
+   containing "shell=True" as a REGEX PATTERN is not a vulnerability.
+   A legacy archived file is not active code.
+
+5. When in doubt, run: `grep -rn 'def run_shell' src/ ` — if no match,
+   the "fix" has nothing to fix.
