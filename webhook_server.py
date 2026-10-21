@@ -17,6 +17,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logger = logging.getLogger("integration.webhook")
 
+#: Hosts that are already local — no exposure to the network.
+_LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
+def _resolve_bind_host(secret: str, configured_host: str) -> str:
+    """Bind to loopback when the webhook has no secret (C4, defence in depth).
+
+    A missing ``WEBHOOK_SECRET`` means signatures cannot be verified, so an
+    unprotected webhook must not be reachable from the network. We force the
+    bind address to loopback (and warn) instead of refusing to start, which
+    would turn into a crash loop under a container orchestrator.
+    """
+    if not secret and configured_host not in _LOOPBACK_HOSTS:
+        logger.warning(
+            "WEBHOOK_SECRET is empty — forcing bind to 127.0.0.1 "
+            "(configured host was %r)", configured_host,
+        )
+        return "127.0.0.1"
+    return configured_host
+
 
 class WebhookHandler(BaseHTTPRequestHandler):
     secret = ""
@@ -31,8 +51,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _verify(self, body: bytes, sig_header: str) -> bool:
+        # C4: fail closed. A missing secret must never accept a request —
+        # returning True here (the old behaviour) opened the endpoint to any
+        # unauthenticated POST on the network.
         if not self.secret:
-            return True  # no secret → skip
+            return False
         if not sig_header:
             return False
         expected = "sha256=" + hmac.new(
@@ -83,9 +106,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 
 class WebhookServer:
-    def __init__(self, port: int = 8888, secret: str = ""):
+    def __init__(self, port: int = 8888, secret: str = "",
+                 host: str = "0.0.0.0"):
         self.port = port
         self.secret = secret
+        self.host = host
         self.server: Optional[HTTPServer] = None
         self.thread: Optional[threading.Thread] = None
 
@@ -93,11 +118,12 @@ class WebhookServer:
         """Starts the webhook server in a background thread."""
         WebhookHandler.secret = self.secret
         WebhookHandler.on_pr_event = on_pr_event
+        host = _resolve_bind_host(self.secret, self.host)
 
         def _run():
-            self.server = HTTPServer(("0.0.0.0", self.port),
+            self.server = HTTPServer((host, self.port),
                                      WebhookHandler)
-            logger.info(f"webhook server on port {self.port}")
+            logger.info(f"webhook server on {host}:{self.port}")
             self.server.serve_forever()
 
         self.thread = threading.Thread(target=_run, daemon=True)
@@ -137,8 +163,9 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("WEBHOOK_PORT", "8888"))
     secret = os.environ.get("WEBHOOK_SECRET", "")
+    host = os.environ.get("WEBHOOK_HOST", "0.0.0.0")
 
-    server = WebhookServer(port=port, secret=secret)
+    server = WebhookServer(port=port, secret=secret, host=host)
     server.start(on_pr_event=handle_pr_event)
 
     print(f"Webhook server listening on port {port}")
