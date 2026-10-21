@@ -2,6 +2,25 @@
 
 All notable changes to this project. Newest first.
 
+## v1.36.0 — 2026-10-21 — Hyper-Agent BUG audit
+
+### Verified already resolved (no code changes needed)
+- **BUG-1**: prune_history_fast replaces history (pure, no duplicate)
+- **BUG-2**: ollama num_predict=4000 (was 500)
+- **BUG-3**: detect_stall after 3 identical non-terminal actions
+- **BUG-4**: stored history drops raw_result
+- **BUG-5**: last_parse_error feedback + schema-constrained decoding
+- **BUG-6**: sandbox preexec_fn + RLIMIT_CPU/FSIZE/NPROC
+- **BUG-7**: sys.executable instead of bare python3
+- **BUG-8**: verify_goal gates DONE
+- **BUG-9**: README uses hyphen (no underscore drift)
+
+All 9 BUGs from the 2026-10-18 report are resolved. `hyper_agent.py`
+was built clean (no legacy to patch — see header for per-BUG evidence).
+
+### Inherited
+All v1.33.0 / v1.34.0 / v1.35.0 fixes retained.
+
 ## v1.35.0 — 2026-10-21 — structured outputs + BUG-5 fix
 
 ### Added
