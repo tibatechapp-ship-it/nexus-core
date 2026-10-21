@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
@@ -380,11 +381,24 @@ class Council:
         score = 0.0
         for r in range(1, rounds + 1):
             yield {"type": "round", "round": r, "total": rounds}
+            # Members are independent within a round: each speaks once and the
+            # consensus is computed only after all have replied.  Fetch them
+            # concurrently, then emit in the ORIGINAL order so the stream
+            # contract (and the UI's per-member animation) is unchanged.
+            prompts = {m.id: self._round_prompt(topic, m, r, rounds, latest)
+                       for m in active}
+            results: Dict[str, Dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=min(len(active), MAX_MEMBERS)) as pool:
+                futures = {pool.submit(self._generate, m, prompts[m.id]): m
+                           for m in active}
+                for fut in futures:
+                    m = futures[fut]
+                    results[m.id] = fut.result()
             msgs: List[Dict[str, Any]] = []
             for m in active:
                 yield {"type": "member_start", "agent": m.id,
                        "name": m.name, "emoji": m.emoji, "round": r}
-                out = self._generate(m, self._round_prompt(topic, m, r, rounds, latest))
+                out = results[m.id]
                 latest[m.id] = out["text"]
                 elapsed_map[m.id] = float(out.get("elapsed", 0.0))
                 if self.store is not None and sid:
