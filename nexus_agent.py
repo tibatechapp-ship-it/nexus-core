@@ -1158,6 +1158,23 @@ async def _orchestrator_execute(req: Dict[str, Any]):
         return {"ok": False, "error": str(e)[:200]}
 
 
+@app.get("/api/orchestrator/metrics")
+async def _orchestrator_metrics(window_days: int = 7):
+    """Read-only aggregate of /api/orchestrator/execute traffic (v1.37.0)."""
+    try:
+        from src.llm import request_log
+        return request_log.aggregate(window_days=window_days)
+    except Exception:
+        return {
+            "total_requests": 0,
+            "by_priority": {"HIGH": 0, "MED": 0, "LOW": 0},
+            "failure_pct": 0.0,
+            "high_pct": 0.0,
+            "sample_sufficient": False,
+            "sampled_at": "",
+        }
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Move orchestrator routes before catch-all Mount (v1.21.1, v1.22.0)
 # The workbench adds a Mount("/{path}") that shadows any route
@@ -1166,6 +1183,7 @@ async def _orchestrator_execute(req: Dict[str, Any]):
 _ORCHESTRATOR_ROUTES = (
     "/api/orchestrator/plan",
     "/api/orchestrator/execute",
+    "/api/orchestrator/metrics",
 )
 
 
