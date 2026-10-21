@@ -284,6 +284,26 @@ def verify_goal(goal: str, history: List[Dict[str, Any]]) -> bool:
     return False
 
 
+HYPER_AGENT_SCHEMA: Dict[str, Any] = {
+    """Strict schema for hyper_agent plan outputs (BUG-5 fix).
+
+    Only 4 actions allowed; additionalProperties=False means Ollama's
+    constrained decoder cannot emit invalid fields. Eliminates JSON
+    parse errors and the retry loop entirely.
+    """
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["CODE", "TEST", "DONE", "ERROR"],
+        },
+        "content": {"type": "string"},
+    },
+    "required": ["action", "content"],
+    "additionalProperties": False,
+}
+
+
 def _parse_action(raw: str) -> Dict[str, Any]:
     """Parse the model's JSON action. Returns ``{"action": "ERROR", ...}`` on failure."""
     text = raw.strip()
@@ -373,7 +393,15 @@ async def autonomous_workflow_hyper(
         )
 
         t0 = time.monotonic()
-        reply = await llm.generate(prompt, system_prompt=system_prompt)
+        if is_local and hasattr(llm, "model"):
+            from src.llm.structured import generate_json as _gen_json
+            try:
+                _plan = await _gen_json(prompt, HYPER_AGENT_SCHEMA, model=llm.model)
+                reply = {"ok": True, "reply": json.dumps(_plan)}
+            except Exception as _e:
+                reply = {"ok": False, "error": f"structured: {_e}"[:200]}
+        else:
+            reply = await llm.generate(prompt, system_prompt=system_prompt)
         gen_ms = int((time.monotonic() - t0) * 1000)
 
         if not reply.get("ok"):
