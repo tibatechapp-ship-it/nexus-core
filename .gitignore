@@ -92,3 +92,6 @@ web_page.py
 data/
 *.db
 *.log
+
+*.workbench-backup
+.env.snapshot
