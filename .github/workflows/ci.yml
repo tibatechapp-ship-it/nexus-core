@@ -47,7 +47,7 @@ jobs:
         run: ruff check --output-format=github .
 
       - name: Mypy type-check
-        run: mypy zyvo-telegram.py zyvo-voice.py src
+        run: mypy zyvo-telegram.py zyvo-voice.py src nexus_agent.py
 
       - name: Type-hint coverage (every function annotated)
         run: python scripts/check_annotations.py

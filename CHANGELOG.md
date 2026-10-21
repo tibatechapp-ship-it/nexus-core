@@ -2,6 +2,18 @@
 
 All notable changes to this project. Newest first.
 
+## v1.38.0 — 2026-10-21 — API health, CI hardening, and Quick Start
+
+### Added
+- **`GET /health`** — standard health check endpoint for monitoring.
+- **Quick Start section** in `README.md` to onboard new users in 3 steps.
+
+### Changed
+- **GitHub Actions CI** — `mypy` now type-checks `nexus_agent.py` explicitly.
+
+### Verified
+- `make check`: all gates green.
+
 ## v1.37.1 — 2026-10-21 — lint hotfix + honest BUG-9 guard
 
 ### Fixed

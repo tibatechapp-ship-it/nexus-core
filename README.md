@@ -1,3 +1,14 @@
+
+## Quick Start
+
+```bash
+git clone https://github.com/tibatechapp-ship-it/nexus-core.git
+cd nexus-core
+make check
+```
+
+
+
 # nexus-core
 
 > **Unified AI Agent System: Memory + Learning + Security + 20 Agents**

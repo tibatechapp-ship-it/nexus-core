@@ -1158,6 +1158,10 @@ async def _orchestrator_execute(req: Dict[str, Any]):
         return {"ok": False, "error": str(e)[:200]}
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.get("/api/orchestrator/metrics")
 async def _orchestrator_metrics(window_days: int = 7):
     """Read-only aggregate of /api/orchestrator/execute traffic (v1.37.0)."""
