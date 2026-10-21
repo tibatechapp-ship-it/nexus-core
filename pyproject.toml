@@ -51,6 +51,7 @@ novamind = [
     "aiosqlite>=0.20.0",
     "passlib[bcrypt]>=1.7.4",
     "python-multipart>=0.0.12",
+    "sse-starlette",
 ]
 observability = [
     "opentelemetry-api>=1.20",
