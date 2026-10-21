@@ -1,5 +1,4 @@
 """BUG-5 regression: hyper_agent uses a strict JSON schema."""
-import pytest
 from hyper_agent import HYPER_AGENT_SCHEMA
 
 
