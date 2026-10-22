@@ -65,7 +65,7 @@ rag = [
 ]
 # Remote embedding providers (src/memory/providers/{openai,gemini}.py use the
 # OpenAI-compatible client; Gemini is reachable through its OpenAI endpoint).
-embeddings = ["openai>=1.0"]
+embeddings = ["openai>=3.35.1"]
 dev = [
     "pytest>=7",
     "pytest-cov",
