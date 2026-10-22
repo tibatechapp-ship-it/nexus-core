@@ -55,21 +55,14 @@ class OllamaBackend:
         self,
         model: str = "sam860/qwen3:1.7b-Q4_K_XL",
         base_url: str = "http://127.0.0.1:11434",
-        timeout: float = 120.0,
+        timeout: float = 180.0,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def generate(
-        self,
-        messages: Sequence[Message],
-        *,
-        model: str | None = None,
-    ) -> str:
-        import json as _json
-        import urllib.request as _urllib
-
+    @staticmethod
+    def _build_prompt(messages: Sequence[Message]) -> str:
         parts = []
         for m in messages:
             if isinstance(m, Message):
@@ -80,11 +73,20 @@ class OllamaBackend:
                 parts.append(role + ": " + content)
             else:
                 parts.append(str(m))
-        prompt = "\n".join(parts)
+        return "\n".join(parts)
+
+    def _generate_once(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str | None,
+    ) -> str:
+        import json as _json
+        import urllib.request as _urllib
 
         payload = _json.dumps({
             "model": model or self.model,
-            "prompt": prompt,
+            "prompt": self._build_prompt(messages),
             "stream": False,
             "think": False,
         }).encode()
@@ -94,10 +96,41 @@ class OllamaBackend:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        with _urllib.urlopen(req, timeout=self.timeout) as resp:
+            data = _json.loads(resp.read())
+        return data.get("response", "")
+
+    def generate(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str | None = None,
+    ) -> str:
+        """One-shot reply; retries once on timeout/connection error.
+
+        A single retry covers the common transient case: the local model is
+        still loading, or the phone briefly starved the process. Network-level
+        and timeout failures are exactly the class that a retry can fix.
+        Bad-request / model-not-found errors are not retried, since a second
+        identical call would fail identically.
+        """
+        import time as _time
+        import urllib.error as _urlerror
+
+        retryable = (_urlerror.URLError, TimeoutError, OSError)
         try:
-            with _urllib.urlopen(req, timeout=self.timeout) as resp:
-                data = _json.loads(resp.read())
-            return data.get("response", "")
+            return self._generate_once(messages, model=model)
+        except retryable as first:
+            _time.sleep(2.0)
+            try:
+                return self._generate_once(messages, model=model)
+            except Exception as second:
+                raise RuntimeError(
+                    "Ollama request failed after retry: "
+                    + str(first)
+                    + " / "
+                    + str(second)
+                ) from second
         except Exception as e:
             raise RuntimeError("Ollama request failed: " + str(e)) from e
 

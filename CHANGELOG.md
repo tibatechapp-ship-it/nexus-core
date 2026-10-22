@@ -2,6 +2,28 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.8 — 2026-10-22 — OllamaBackend: timeout 180s + retry-once
+
+### Changed
+- **`OllamaBackend` timeout raised from 120s to 180s.** In a live 20-agent
+  sweep on the phone, `coder` failed at exactly 120.1s — the wall-clock limit
+  was hit, not an error. The local 1.7B model occasionally needs more than two
+  minutes for a long reply; 180s covers that without changing the fast path.
+
+### Added
+- **One retry on transient failure** in `OllamaBackend.generate` — on
+  `URLError`, `TimeoutError`, or `OSError`. Waits 2s, then calls once more.
+  Non-retryable errors (bad request, model not found) are **not** retried:
+  a second call would fail identically.
+- **`_build_prompt()` static method** — shared between `generate` and `stream`
+  (was duplicated).
+- **3 retry tests** in `tests/test_ollama_backend.py`.
+
+### Verified
+- `make check`: all gates green, 3626 passed (was 3623), cov 99%+.
+
+No behaviour change on the success path. Backwards compatible.
+
 ## v1.41.7 — 2026-10-22 — make check runs version-check; L27
 
 ### Changed

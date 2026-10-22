@@ -43,3 +43,68 @@ def test_ollama_backend_generate_handles_error(mock_urlopen):
         assert False, "Expected RuntimeError"
     except RuntimeError as e:
         assert "Ollama request failed" in str(e)
+
+
+# ── Retry-once behaviour (v1.41.8) ───────────────────────────────────────────
+
+def test_generate_retries_once_on_timeout_then_succeeds(monkeypatch):
+    """Transient timeout → one retry → success."""
+    import urllib.error
+    from unittest.mock import patch
+    from src.core.backend import OllamaBackend
+
+    backend = OllamaBackend(model="m", timeout=1.0)
+    calls = {"n": 0}
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return None
+        def read(self): return b'{"response": "OK"}'
+
+    def _fake_urlopen(req, timeout):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise urllib.error.URLError("timed out")
+        return _Resp()
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen), \
+         patch("time.sleep"):  # skip the 2s backoff
+        out = backend.generate([{"role": "user", "content": "hi"}])
+
+    assert out == "OK"
+    assert calls["n"] == 2  # retried exactly once
+
+
+def test_generate_raises_after_two_timeouts(monkeypatch):
+    """Persistent timeout → RuntimeError mentioning 'after retry'."""
+    import urllib.error
+    from unittest.mock import patch
+    from src.core.backend import OllamaBackend
+    import pytest
+
+    backend = OllamaBackend(model="m", timeout=1.0)
+
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("nope")), \
+         patch("time.sleep"), \
+         pytest.raises(RuntimeError, match="after retry"):
+        backend.generate([{"role": "user", "content": "hi"}])
+
+
+def test_generate_does_not_retry_non_retryable_errors(monkeypatch):
+    """A non-network error (e.g. bad model) is not retried."""
+    from unittest.mock import patch
+    from src.core.backend import OllamaBackend
+    import pytest
+
+    backend = OllamaBackend(model="m", timeout=1.0)
+    calls = {"n": 0}
+
+    def _fake_urlopen(req, timeout):
+        calls["n"] += 1
+        raise ValueError("bad request")  # not retryable
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen), \
+         pytest.raises(RuntimeError, match="Ollama request failed"):
+        backend.generate([{"role": "user", "content": "hi"}])
+
+    assert calls["n"] == 1  # no retry

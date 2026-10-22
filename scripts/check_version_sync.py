@@ -141,12 +141,23 @@ def main() -> int:
 
     if tag:
         try:
-            if _semver(tag) > _semver(pyproject):
+            if _semver(tag) != _semver(pyproject):
+                # Both directions matter:
+                #   tag > pyproject = orphan release (published a tag without bumping).
+                #   tag < pyproject = un-tagged bump (bumped pyproject without tagging).
+                # Either way, the repo's single-source invariant is broken; the
+                # fix is the same (align them), so report it once with the
+                # direction spelled out.
+                direction = "orphan release" if _semver(tag) > _semver(pyproject) else "un-tagged version bump"
                 errors.append(
-                    f"git tag ({tag}) > pyproject ({pyproject}) — orphan release"
+                    f"git tag ({tag}) != pyproject ({pyproject}) — {direction}"
                 )
         except ValueError as exc:
             errors.append(str(exc))
+    else:
+        errors.append(
+            f"no release tag on HEAD — pyproject is {pyproject} but no v{pyproject} tag exists"
+        )
 
     if errors:
         print("\nVERSION MISMATCH:", file=sys.stderr)
