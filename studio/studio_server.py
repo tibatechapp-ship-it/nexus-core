@@ -34,10 +34,18 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 # ✅ اجعل LLMRouter يقرأ .env من مجلد المشروع (وليس /public)
+# ✅ حمّل .env قبل قراءة أي env var
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env", override=False)
+except Exception:
+    pass
+
 os.environ.setdefault("NOVAMIND_HOME", str(REPO_ROOT))
 
 from novamind.core.llm_router import LLMRouter  # noqa: E402
 from core.backend import OllamaBackend  # noqa: E402
+from core.api_backend import APIBackend  # noqa: E402
 from core.types import Message  # noqa: E402
 import urllib.request  # noqa: E402
 import time  # noqa: E402
@@ -127,7 +135,20 @@ if STUDIO_BACKEND == "ollama":
         logger.error("❌ Ollama غير متاح: %s — العودة إلى LLMRouter", exc)
         STUDIO_BACKEND = "router"
 
-if STUDIO_BACKEND != "ollama" or BACKEND is None:
+elif STUDIO_BACKEND == "api":
+    try:
+        _api_url = os.environ.get("NEXUS_STUDIO_API_URL", "").strip()
+        _api_keys = os.environ.get("NEXUS_STUDIO_API_KEYS", "").strip()
+        _api_model = os.environ.get("NEXUS_STUDIO_MODEL", "").strip() or "qwen-2.5-coder-32b-instruct"
+        if not _api_url or not _api_keys:
+            raise ValueError("NEXUS_STUDIO_API_URL و NEXUS_STUDIO_API_KEYS مطلوبان")
+        BACKEND = APIBackend(base_url=_api_url, api_keys=_api_keys, model=_api_model)
+        logger.info("✅ API backend: %s @ %s", BACKEND.model, BACKEND.base_url)
+    except Exception as exc:
+        logger.error("❌ API backend فشل: %s — العودة إلى LLMRouter", exc)
+        STUDIO_BACKEND = "router"
+
+if BACKEND is None:
     try:
         ROUTER = LLMRouter()
         logger.info("LLMRouter سحابي جاهز — %d مزود", len(getattr(ROUTER, "providers", [])))
@@ -187,7 +208,8 @@ async def index() -> FileResponse:
 async def health(request: Request) -> JSONResponse:
     _require(request)
     if BACKEND is not None:
-        backend_info = {"mode": "ollama", "model": BACKEND.model, "providers": 1}
+        _mode = "api" if isinstance(BACKEND, APIBackend) else "ollama"
+        backend_info = {"mode": _mode, "model": BACKEND.model, "providers": 1}
         llm_ready = True
     elif ROUTER is not None:
         backend_info = {"mode": "router", "providers": len(getattr(ROUTER, "providers", []) or [])}
@@ -386,7 +408,7 @@ async def generate(request: Request) -> StreamingResponse:
                     _text = await run_in_threadpool(BACKEND.generate, _msgs)
                     result = {
                         "ok": True, "text": _text,
-                        "provider": "ollama", "model": BACKEND.model,
+                        "provider": ("api" if isinstance(BACKEND, APIBackend) else "ollama"), "model": BACKEND.model,
                         "elapsed": round(time.time() - _t0, 2),
                     }
                 except Exception as _exc:
@@ -431,6 +453,13 @@ async def generate(request: Request) -> StreamingResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    _mode = "Ollama محلي" if BACKEND else ("LLMRouter سحابي" if ROUTER else "بدون backend")
+    if isinstance(BACKEND, APIBackend):
+        _mode = f"API سحابي ({BACKEND.model})"
+    elif isinstance(BACKEND, OllamaBackend):
+        _mode = f"Ollama محلي ({BACKEND.model})"
+    elif ROUTER is not None:
+        _mode = "LLMRouter سحابي"
+    else:
+        _mode = "بدون backend"
     logger.info("Nexus Studio على http://%s:%d — %s — مساحة العمل: %s", BIND, PORT, _mode, WORKSPACE)
     uvicorn.run(app, host=BIND, port=PORT, log_level="info")

@@ -2,6 +2,32 @@
 
 All notable changes to this project. Newest first.
 
+## v1.44.0 — 2026-10-22 — APIBackend (Groq/DeepSeek/OpenRouter)
+
+### Added
+- **`src/core/api_backend.py`** — OpenAI-compatible HTTP backend for
+  any provider exposing `/v1/chat/completions`:
+  - Groq, DeepSeek, OpenRouter, Together, OpenAI, Anyscale
+  - Key rotation (comma-separated keys)
+  - Streaming (SSE) + non-streaming
+  - Tools support (tool_choice=auto)
+  - Retry-once on network errors
+  - **`User-Agent: nexus-core/1.0`** (Cloudflare rejects Python-urllib UA)
+- **`tests/test_api_backend.py`** (12 tests, mocked, zero network).
+- **Studio**: `NEXUS_STUDIO_BACKEND=api` uses APIBackend. Reads
+  `NEXUS_STUDIO_API_URL`, `NEXUS_STUDIO_API_KEYS`, `NEXUS_STUDIO_MODEL`
+  from `.env` (loaded via `load_dotenv`).
+- **Studio health**: reports `backend.mode` (api/ollama/router).
+
+### Measured
+- Groq `qwen/qwen3.8-27b`: **TTFB 1.8s** (vs 40s with local qwen3:1.7b).
+
+### Why
+Local 1.7B is too weak for real code. APIBackend unlocks 27B–120B cloud
+models with zero local RAM. Local Ollama remains the default; cloud API
+is opt-in via env.
+
+
 ## v1.43.0 — 2026-10-22 — CodeGuardian (LLM output validation)
 
 ### Added
