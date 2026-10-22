@@ -98,9 +98,11 @@
       <button class="tab" data-tab="pretty">🎨 ملوّن</button>
       <button class="tab" data-tab="log">📜 السجل</button>
       <button class="tab" data-tab="preview">👁 معاينة</button>
+      <button class="tab" data-tab="output">▶ المخرجات</button>
       <div class="actions">
         <input id="savePath" placeholder="scripts/my_tool.py" dir="ltr">
         <button class="save" id="btnSave">💾 حفظ</button>
+        <button id="btnRun" style="background:#059669;color:#fff;font-weight:bold">▶ تشغيل</button>
         <button id="btnCopy">نسخ</button>
       </div>
     </nav>
@@ -116,6 +118,9 @@
     </div>
     <div class="pane" data-pane="preview">
       <iframe id="preview" sandbox="allow-scripts"></iframe>
+    </div>
+    <div class="pane" data-pane="output">
+      <div id="output" style="flex:1;padding:10px;overflow-y:auto;font-family:ui-monospace,Menlo,Consolas,monospace;direction:ltr;text-align:left;font-size:12px;white-space:pre-wrap;color:#e2e8f0"></div>
     </div>
   </section>
 </main>
@@ -184,8 +189,11 @@ async function checkHealth() {
     ui.auth.textContent = h.auth_mode === "token" ? "🔐 توكين" : "🏠 localhost";
     ui.auth.className = "badge ok";
     ui.conn.textContent = "● متصل"; ui.conn.style.color = "#6ee7b7";
-    ui.health.textContent = "v" + h.version + " · " + h.providers + " مزوّد · " + h.workspace.split("/").pop();
-    log("متصل — " + h.version + " · " + h.providers + " مزوّد", false, true);
+    const _prov = h.backend && h.backend.mode === "ollama"
+      ? ("Ollama: " + h.backend.model)
+      : (h.backend ? h.backend.providers + " مزوّد" : "بدون backend");
+    ui.health.textContent = "v" + h.version + " · " + _prov + " · " + h.workspace.split("/").pop();
+    log("متصل — " + h.version + " · " + _prov, false, true);
     loadFiles();
   } catch (e) {
     ui.conn.textContent = "● تعذر الاتصال"; ui.conn.style.color = "#fca5a5";
@@ -240,6 +248,58 @@ async function openFile(path) {
     log("فتح: " + path, false, true);
   } catch (e) { log("خطأ فتح: " + e.message, true); }
 }
+
+$("btnRun").addEventListener("click", async () => {
+  const path = ui.savePath.value.trim();
+  if (!path) return log("حدد مسار الحفظ أولاً (مثال: scripts/my_tool.py)", true);
+  const out = $("output");
+  out.style.color = "#cbd5e1";
+  out.textContent = "⏳ حفظ + تشغيل…";
+
+  // Switch to output tab
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === "output"));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("active", p.dataset.pane === "output"));
+
+  // 1. Auto-save first
+  try {
+    const saveRes = await fetch("/api/studio/save", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({path: path, content: ui.editor.value}),
+    });
+    const saveData = await saveRes.json();
+    if (!saveData.ok) {
+      out.style.color = "#fca5a5";
+      out.textContent = "❌ فشل الحفظ: " + (saveData.error || saveData.detail || saveRes.status);
+      return;
+    }
+  } catch (e) {
+    out.style.color = "#fca5a5";
+    out.textContent = "❌ فشل الحفظ: " + e.message;
+    return;
+  }
+
+  // 2. Run
+  out.textContent = "⏳ جارٍ التشغيل…";
+  try {
+    const r = await fetch("/api/studio/run", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({path: path}),
+    });
+    const d = await r.json();
+    const lines = [];
+    lines.push(d.ok ? "✅ نجح (exit=" + d.exit_code + ", " + d.duration_ms + "ms)" : "❌ فشل (exit=" + d.exit_code + ", " + d.duration_ms + "ms)");
+    if (d.stdout) { lines.push(""); lines.push("─── stdout ───"); lines.push(d.stdout); }
+    if (d.stderr) { lines.push(""); lines.push("─── stderr ───"); lines.push(d.stderr); }
+    if (!d.stdout && !d.stderr) { lines.push(""); lines.push("(لا مخرجات)"); }
+    if (d.truncated) { lines.push(""); lines.push("(مقطوع — تجاوز 100KB)"); }
+    out.textContent = lines.join("\n");
+    out.style.color = d.ok ? "#6ee7b7" : "#fca5a5";
+    log((d.ok ? "✅" : "❌") + " تشغيل " + path + " — exit " + d.exit_code, !d.ok);
+  } catch (e) {
+    out.style.color = "#fca5a5";
+    out.textContent = "❌ خطأ في الطلب: " + e.message;
+  }
+});
 
 $("btnSave").addEventListener("click", async () => {
   const path = ui.savePath.value.trim();

@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## v1.42.4 — 2026-10-22 — Studio: run code + stronger system prompt
+
+### Added
+- **`POST /api/studio/run`** — executes a `.py` file from the workspace
+  inside a sandboxed subprocess (no secrets in env, 10s timeout, 100KB
+  output cap, cwd locked to workspace).
+- **"▶ تشغيل" button** in Studio — auto-saves then runs; output shown in
+  a new "▶ المخرجات" tab (stdout, stderr, exit code, duration).
+
+### Changed
+- **Studio system prompt** — 6 explicit rules (imports, runnable code,
+  edge cases, example main, no prose outside the block, ambiguity
+  fallback). Prompt designed for small local models (1.7B).
+
+### Notes
+- No change to the live server on :8000.
+- The run endpoint inherits `safe_path` — sensitive files and escapes are
+  rejected before subprocess runs.
+
+
 ## v1.42.2 — 2026-10-22 — confine agent file tools (C2 mirror)
 
 ### Security

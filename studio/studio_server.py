@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import sys
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import AsyncIterator
@@ -36,6 +37,10 @@ if str(SRC_DIR) not in sys.path:
 os.environ.setdefault("NOVAMIND_HOME", str(REPO_ROOT))
 
 from novamind.core.llm_router import LLMRouter  # noqa: E402
+from core.backend import OllamaBackend  # noqa: E402
+from core.types import Message  # noqa: E402
+import urllib.request  # noqa: E402
+import time  # noqa: E402
 
 try:
     from tools.executor import is_sensitive_file  # noqa: E402
@@ -87,6 +92,8 @@ WORKSPACE = Path(os.environ.get("NEXUS_STUDIO_WORKSPACE", str(REPO_ROOT))).resol
 
 MAX_READ = 512 * 1024
 MAX_WRITE = 1024 * 1024
+RUN_TIMEOUT = 10  # seconds
+RUN_MAX_OUTPUT = 100_000  # 100KB
 MAX_PROMPT = 16 * 1024
 MAX_FILES = 4000
 SKIP_DIRS = {
@@ -105,12 +112,27 @@ if BIND not in _LOOP_BINDS and not TOKEN:
 
 app = FastAPI(title="Nexus Studio", docs_url=None, redoc_url=None, openapi_url=None)
 
-try:
-    ROUTER = LLMRouter()
-    logger.info("LLMRouter جاهز — %d مزود مُحمّل", len(getattr(ROUTER, "providers", [])))
-except Exception as exc:
-    ROUTER = None
-    logger.error("فشل تحميل LLMRouter: %s", exc)
+# ═══ Backend selection: ollama (default) or router (cloud) ═══
+STUDIO_BACKEND = os.environ.get("NEXUS_STUDIO_BACKEND", "ollama").lower()
+BACKEND = None  # OllamaBackend
+ROUTER = None   # LLMRouter
+
+if STUDIO_BACKEND == "ollama":
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as r:
+            r.read()
+        BACKEND = OllamaBackend()
+        logger.info("✅ Ollama محلي جاهز — %s", BACKEND.model)
+    except Exception as exc:
+        logger.error("❌ Ollama غير متاح: %s — العودة إلى LLMRouter", exc)
+        STUDIO_BACKEND = "router"
+
+if STUDIO_BACKEND != "ollama" or BACKEND is None:
+    try:
+        ROUTER = LLMRouter()
+        logger.info("LLMRouter سحابي جاهز — %d مزود", len(getattr(ROUTER, "providers", [])))
+    except Exception as exc:
+        logger.error("فشل تحميل LLMRouter: %s", exc)
 
 
 def _client_ip(request: Request) -> str:
@@ -164,11 +186,20 @@ async def index() -> FileResponse:
 @app.get("/api/studio/health")
 async def health(request: Request) -> JSONResponse:
     _require(request)
+    if BACKEND is not None:
+        backend_info = {"mode": "ollama", "model": BACKEND.model, "providers": 1}
+        llm_ready = True
+    elif ROUTER is not None:
+        backend_info = {"mode": "router", "providers": len(getattr(ROUTER, "providers", []) or [])}
+        llm_ready = True
+    else:
+        backend_info = {"mode": "none", "providers": 0}
+        llm_ready = False
     return JSONResponse({
         "ok": True, "version": "1.33.0", "workspace": str(WORKSPACE),
         "auth_mode": "token" if TOKEN else "loopback-only",
-        "providers": len(getattr(ROUTER, "providers", []) or []),
-        "llm_ready": ROUTER is not None,
+        "backend": backend_info,
+        "llm_ready": llm_ready,
     })
 
 
@@ -250,6 +281,75 @@ async def save_file(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "path": rel, "bytes": len(content.encode("utf-8"))})
 
 
+
+@app.post("/api/studio/run")
+async def run_file(request: Request) -> JSONResponse:
+    """تشغيل ملف .py داخل مساحة العمل، مع timeout وحدود أمان."""
+    _require(request)
+    body = await request.json()
+    rel = str(body.get("path", "")).strip()
+    if not rel:
+        raise HTTPException(status_code=400, detail="حدد مسار الملف أولًا")
+
+    target = safe_path(rel)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="ملف غير موجود")
+    if target.suffix != ".py":
+        raise HTTPException(status_code=400, detail="التشغيل متاح فقط لملفات .py")
+
+    # بيئة نظيفة — لا مفاتيح، لا متغيرات سرية
+    safe_env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(WORKSPACE),
+        "LANG": "C.UTF-8",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "TERM": "dumb",
+    }
+
+    start = time.time()
+    try:
+        proc = await run_in_threadpool(
+            subprocess.run,
+            [sys.executable, str(target)],
+            capture_output=True,
+            text=True,
+            timeout=RUN_TIMEOUT,
+            cwd=str(WORKSPACE),
+            env=safe_env,
+            stdin=subprocess.DEVNULL,
+        )
+        elapsed = round((time.time() - start) * 1000)
+        stdout = proc.stdout[:RUN_MAX_OUTPUT]
+        stderr = proc.stderr[:RUN_MAX_OUTPUT]
+        return JSONResponse({
+            "ok": proc.returncode == 0,
+            "exit_code": proc.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "duration_ms": elapsed,
+            "truncated": len(proc.stdout) > RUN_MAX_OUTPUT or len(proc.stderr) > RUN_MAX_OUTPUT,
+        })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({
+            "ok": False,
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"انتهت المهلة ({RUN_TIMEOUT}s) — الكود بطيء أو في حلقة لا نهائية",
+            "duration_ms": RUN_TIMEOUT * 1000,
+            "truncated": False,
+        })
+    except Exception as e:
+        return JSONResponse({
+            "ok": False,
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"خطأ في التشغيل: {_sanitize(str(e))[:300]}",
+            "duration_ms": round((time.time() - start) * 1000),
+            "truncated": False,
+        })
+
+
 @app.post("/api/studio/generate")
 async def generate(request: Request) -> StreamingResponse:
     _require(request)
@@ -260,8 +360,8 @@ async def generate(request: Request) -> StreamingResponse:
         role = "fast"
     if not prompt:
         raise HTTPException(status_code=400, detail="اكتب وصف المطلوب أولًا")
-    if ROUTER is None:
-        raise HTTPException(status_code=503, detail="LLMRouter غير جاهز — افحص .env")
+    if BACKEND is None and ROUTER is None:
+        raise HTTPException(status_code=503, detail="لا backend متاح — شغّل Ollama أو افحص .env")
 
     async def event_stream() -> AsyncIterator[bytes]:
         def sse(event: str, data: dict) -> bytes:
@@ -269,16 +369,35 @@ async def generate(request: Request) -> StreamingResponse:
 
         yield sse("step", {"msg": "جارٍ تحليل المطلوب وبناء الحل…"})
         system = (
-            "أنت مهندس برمجيات خبير يعمل داخل مشروع nexus-core. "
-            "أجب بكود Python جاهز للتشغيل داخل كتلة " + _FENCE + "python واحدة فقط، "
-            "مع تعليقات عربية موجزة داخل الكود. لا تكتب أي شرح خارج الكتلة."
+            "أنت كاتب كود Python محترف. اتبع القواعد:\n"
+            "1. كود كامل قابل للتشغيل داخل " + _FENCE + "python فقط.\n"
+            "2. ابدأ بـ imports اللازمة، ثم عرّف def/class كامل.\n"
+            "3. أضف تعليقات عربية موجزة داخل الكود.\n"
+            "4. عالج الحالات الحدية (None، فارغ، كبير).\n"
+            "5. أضف مثالاً: if __name__ == '__main__': ...\n"
+            "6. لا تكتب أي شرح خارج الكتلة.\n"
+            "إذا غمض الطلب، اكتب التفسير الأكثر شيوعاً."
         )
         try:
-            result = await run_in_threadpool(
-                ROUTER.generate,
-                prompt=prompt, system=system, role=role,
-                temperature=0.2, allow_fallback=True,
-            )
+            if BACKEND is not None:
+                _msgs = [Message("system", system), Message("user", prompt)]
+                _t0 = time.time()
+                try:
+                    _text = await run_in_threadpool(BACKEND.generate, _msgs)
+                    result = {
+                        "ok": True, "text": _text,
+                        "provider": "ollama", "model": BACKEND.model,
+                        "elapsed": round(time.time() - _t0, 2),
+                    }
+                except Exception as _exc:
+                    yield sse("error", {"msg": f"Ollama فشل: {str(_exc)[:200]}"})
+                    return
+            else:
+                result = await run_in_threadpool(
+                    ROUTER.generate,
+                    prompt=prompt, system=system, role=role,
+                    temperature=0.2, allow_fallback=True,
+                )
             if not result.get("ok"):
                 yield sse("error", {"msg": f"فشل التوليد: {result.get('error', 'لا مزود متاح')}"})
                 return
@@ -312,5 +431,6 @@ async def generate(request: Request) -> StreamingResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("Nexus Studio على http://%s:%d — مساحة العمل: %s", BIND, PORT, WORKSPACE)
+    _mode = "Ollama محلي" if BACKEND else ("LLMRouter سحابي" if ROUTER else "بدون backend")
+    logger.info("Nexus Studio على http://%s:%d — %s — مساحة العمل: %s", BIND, PORT, _mode, WORKSPACE)
     uvicorn.run(app, host=BIND, port=PORT, log_level="info")
