@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-core"
-version = "1.41.8"
+version = "1.41.9"
 description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,7 +47,7 @@ novamind = [
     "aiofiles",
     "jinja2",
     "pyyaml",
-    "sqlalchemy>=2.1.4",
+    "sqlalchemy>=2.1.5",
     "aiosqlite>=0.20.0",
     "passlib[bcrypt]>=1.7.4",
     "python-multipart>=0.0.12",

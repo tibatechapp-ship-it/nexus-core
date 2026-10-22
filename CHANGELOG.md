@@ -2,6 +2,20 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.9 — 2026-10-22 — deps: sqlalchemy 2.1.4 → 2.1.5
+
+### Changed
+- **`sqlalchemy>=2.1.5`** (was `>=2.1.4`) in the `novamind` extra. Patch-level
+  bump: two ORM regression fixes (session-wide expire on multi-row UPDATE;
+  `exclude_properties` deprecation warning) and a ForeignKeyConstraint copy
+  fix. No API changes, no deprecations affecting this repo's usage.
+
+Dependabot PR #43. Merged directly onto main (single-line pyproject change,
+no code touched). No test change.
+
+### Verified
+- `make check`: all gates green, 3626 passed, cov 99%+.
+
 ## v1.41.8 — 2026-10-22 — OllamaBackend: timeout 180s + retry-once
 
 ### Changed
