@@ -2,6 +2,22 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.10 — 2026-10-22 — deps: opentelemetry-sdk 1.20 → 1.45.1
+
+### Changed
+- **`opentelemetry-sdk>=1.45.1`** (was `>=1.20`) in the `observability`
+  extra. All OpenTelemetry imports in this repo live in
+  `src/novamind/observability/` behind `try/except ImportError`, so the
+  extra remains optional. `opentelemetry-api>=1.20` and
+  `opentelemetry-exporter-otlp-proto-grpc>=1.20` are unchanged; pip's
+  resolver will pull a compatible api 1.45+ alongside the new sdk.
+
+Dependabot PR #40. Merged directly (single-line pyproject change, no code
+touched). No test change.
+
+### Verified
+- `make check`: all gates green, 3626 passed, cov 99%+.
+
 ## v1.41.9 — 2026-10-22 — deps: sqlalchemy 2.1.4 → 2.1.5
 
 ### Changed
