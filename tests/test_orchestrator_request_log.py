@@ -3,7 +3,12 @@
 import json
 from pathlib import Path
 
-from fastapi.testclient import TestClient
+import pytest
+
+pytest.importorskip("sse_starlette")
+pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient  # noqa: E402
 
 
 def _read(path: Path) -> list:

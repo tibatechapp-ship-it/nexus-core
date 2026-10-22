@@ -1027,7 +1027,7 @@ async def _orchestrator_plan(req: Dict[str, Any]):
     try:
         orch = Orchestrator(
             genome=get_genome(),
-            jury_members=list(COUNCIL_MEMBERS),
+            jury_members=[m.name for m in COUNCIL_MEMBERS],
         )
         plan = orch.plan(request)
         return {

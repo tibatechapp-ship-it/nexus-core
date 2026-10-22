@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+
+pytest.importorskip("sse_starlette")
+pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient  # noqa: E402
 
 
 def _seed(path: Path, rows: list) -> None:
