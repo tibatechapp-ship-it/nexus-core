@@ -60,13 +60,20 @@ class OllamaBackend:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def generate(self, messages, *, model=None):
+    def generate(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str | None = None,
+    ) -> str:
         import json as _json
         import urllib.request as _urllib
 
         parts = []
         for m in messages:
-            if isinstance(m, dict):
+            if isinstance(m, Message):
+                parts.append(m.role + ": " + m.content)
+            elif isinstance(m, dict):
                 role = m.get("role", "user")
                 content = m.get("content", "")
                 parts.append(role + ": " + content)

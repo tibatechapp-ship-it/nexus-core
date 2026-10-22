@@ -2,6 +2,45 @@
 
 All notable changes to this project. Newest first.
 
+## v1.40.0 — 2026-10-22 — Ollama backend
+
+### Added
+- **`OllamaBackend`** (`src/core/backend.py`) — HTTP client for a local Ollama
+  instance at `127.0.0.1:11434`, implementing the `LLMBackend` protocol.
+  All 20 agents now run through Ollama with `sam860/qwen3:1.7b-Q4_K_XL`.
+- **`Message` handling in `OllamaBackend.generate`** — accepts `Message`
+  dataclasses, plain dicts, and strings, in that order.
+
+### Changed
+- **ZYVO deprecated.** The ZYVO (opencode fork) backend is no longer the
+  primary LLM path. The `zyvo.bin` binary was deleted without backup and
+  cannot be recovered (see `LESSONS.md` L9). OpenCode official ships as a
+  Web UI only, not a REST API (L10). Ollama's HTTP API is the sanctioned
+  replacement.
+- **`make check` now passes end to end** — `scripts/check_annotations.py`
+  flagged `OllamaBackend.generate` as missing type hints. Fixed by adding
+  `messages: Sequence[Message]`, `model: str | None = None`, and `-> str`.
+
+### Verified
+- `make check`: lint OK, type (188 files) OK, annotations (188 files) OK,
+  cov 99.09% (3592 passed).
+- 20/20 agents operational via `OllamaBackend`.
+
+## v1.38.1 — 2026-10-22 — `/health` fix + regression test
+
+### Fixed
+- **`GET /health` regression** — the endpoint introduced in v1.38.0 was not
+  stable across imports. Fixed and covered by a regression test.
+
+### Verified
+- `make check`: all gates green.
+
+## v1.39.0 — 2026-10-22 — Root reorganization
+
+### Changed
+- **Repository root reorganized** to reduce clutter and make the tree
+  navigable on a phone (Termux). No runtime behavior change.
+
 ## v1.38.0 — 2026-10-21 — API health, CI hardening, and Quick Start
 
 ### Added
