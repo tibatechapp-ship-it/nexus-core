@@ -2,6 +2,33 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.13 — 2026-10-22 — merge feature/v1.29.0 (fleet-health, rotation, memory guard)
+
+### Added
+- **`GET /api/maintenance/metrics`** and **`GET /api/maintenance/tasks`** —
+  read-only fleet-health surface over the genome (`src/maintenance/api.py`).
+  Wired into `unified_agent.py` via `app.router.routes.extend` (avoids the
+  FastAPI `mount` / `include_router` deferral bug, see L8). Never raises;
+  missing genome degrades to empty counters.
+- **Security-log rotation** in `SecurityGatekeeper` — `NEXUS_SECURITY_LOG_MAX_BYTES`
+  (default 10 MB) and `NEXUS_SECURITY_LOG_BACKUPS` (default 5). Best-effort,
+  never breaks logging. Fixes unbounded growth on the phone.
+- **Memory-leak guard in `tests/conftest.py`** — autouse fixture
+  `_guard_no_runtime_leaks` snapshots `memory/` before/after each test and
+  fails if a test wrote there.
+- **`tests/novamind/security/test_gatekeeper_rotation.py`** (10 tests).
+- **9 maintenance tests** in `tests/test_maintenance.py`.
+
+### Merge note
+`feature/v1.29.0` was never merged. It contained an **older**
+`src/maintenance/api.py` (120 lines, placeholder zeros) and older
+`test_maintenance.py` (26 tests); main has since advanced to 187 lines /
+33 tests with real ledger counts. Merge kept main's versions in the three
+conflicting files and brought in feature's unique work (rotation, memory
+guard, wire-in).
+
+No API breakage — all additive.
+
 ## v1.41.12 — 2026-10-22 — deps: openai 1.0 → 3.36.1
 
 ### Changed
