@@ -2,6 +2,29 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.4 — 2026-10-22 — version bookkeeping + L25/L26
+
+### Fixed
+- **`pyproject.toml` / `docs/openapi.yaml` now report `1.41.4`.** The three
+  tags v1.41.1, v1.41.2 and v1.41.3 were published without bumping
+  `pyproject.toml`; CI's `check_version_sync.py` correctly rejected the
+  resulting orphan release (`git tag 1.41.3 > pyproject 1.41.0`). This
+  release restores the invariant.
+
+### Docs
+- **L25** — `make type` must list exactly the files CI type-checks.
+  `nexus_agent.py` was only ever type-checked on CI, which is why the
+  `list(COUNCIL_MEMBERS)` type error survived until v1.41.3.
+- **L26** — any test that imports `nexus_agent` (or `main.py`) must
+  `pytest.importorskip("sse_starlette")` first, because CI installs only
+  `dev` + `tui`, not the `novamind` extra.
+
+### Verified
+- `python scripts/check_version_sync.py`: all four sources agree.
+- `make check`: 3604 passed locally.
+
+No production code change since v1.41.3.
+
 ## v1.41.0 — 2026-10-22 — Streaming replies via OllamaBackend
 
 ### Added

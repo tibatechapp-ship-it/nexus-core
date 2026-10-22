@@ -205,3 +205,31 @@ the user perceives no benefit. **Rule:** always report both
 `time_to_first_token` and `total_time`, and treat `time_to_first_token` as the
 user-perceived latency. In v1.41.0: 340 pieces, TTFB 0.60 s, total 45.87 s —
 the win is the 0.6 s, not the 340.
+
+
+## L25: `make type` must cover every file CI type-checks
+
+`Makefile`'s `type` target ran `mypy zyvo-telegram.py zyvo-voice.py src`, but
+CI's lint job ran `mypy zyvo-telegram.py zyvo-voice.py src nexus_agent.py`.
+`nexus_agent.py` therefore only ever faced mypy on CI, and CI went red for
+weeks without a local signal. In v1.41.3 a real type error at
+`nexus_agent.py:1030` (`list(COUNCIL_MEMBERS)` passed where `List[str]` was
+declared) was finally surfaced — the code would have crashed at runtime in
+`jury._invoke_member` (expects `str`). **Rule:** the local `type` target must
+list exactly the files CI lists. When CI gains a file, `make type` gains it
+in the same commit. Verify with `grep -E '^\s*mypy ' Makefile
+.github/workflows/ci.yml`.
+
+## L26: Any test that imports `nexus_agent` (or `main.py`) must importorskip `sse_starlette`
+
+CI installs only the `dev` and `tui` extras, not `novamind`. `sse_starlette`
+lives in the `novamind` extra. Importing `nexus_agent` loads `main.py`, which
+does `from sse_starlette.sse import EventSourceResponse` at module level — so
+a bare `import nexus_agent` in a test file aborts the whole pytest collection
+on CI, not just that file. **Rule:** the first two statements of any such test
+file are `pytest.importorskip("sse_starlette")` and, if `TestClient` is used,
+`pytest.importorskip("fastapi")`. `conftest.py`'s `_reset_nexus_agent_globals`
+already wraps its import in `try/except ImportError: pass`, but individual test
+files are not covered by that. Discover with
+`grep -rn 'import nexus_agent' tests/ --include="*.py"` and check that every
+hit sits behind an importorskip. Caught three files in v1.41.2 + v1.41.3.
