@@ -2,6 +2,16 @@
 
 All notable changes to this project. Newest first.
 
+## v1.42.5 — 2026-10-22 — document NEXUS_STUDIO_BACKEND
+
+### Fixed
+- **`.env.example`** now documents `NEXUS_STUDIO_BACKEND` (added in v1.42.3
+  but not added to the operator template). `test_env_docs.py` failed on
+  v1.42.4 CI with `missing from .env.example: ['NEXUS_STUDIO_BACKEND']`.
+
+No code change — docs only.
+
+
 ## v1.42.4 — 2026-10-22 — Studio: run code + stronger system prompt
 
 ### Added
