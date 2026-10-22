@@ -12,6 +12,7 @@ queues, caching, rate limiting and model fallback live *above* it, composed by
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Protocol, Sequence, runtime_checkable
 
 from src.core.types import Message
@@ -98,3 +99,57 @@ class OllamaBackend:
             return data.get("response", "")
         except Exception as e:
             raise RuntimeError("Ollama request failed: " + str(e)) from e
+
+    def stream(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str | None = None,
+    ) -> Iterator[str]:
+        """Yield the reply from Ollama incrementally (NDJSON, one JSON per line).
+
+        Mirrors :meth:`generate` but sets ``"stream": true`` and reads the
+        response line-by-line, yielding each ``response`` field as it arrives.
+        Satisfies :class:`~src.core.streaming.StreamingBackend`, so
+        :func:`~src.core.streaming.iter_stream` will use it automatically.
+        """
+        import json as _json
+        import urllib.request as _urllib
+
+        parts = []
+        for m in messages:
+            if isinstance(m, Message):
+                parts.append(m.role + ": " + m.content)
+            elif isinstance(m, dict):
+                role = m.get("role", "user")
+                content = m.get("content", "")
+                parts.append(role + ": " + content)
+            else:
+                parts.append(str(m))
+        prompt = "\n".join(parts)
+
+        payload = _json.dumps({
+            "model": model or self.model,
+            "prompt": prompt,
+            "stream": True,
+        }).encode()
+        req = _urllib.Request(
+            self.base_url + "/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with _urllib.urlopen(req, timeout=self.timeout) as resp:
+                for raw in resp:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    obj = _json.loads(line)
+                    piece = obj.get("response", "")
+                    if piece:
+                        yield piece
+                    if obj.get("done"):
+                        return
+        except Exception as e:
+            raise RuntimeError("Ollama stream failed: " + str(e)) from e

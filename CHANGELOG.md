@@ -2,6 +2,75 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.0 — 2026-10-22 — Streaming replies via OllamaBackend
+
+### Added
+- **`OllamaBackend.stream()`** — incremental reply generation against Ollama's
+  `/api/generate` with `"stream": true`. Reads NDJSON line-by-line and yields
+  each `response` field as it arrives. Satisfies
+  `src.core.streaming.StreamingBackend`, so `iter_stream()` and
+  `BaseAgent.stream()` use it automatically. Non-streaming callers still get
+  the single `generate()` chunk (backward compatible).
+- **`tests/test_ollama_stream.py`** — 10 unit tests (mocked `urlopen`,
+  zero network). Covers piece ordering, `done` short-circuit, empty-line and
+  empty-response skipping, payload construction, network-error wrapping,
+  dict/str/Message input, protocol detection, and `iter_stream()` preference.
+
+### Measured
+- Live run against `sam860/qwen3:1.7b-Q4_K_XL` on Termux:
+  **340 pieces**, **time-to-first-token 0.60 s**, **total 45.87 s**.
+  Before this release the user waited the full 45 s for any output; now the
+  first token arrives in 0.6 s (~98.7% reduction in perceived latency).
+
+### Version bookkeeping
+- `pyproject.toml` advanced from `1.40.0` to `1.41.0`. The previous doc-only
+  tags `v1.40.1`, `v1.40.2`, `v1.40.3` never bumped `pyproject.toml`; that
+  drift is corrected here (see entries below).
+- `LESSONS.md` extended with L24 (measure streaming by time-to-first-token,
+  not by piece count).
+
+### Verified
+- `make check`: lint ✅, type (188 files) ✅, annotations ✅,
+  cov 99.09% — **3603 passed, 1 skipped**.
+
+## v1.40.3 — 2026-10-22 — LESSONS L23 (release backfill & Latest badge)
+
+### Docs
+- **L23** added: after creating releases retroactively for older tags, GitHub
+  marks the *last published* release as `Latest`, not the highest semver.
+  Re-apply `gh release edit <version> --latest` and verify with
+  `gh release list`.
+
+Doc-only tag. No code change. `pyproject.toml` was not bumped.
+
+## v1.40.2 — 2026-10-22 — LESSONS.md consolidation (L1-L22)
+
+### Docs
+- **Backfilled L9-L16** — cited in `CHANGELOG.md` but absent from the repo.
+- **Added L17-L18** (make-check runtime, `/tmp` read-only on Termux).
+- **Migrated 4 lessons** from the now-deleted `docs/LESSONS.md` as L19-L22.
+- Removed `docs/LESSONS.md` (stale, different format, fully subsumed).
+
+Doc-only tag. No code change. `pyproject.toml` was not bumped.
+
+## v1.40.1 — 2026-10-22 — OllamaBackend.generate annotations + Message fix
+
+### Fixed
+- **`OllamaBackend.generate`** — full type hints added
+  (`messages: Sequence[Message]`, `model: str | None`, `-> str`). Unblocks
+  `scripts/check_annotations.py`.
+- **`Message` dataclass handling** — protocol callers now receive correct
+  `role: content` prompts instead of `str(Message(...))`. Backward compatible
+  with `dict` and `str` inputs.
+
+### Docs
+- **`CHANGELOG.md`** backfilled for v1.40.0, v1.39.0, v1.38.1.
+
+### Verified
+- `make check`: lint ✅, type (188 files) ✅, annotations ✅,
+  cov 99.09% (3593 passed).
+
+
 ## v1.40.0 — 2026-10-22 — Ollama backend
 
 ### Added

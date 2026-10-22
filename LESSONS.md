@@ -194,3 +194,14 @@ version while v1.40.2 was the real one. **Rule:** after any backfill of releases
 re-run \`gh release edit <latest-version> --latest\` and verify with
 \`gh release list\`. This applies to any tool that has an explicit "latest"
 pointer separate from tag sort order.
+
+
+## L24: Measure streaming by time-to-first-token, not by piece count
+
+A streamed reply can produce hundreds of pieces yet still *feel* slow if the
+first piece arrives only after the model finished thinking. Conversely, a 1.7B
+model may emit one piece per token so the "piece count" looks impressive while
+the user perceives no benefit. **Rule:** always report both
+`time_to_first_token` and `total_time`, and treat `time_to_first_token` as the
+user-perceived latency. In v1.41.0: 340 pieces, TTFB 0.60 s, total 45.87 s —
+the win is the 0.6 s, not the 340.
