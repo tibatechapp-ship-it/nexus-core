@@ -2,6 +2,28 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.6 — 2026-10-22 — version bookkeeping for v1.41.5
+
+### Fixed
+- **`pyproject.toml` / `docs/openapi.yaml` now report `1.41.6`.** The v1.41.5
+  tag (`4ec67d8`) was published without bumping `pyproject.toml`, so CI's
+  `check_version_sync.py` rejected the orphan release
+  (`git tag 1.41.5 > pyproject 1.41.4`). The v1.41.5 code fix (coverage-badge
+  gate + fail_under 98) is unchanged; only version bookkeeping is corrected.
+
+### Note
+This is the second time in this session the same mistake happened (see L25).
+The `make check` local target does not run `scripts/check_version_sync.py`;
+only the CI lint job does. Adding it to `make check` would have caught both.
+
+### Verified
+- CI on v1.41.5: `Tests` job — SUCCESS (the actual goal of v1.41.5);
+  only version-sync failed, fixed here.
+- `python scripts/check_version_sync.py`: all four sources agree (locally,
+  once tagged).
+
+No code or test change since v1.41.5.
+
 ## v1.41.4 — 2026-10-22 — version bookkeeping + L25/L26
 
 ### Fixed
