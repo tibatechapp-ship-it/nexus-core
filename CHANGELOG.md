@@ -2,6 +2,32 @@
 
 All notable changes to this project. Newest first.
 
+## v1.43.0 — 2026-10-22 — CodeGuardian (LLM output validation)
+
+### Added
+- **`src/engineering/code_guardian.py`** — pre-flight validator for
+  Python code produced by small local models. Three layers:
+  1. Syntax: `ast.parse` (cheap, no false positives).
+  2. Undefined names: conservative AST walk (skips builtins, ALL_CAPS
+     constants, single-letter names).
+  3. Missing imports: whitelist of 5 extremely-common libs (json, os, re,
+     sys, csv) with symbol-level auto-fix (`import X` + `from X import Y`).
+- **`GuardReport`** — structured outcome (is_valid, errors, warnings,
+  repaired_code, needs_llm_fix, to_dict()).
+- **`CodeGuardian.generate_repair_prompt()`** — targeted prompt listing
+  the exact errors. Designed for small models that fail on open-ended
+  "fix the code" instructions.
+- **11 tests** in `tests/test_code_guardian.py`.
+
+### Why
+Small models (1.7B) routinely forget `import json` or call undefined
+helpers. This validator fixes the mechanical cases (imports) and produces
+a repair prompt for the rest, before the caller sees broken code.
+
+No change to existing paths — this module is opt-in until integrated in
+Studio (v1.43.1).
+
+
 ## v1.42.5 — 2026-10-22 — document NEXUS_STUDIO_BACKEND
 
 ### Fixed
