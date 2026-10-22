@@ -2,6 +2,20 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.11 — 2026-10-22 — deps: SpeechRecognition 3.10 → 3.17
+
+### Changed
+- **`SpeechRecognition>=3.17.0`** (was `>=3.10.0`) in the `voice` extra and
+  `requirements.txt`. The only consumer is `zyvo-telegram.py` (STT path),
+  and that import is already inside `try/except` with an empty-string
+  fallback, so the voice extra stays optional and failure-safe.
+
+Dependabot PR #44. Merged directly (two-line version bump, no code
+touched). No test change.
+
+### Verified
+- `make check`: all gates green, 3626 passed, cov 99%+.
+
 ## v1.41.10 — 2026-10-22 — deps: opentelemetry-sdk 1.20 → 1.45.1
 
 ### Changed
