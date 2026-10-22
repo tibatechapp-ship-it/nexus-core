@@ -2,6 +2,17 @@
 
 All notable changes to this project. Newest first.
 
+## v1.42.1 — 2026-10-22 — document NEXUS_STUDIO_* env vars
+
+### Fixed
+- **`.env.example` now documents the 4 Studio env vars.** `test_env_docs.py`
+  failed on v1.42.0 CI because `studio_server.py` reads
+  `NEXUS_STUDIO_{BIND,PORT,TOKEN,WORKSPACE}` but they were missing from the
+  operator template. Added a dedicated Studio section with fail-closed
+  documentation (token required for non-loopback binds).
+
+No code change — docs only.
+
 ## v1.42.0 — 2026-10-22 — Nexus Studio (local dev UI, port 8001)
 
 ### Added
