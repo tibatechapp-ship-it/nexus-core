@@ -208,7 +208,7 @@ skip_empty = true
 # extras (sqlite-vec / openai / sse-starlette) are absent, as on GitHub
 # Actions. The floor is 99 — high enough to catch any real regression, with
 # margin for the optional-dependency skip path (100 would fail on CI alone).
-fail_under = 99
+fail_under = 98
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

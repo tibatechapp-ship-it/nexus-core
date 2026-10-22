@@ -116,7 +116,10 @@ jobs:
 
       - name: Write shields endpoint badge
         run: |
-          python -m coverage json -o coverage.json
+          # --fail-under=0: coverage json re-reads fail_under from pyproject.toml
+          # and would fail here. The pytest step above (--cov-fail-under=95) is
+          # the real coverage gate; this step only builds the shields badge.
+          python -m coverage json -o coverage.json --fail-under=0
           python - <<'PY'
           import json, pathlib
           data = json.loads(pathlib.Path("coverage.json").read_text())
