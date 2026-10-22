@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus Studio — nexus-core</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
+  header h1{margin:0;font-size:15px;color:#7dd3fc}
+  .badge{font-size:11px;padding:2px 8px;border-radius:99px;background:#0c4a6e;color:#7dd3fc}
+  .badge.ok{background:#064e3b;color:#6ee7b7}
+  .badge.err{background:#7f1d1d;color:#fca5a5}
+  .flex1{flex:1}
+  main{flex:1;display:flex;overflow:hidden}
+  aside{width:260px;background:#1e293b;border-left:1px solid #334155;display:flex;flex-direction:column;flex-shrink:0}
+  aside .pad{padding:8px;border-bottom:1px solid #334155}
+  aside input{width:100%;padding:6px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px}
+  #tree{flex:1;overflow-y:auto;padding:4px 0;font-size:13px}
+  .row{padding:4px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row:hover{background:#334155}
+  .row.active{background:#0c4a6e;color:#7dd3fc}
+  #fileCount{padding:6px 12px;font-size:11px;color:#64748b;border-top:1px solid #334155}
+  section{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .prompt-bar{padding:8px;background:#1e293b;border-bottom:1px solid #334155;display:flex;gap:6px}
+  .prompt-bar textarea{flex:1;padding:6px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;resize:none;font-family:inherit}
+  .prompt-bar .right{display:flex;flex-direction:column;gap:4px;min-width:100px}
+  .prompt-bar select{padding:4px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px}
+  .prompt-bar button{padding:6px 12px;background:#0284c7;color:#fff;border:none;border-radius:4px;font-weight:bold;font-size:12px;cursor:pointer}
+  .prompt-bar button:disabled{opacity:.4;cursor:not-allowed}
+  #testBar{display:none;padding:6px 14px;font-size:12px;font-weight:500}
+  #testBar.ok{display:block;background:#064e3b;color:#6ee7b7}
+  #testBar.err{display:block;background:#7f1d1d;color:#fca5a5}
+  nav.tabs{display:flex;gap:2px;padding:4px 8px 0;background:#1e293b;flex-shrink:0}
+  .tab{padding:5px 12px;background:transparent;border:none;color:#94a3b8;font-size:12px;cursor:pointer;border-radius:4px 4px 0 0}
+  .tab.active{background:#0f172a;color:#7dd3fc}
+  .actions{display:flex;gap:4px;margin-right:auto;align-items:center}
+  .actions input{width:200px;padding:4px 6px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;direction:ltr;text-align:left}
+  .actions button{padding:4px 10px;background:#334155;color:#e2e8f0;border:none;border-radius:4px;font-size:11px;cursor:pointer}
+  .actions button.save{background:#059669;color:#fff;font-weight:bold}
+  .actions button:hover{opacity:.85}
+  .pane{flex:1;overflow:hidden;display:none}
+  .pane.active{display:flex;flex-direction:column}
+  #editor{flex:1;width:100%;padding:10px;background:#0f172a;color:#e2e8f0;border:none;resize:none;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;direction:ltr;text-align:left;outline:none}
+  #pretty{flex:1;overflow:auto;padding:10px;margin:0}
+  #pretty code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;direction:ltr;text-align:left;display:block}
+  #log{flex:1;overflow-y:auto;padding:8px 12px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;direction:ltr;text-align:left}
+  #log .line{margin:2px 0;color:#cbd5e1}
+  #log .line.err{color:#fca5a5}
+  #log .line.step{color:#7dd3fc}
+  #log .line .ts{color:#64748b;margin-left:8px;margin-right:4px}
+  #preview{flex:1;border:none;background:#fff}
+  footer{padding:6px 12px;background:#1e293b;border-top:1px solid #334155;display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0}
+  footer input{flex:1;max-width:400px;padding:5px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:12px;direction:ltr}
+  footer button{padding:4px 10px;background:#334155;color:#e2e8f0;border:none;border-radius:4px;cursor:pointer;font-size:11px}
+  .muted{color:#64748b}
+  @media (max-width:768px){aside{display:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <span style="width:10px;height:10px;border-radius:50%;background:#0ea5e9;box-shadow:0 0 8px #0ea5e9"></span>
+  <h1>Nexus Studio</h1>
+  <span class="badge">:8001 · معزول عن 8000</span>
+  <span id="authBadge" class="badge">جارٍ الفحص…</span>
+  <span class="flex1"></span>
+  <span id="connStatus" class="muted" style="font-size:12px">● غير متصل</span>
+</header>
+
+<main>
+  <aside>
+    <div class="pad">
+      <input id="fileFilter" placeholder="تصفية الملفات…">
+    </div>
+    <div id="tree"></div>
+    <div id="fileCount"></div>
+  </aside>
+
+  <section>
+    <div class="prompt-bar">
+      <textarea id="promptBox" rows="2" placeholder="اكتب المطلوب… مثال: اكتب دالة تتحقق من صحة رقم جوال سعودي"></textarea>
+      <div class="right">
+        <select id="roleSel">
+          <option value="fast" selected>سريع</option>
+          <option value="smart">ذكي</option>
+        </select>
+        <button id="btnGen">توليد ⚡</button>
+      </div>
+    </div>
+
+    <div id="testBar"></div>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="code">✎ الكود</button>
+      <button class="tab" data-tab="pretty">🎨 ملوّن</button>
+      <button class="tab" data-tab="log">📜 السجل</button>
+      <button class="tab" data-tab="preview">👁 معاينة</button>
+      <div class="actions">
+        <input id="savePath" placeholder="scripts/my_tool.py" dir="ltr">
+        <button class="save" id="btnSave">💾 حفظ</button>
+        <button id="btnCopy">نسخ</button>
+      </div>
+    </nav>
+
+    <div class="pane active" data-pane="code">
+      <textarea id="editor" spellcheck="false" placeholder="-- الكود المولّد يظهر هنا --"></textarea>
+    </div>
+    <div class="pane" data-pane="pretty">
+      <pre id="pretty"><code class="language-python"></code></pre>
+    </div>
+    <div class="pane" data-pane="log">
+      <div id="log"></div>
+    </div>
+    <div class="pane" data-pane="preview">
+      <iframe id="preview" sandbox="allow-scripts"></iframe>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span class="muted">🔑</span>
+  <input id="tokenBox" type="password" placeholder="NEXUS_STUDIO_TOKEN (اتركه فارغًا لـ localhost)">
+  <button id="btnToken">حفظ</button>
+  <span id="healthInfo" class="muted"></span>
+</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const ui = {
+  tree: $("tree"), filter: $("fileFilter"), count: $("fileCount"),
+  editor: $("editor"), pretty: $("pretty").querySelector("code"),
+  log: $("log"), testBar: $("testBar"), frame: $("preview"),
+  prompt: $("promptBox"), role: $("roleSel"), token: $("tokenBox"),
+  savePath: $("savePath"), conn: $("connStatus"), auth: $("authBadge"),
+  health: $("healthInfo")
+};
+
+ui.token.value = sessionStorage.getItem("studioToken") || "";
+
+function headers(extra) {
+  const h = Object.assign({"Content-Type": "application/json"}, extra || {});
+  if (ui.token.value.trim()) h["X-Studio-Token"] = ui.token.value.trim();
+  return h;
+}
+
+function log(msg, isErr, isStep) {
+  const line = document.createElement("div");
+  line.className = "line" + (isErr ? " err" : isStep ? " step" : "");
+  const ts = document.createElement("span");
+  ts.className = "ts"; ts.textContent = new Date().toLocaleTimeString("en-GB");
+  const m = document.createElement("span"); m.textContent = msg;
+  line.append(ts, m);
+  ui.log.appendChild(line);
+  ui.log.scrollTop = ui.log.scrollHeight;
+}
+
+document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === btn));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("active", p.dataset.pane === btn.dataset.tab));
+  if (btn.dataset.tab === "pretty") renderPretty();
+}));
+
+function renderPretty() {
+  ui.pretty.textContent = ui.editor.value || "// لا يوجد كود";
+  ui.pretty.removeAttribute("data-highlighted");
+  if (window.hljs) try { hljs.highlightElement(ui.pretty); } catch (e) {}
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch("/api/studio/health", {headers: headers()});
+    if (r.status === 401) {
+      ui.auth.textContent = "🔒 يتطلب توكين"; ui.auth.className = "badge err";
+      ui.conn.textContent = "● محجوب"; ui.conn.className = "muted"; ui.conn.style.color = "#fca5a5";
+      return;
+    }
+    const h = await r.json();
+    ui.auth.textContent = h.auth_mode === "token" ? "🔐 توكين" : "🏠 localhost";
+    ui.auth.className = "badge ok";
+    ui.conn.textContent = "● متصل"; ui.conn.style.color = "#6ee7b7";
+    ui.health.textContent = "v" + h.version + " · " + h.providers + " مزوّد · " + h.workspace.split("/").pop();
+    log("متصل — " + h.version + " · " + h.providers + " مزوّد", false, true);
+    loadFiles();
+  } catch (e) {
+    ui.conn.textContent = "● تعذر الاتصال"; ui.conn.style.color = "#fca5a5";
+  }
+}
+
+let allFiles = [];
+async function loadFiles() {
+  try {
+    const r = await fetch("/api/studio/files", {headers: headers()});
+    if (r.status === 401) return log("غير مصرح — أدخل التوكين", true);
+    const d = await r.json();
+    allFiles = d.files;
+    ui.count.textContent = allFiles.length + " ملف" + (d.truncated ? " (مقتطع)" : "");
+    renderTree();
+  } catch (e) { log("فشل التحميل: " + e.message, true); }
+}
+
+function renderTree() {
+  const q = ui.filter.value.trim().toLowerCase();
+  ui.tree.textContent = "";
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+  for (const f of allFiles) {
+    if (q && !f.toLowerCase().includes(q)) continue;
+    if (++shown > 500) break;
+    const row = document.createElement("div");
+    row.className = "row";
+    row.dataset.path = f;
+    row.textContent = f.split("/").pop();
+    row.title = f;
+    frag.appendChild(row);
+  }
+  ui.tree.appendChild(frag);
+}
+
+ui.tree.addEventListener("click", e => {
+  const row = e.target.closest("[data-path]");
+  if (row) openFile(row.dataset.path);
+});
+ui.filter.addEventListener("input", renderTree);
+
+async function openFile(path) {
+  try {
+    const r = await fetch("/api/studio/file?path=" + encodeURIComponent(path), {headers: headers()});
+    const d = await r.json();
+    if (!r.ok) return log("فشل الفتح: " + (d.detail || r.status), true);
+    ui.editor.value = d.content;
+    ui.savePath.value = path;
+    document.querySelectorAll(".row").forEach(x => x.classList.toggle("active", x.dataset.path === path));
+    renderPretty();
+    log("فتح: " + path, false, true);
+  } catch (e) { log("خطأ فتح: " + e.message, true); }
+}
+
+$("btnSave").addEventListener("click", async () => {
+  const path = ui.savePath.value.trim();
+  if (!path) return log("اكتب مسار الحفظ أولًا", true);
+  try {
+    const r = await fetch("/api/studio/save", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({path, content: ui.editor.value}),
+    });
+    const d = await r.json();
+    if (d.ok) { log("حُفظ ✓ " + path + " (" + d.bytes + " بايت)", false, true); loadFiles(); }
+    else log("فشل الحفظ: " + (d.error || d.detail || r.status), true);
+  } catch (e) { log("خطأ حفظ: " + e.message, true); }
+});
+
+let busy = false;
+$("btnGen").addEventListener("click", generate);
+ui.prompt.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) generate();
+});
+
+async function generate() {
+  if (busy) return;
+  const prompt = ui.prompt.value.trim();
+  if (!prompt) return log("اكتب وصف المطلوب", true);
+  busy = true; $("btnGen").disabled = true; $("btnGen").textContent = "جارٍ…";
+  ui.conn.textContent = "● يعمل"; ui.conn.style.color = "#fbbf24";
+  log("⚡ بدء التوليد (" + ui.role.value + ")…", false, true);
+  ui.testBar.className = ""; ui.testBar.textContent = "";
+
+  try {
+    const res = await fetch("/api/studio/generate", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({prompt, role: ui.role.value}),
+    });
+    if (res.status === 401) { log("401 غير مصرح", true); return; }
+    if (res.status === 503) {
+      const d = await res.json();
+      log(d.detail || "المولّد غير جاهز", true); return;
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const o = await reader.read();
+      if (o.done) break;
+      buf += dec.decode(o.value, {stream: true});
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        handleFrame(buf.slice(0, idx).replace(/\r/g, ""));
+        buf = buf.slice(idx + 2);
+      }
+    }
+  } catch (e) {
+    log("انقطع الاتصال: " + e.message, true);
+  } finally {
+    busy = false; $("btnGen").disabled = false; $("btnGen").textContent = "توليد ⚡";
+    ui.conn.textContent = "● متصل"; ui.conn.style.color = "#6ee7b7";
+  }
+}
+
+function handleFrame(frame) {
+  let event = "message", data = "";
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  let obj;
+  try { obj = JSON.parse(data); } catch (e) { return log("إطار تالف", true); }
+
+  switch (event) {
+    case "step": log("▸ " + obj.msg, false, true); break;
+    case "code":
+      ui.editor.value = obj.text || "";
+      renderPretty();
+      log("استُلم الكود من " + obj.provider + "/" + obj.model, false, true);
+      break;
+    case "test":
+      ui.testBar.className = obj.ok ? "ok" : "err";
+      ui.testBar.textContent = (obj.ok ? "✓ " : "✗ ") + obj.detail;
+      log("فحص: " + obj.detail, !obj.ok);
+      break;
+    case "error": log("✖ " + obj.msg, true); break;
+    case "done": log("اكتمل ✓ عبر " + obj.provider, false, true); break;
+  }
+}
+
+$("btnCopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(ui.editor.value); log("نُسخ ✓", false, true); }
+  catch (e) { log("تعذر النسخ", true); }
+});
+
+$("btnToken").addEventListener("click", () => {
+  sessionStorage.setItem("studioToken", ui.token.value.trim());
+  log("حُفظ التوكين في الجلسة", false, true);
+  checkHealth();
+});
+
+checkHealth();
+</script>
+
+</body>
+</html>
