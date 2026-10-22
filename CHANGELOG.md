@@ -2,6 +2,39 @@
 
 All notable changes to this project. Newest first.
 
+## v1.42.0 — 2026-10-22 — Nexus Studio (local dev UI, port 8001)
+
+### Added
+- **Nexus Studio** — a standalone development UI on port 8001, isolated
+  from the live server on 8000. Two new files under `studio/`:
+  - `studio_server.py`: FastAPI app with `safe_path` (resolve + relative_to,
+    blocks `../` and symlink escape), atomic write (`tmp + os.replace`),
+    `compile()` check before saving `.py`, fail-closed auth (token required
+    for non-loopback binds), 8 secret redaction patterns in logs and error
+    responses, `is_sensitive_file` guard (`.env`, keys, certs → 403).
+  - `studio.html`: RTL Arabic editor with code / pretty / log / preview
+    tabs, SSE via `fetch + ReadableStream` (works with custom headers),
+    fallback styles if CDN fails.
+- **`/api/studio/health`** — backend/provider status (no secrets).
+- **`/api/studio/files`, `/file`, `/save`, `/generate`** — full CRUD on
+  workspace files (read-only /api/studio/file returns 403 for .env).
+
+### Security
+- `.env` was previously staged by mistake in the working tree; removed from
+  the index. `git log --all -- .env` is empty — never committed to any
+  branch on GitHub or GitLab.
+- All Studio error paths go through `_sanitize()` (gsk_, sk-, sk-proj-,
+  AIza, ghp_, ghs_, Bearer, API_KEY= → ***REDACTED***).
+
+### Notes
+- Studio defaults to `LLMRouter` (23 providers from `.env`). An
+  `OllamaBackend`-first path exists (env `NEXUS_STUDIO_BACKEND=ollama`)
+  for a fully local mode with no external provider.
+- Groq keys 4 and 5 seen in a chat transcript must be rotated
+  (console.groq.com/keys) — this release does not depend on them.
+
+No production code touched — the live server on :8000 is unchanged.
+
 ## v1.41.13 — 2026-10-22 — merge feature/v1.29.0 (fleet-health, rotation, memory guard)
 
 ### Added
