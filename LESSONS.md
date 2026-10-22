@@ -233,3 +233,27 @@ already wraps its import in `try/except ImportError: pass`, but individual test
 files are not covered by that. Discover with
 `grep -rn 'import nexus_agent' tests/ --include="*.py"` and check that every
 hit sits behind an importorskip. Caught three files in v1.41.2 + v1.41.3.
+
+
+## L27: `make check` must run `check_version_sync.py`, not just `sync_version.py`
+
+`sync_version.py` writes `openapi.yaml` to match `pyproject.toml`. It does
+**not** verify that `git tag (HEAD)` matches `pyproject`. Only
+`check_version_sync.py` does that — and until v1.41.7 it ran exclusively in
+CI's lint job.
+
+Result: the same orphan-release error (`git tag > pyproject`) shipped twice in
+one session (v1.41.1→v1.40.0 and v1.41.5→v1.41.4), each costing a new patch
+release just to bump the version. Both would have been caught by `make check`
+in seconds.
+
+**Rule:** every check that runs in CI must have a `make` target that runs it
+locally, and `make check` must chain that target. Audit with:
+
+    grep -E '^\s+run:' .github/workflows/*.yml
+
+Match each to a Makefile target. If CI has a step and `make` does not, add it.
+
+For the specific case: `make check` now runs `sync-version` (writes) followed
+by `version-check` (reads and fails on mismatch). The two are deliberately
+separate targets — one mutates files, one gates the build.

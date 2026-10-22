@@ -33,7 +33,7 @@ install:
 	$(PY) -m pip install -e ".[dev,tui]"
 
 # ── the single definition of "green" ────────────────────────────────────────
-check: lint type annotations sync-version cov
+check: lint type annotations sync-version version-check cov
 	@echo ""
 	@echo "✅ nexus-core: all gates green."
 
@@ -48,6 +48,9 @@ annotations:
 
 sync-version:
 	$(PY) scripts/sync_version.py
+
+version-check:
+	$(PY) scripts/check_version_sync.py
 
 test:
 	$(PY) -m pytest tests/ -q --ignore=tests/novamind

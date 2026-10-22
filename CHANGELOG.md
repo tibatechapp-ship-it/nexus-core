@@ -2,6 +2,29 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.7 — 2026-10-22 — make check runs version-check; L27
+
+### Changed
+- **`make check` now fails on tag/version drift.** Added a `version-check`
+  target that runs `scripts/check_version_sync.py`, and appended it to the
+  `check` chain (after `sync-version`, before `cov`). Previously this check
+  ran only in CI's lint job, which is why the orphan-release error shipped
+  twice in one session (v1.41.1→v1.40.0, v1.41.5→v1.41.4). Both would have
+  been caught by a local `make check` in seconds.
+
+### Docs
+- **L27** — every check that runs in CI must have a Makefile target that
+  runs it locally, and `make check` must chain that target. `sync_version.py`
+  (writes) and `check_version_sync.py` (reads and gates) are separate targets
+  by design.
+
+### Verified
+- `make version-check`: `All versions aligned` (pyproject=src=openapi=tag=1.41.6).
+- `make check`: all gates green (lint, type, annotations, sync-version,
+  version-check, cov 99%+).
+
+No code or test change.
+
 ## v1.41.6 — 2026-10-22 — version bookkeeping for v1.41.5
 
 ### Fixed
