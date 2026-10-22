@@ -2,6 +2,54 @@
 
 All notable changes to this project. Newest first.
 
+## v1.42.2 — 2026-10-22 — confine agent file tools (C2 mirror)
+
+### Security
+- **`src/agent_loop/tools.py`: read_file / write_file / list_files are now
+  confined to `NEXUS_AGENT_WORKSPACE`.** Before this release the three tools
+  used `os.path.expanduser` + bare `open()` with no checks:
+  - `read_file` could read `.env`, `~/.ssh/id_rsa`, `~/.config/zyvo/keys/*`
+    (the Ollama API keys themselves).
+  - `write_file` could write into `~/.bashrc`, `/etc/passwd`, any absolute
+    path, and it never checked Python syntax before saving `.py`.
+  - `list_files` exposed `.ssh/`, `.aws/`, `__pycache__/`, and anything else
+    in the target directory.
+
+  All three now go through a single `safe_path()` helper that:
+  - resolves with `Path.resolve()` + `relative_to(workspace)` (blocks `..`
+    and symlink escape);
+  - rejects paths inside `_SENSITIVE_DIRS` (.ssh, .gnupg, .aws, .azure, .kube,
+    .docker) and `_SKIP_DIRS` (.git, __pycache__, node_modules, …);
+  - calls `is_sensitive_file()` from `src/tools/executor.py` (the C2 fix) to
+    reject `.env`, `.env.*`, `id_rsa`, `credentials`, `.pem`, `.key`, etc.;
+  - enforces `MAX_READ = 512 KB` / `MAX_WRITE = 1 MB`;
+  - runs `compile()` on `.py` content before saving (no half-written files);
+  - writes atomically via `tempfile.mkstemp` + `os.replace`.
+
+- **`read_file` / `write_file` / `list_files` now return `"محظور: ..."` on
+  denied paths**, and `write_file` returns `"خطأ صياغة سطر N: ..."` on syntax
+  errors. The old `"تم الكتابة: <full path>"` / `"ملف غير موجود: <path>"`
+  messages no longer leak the resolved path.
+
+### Tests
+- **`tests/test_agent_loop_tools_security.py`** (new, 18 tests): every
+  confinement rule, every sensitive file class, every dir skip, atomic write,
+  max size, syntax-gate, and the `ValueError` path for null bytes.
+- **3 existing tests updated** in `tests/test_agent_loop.py`:
+  `test_loop_tool_then_answer`, `test_tool_get_time_and_file_roundtrip`,
+  `test_tool_read_file_edges` now set `NEXUS_AGENT_WORKSPACE=tmp_path` and use
+  `Path.stat` (instead of `os.path.exists`) to exercise the same paths under
+  the new sandbox. Behaviour on the success path is unchanged.
+
+### Notes
+- This is a **P0 security fix** and a **C2 mirror**: `safe_path` in
+  `studio/studio_server.py` (v1.42.0) and this patch share the same guards.
+- `run_shell` remains removed (C1). `AgentLoop` and `LLMRouter` are untouched.
+- Local `make check`: 3626+ passed.
+
+No API change. Existing tool signatures (`read_file(path)`,
+`write_file(path, content)`, `list_files(directory)`) are preserved.
+
 ## v1.42.1 — 2026-10-22 — document NEXUS_STUDIO_* env vars
 
 ### Fixed

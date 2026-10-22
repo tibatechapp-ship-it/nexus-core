@@ -5,11 +5,51 @@ import sys
 import json
 import time
 import inspect
+import tempfile
+from pathlib import Path
 from typing import Any, Callable
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src'))
+
+# ═══ حماية أدوات الملفات (mirrors C1/C2) ═══════════════════════
+try:
+    from src.tools.executor import is_sensitive_file
+except ImportError:
+    def is_sensitive_file(path: Path) -> bool:
+        return path.name in {".env", "id_rsa", "id_ed25519", "credentials"} or \
+               path.suffix in {".pem", ".key", ".p12", ".pfx"}
+
+MAX_READ = 512 * 1024
+MAX_WRITE = 1024 * 1024
+_SENSITIVE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"})
+_SKIP_DIRS = frozenset({
+    ".git", "__pycache__", "node_modules", ".venv", "venv", ".tox",
+    ".mypy_cache", ".ruff_cache", ".pytest_cache", "dist", "build",
+    ".idea", ".vscode", "htmlcov", ".coverage",
+})
+
+
+def _workspace_root() -> Path:
+    return Path(os.environ.get("NEXUS_AGENT_WORKSPACE", os.getcwd())).resolve()
+
+
+def safe_path(rel: str) -> Path:
+    """Resolve rel inside workspace; reject escapes, sensitive files, gated dirs."""
+    if not rel or "\x00" in rel:
+        raise ValueError("مسار غير صالح")
+    workspace = _workspace_root()
+    target = (workspace / rel).expanduser().resolve()
+    try:
+        target.relative_to(workspace)
+    except ValueError:
+        raise PermissionError(f"خارج مساحة العمل: {rel}")
+    if any(part in _SKIP_DIRS or part in _SENSITIVE_DIRS for part in target.parts):
+        raise PermissionError(f"مسار محظور: {rel}")
+    if is_sensitive_file(target):
+        raise PermissionError(f"ملف حساس: {rel}")
+    return target
 
 
 class Tool:
@@ -140,12 +180,16 @@ def build_default_registry() -> Any:
          "required": ["path"]})
     def read_file(path: Any) -> Any:
         try:
-            if not os.path.exists(path):
-                return f"ملف غير موجود: {path}"
-            if os.path.getsize(path) > 100_000:
-                return "الملف كبير جداً"
-            with open(path, encoding="utf-8") as f:
+            p = safe_path(str(path))
+            if not p.exists():
+                return f"ملف غير موجود: {p.name}"
+            size = p.stat().st_size
+            if size > MAX_READ:
+                return f"الملف كبير جداً ({size} بايت > {MAX_READ // 1024}KB)"
+            with open(p, encoding="utf-8", errors="replace") as f:
                 return f.read()[:2000]
+        except PermissionError as e:
+            return f"محظور: {e}"
         except Exception as e:
             return f"خطأ: {e}"
 
@@ -169,11 +213,30 @@ def build_default_registry() -> Any:
          "required": ["path", "content"]})
     def write_file(path: Any, content: Any) -> Any:
         try:
-            p = os.path.expanduser(path)
-            os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
-            with open(p, "w", encoding="utf-8") as f:
-                f.write(content)
-            return f"تم الكتابة: {p} ({len(content)} حرف)"
+            p = safe_path(str(path))
+            body = str(content)
+            if len(body.encode("utf-8")) > MAX_WRITE:
+                return f"المحتوى كبير جداً (> {MAX_WRITE // 1024}KB)"
+            if p.suffix == ".py":
+                try:
+                    compile(body, str(p), "exec")
+                except SyntaxError as e:
+                    return f"خطأ صياغة سطر {e.lineno}: {e.msg} — لم يُحفظ"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".agent-tmp-", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(body)
+                os.replace(tmp, p)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+            return f"تم الكتابة: {p.name} ({len(body)} حرف)"
+        except PermissionError as e:
+            return f"محظور: {e}"
         except Exception as e:
             return f"خطأ: {e}"
 
@@ -186,11 +249,22 @@ def build_default_registry() -> Any:
          "required": ["directory"]})
     def list_files(directory: Any) -> Any:
         try:
-            p = os.path.expanduser(directory)
-            if not os.path.isdir(p):
-                return f"مجلد غير موجود: {p}"
-            files = os.listdir(p)[:30]
-            return "\n".join(files)
+            p = safe_path(str(directory))
+            if not p.is_dir():
+                return f"مجلد غير موجود: {p.name}"
+            files = []
+            for name in sorted(os.listdir(p)):
+                entry = p / name
+                if any(part in _SKIP_DIRS or part in _SENSITIVE_DIRS for part in entry.parts):
+                    continue
+                if is_sensitive_file(entry):
+                    continue
+                files.append(name)
+                if len(files) >= 30:
+                    break
+            return "\n".join(files) if files else "(لا ملفات)"
+        except PermissionError as e:
+            return f"محظور: {e}"
         except Exception as e:
             return f"خطأ: {e}"
 

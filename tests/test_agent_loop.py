@@ -65,7 +65,8 @@ def test_loop_direct_answer() -> None:
     assert loop.trace[0]["text"].startswith("المهمة")
 
 
-def test_loop_tool_then_answer(tmp_path: Path) -> None:
+def test_loop_tool_then_answer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
     target = tmp_path / "hello.txt"
     loop = _ScriptedLoop(
         [_msg(tool_calls=[_tc("write_file", {"path": str(target), "content": "abc"})]),
@@ -76,6 +77,7 @@ def test_loop_tool_then_answer(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "abc"
     assert r["trace"][-1]["text"] == "الإجابة النهائية"
     assert any("write_file" in t["text"] for t in r["trace"])
+
 
 
 def test_loop_bad_json_args_falls_back_to_empty() -> None:
@@ -222,33 +224,36 @@ def test_default_registry_has_all_nine_tools() -> None:
                               "read_file", "get_time", "write_file", "list_files"}
 
 
-def test_tool_get_time_and_file_roundtrip(tmp_path: Path) -> None:
+def test_tool_get_time_and_file_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
     reg = build_default_registry()
     f = tmp_path / "a" / "b.txt"
     assert "تم الكتابة" in reg.call("write_file", {"path": str(f), "content": "مرحبا"})
     assert reg.call("read_file", {"path": str(f)}) == "مرحبا"
     assert "مجلد غير موجود" in reg.call("list_files", {"directory": str(tmp_path / "nope")})
     assert "b.txt" in reg.call("list_files", {"directory": str(f.parent)})
-    # null byte survives expanduser/expandvars → open() rejects it → except branch
+    # null byte → ValueError → generic "خطأ: ..." branch (safe_path rejects it)
     assert reg.call("write_file", {"path": "bad\x00name", "content": "x"}).startswith("خطأ")
     assert reg.call("get_time", {})[:4].isdigit()
 
 
+
 def test_tool_read_file_edges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import os
-
+    monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
     reg = build_default_registry()
     assert "غير موجود" in reg.call("read_file", {"path": str(tmp_path / "x")})
     big = tmp_path / "big.bin"
-    big.write_bytes(b"0" * 100_001)
-    assert "كبير جدا" in reg.call("read_file", {"path": str(big)})
+    big.write_bytes(b"0" * (600 * 1024))  # > MAX_READ (512 KB)
+    assert "كبير" in reg.call("read_file", {"path": str(big)})
 
-    # forced IO failure → both tools must degrade to a readable error
-    real_exists = os.path.exists
-    monkeypatch.setattr(os.path, "exists",
-                        lambda p: (_ for _ in ()).throw(OSError("io")))
+    # forced IO failure → read_file must return a readable error
+    def _boom_stat(self, **kw):
+        raise OSError("io")
+    real_stat = Path.stat
+    monkeypatch.setattr(Path, "stat", _boom_stat)
     assert reg.call("read_file", {"path": str(big)}).startswith("خطأ")
-    monkeypatch.setattr(os.path, "exists", real_exists)
+    monkeypatch.setattr(Path, "stat", real_stat)
 
     assert "big.bin" in reg.call("list_files", {"directory": str(tmp_path)})
     assert "مجلد غير موجود" in reg.call("list_files",
