@@ -1,7 +1,15 @@
 """Tests for GET /health endpoint (v1.38.0)."""
-from fastapi.testclient import TestClient
 
-import nexus_agent
+from __future__ import annotations
+
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("sse_starlette")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+import nexus_agent  # noqa: E402
 
 
 def test_health_returns_200_and_ok():
