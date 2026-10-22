@@ -24,4 +24,4 @@ syrupy>=4
 
 # ── voice  (optional voice features) ───────────────────────────────────────
 gTTS>=2.5.0
-SpeechRecognition>=3.10.0
+SpeechRecognition>=3.17.0

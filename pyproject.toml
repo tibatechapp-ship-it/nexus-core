@@ -32,7 +32,7 @@ classifiers = [
 # installs. The former novamind server layer (FastAPI orchestration, RAG,
 # observability) is opt-in via the `novamind` extras so the phone stays light.
 [project.optional-dependencies]
-voice = ["gTTS>=2.5.0", "SpeechRecognition>=3.10.0"]
+voice = ["gTTS>=2.5.0", "SpeechRecognition>=3.17.0"]
 tui = ["textual>=0.80", "rich>=13"]
 # Ed25519 build signing (src/certification). Optional: the signer falls back to
 # SHA256 when cryptography is absent (e.g. Termux), so it is never a hard dep.
