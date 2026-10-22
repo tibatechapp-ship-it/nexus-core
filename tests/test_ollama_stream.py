@@ -22,6 +22,10 @@ class _FakeResponse:
     def __iter__(self) -> Iterator[bytes]:
         return iter(self._lines)
 
+    def read(self) -> bytes:
+        """Mimics the non-streaming path used by OllamaBackend.generate()."""
+        return b"".join(self._lines)
+
     def __enter__(self) -> "_FakeResponse":
         return self
 
@@ -109,6 +113,7 @@ def test_stream_builds_correct_payload() -> None:
     payload = json.loads(req.data)
     assert payload["model"] == "override"
     assert payload["stream"] is True
+    assert payload["think"] is False
     assert "user: hello" in payload["prompt"]
     assert timeout == 5.0
 
@@ -157,3 +162,23 @@ def test_iter_stream_uses_ollama_stream() -> None:
     with patch("urllib.request.urlopen", return_value=fake):
         pieces = list(iter_stream(backend, [Message("user", "x")]))
     assert pieces == ["a", "b", "c"]
+
+def test_generate_disables_thinking() -> None:
+    """generate() must send think:false so qwen3 doesn't leak <think> into output."""
+    backend = _backend()
+    captured: list[Any] = []
+
+    def _capture(req: Any, timeout: float) -> _FakeResponse:
+        captured.append((req, timeout))
+        return _FakeResponse([
+            (json.dumps({"response": "OK", "done": True}) + "\n").encode()
+        ])
+
+    with patch("urllib.request.urlopen", side_effect=_capture):
+        out = backend.generate([Message("user", "hi")])
+
+    assert out == "OK"
+    req, _ = captured[0]
+    payload = json.loads(req.data)
+    assert payload["think"] is False
+    assert payload["stream"] is False

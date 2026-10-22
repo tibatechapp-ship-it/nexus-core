@@ -86,6 +86,7 @@ class OllamaBackend:
             "model": model or self.model,
             "prompt": prompt,
             "stream": False,
+            "think": False,
         }).encode()
         req = _urllib.Request(
             self.base_url + "/api/generate",
@@ -132,6 +133,7 @@ class OllamaBackend:
             "model": model or self.model,
             "prompt": prompt,
             "stream": True,
+            "think": False,
         }).encode()
         req = _urllib.Request(
             self.base_url + "/api/generate",
