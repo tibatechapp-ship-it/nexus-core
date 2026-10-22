@@ -183,3 +183,14 @@ artifacts of a machine-translated browser screenshot. The live HTTP contract had
 lowercase English keys and never lacked the field. **Rule:** always read the
 real contract with `curl` (or `inspect.signature`, see L12) before filing or
 fixing. (Migrated from the old `docs/LESSONS.md`.)
+
+
+## L23: Backfilling old releases steals the `Latest` badge
+
+After creating releases retroactively for older tags (\`gh release create v1.38.1\`,
+\`v1.39.0\`), GitHub marks the **most recently published** release as \`Latest\`,
+not the highest semver. The repo suddenly advertised v1.38.1 as the current
+version while v1.40.2 was the real one. **Rule:** after any backfill of releases,
+re-run \`gh release edit <latest-version> --latest\` and verify with
+\`gh release list\`. This applies to any tool that has an explicit "latest"
+pointer separate from tag sort order.
