@@ -18,11 +18,21 @@ import json
 import os
 import urllib.error
 import urllib.request
+
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from src.core.types import Message
+
+# ─── URL safety: only allow http/https (blocks file://, ftp://, etc.) ───
+def _safe_urlopen(req: Any, *, timeout: float) -> Any:
+    """Open a URL request, rejecting anything but http:// or https://."""
+    import urllib.request as _urllib
+    url = req.full_url if hasattr(req, "full_url") else str(req)
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise PermissionError(f"unsafe URL scheme (only http/https allowed): {url[:60]}")
+    return _urllib.urlopen(req, timeout=timeout)
 
 __all__ = ["OllamaBackend", "OllamaError"]
 
@@ -42,10 +52,8 @@ FREE_MODELS = [
     "nemotron-3-ultra",
 ]
 
-
 class OllamaError(RuntimeError):
     """فشل الاتصال بـ Ollama Cloud."""
-
 
 class OllamaBackend:
     """LLMBackend يستخدم Ollama Cloud مع تدوير المفاتيح.
@@ -140,7 +148,7 @@ class OllamaBackend:
         )
         
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            with _safe_urlopen(req, timeout=self.timeout) as r:
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
             err_body = ""

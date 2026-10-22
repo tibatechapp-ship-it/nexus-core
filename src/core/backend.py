@@ -13,9 +13,18 @@ queues, caching, rate limiting and model fallback live *above* it, composed by
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable, Any
 
 from src.core.types import Message
+
+# ─── URL safety: only allow http/https (blocks file://, ftp://, etc.) ───
+def _safe_urlopen(req: Any, *, timeout: float) -> Any:
+    """Open a URL request, rejecting anything but http:// or https://."""
+    import urllib.request as _urllib
+    url = req.full_url if hasattr(req, "full_url") else str(req)
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise PermissionError(f"unsafe URL scheme (only http/https allowed): {url[:60]}")
+    return _urllib.urlopen(req, timeout=timeout)
 
 __all__ = ["LLMBackend", "EchoBackend", "OllamaBackend"]
 
@@ -96,7 +105,7 @@ class OllamaBackend:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with _urllib.urlopen(req, timeout=self.timeout) as resp:
+        with _safe_urlopen(req, timeout=self.timeout) as resp:
             data = _json.loads(resp.read())
         return data.get("response", "")
 
@@ -175,7 +184,7 @@ class OllamaBackend:
             method="POST",
         )
         try:
-            with _urllib.urlopen(req, timeout=self.timeout) as resp:
+            with _safe_urlopen(req, timeout=self.timeout) as resp:
                 for raw in resp:
                     line = raw.strip()
                     if not line:

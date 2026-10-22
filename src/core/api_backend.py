@@ -29,6 +29,15 @@ from typing import Any, Sequence
 
 from .types import Message
 
+# ─── URL safety: only allow http/https (blocks file://, ftp://, etc.) ───
+def _safe_urlopen(req: Any, *, timeout: float) -> Any:
+    """Open a URL request, rejecting anything but http:// or https://."""
+    url = req.full_url if hasattr(req, "full_url") else str(req)
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise PermissionError(f"unsafe URL scheme (only http/https allowed): {url[:60]}")
+    import urllib.request as _urllib
+    return _urllib.urlopen(req, timeout=timeout)
+
 __all__ = ["APIBackend"]
 
 
@@ -123,7 +132,7 @@ class APIBackend:
 
     def _post_once(self, payload: dict[str, Any]) -> str:
         req = self._make_request(payload)
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        with _safe_urlopen(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read())
         try:
             return data["choices"][0]["message"]["content"] or ""
@@ -150,7 +159,7 @@ class APIBackend:
 
         req = self._make_request(payload)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with _safe_urlopen(req, timeout=self.timeout) as resp:
                 for raw in resp:
                     line = raw.decode("utf-8", errors="replace").strip()
                     if not line or not line.startswith("data: "):

@@ -2,6 +2,27 @@
 
 All notable changes to this project. Newest first.
 
+## v1.45.1 — 2026-10-23 — URL scheme safety in HTTP backends
+
+### Security
+- **`_safe_urlopen` helper** added to `backend.py`, `api_backend.py`, and
+  `ollama_backend.py`. Every `urllib.request.urlopen()` call now passes
+  through it, rejecting anything but `http://` or `https://`.
+  - Blocks `file://`, `ftp://`, `gopher://`, and custom schemes.
+  - Closes Bandit **B310** (5 occurrences across 3 files).
+  - Prevents `NEXUS_STUDIO_API_URL=file:///etc/passwd` exfiltration.
+
+### Fixed
+- **`scripts/chess/main.py`** — removed unused `typing.Tuple` (ruff F401).
+
+### Notes
+- No behavior change for http/https URLs.
+- pip CVEs (certifi, virtualenv) are transitive dev deps — upgrade locally.
+- pytest 9.0.3 (major) deferred.
+
+**make check:** 3667 passed, 1 skipped.
+
+
 ## v1.44.0 — 2026-10-22 — APIBackend (Groq/DeepSeek/OpenRouter)
 
 ### Added
