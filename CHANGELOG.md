@@ -2,6 +2,23 @@
 
 All notable changes to this project. Newest first.
 
+## v1.45.2 — 2026-10-23 — version bookkeeping for v1.45.0/v1.45.1
+
+### Fixed
+- **`pyproject.toml` / `docs/openapi.yaml` now report `1.45.2`.** The
+  commits for v1.45.0 (Chunking) and v1.45.1 (URL scheme safety) were
+  published with tags but `pyproject.toml` remained at `1.44.0` — the
+  v1.45.0 bump was silently skipped because the assertion was placed
+  after a `replace()` that failed (L30 repeated).
+
+### Note
+Code from v1.45.0 and v1.45.1 is intact and tested:
+- v1.45.0: `POST /api/studio/plan` + `/gen_step` (Chunking)
+- v1.45.1: `_safe_urlopen` in 3 backends (B310 closed)
+
+**make check:** 3667 passed, 1 skipped.
+
+
 ## v1.45.1 — 2026-10-23 — URL scheme safety in HTTP backends
 
 ### Security
