@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-core"
-version = "1.41.11"
+version = "1.41.12"
 description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -65,7 +65,7 @@ rag = [
 ]
 # Remote embedding providers (src/memory/providers/{openai,gemini}.py use the
 # OpenAI-compatible client; Gemini is reachable through its OpenAI endpoint).
-embeddings = ["openai>=1.0"]
+embeddings = ["openai>=3.36.1"]
 dev = [
     "pytest>=7",
     "pytest-cov",

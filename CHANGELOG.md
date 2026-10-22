@@ -2,6 +2,27 @@
 
 All notable changes to this project. Newest first.
 
+## v1.41.12 — 2026-10-22 — deps: openai 1.0 → 3.36.1
+
+### Changed
+- **`openai>=3.36.1`** (was `>=1.0`) in the `embeddings` extra. The repo's
+  openai usage has always been on the v1+ client API (`OpenAI()` +
+  `client.embeddings.create` / `client.chat.completions.create` with
+  `tools`), which is unchanged across 1.x → 3.x. All five import sites
+  (`src/memory/providers/openai.py`, `gemini.py`,
+  `src/novamind/core/llm_router.py`, `src/novamind/core/providers/base_app.py`,
+  `src/agent_loop/loop.py`) are already covered by `pytest.importorskip(
+  "openai")` in tests.
+
+### Verified (local, openai 3.36.1)
+- `OpenAI()` constructor, `client.chat.completions`, `client.embeddings` —
+  all present.
+- `pytest tests/test_agent_loop.py tests/test_memory_providers.py`: 58 passed.
+
+Manually merged after Dependabot PR #42 was ignored (the major bump was
+deferred pending a migration plan; this confirms none is needed). No code
+change — pyproject only.
+
 ## v1.41.11 — 2026-10-22 — deps: SpeechRecognition 3.10 → 3.17
 
 ### Changed
