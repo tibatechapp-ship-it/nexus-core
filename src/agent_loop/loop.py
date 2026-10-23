@@ -68,7 +68,7 @@ class AgentLoop:
                 return {"ok": False, "error": "لا يوجد مزود متاح"}
 
             client = OpenAI(api_key=provider.api_key, base_url=provider.base_url)
-            model = provider.models.get("fast", "qwen/qwen3.8-27b")
+            model = provider.models.get("fast", "llama-3.1-8b-instant")
 
             response = client.chat.completions.create(  # type: ignore[call-overload]
                 model=model,

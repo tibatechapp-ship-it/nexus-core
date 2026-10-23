@@ -99,6 +99,13 @@ class MockProvider:
 
 
 class LLMRouter:
+    # -- Circuit Breaker v1.46.0 --
+    _CD_V146 = True
+    _COOLDOWN_DAILY = 86400
+    _COOLDOWN_HOURLY = 3600
+    _COOLDOWN_MINUTE = 60
+    _COOLDOWN_BRIEF = 30
+
     def __init__(self):
 
         # --- Z.ai GLM Auto-Registration ---
@@ -171,7 +178,7 @@ class LLMRouter:
                 api_key=key,
                 base_url="https://api.groq.com/openai/v1",
                 models={
-                    "fast":  "qwen/qwen3.8-27b",
+                    "fast":  "llama-3.1-8b-instant",
                     "smart": "openai/gpt-oss-120b",
                 },
                 priority=2 + idx,
@@ -237,6 +244,7 @@ class LLMRouter:
             ))
 
         self.providers.sort(key=lambda p: p.priority)
+        self._load_cooldowns()
 
         if not self.providers:
             logger.warning("No LLM providers configured — using MockProvider")
@@ -360,6 +368,8 @@ class LLMRouter:
         last_error = ""
 
         for p in candidates:
+            if not self._is_cooled_down(p.name):
+                continue
             if not p.enabled:
                 continue
 
@@ -387,6 +397,9 @@ class LLMRouter:
                 p.failures += 1
                 p.last_error = str(e)[:200]
                 last_error = p.name + ": " + str(e)[:200]
+                _status = self._extract_status(e)
+                _hdrs = self._extract_headers(e)
+                self._cooldown_by_status(p.name, status=_status, err=str(e), headers=_hdrs)
 
                 # 🆕 error_memory (v1.13.1.1)
                 if HAS_ERROR_MEMORY:
@@ -440,6 +453,109 @@ class LLMRouter:
     def _is_cooled_down(self, name: str) -> bool:
         """Check if provider is available (not in cooldown)."""
         return time.time() >= self._cooldowns.get(name, 0)
+
+    def _cooldown_path(self):
+        from pathlib import Path
+        return Path.home() / ".nexus-core" / "cooldowns.json"
+
+    def _key_hash(self, key):
+        import hashlib
+        return hashlib.sha256(str(key).encode()).hexdigest()[:12]
+
+    def _parse_duration(self, s):
+        import re
+        if not s: return None
+        s = str(s).strip().lower()
+        if s.isdigit(): return int(s)
+        m = re.match(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?", s)
+        if not m: return None
+        h, mm, ss = m.groups()
+        return (int(h or 0) * 3600) + (int(mm or 0) * 60) + int(float(ss or 0))
+
+    def _load_cooldowns(self):
+        import json
+        if not hasattr(self, "_cooldowns"):
+            self._cooldowns = {}
+        try:
+            path = self._cooldown_path()
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                now = time.time()
+                for p in self.providers:
+                    rec = data.get(p.name)
+                    if not rec or rec.get("until", 0) <= now: continue
+                    if rec.get("key_hash") and rec["key_hash"] != self._key_hash(p.api_key):
+                        logger.info("key changed, clearing cooldown for " + p.name); continue
+                    self._cooldowns[p.name] = rec["until"]
+                logger.info("loaded " + str(len(self._cooldowns)) + " persisted cooldowns")
+        except Exception as e:
+            logger.warning("cooldown load failed: " + str(e))
+
+    def _save_cooldowns(self):
+        import json
+        if not hasattr(self, "_cooldowns"):
+            self._cooldowns = {}
+        try:
+            path = self._cooldown_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            now = time.time()
+            out = {}
+            for p in self.providers:
+                if p.name in self._cooldowns and self._cooldowns[p.name] > now:
+                    out[p.name] = {"until": self._cooldowns[p.name], "key_hash": self._key_hash(p.api_key)}
+            path.write_text(json.dumps(out), encoding="utf-8")
+        except Exception as e:
+            logger.warning("cooldown save failed: " + str(e))
+
+    def _extract_status(self, exc):
+        import re
+        for attr in ("status_code", "http_status", "code"):
+            v = getattr(exc, attr, None)
+            if isinstance(v, int): return v
+        resp = getattr(exc, "response", None)
+        if resp is not None:
+            v = getattr(resp, "status_code", None)
+            if isinstance(v, int): return v
+        m = re.search(r"\b(4\d{2}|5\d{2})\b", str(exc))
+        return int(m.group(1)) if m else None
+
+    def _extract_headers(self, exc):
+        resp = getattr(exc, "response", None)
+        if resp is None: return {}
+        h = getattr(resp, "headers", None)
+        try: return dict(h) if h else {}
+        except Exception: return {}
+
+    def _classify_cooldown(self, status, err, headers):
+        err_l = (err or "").lower()
+        if status == 401 or "invalid_api_key" in err_l or "invalid api key" in err_l:
+            return self._COOLDOWN_DAILY, "invalid_key"
+        if status == 404 or "not found" in err_l or "no longer available" in err_l:
+            return self._COOLDOWN_DAILY, "model_retired"
+        if status == 429:
+            daily = ("daily","per day","rpd","day limit","quota exhausted","quota exceeded","out of credits","billing")
+            if any(w in err_l for w in daily):
+                return self._COOLDOWN_DAILY, "daily_quota"
+            for h in ("retry-after","x-ratelimit-reset-requests","x-ratelimit-reset-tokens"):
+                v = (headers or {}).get(h)
+                if v:
+                    secs = self._parse_duration(v)
+                    if secs: return max(self._COOLDOWN_MINUTE, secs), "rate_limit_reset"
+            return self._COOLDOWN_MINUTE, "rate_limit"
+        if status and 500 <= status < 600:
+            return 120, "server_error"
+        if any(w in err_l for w in ("timeout","timed out","connection")):
+            return self._COOLDOWN_BRIEF, "network"
+        return self._COOLDOWN_MINUTE, "unknown"
+
+    def _cooldown_by_status(self, name, status=None, err="", headers=None):
+        secs, reason = self._classify_cooldown(status, err, headers or {})
+        self._cooldowns[name] = time.time() + secs
+        self._save_cooldowns()
+        label = (str(secs // 3600) + "h") if secs >= 3600 else (str(secs) + "s")
+        logger.warning("COOLED " + name + " for " + label + " (reason=" + reason + ", status=" + str(status) + ")")
+        return secs
+
 
     def generate_for_task(self, task_type: str, prompt: str, system: str = "",
                           temperature: float = 0.2, max_tokens=None) -> Dict:

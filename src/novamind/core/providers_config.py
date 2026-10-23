@@ -15,9 +15,9 @@ PROVIDER_CONFIGS = {
         "provider_type": "gemini",
         "priority_base": 10,
         "models": {
-            "fast":  "gemini-2.0-flash-exp",
-            "smart": "gemini-2.0-flash-thinking-exp-1219",
-            "mini":  "gemini-1.5-flash-8b",
+            "fast":  "gemini-3.8-flash",
+            "smart": "gemini-3.8-flash",
+            "mini":  "gemini-3.5-flash-lite",
         },
     },
 
