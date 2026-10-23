@@ -8,10 +8,11 @@
  *  - Failed POSTs are NOT queued here — the page enqueues them (IndexedDB) and
  *    replays on 'online', which keeps streaming semantics intact.
  */
-const CACHE = "nexus-shell-v1";
+const CACHE = "nexus-shell-v2";
 const SHELL = [
   "/", "/manifest.json", "/offline.html",
-  "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png"
+  "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png",
+  "/vendor/highlight.min.js", "/vendor/github-dark.min.css"
 ];
 
 self.addEventListener("install", (event) => {
