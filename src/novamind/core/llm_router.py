@@ -199,7 +199,7 @@ class LLMRouter:
         logger.info("ZAI/GLM loaded")
 
         # 4. OPENROUTER — 5 مفاتيح
-        for i in range(1, 6):
+        for i in range(1, 11):
             or_key = os.environ.get(f"OPENROUTER_API_KEY_{i}", "").strip()
             if or_key and len(or_key) > 20:
                 self.providers.append(ProviderConfig(
@@ -242,6 +242,21 @@ class LLMRouter:
                 models={"fast": "llama3.2", "smart": "llama3.2"},
                 priority=90,
             ))
+
+        # 6b. OLLAMA CLOUD — 10 مفاتيح مع تدوير تلقائي
+        _oc_prio = 1
+        for _i in range(1, 11):
+            _k = os.environ.get(f"OLLAMA_API_KEY_{_i}", "").strip()
+            if _k and len(_k) > 20:
+                self.providers.append(ProviderConfig(
+                    name=f"ollama_cloud_{_i}",
+                    api_key=_k,
+                    base_url="https://ollama.com/v1",
+                    models={"fast": "gemma4:31b-cloud", "smart": "gemma4:31b-cloud"},
+                    priority=_oc_prio,
+                ))
+                logger.info(f"Ollama Cloud key #{_i} loaded (priority {_oc_prio})")
+                _oc_prio += 1
 
         self.providers.sort(key=lambda p: p.priority)
         self._load_cooldowns()
