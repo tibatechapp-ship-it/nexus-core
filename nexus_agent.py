@@ -965,6 +965,13 @@ try:
 except Exception as _exec_e:
     print(f'⚠️ exec_sandbox لم يُركّب: {_exec_e}')
 
+# ✅ vendor mount — قبل app.mount("/") وإلا لن يعمل
+_vendor_dir = BASE_DIR / "web" / "vendor"
+if _vendor_dir.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/vendor", StaticFiles(directory=str(_vendor_dir)), name="vendor")
+    print(f"✅ vendor مركّب: {_vendor_dir}")
+
 if ENGINE_OK:
     app.mount("/", _engine.app)
 
