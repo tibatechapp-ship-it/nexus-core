@@ -88,10 +88,12 @@
           <option value="smart">ذكي</option>
         </select>
         <button id="btnGen">توليد ⚡</button>
+        <button id="btnProject" style="background:#7c3aed;color:#fff">🚀 مشروع</button>
       </div>
     </div>
 
     <div id="testBar"></div>
+    <div id="projectPlan" style="display:none;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;margin:6px 0;font-size:12px"></div>
 
     <nav class="tabs">
       <button class="tab active" data-tab="code">✎ الكود</button>
@@ -399,6 +401,125 @@ $("btnToken").addEventListener("click", () => {
   log("حُفظ التوكين في الجلسة", false, true);
   checkHealth();
 });
+
+// ═══ Project mode: plan + generate step by step ═══
+let projectSteps = [];
+let projectTask = "";
+let projectPrevious = {};
+
+$("btnProject").addEventListener("click", planProject);
+
+async function planProject() {
+  const task = ui.prompt.value.trim();
+  if (!task) return log("اكتب وصف المشروع أولًا", true);
+  if (busy) return;
+  busy = true; $("btnProject").disabled = true; $("btnProject").textContent = "جارٍ…";
+  log("🚀 تخطيط المشروع…", false, true);
+  try {
+    const res = await fetch("/api/studio/plan", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({task}),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) {
+      log("فشل التخطيط: " + (d.error || res.status), true);
+      return;
+    }
+    projectTask = d.task;
+    projectSteps = d.steps || [];
+    projectPrevious = {};
+    renderPlan();
+    log("خطة: " + projectSteps.length + " ملف", false, true);
+  } catch (e) {
+    log("خطأ تخطيط: " + e.message, true);
+  } finally {
+    busy = false; $("btnProject").disabled = false; $("btnProject").textContent = "🚀 مشروع";
+  }
+}
+
+function renderPlan() {
+  const box = $("projectPlan");
+  box.style.display = "block";
+  box.innerHTML = "";
+  const title = document.createElement("div");
+  title.style.cssText = "font-weight:bold;margin-bottom:6px;color:#93c5fd";
+  title.textContent = "📋 الخطة (" + projectSteps.length + " ملف):";
+  box.appendChild(title);
+  projectSteps.forEach((s, i) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #1e293b";
+    const idx = document.createElement("span");
+    idx.style.cssText = "color:#64748b;width:18px";
+    idx.textContent = (i + 1) + ".";
+    const name = document.createElement("span");
+    name.style.cssText = "color:#e2e8f0;font-weight:bold;min-width:140px";
+    name.textContent = s.file;
+    const purp = document.createElement("span");
+    purp.style.cssText = "color:#94a3b8;flex:1";
+    purp.textContent = s.purpose;
+    const status = document.createElement("span");
+    status.id = "stepStatus" + i;
+    status.style.cssText = "color:#64748b;min-width:60px;text-align:right";
+    status.textContent = "⏳";
+    row.appendChild(idx);
+    row.appendChild(name);
+    row.appendChild(purp);
+    row.appendChild(status);
+    box.appendChild(row);
+  });
+  const btn = document.createElement("button");
+  btn.textContent = "▶ توليد كل الملفات";
+  btn.style.cssText = "margin-top:8px;padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer";
+  btn.addEventListener("click", generateAllSteps);
+  box.appendChild(btn);
+}
+
+async function generateAllSteps() {
+  if (busy) return;
+  busy = true;
+  for (let i = 0; i < projectSteps.length; i++) {
+    const s = projectSteps[i];
+    const st = $("stepStatus" + i);
+    st.textContent = "⏳ جارٍ…";
+    st.style.color = "#fbbf24";
+    log("▸ توليد " + s.file + "…", false, true);
+    try {
+      const res = await fetch("/api/studio/gen_step", {
+        method: "POST", headers: headers(),
+        body: JSON.stringify({
+          task: projectTask,
+          project_dir: "scripts/project",
+          current: s,
+          previous: projectPrevious,
+          steps: projectSteps,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok) {
+        st.textContent = "❌";
+        st.style.color = "#fca5a5";
+        log("فشل " + s.file + ": " + (d.error || res.status), true);
+        break;
+      }
+      projectPrevious[d.file] = d.code;
+      st.textContent = "✅";
+      st.style.color = "#6ee7b7";
+      log("✓ " + d.file + " (" + d.chars + " حرف)", false, true);
+      // show last generated file in editor
+      ui.editor.value = d.code;
+      ui.savePath.value = d.saved_path;
+      renderPretty();
+    } catch (e) {
+      st.textContent = "❌";
+      st.style.color = "#fca5a5";
+      log("خطأ " + s.file + ": " + e.message, true);
+      break;
+    }
+  }
+  busy = false;
+  log("اكتمل توليد المشروع", false, true);
+  loadFiles();
+}
 
 checkHealth();
 </script>

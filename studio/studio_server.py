@@ -195,8 +195,15 @@ def safe_path(rel: str) -> Path:
 _FENCE = "`" * 3
 
 def extract_code(text: str) -> str:
+    # محاولة 1: مع إغلاق كامل
     m = re.search(_FENCE + r"(?:python|py)?[ \t]*\r?\n(.*?)" + _FENCE, text, re.S)
-    return m.group(1).strip() if m else ""
+    if m:
+        return m.group(1).strip()
+    # محاولة 2: بدون إغلاق (رد مقطوع)
+    m = re.search(_FENCE + r"(?:python|py)?[ \t]*\r?\n(.*)", text, re.S)
+    if m:
+        return m.group(1).strip()
+    return ""
 
 
 @app.get("/")
@@ -370,6 +377,235 @@ async def run_file(request: Request) -> JSONResponse:
             "duration_ms": round((time.time() - start) * 1000),
             "truncated": False,
         })
+
+
+@app.post("/api/studio/plan")
+async def plan_project(request: Request) -> JSONResponse:
+    """قسّم المهمة إلى 3-6 خطوات (ملف Python واحد لكل خطوة).
+
+    Returns {"ok": true, "task": ..., "steps": [{"file", "purpose"}], ...}.
+    """
+    _require(request)
+    body = await request.json()
+    task = str(body.get("task", "")).strip()[:MAX_PROMPT]
+    if not task:
+        raise HTTPException(status_code=400, detail="اكتب وصف المشروع أولًا")
+    if BACKEND is None and ROUTER is None:
+        raise HTTPException(status_code=503, detail="لا backend متاح")
+
+    planner_system = (
+        "أنت مهندس معماري. قسّم المهمة إلى 3-6 ملفات Python مستقلة.\n"
+        "أجب بصيغة صارمة (سطر لكل ملف):\n"
+        "filename.py — الغرض المختصر\n"
+        "لا مقدمات، لا شرح، لا تنسيق markdown، لا كود."
+    )
+    plan_messages = [
+        Message("system", planner_system),
+        Message("user", task),
+    ]
+
+    try:
+        if BACKEND is not None:
+            _t0 = time.time()
+            _text = await run_in_threadpool(BACKEND.generate, plan_messages)
+            _elapsed = round(time.time() - _t0, 2)
+            _backend_name = "api" if isinstance(BACKEND, APIBackend) else "ollama"
+            result = {
+                "ok": True, "text": _text,
+                "provider": _backend_name, "model": BACKEND.model,
+                "elapsed": _elapsed,
+            }
+        else:
+            result = await run_in_threadpool(
+                ROUTER.generate, prompt=task, system=planner_system,
+                role="fast", temperature=0.2, allow_fallback=True,
+            )
+
+        if not result.get("ok"):
+            return JSONResponse(
+                {"ok": False, "error": result.get("error", "planner failed")},
+                status_code=500,
+            )
+
+        import re as _re
+        raw = result.get("text", "")
+        steps: list[dict[str, str]] = []
+        for line in raw.splitlines():
+            m = _re.match(
+                r"^\s*(?:\d+[.)]\s*)?([a-zA-Z0-9_./-]+\.py)\s*[—:\-]+\s*(.+)$",
+                line.strip(),
+            )
+            if m:
+                steps.append({
+                    "file": m.group(1).strip(),
+                    "purpose": m.group(2).strip(),
+                })
+
+        if not steps:
+            return JSONResponse(
+                {"ok": False, "error": "لم يستطع النموذج إنتاج خطة واضحة",
+                 "raw": raw[:800]},
+                status_code=422,
+            )
+        if len(steps) > 8:
+            steps = steps[:8]
+
+        return JSONResponse({
+            "ok": True, "task": task, "steps": steps,
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "elapsed": result.get("elapsed"),
+        })
+    except Exception as e:
+        logger.exception("plan failed")
+        return JSONResponse(
+            {"ok": False, "error": _sanitize(str(e))[:300]},
+            status_code=500,
+        )
+
+
+@app.post("/api/studio/gen_step")
+async def gen_step(request: Request) -> JSONResponse:
+    """يولّد ملفاً واحداً بناءً على الخطة والملفات السابقة، ثم يحفظه."""
+    _require(request)
+    body = await request.json()
+
+    task = str(body.get("task", "")).strip()[:MAX_PROMPT]
+    project_dir = str(body.get("project_dir", "scripts/project")).strip()
+    current = body.get("current") or {}
+    previous = body.get("previous") or {}   # {file: code}
+    steps = body.get("steps") or []         # [{file, purpose}]
+
+    cur_file = str(current.get("file", "")).strip()
+    cur_purpose = str(current.get("purpose", "")).strip()
+    if not cur_file or not cur_purpose:
+        raise HTTPException(status_code=400, detail="current.file و current.purpose مطلوبان")
+    if not cur_file.endswith(".py"):
+        raise HTTPException(status_code=400, detail="الملف يجب أن يكون .py")
+    if BACKEND is None and ROUTER is None:
+        raise HTTPException(status_code=503, detail="لا backend متاح")
+
+    # ═══ بناء السياق (sigs فقط للملفات السابقة، لا كل الكود) ═══
+    prev_context_parts: list[str] = []
+    for prev_file, prev_code in previous.items():
+        # مقتطف: أول 60 سطر أو 3000 حرف كحد أقصى
+        snippet = (prev_code or "")[:3000]
+        prev_context_parts.append(f"# {prev_file}\n{snippet}")
+
+    others = [s for s in steps if s.get("file") != cur_file]
+    others_desc = "\n".join(f"- {s['file']}: {s['purpose']}" for s in others)
+
+    system_prompt = (
+        "أنت مهندس Python. اكتب ملفاً واحداً فقط بجودة عالية.\n"
+        "القواعد:\n"
+        "1. الكود كامل وقابل للتشغيل (imports + def/class + tests في __main__).\n"
+        "2. متوافق مع بقية الملفات (نفس أسماء الوظائف/الفئات إن وُجدت).\n"
+        "3. أجب داخل ```python واحد فقط، بلا شرح خارجي.\n"
+        "4. لا تعيد كتابة الملفات السابقة — فقط هذا الملف."
+    )
+    user_prompt = (
+        f"# المشروع الكلي: {task}\n\n"
+        f"# الملفات الأخرى (للسياق فقط، لا تكتبها):\n{others_desc or '(لا شيء)'}\n\n"
+        f"# الملف المطلوب: {cur_file}\n"
+        f"# الغرض: {cur_purpose}\n\n"
+    )
+    if prev_context_parts:
+        user_prompt += (
+            "# أكواد سابقة (مقتطفات، لا تُعد كتابتها):\n"
+            + "\n\n".join(prev_context_parts)
+            + "\n\n"
+        )
+    user_prompt += "اكتب الملف الآن."
+
+    messages = [Message("system", system_prompt), Message("user", user_prompt)]
+
+    try:
+        _t0 = time.time()
+        if BACKEND is not None:
+            _text = await run_in_threadpool(
+                BACKEND.generate, messages, max_tokens=4096,
+            )
+            _backend_name = "api" if isinstance(BACKEND, APIBackend) else "ollama"
+            result = {
+                "ok": True, "text": _text,
+                "provider": _backend_name, "model": BACKEND.model,
+            }
+        else:
+            result = await run_in_threadpool(
+                ROUTER.generate, prompt=user_prompt, system=system_prompt,
+                role="fast", temperature=0.2, allow_fallback=True,
+            )
+        _elapsed = round(time.time() - _t0, 2)
+
+        if not result.get("ok"):
+            return JSONResponse(
+                {"ok": False, "error": result.get("error", "generate failed")},
+                status_code=500,
+            )
+
+        raw = result.get("text", "")
+        code = extract_code(raw)
+        if not code:
+            return JSONResponse(
+                {"ok": False, "error": "لم يُنتج النموذج كتلة python", "raw": raw[:500]},
+                status_code=422,
+            )
+
+        # ═══ CodeGuardian: فحص + auto-fix imports ═══
+        try:
+            from engineering.code_guardian import CodeGuardian
+            report = CodeGuardian().analyze(code)
+            if report.repaired_code:
+                code = report.repaired_code
+        except Exception:
+            report = None
+
+        # ═══ حفظ ذرّي ═══
+        rel = f"{project_dir}/{cur_file}"
+        target = safe_path(rel)
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        # compile check
+        try:
+            compile(code, str(target), "exec")
+        except SyntaxError as e:
+            return JSONResponse({
+                "ok": False,
+                "error": f"خطأ صياغة سطر {e.lineno}: {e.msg}",
+                "file": cur_file, "code": code,
+            }, status_code=422)
+
+        fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=".step-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(code)
+            os.replace(tmp, target)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+
+        return JSONResponse({
+            "ok": True,
+            "file": cur_file,
+            "saved_path": rel,
+            "code": code,
+            "chars": len(code),
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "elapsed": _elapsed,
+            "guardian": report.to_dict() if report else None,
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("gen_step failed")
+        return JSONResponse(
+            {"ok": False, "error": _sanitize(str(e))[:300]},
+            status_code=500,
+        )
 
 
 @app.post("/api/studio/generate")
