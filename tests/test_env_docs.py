@@ -36,6 +36,9 @@ _ALLOWED_UNDOCUMENTED = frozenset(
         "ZYVO_TELEGRAM_CHAT_ID",
         "NOVAMIND_PROJECT_ROOT",
         "NOVAMIND_SECURITY",
+        # legacy/telegram-bot/unified_bot.py (archived from src/)
+        "NEXUS_BOT_LOG",
+        "NEXUS_SUPERVISOR_LOG",
     }
 )
 
