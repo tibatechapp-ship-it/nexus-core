@@ -972,6 +972,15 @@ if _vendor_dir.exists():
     app.mount("/vendor", StaticFiles(directory=str(_vendor_dir)), name="vendor")
     print(f"✅ vendor مركّب: {_vendor_dir}")
 
+# v1.47.0 — static assets for split UI
+from pathlib import Path as _P_split
+from fastapi.staticfiles import StaticFiles as _SF_split
+_web_split = _P_split(__file__).parent / "web"
+if (_web_split / "css").exists():
+    app.mount("/css", _SF_split(directory=str(_web_split / "css")), name="css")
+if (_web_split / "js").exists():
+    app.mount("/js", _SF_split(directory=str(_web_split / "js")), name="js")
+
 if ENGINE_OK:
     app.mount("/", _engine.app)
 
