@@ -39,6 +39,10 @@ _ALLOWED_UNDOCUMENTED = frozenset(
         # legacy/telegram-bot/unified_bot.py (archived from src/)
         "NEXUS_BOT_LOG",
         "NEXUS_SUPERVISOR_LOG",
+        # optional providers (commented out in .env.example)
+        "CEREBRAS_API_KEY",
+        "NVIDIA_API_KEY",
+        "SAMBANOVA_API_KEY",
     }
 )
 

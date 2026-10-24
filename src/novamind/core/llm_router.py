@@ -258,6 +258,52 @@ class LLMRouter:
                 logger.info(f"Ollama Cloud key #{_i} loaded (priority {_oc_prio})")
                 _oc_prio += 1
 
+
+        # 7. CEREBRAS — اختياري (سريع جدًا، 30 RPM مجانًا)
+        #    احصل على مفتاح: https://cloud.cerebras.ai/
+        _cb_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
+        if _cb_key and len(_cb_key) > 20:
+            self.providers.append(ProviderConfig(
+                name="cerebras_1",
+                api_key=_cb_key,
+                base_url="https://api.cerebras.ai/v1",
+                models={"fast": "llama3.1-8b", "smart": "llama3.3-70b"},
+                priority=15,
+            ))
+            logger.info("Cerebras loaded")
+
+        # 8. NVIDIA NIM — اختياري (44+ موديل مجاني)
+        #    احصل على مفتاح: https://build.nvidia.com/
+        _nv_key = os.environ.get("NVIDIA_API_KEY", "").strip()
+        if _nv_key and len(_nv_key) > 20:
+            self.providers.append(ProviderConfig(
+                name="nvidia_1",
+                api_key=_nv_key,
+                base_url="https://integrate.api.nvidia.com/v1",
+                models={
+                    "fast":  "meta/llama-3.1-8b-instruct",
+                    "smart": "meta/llama-3.3-70b-instruct",
+                },
+                priority=20,
+            ))
+            logger.info("NVIDIA NIM loaded")
+
+        # 9. SAMBANOVA — اختياري (Llama 3.3 70B مجانًا)
+        #    احصل على مفتاح: https://cloud.sambanova.ai/
+        _sn_key = os.environ.get("SAMBANOVA_API_KEY", "").strip()
+        if _sn_key and len(_sn_key) > 20:
+            self.providers.append(ProviderConfig(
+                name="sambanova_1",
+                api_key=_sn_key,
+                base_url="https://api.sambanova.ai/v1",
+                models={
+                    "fast":  "Meta-Llama-3.1-8B-Instruct",
+                    "smart": "Meta-Llama-3.3-70B-Instruct",
+                },
+                priority=25,
+            ))
+            logger.info("SambaNova loaded")
+
         self.providers.sort(key=lambda p: p.priority)
         self._load_cooldowns()
 
