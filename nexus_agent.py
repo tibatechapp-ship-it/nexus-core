@@ -47,6 +47,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent
 for _p in (str(BASE_DIR), str(BASE_DIR / "src")):
@@ -973,13 +974,11 @@ if _vendor_dir.exists():
     print(f"✅ vendor مركّب: {_vendor_dir}")
 
 # v1.47.0 — static assets for split UI
-from pathlib import Path as _P_split
-from fastapi.staticfiles import StaticFiles as _SF_split
-_web_split = _P_split(__file__).parent / "web"
-if (_web_split / "css").exists():
-    app.mount("/css", _SF_split(directory=str(_web_split / "css")), name="css")
-if (_web_split / "js").exists():
-    app.mount("/js", _SF_split(directory=str(_web_split / "js")), name="js")
+_web_static = Path(__file__).parent / "web"
+if (_web_static / "css").exists():
+    app.mount("/css", StaticFiles(directory=str(_web_static / "css")), name="css")
+if (_web_static / "js").exists():
+    app.mount("/js", StaticFiles(directory=str(_web_static / "js")), name="js")
 
 if ENGINE_OK:
     app.mount("/", _engine.app)

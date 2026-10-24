@@ -10,7 +10,6 @@ Real API contract:
     data: [DONE]
 """
 import json
-import os
 from pathlib import Path
 
 import httpx
