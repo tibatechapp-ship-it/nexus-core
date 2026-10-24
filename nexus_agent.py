@@ -32,6 +32,7 @@ import asyncio
 import fcntl
 import importlib.util
 import json
+import logging
 import math
 import os
 import sys
@@ -181,6 +182,17 @@ except Exception as _e:  # pragma: no cover - defensive
     GUARD_ERR = f"{type(_e).__name__}: {_e}"
 
 
+_log_guard = logging.getLogger(__name__)
+
+# Optional: NEXUS_LOG_LEVEL=DEBUG enables verbose guard logging
+_log_level = os.environ.get("NEXUS_LOG_LEVEL", "").upper()
+if _log_level in ("DEBUG", "INFO", "WARNING", "ERROR"):
+    logging.basicConfig(
+        level=getattr(logging, _log_level),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+
 if GUARD is not None:
     @app.middleware("http")
     async def _access_guard(request: Request,
@@ -189,6 +201,10 @@ if GUARD is not None:
         client = request.client.host if request.client else None
         decision = GUARD.check(request.method, request.url.path,
                                request.headers, client)
+        _log_guard.debug(
+            "guard: client=%r allowed=%s status=%s error=%s",
+            client, decision.allowed, decision.status, decision.error,
+        )
         if decision.allowed:
             response = await call_next(request)
         else:
