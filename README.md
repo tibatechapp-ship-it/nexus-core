@@ -234,6 +234,34 @@ curl -X POST http://127.0.0.1:8000/api/agent/start \
   -d '{"goal": "write a fibonacci function with tests", "max_iterations": 5}'
 ```
 
+## Circuit Breaker + Multi-Key (v1.46.0)
+
+**المشكلة:** فشل مزود LLM كان يسبب 30-40s انتظار.
+
+**الحل:** Fail-fast + 24h cooldowns + persistence.
+
+| المزود | العدد | الموديل |
+|--------|-------|---------|
+| Ollama Cloud | 7 | gemma4:31b-cloud |
+| OpenRouter | 10 | nemotron-3.5-lightning:free |
+
+**النتيجة:** 2.3s متوسط.
+
+## Split UI (v1.47.0)
+
+- web/unified_ui.html — 223 سطر (هيكل)
+- web/css/base.css — 20KB
+- web/js/app.js — 61KB
+
+## E2E Tests (v1.48.0)
+
+tests/test_e2e_chat.py — 4 اختبارات (httpx):
+- test_chat_arabic_response
+- test_chat_streaming_events
+- test_auth_required
+- test_provider_fallback
+
+---
 ## Verify before shipping (must all pass)
 
 ```bash
