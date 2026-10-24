@@ -2,6 +2,37 @@
 
 All notable changes to this project. Newest first.
 
+## v1.46.0 — 2026-10-24 — Circuit Breaker + Multi-Key + Split UI + E2E
+
+### LLM Providers
+- Circuit Breaker with 24h cooldowns + persistence (~/.nexus-core/cooldowns.json)
+- 17 keys: 7 Ollama Cloud (gemma4:31b-cloud) + 10 OpenRouter (nemotron-3.5-lightning)
+- Auto-failover: < 0.1s on provider failure (was 30s)
+- Response time: 2.3s average Arabic
+
+### UI
+- Split unified_ui.html: 1616 to 223 lines
+- External web/css/base.css (20KB) + web/js/app.js (61KB)
+- Auth shim restored to head (security fix)
+- StaticFiles mounts for /css and /js
+
+### Tests
+- 4 E2E tests (httpx, works on Termux)
+- Full suite: 3827 passed, 0 failed (100%)
+- Ruff: all checks pass
+
+### Docs
+- README: Circuit Breaker + Split UI + E2E sections
+- docs/PROVIDERS.md: complete provider guide
+
+### Fixes
+- Ruff E402: StaticFiles import moved to top
+- Ruff F401: unused import removed
+- 16 test failures fixed (academy + auth shim)
+- Version aligned: pyproject = src = openapi = tag = 1.46.0
+
+---
+
 ## v1.45.2 — 2026-10-23 — version bookkeeping for v1.45.0/v1.45.1
 
 ### Fixed
