@@ -91,7 +91,8 @@ class SecureExecutor:
             if self.breaker:
                 try:
                     self.breaker.record_failure()
-                except: pass
+                except Exception as e:
+                    log.debug(f"non-fatal cleanup: {e}")
             log.debug(f"Execution error in {self.name}: {e}")
             return {"ok": False, "error": type(e).__name__, "message": str(e)}
 
@@ -99,8 +100,10 @@ class SecureExecutor:
         out = {"name": self.name}
         if self.breaker:
             try: out["circuit_breaker"] = self.breaker.stats()
-            except: pass
+            except Exception as e:
+                log.debug(f"non-fatal cleanup: {e}")
         if self.limiter:
             try: out["rate_limiter"] = self.limiter.stats()
-            except: pass
+            except Exception as e:
+                log.debug(f"non-fatal cleanup: {e}")
         return out
