@@ -17,6 +17,7 @@ import sys
 import json
 import time
 import asyncio
+import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -24,6 +25,7 @@ from typing import List, Dict, Optional
 # Setup
 # ═══════════════════════════════════════════════════════════
 ROOT = Path(__file__).parent.resolve()
+logger = logging.getLogger(__name__)
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -1041,6 +1043,7 @@ try:
 except Exception as _training_exc:  # pragma: no cover - never block the app
     TRAINING_OK = False
     TRAINING_ERR = str(_training_exc)
+    logger.exception("training routes unavailable")
     print(f"⚠️ training routes unavailable: {_training_exc}")
 
 
@@ -1058,6 +1061,7 @@ try:
 except Exception as _knowledge_exc:  # pragma: no cover - never block the app
     KNOWLEDGE_OK = False
     KNOWLEDGE_ERR = str(_knowledge_exc)
+    logger.exception("knowledge routes unavailable")
     print(f"⚠️ knowledge routes unavailable: {_knowledge_exc}")
 
 
@@ -1075,6 +1079,7 @@ try:
 except Exception as _skills_exc:  # pragma: no cover - never block the app
     SKILLS_OK = False
     SKILLS_ERR = str(_skills_exc)
+    logger.exception("skills routes unavailable")
     print(f"⚠️ skills routes unavailable: {_skills_exc}")
 
 
@@ -1122,6 +1127,7 @@ try:
 except Exception as _verify_exc:  # pragma: no cover - never block the app
     VERIFY_OK = False
     VERIFY_ERR = str(_verify_exc)
+    logger.exception("verify routes unavailable")
     print(f"⚠️ verify routes unavailable: {_verify_exc}")
 
 
@@ -1139,4 +1145,5 @@ try:
 except Exception as _maintenance_exc:  # pragma: no cover - never block the app
     MAINTENANCE_OK = False
     MAINTENANCE_ERR = str(_maintenance_exc)
+    logger.exception("maintenance routes unavailable")
     print(f"⚠️ maintenance routes unavailable: {_maintenance_exc}")
