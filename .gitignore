@@ -96,3 +96,4 @@ data/
 *.workbench-backup
 .env.snapshot
 .env.bak*
+scripts/chess/
