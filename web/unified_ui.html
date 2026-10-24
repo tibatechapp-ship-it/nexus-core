@@ -15,6 +15,44 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310a37f'/><text x='50' y='70' font-size='62' text-anchor='middle' fill='white' font-family='sans-serif'>N</text></svg>">
 <link rel="stylesheet" href="/vendor/github-dark.min.css">
 <link rel="stylesheet" href="/css/base.css">
+<script>
+(function(){
+  try{
+    var K="nexus_auth_token",tok=localStorage.getItem(K)||"";
+    try{
+      var u=new URL(location.href),q=u.searchParams.get("token");
+      if(q){tok=q;localStorage.setItem(K,q);u.searchParams.delete("token");
+        history.replaceState(null,"",u.pathname+(u.search||"")+u.hash);}
+    }catch(e2){}
+    if(!tok)return;
+    var W=/^(POST|PUT|PATCH|DELETE)$/i,of=window.fetch;
+    window.fetch=function(input,init){
+      try{
+        var rq=(typeof Request!=="undefined"&&input instanceof Request)?input:null;
+        var m=(init&&init.method)||(rq?rq.method:"GET");
+        if(W.test(String(m))){
+          if(rq){
+            var h1=new Headers(rq.headers);
+            if(!h1.has("X-Auth-Token"))h1.set("X-Auth-Token",tok);
+            input=new Request(rq,{headers:h1});
+          }else{
+            var h2=new Headers((init&&init.headers)||undefined);
+            if(!h2.has("X-Auth-Token"))h2.set("X-Auth-Token",tok);
+            init=Object.assign({},init,{headers:h2});
+          }
+        }
+      }catch(e3){}
+      return of.call(window,input,init);
+    };
+    var oo=XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open=function(m){
+      if(W.test(String(m))){try{this.setRequestHeader("X-Auth-Token",tok);}catch(e4){}}
+      return oo.apply(this,arguments);
+    };
+    window.__nexusAuth=true;
+  }catch(e){}
+})();
+</script>
 </head>
 <body>
 <div class="app" id="app">

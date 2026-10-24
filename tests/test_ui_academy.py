@@ -20,12 +20,18 @@ from pathlib import Path
 import pytest
 
 UI = Path(__file__).resolve().parents[1] / "web" / "unified_ui.html"
+JS = Path(__file__).resolve().parents[1] / "web" / "js" / "app.js"
+
+
+def _combined() -> str:
+    """HTML + JS (post Phase 2.1 split)."""
+    return UI.read_text(encoding="utf-8") + "\n" + JS.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
 def html() -> str:
     """The whole UI document as text."""
-    return UI.read_text(encoding="utf-8")
+    return _combined()
 
 
 def _block(html: str, lang: str) -> str:
@@ -143,8 +149,8 @@ def test_academy_js_parses_as_javascript(html: str, tmp_path: Path) -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
-    script = html[html.index("<script>\n\"use strict\"") + 8:]
-    script = script[: script.rindex("</script>")]
+    # Phase 2.1: inline JS moved to external app.js — read it directly.
+    script = JS.read_text(encoding="utf-8")
     target = tmp_path / "ui.js"
     target.write_text(script, encoding="utf-8")
     proc = subprocess.run(
