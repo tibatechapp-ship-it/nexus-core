@@ -154,7 +154,7 @@ select = ["E4", "E7", "E9", "F"]
 
 # ─── Type checking (mypy) ───────────────────────────────────────────────────
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 # Optional runtime imports (gTTS, speech_recognition, fastapi...) are imported
 # lazily and may be absent — don't fail the build for them.
 ignore_missing_imports = true
