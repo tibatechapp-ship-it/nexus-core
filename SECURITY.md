@@ -39,3 +39,7 @@ surface must be declared in `pyproject.toml`; the adversarial vector
 
 Never commit credentials. `.env` and `*.env` files are git-ignored and the CI
 `secret-scan` job rejects any tracked secrets file or hardcoded key pattern.
+
+## Known/Accepted Risks
+
+- **nltk 3.10.3** (transitive dependency, not directly used in codebase): PYSEC-2026-3740. No patched version available for download on this platform (network timeout). nltk is not imported anywhere in `src/` or `tests/`. Risk: low (unused transitive dependency). Action: monitor for patched release; remove if no longer needed.

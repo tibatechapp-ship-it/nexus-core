@@ -13,7 +13,7 @@
 #   pip-compile --extra dev --extra voice --output-file requirements.txt pyproject.toml
 
 # ── dev  (tests + TUI snapshots) ───────────────────────────────────────────
-pytest>=7
+pytest>=8.4.3
 pytest-cov
 pytest-textual-snapshot
 textual>=0.80
