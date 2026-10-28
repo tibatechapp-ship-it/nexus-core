@@ -227,3 +227,34 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   contract has lowercase English keys and never had a missing `high_pct`.
   *Never diagnose API behaviour from a browser screenshot; read the contract
   with `curl`.*
+
+## 2026-10-29 — P1 deploy layer (branch `feat/p1-deploy`, NOT pushed)
+
+- Deploy artifacts: `Dockerfile` (multi-stage, uid 10001, HEALTHCHECK
+  /api/health, CMD `uvicorn main:app`), `.dockerignore` (`.env` excluded),
+  `requirements-docker.txt` (runtime set — the repo installs flat, never `-e .`),
+  `docker-compose.yml` (app + postgres:17-alpine + redis:7-alpine + `backup`
+  behind `profiles:["backup"]`; app `read_only`, `cap_drop: ALL`, tmpfs /tmp,
+  `depends_on: service_healthy`), `scripts/backup_db.sh` + `.cron`,
+  `.github/workflows/deploy.yml` (hadolint → compose config → build → boot →
+  /api/ready in DRIVER mode → postgres-restart probe → verified backup dump).
+- `src/readiness.py` (NEW, stdlib-only): `/api/ready` checks. TCP connect first,
+  then psycopg `SELECT 1` / redis `PING` when importable; `mode: driver|tcp`
+  says what was ATTEMPTED, `ok`/`error` carry the verdict; NEVER raises.
+  `_optional_import()` uses `__import__` so tests can block drivers via
+  `builtins.__import__` and still exercise both paths. 100% lines+branches.
+- `/api/health` now also returns `service` + `uptime_seconds` (liveness stays
+  dependency-free — that split is the whole point).
+- compose wires DISCRETE `POSTGRES_*`/`REDIS_*`, never `DATABASE_URL`/
+  `REDIS_URL`: `@`/`#` in a password silently corrupts a URL and readiness
+  PREFERS the URL → a bad password would poison the probe instead of failing
+  loudly. `tests/test_deploy.py` enforces no-URL + full env parity.
+- Scripts: `scripts/backup.sh` is the OLD Termux job (git bundle + ~/.nexus
+  data) and stays untouched; `scripts/backup_db.sh` is the Postgres one (POSIX
+  sh, verify with `gzip -t`, mkdir-lock → exit 3 on overlap, retention).
+- Gate notes: `pytest tests/test_ready.py tests/test_deploy.py
+  tests/test_openapi.py tests/test_env_docs.py tests/test_version_sync.py
+  tests/test_build_api.py` = 52 passed; `ruff check .` clean (2 pre-existing
+  F401 in tests/test_openrouter_pool.py removed); compose-spec jsonschema VALID.
+- LESSON: `--cov=src/readiness` reports "module was never imported" because the
+  tests import through package paths — use `--cov=src` and grep the file.
