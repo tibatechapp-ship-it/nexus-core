@@ -1,6 +1,4 @@
 """Tests for OpenRouter key pool loading and failover (11 keys)."""
-import os
-import time
 
 
 def _load_openrouter_keys(env: dict) -> dict:
