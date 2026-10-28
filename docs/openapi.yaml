@@ -47,8 +47,10 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Health'}
               example:
-                version: "1.15.0"
+                version: "1.46.0"
                 status: ok
+                service: nexus-core
+                uptime_seconds: 42.5
                 bridge: true
                 topics: true
                 builder: true
@@ -57,6 +59,47 @@ paths:
                 embeddings_requested: null
                 embeddings_fallback: null
                 bridge_error: null
+
+  /api/ready:
+    get:
+      tags: [System]
+      summary: Readiness — Postgres and Redis reachable?
+      description: |
+        Liveness vs readiness: `/api/health` says the process is alive (and is
+        what the container HEALTHCHECK uses); this endpoint says the process can
+        serve work. `ready` is true only when every dependency answered, and the
+        status code follows the body: 200 ready, 503 not ready. The body shape is
+        identical in both cases so a failure is diagnosable from one response.
+
+        Each check reports `mode`: `driver` (real protocol probe — psycopg
+        `SELECT 1` / redis `PING`) or `tcp` (driver not installed, TCP connect
+        only — never claims more than it proved).
+      operationId: getReady
+      responses:
+        '200':
+          description: All dependencies answered
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+              example:
+                ready: true
+                status: ready
+                version: "1.46.0"
+                checks:
+                  - {name: postgres, target: "postgres:5432", ok: true, mode: driver, detail: "SELECT 1", latency_ms: 1.8}
+                  - {name: redis, target: "redis:6379", ok: true, mode: driver, detail: PING, latency_ms: 0.6}
+        '503':
+          description: At least one dependency is unreachable
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+              example:
+                ready: false
+                status: not_ready
+                version: "1.46.0"
+                checks:
+                  - {name: postgres, target: "postgres:5432", ok: false, mode: driver, error: "OperationalError: could not connect", latency_ms: 2001.4}
+                  - {name: redis, target: "redis:6379", ok: true, mode: driver, detail: PING, latency_ms: 0.7}
 
   /api/deliberate:
     post:
@@ -348,10 +391,12 @@ components:
   schemas:
     Health:
       type: object
-      required: [status]
+      required: [status, version]
       properties:
         status: {type: string, example: ok}
-        version: {type: string}
+        version: {type: string, description: "pyproject.toml [project].version (single source)"}
+        service: {type: string, example: nexus-core}
+        uptime_seconds: {type: number, description: "Seconds since this process started"}
         bridge: {type: boolean}
         topics: {type: boolean}
         builder: {type: boolean}
@@ -360,6 +405,29 @@ components:
         embeddings_requested: {type: string, nullable: true}
         embeddings_fallback: {type: string, nullable: true}
         bridge_error: {type: string, nullable: true}
+
+    Readiness:
+      type: object
+      required: [ready, status, checks]
+      properties:
+        ready: {type: boolean}
+        status: {type: string, enum: [ready, not_ready, error]}
+        version: {type: string}
+        checks:
+          type: array
+          items: {$ref: '#/components/schemas/ReadinessCheck'}
+
+    ReadinessCheck:
+      type: object
+      required: [name, ok]
+      properties:
+        name: {type: string, enum: [postgres, redis]}
+        target: {type: string, example: "postgres:5432"}
+        ok: {type: boolean}
+        mode: {type: string, enum: [driver, tcp], description: "driver = protocol probe, tcp = connect-only fallback"}
+        detail: {type: string, nullable: true}
+        error: {type: string, nullable: true}
+        latency_ms: {type: number}
 
     HistoryItem:
       type: object

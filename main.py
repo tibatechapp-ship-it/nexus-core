@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import sys
+import time
 from pathlib import Path
 import threading
 
@@ -60,6 +61,17 @@ try:
 except Exception as e:
     _EMB_ENV = _resolve_rag = None
     _emb_err = e
+
+# ═══ Readiness probe (Postgres + Redis) — never raises, see src/readiness.py ═══
+try:
+    from src import readiness as _readiness
+except Exception as e:  # pragma: no cover — defensive only
+    _readiness = None
+    _readiness_err = e
+else:
+    _readiness_err = None
+
+_STARTED_AT = time.monotonic()
 
 
 def _embeddings_info():
@@ -242,6 +254,8 @@ async def health():
     return {
         "version": _app_version(),
         "status": "ok",
+        "service": "nexus-core",
+        "uptime_seconds": round(time.monotonic() - _STARTED_AT, 1),
         "bridge": get_council_bridge is not None,
         "topics": search_topics is not None,
         "builder": Builder is not None,
@@ -251,6 +265,26 @@ async def health():
         "embeddings_fallback": emb_fallback,
         "bridge_error": str(_bridge_err) if _bridge_err else None,
     }
+
+
+@app.get("/api/ready")
+async def ready():
+    """جاهزية: هل Postgres و Redis متاحان فعلاً؟ 200 إذا نعم، 503 إذا لا.
+
+    liveness (`/api/health`) تجيب "العملية حيّة"؛ هذه تجيب "تستطيع خدمة
+    الطلبات" — وهو السؤال الذي يقرّره المُنسِّق قبل توجيه الترافيك. الفحص
+    يحمل دائماً نفس الشكل (ready/status/checks/version) كي يكون سبب الفشل
+    مقروءاً من الاستجابة نفسها دون استدعاء ثانٍ.
+    """
+    if _readiness is None:  # pragma: no cover — defensive only
+        return JSONResponse(
+            {"ready": False, "status": "error",
+             "error": f"readiness module unavailable: {_readiness_err}"},
+            status_code=503,
+        )
+    payload = await asyncio.to_thread(_readiness.readiness)
+    return JSONResponse(payload, status_code=200 if payload.get("ready") else 503)
+
 
 
 @app.post("/api/build")
