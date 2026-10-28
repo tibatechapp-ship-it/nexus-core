@@ -1,41 +1,181 @@
-# ═══════════════════════════════════════════════════════════
-# NovaMind-Hive v2.0 — Docker Compose
-# ═══════════════════════════════════════════════════════════
-version: '3.9'
+# ═══════════════════════════════════════════════════════════════════════════
+# nexus-core — local / single-host stack: app + Postgres + Redis
+# ═══════════════════════════════════════════════════════════════════════════
+#
+#   cp .env.example .env      # then set DB_PASSWORD and REDIS_PASSWORD
+#   docker compose up --build # app on http://localhost:8000
+#   docker compose --profile backup run --rm backup   # one manual dump
+#
+# Secrets: NOTHING is hardcoded here. Passwords come from the environment
+# (`${DB_PASSWORD:?...}` fails closed — compose refuses to start without them),
+# and `.env` is gitignored. `docker compose config` prints the resolved values,
+# so treat that output as secret too.
+#
+# The app container is read-only: state goes to named volumes, /tmp is tmpfs,
+# all capabilities are dropped and privilege escalation is blocked. The server
+# never talks to Postgres/Redis until both pass their healthchecks, and it
+# starts serving traffic only once `/api/ready` says the dependencies answer.
+
+name: nexus-core
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app-env: &app-env
+  # ── database (consumed by src/readiness.py) ──
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${DB_USER:-nexus}
+  POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — see .env.example}
+  POSTGRES_DB: ${DB_NAME:-nexus}
+  # ── cache ──
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required — see .env.example}
+  REDIS_DB: ${REDIS_DB:-0}
+  # ── app ──
+  APP_PORT: "8000"
+  TZ: ${TZ:-UTC}
+  NEXUS_AUTH_TOKEN: ${NEXUS_AUTH_TOKEN:-}
+  NEXUS_RATE_LIMIT: ${NEXUS_RATE_LIMIT:-120}
+  NEXUS_RATE_WINDOW: ${NEXUS_RATE_WINDOW:-60}
+  NEXUS_AUDIT_LOG: ${NEXUS_AUDIT_LOG:-/app/logs/audit.jsonl}
+  NEXUS_LOG_LEVEL: ${NEXUS_LOG_LEVEL:-}
 
 services:
-  novamind:
-    build: .
-    container_name: novamind-hive
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nexus-core:${IMAGE_TAG:-local}
     restart: unless-stopped
-    env_file:
-      - .vault/secrets.env
-    volumes:
-      - ./logs:/app/logs
-      - ./memory:/app/memory
-      - ./nova:/app/nova
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment: *app-env
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - nexus_data:/app/data
+      - nexus_logs:/app/logs
+      - nexus_memory:/app/memory
+    # Liveness: process answers at all (dependencies are /api/ready's job).
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          r = urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=4)
+          sys.exit(0 if r.status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging: *default-logging
     networks:
-      - novamind-net
+      - nexus
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-nexus}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — see .env.example}
+      POSTGRES_DB: ${DB_NAME:-nexus}
+      # initdb defaults; the data directory is a named volume below.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - nexus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # No published port: the database is reachable only on the compose network.
+    expose:
+      - "5432"
+    logging: *default-logging
+    networks:
+      - nexus
 
   redis:
     image: redis:7-alpine
-    container_name: novamind-redis
     restart: unless-stopped
-    # fail-closed: refuse to start without an explicit password
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-    # internal network only — do not publish to host
+    # appendonly = the cache survives a restart; password is required, fail-closed.
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$${REDIS_PASSWORD}" --appendonly yes --appendfsync everysec
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required — see .env.example}
+    volumes:
+      - nexus_redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     expose:
       - "6379"
-    volumes:
-      - redis-data:/data
+    logging: *default-logging
     networks:
-      - novamind-net
+      - nexus
+
+  # Scheduled database backup (same script as the host cron): it runs pg_dump
+  # against the postgres service, gzips into the nexus_backups volume and prunes
+  # dumps older than BACKUP_KEEP_DAYS.
+  #
+  #   docker compose --profile backup run --rm backup
+  #
+  # Put that line in a cron/Task Scheduler entry (see scripts/backup.cron).
+  backup:
+    profiles: ["backup"]
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${DB_USER:-nexus}
+      PGPASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — see .env.example}
+      PGDATABASE: ${DB_NAME:-nexus}
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+      BACKUP_PREFIX: ${BACKUP_PREFIX:-nexus}
+    volumes:
+      - ./scripts:/scripts:ro
+      - nexus_backups:/backups
+    entrypoint: ["/bin/sh", "/scripts/backup_db.sh"]
+    logging: *default-logging
+    networks:
+      - nexus
 
 networks:
-  novamind-net:
+  nexus:
     driver: bridge
 
 volumes:
-  redis-data:
+  nexus_data:
+  nexus_logs:
+  nexus_memory:
+  nexus_pgdata:
+  nexus_redis:
+  nexus_backups:
