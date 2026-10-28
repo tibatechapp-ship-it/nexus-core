@@ -1,0 +1,29 @@
+# nexus-core — nightly database backup (example crontab entries)
+#
+# Install with:
+#   crontab -e        # then paste one of the lines below
+#
+# 1) Native cron on the host (needs postgresql-client for pg_dump):
+#
+# 15 2 * * * cd /srv/nexus-core && \
+#   PGHOST=127.0.0.1 PGPORT=5432 PGUSER=nexus PGDBASE=nexus PGPASSWORD="$(grep -m1 '^DB_PASSWORD=' .env | cut -d= -f2-)" \
+#   BACKUP_DIR=/srv/nexus-core/backups BACKUP_KEEP_DAYS=7 \
+#   ./scripts/backup_db.sh >> /var/log/nexus-backup.log 2>&1
+#
+# 2) Docker compose (no pg_dump on the host needed):
+#
+# 15 2 * * * cd /srv/nexus-core && \
+#   docker compose --profile backup run --rm backup >> /var/log/nexus-backup.log 2>&1
+#
+# 3) Termux (phone) — cron is unavailable; use this in a script run by
+#    `termux-job-scheduler` or by hand:
+#
+#   docker compose --profile backup run --rm backup   # not available on the phone
+#   ./scripts/backup_db.sh                            # needs pg_dump in PATH
+#
+# Notes:
+# * The script exits 3 when another run still holds the lock — a slow dump never
+#   gets joined by a second one.
+# * Rotation only touches "${BACKUP_PREFIX}-db-*.sql.gz" inside BACKUP_DIR; it
+#   never deletes anything else.
+# * Restore:   gunzip -c backups/nexus-db-YYYYmmdd-HHMMSS.sql.gz | psql -h HOST -U USER -d DB
