@@ -199,7 +199,7 @@ class LLMRouter:
         logger.info("ZAI/GLM loaded")
 
         # 4. OPENROUTER — 5 مفاتيح
-        for i in range(1, 11):
+        for i in range(1, 12):
             or_key = os.environ.get(f"OPENROUTER_API_KEY_{i}", "").strip()
             if or_key and len(or_key) > 20:
                 self.providers.append(ProviderConfig(
