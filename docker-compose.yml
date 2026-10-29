@@ -44,7 +44,6 @@ x-app-env: &app-env
   NEXUS_RATE_WINDOW: ${NEXUS_RATE_WINDOW:-60}
   NEXUS_AUDIT_LOG: ${NEXUS_AUDIT_LOG:-/app/logs/audit.jsonl}
   NEXUS_LOG_LEVEL: ${NEXUS_LOG_LEVEL:-}
-    NEXUS_ALLOW_OPEN: ${NEXUS_ALLOW_OPEN:-}
 
 services:
   app:
