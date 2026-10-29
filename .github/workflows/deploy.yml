@@ -118,9 +118,7 @@ jobs:
       - name: /api/health works without any dependency
         # Liveness must not depend on Postgres: that is the readiness split.
         run: |
-          cid="$(docker run -d -p 18000:8000 -e NEXUS_ALLOW_OPEN=1 nexus-core:ci)"
-    sleep 3
-    docker logs "$cid" 2>&1 | head -n 100 || true
+          cid="$(docker run -d -p 18000:8000 nexus-core:ci)"
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18000/api/health >/tmp/health.json; then break; fi
             sleep 2
