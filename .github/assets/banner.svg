@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="Nexus Core banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"/><stop offset="1" stop-color="#db2777"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.85" cy="0.2" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="300" fill="#0d0517"/>
+  <rect width="1200" height="300" fill="url(#bg)" opacity="0.92"/>
+  <rect width="1200" height="300" fill="url(#glow)"/>
+  <g opacity="0.16" stroke="#ffffff" stroke-width="1">
+    <path d="M0 240 Q 300 190 600 240 T 1200 240" fill="none"/>
+    <path d="M0 260 Q 300 210 600 260 T 1200 260" fill="none"/>
+    <path d="M0 220 Q 300 170 600 220 T 1200 220" fill="none"/>
+  </g>
+  <circle cx="1045" cy="86" r="46" fill="#ffffff" opacity="0.10"/>
+  <circle cx="1045" cy="86" r="30" fill="#ffffff" opacity="0.14"/>
+  <text x="60" y="118" font-family="'Segoe UI','Noto Sans Arabic',system-ui,sans-serif" font-size="58" font-weight="800" fill="#ffffff" text-anchor="start">نكس كور <tspan font-size="44" opacity="0.92">Nexus Core</tspan></text>
+  <text x="62" y="166" font-family="'Segoe UI','Noto Sans Arabic',system-ui,sans-serif" font-size="24" fill="#ffffff" opacity="0.94" text-anchor="start">المحرك الجامع لمنظومة Nexus — بنية واجهات وخدمات موحّدة</text>
+  <g font-family="'Segoe UI',system-ui,sans-serif" font-size="16" font-weight="600">
+    <rect x="60" y="196" rx="16" ry="16" width="146" height="32" fill="#0b1220" opacity="0.45"/><text x="133.0" y="217" fill="#ffffff" text-anchor="middle">Python 3.11+</text>
+    <rect x="235" y="196" rx="16" ry="16" width="80" height="32" fill="#0b1220" opacity="0.45"/><text x="275.0" y="217" fill="#ffffff" text-anchor="middle">Docker</text>
+    <rect x="420" y="196" rx="16" ry="16" width="69" height="32" fill="#0b1220" opacity="0.45"/><text x="454.5" y="217" fill="#ffffff" text-anchor="middle">CI/CD</text>
+    <rect x="625" y="196" rx="16" ry="16" width="47" height="32" fill="#0b1220" opacity="0.45"/><text x="648.5" y="217" fill="#ffffff" text-anchor="middle">API</text>
+  </g>
+  <text x="60" y="272" font-family="'Segoe UI',system-ui,sans-serif" font-size="15" fill="#ffffff" opacity="0.75">TibaTech · tibatechapp-ship-it · مفتوح المصدر</text>
+</svg>

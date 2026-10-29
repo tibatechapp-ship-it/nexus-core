@@ -9,6 +9,10 @@ make check
 
 
 
+<p align="center">
+  <img src=".github/assets/banner.svg" alt="nexus-core" width="100%">
+</p>
+
 # nexus-core
 
 > **Unified AI Agent System: Memory + Learning + Security + 20 Agents**
@@ -18,6 +22,8 @@ make check
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/tibatechapp-ship-it/nexus-core/main/.github/badges/coverage.json)](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Release](https://img.shields.io/github/v/release/tibatechapp-ship-it/nexus-core)](https://github.com/tibatechapp-ship-it/nexus-core/releases)
+[![Docs](https://img.shields.io/badge/CONTRIBUTING-%D8%A7%D9%82%D8%B1%D8%A3%D9%87%20%D8%A3%D9%88%D9%84%D8%A7-8A2BE2)](CONTRIBUTING.md)
 
 **nexus-core** is the unified successor of two projects that grew together:
 
