@@ -52,14 +52,21 @@ sync-version:
 version-check:
 	$(PY) scripts/check_version_sync.py
 
+# Hermetic test runs: mirror the CI env exactly (.github/workflows/test.yml
+# sets the same three vars). The boot guard in main.py fails closed on an
+# empty auth token; the suite exercises the open-local-loopback mode, so
+# the runner env opts in explicitly. NOVAMIND_HOME pins the scratch home
+# to this checkout so an ambient value on a dev box cannot leak in.
+GUARD_ENV := NEXUS_ALLOW_OPEN=1 NOVAMIND_HOME=$(CURDIR) TZ=UTC
+
 test:
-	$(PY) -m pytest tests/ -q --ignore=tests/novamind
+	$(GUARD_ENV) $(PY) -m pytest tests/ -q --ignore=tests/novamind
 
 cov:
-	$(PY) -m pytest --cov --cov-fail-under=95 --ignore=tests/novamind -q
+	$(GUARD_ENV) $(PY) -m pytest --cov --cov-fail-under=95 --ignore=tests/novamind -q
 
 adversarial:
-	$(PY) -m pytest tests/adversarial -q
+	$(GUARD_ENV) $(PY) -m pytest tests/adversarial -q
 
 clean:
 	find . -type d -name "__pycache__" -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null || true

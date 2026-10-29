@@ -56,6 +56,17 @@ justification (45 red tests would have blocked every commit) no longer holds.
 The gate costs ~2 min per commit; WIP commits can bypass once with
 `git commit --no-verify`.
 
+**Third pass (hermetic `make test`):** the `test`/`cov`/`adversarial` targets
+now export the same env CI sets in `test.yml`
+(`NEXUS_ALLOW_OPEN=1 NOVAMIND_HOME=$(CURDIR) TZ=UTC`) via a single
+`GUARD_ENV` variable. Before this, a bare `make test` on a fresh checkout
+died at collection: the fail-closed boot guard in `main.py` raises
+`RuntimeError` when `NEXUS_AUTH_TOKEN` is empty and `NEXUS_ALLOW_OPEN` is
+unset, so `tests/test_health_api.py` could not even be imported locally
+(CI passed because the workflow exports the vars itself). The env is scoped
+to the test process only — it does not weaken the guard for real runs; a
+dev booting the server still needs the token or an explicit opt-in.
+
 ## 4. Deploy stack — ROOT CAUSE FOUND AND FIXED
 
 `Deploy stack` (`.github/workflows/deploy.yml`) had **never passed**. The
