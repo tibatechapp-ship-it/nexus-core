@@ -1,0 +1,2 @@
+[lint.per-file-ignores]
+"main.py" = ["ANN001", "ANN201", "ANN202", "E402"]

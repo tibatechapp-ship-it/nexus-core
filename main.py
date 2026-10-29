@@ -114,7 +114,8 @@ if not GUARD.enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
     raise RuntimeError('Refusing to start: NEXUS_AUTH_TOKEN is empty. Set NEXUS_ALLOW_OPEN=1 for local dev.')
 
 @app.middleware('http')
-async def guard_everything(request: Request, call_next):
+from typing import Callable, Any
+async def guard_everything(request: Request, call_next: Callable[..., Any]):
     verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
     if not verdict.allowed:
         return JSONResponse({'error': 'unauthorized'}, status_code=401)
