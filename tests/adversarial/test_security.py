@@ -273,8 +273,21 @@ def test_deserialization_uses_json_not_pickle(tmp_path: Path) -> None:
         path.read_text(encoding="utf-8")
         for path in FRAMEWORK_FILES
     )
-    for danger in ("import pickle", "import marshal", "yaml.load(", "eval(", "exec(", "__reduce__"):
-        assert danger not in text, f"unsafe construct present: {danger}"
+    # Substring-precise: bare ``eval(`` / ``exec(`` are arbitrary-code
+    # execution and stay forbidden, but ``ast.literal_eval(`` is the safe
+    # literal-only parser (cannot execute code) and must NOT trip the scan —
+    # it is exactly the pattern this vector wants the codebase to use.
+    dangers = (
+        (re.compile(r"import\s+pickle"), "import pickle"),
+        (re.compile(r"import\s+marshal"), "import marshal"),
+        (re.compile(r"yaml\.load\("), "yaml.load("),
+        (re.compile(r"(?<![\w.])eval\("), "eval("),
+        (re.compile(r"(?<![\w.])exec\("), "exec("),
+        (re.compile(r"__reduce__"), "__reduce__"),
+    )
+    for pattern, label in dangers:
+        match = pattern.search(text)
+        assert match is None, f"unsafe construct present: {label}"
 
     queue_path = tmp_path / "q.json"
     queue_path.write_text('[1, {"a": 2}, "x", {"ok": true}, null]', encoding="utf-8")

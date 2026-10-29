@@ -100,7 +100,9 @@ def test_both_languages_declare_the_same_keys(html: str) -> None:
 def test_academy_uses_the_training_api(html: str) -> None:
     """The panel reads the real routes, never a guess."""
     assert 'training:"/api/training"' in html
-    for suffix in ('"/status"', '"/agents"', '"/lessons"', '"/fitness"',
+    # /agents carries ?roster=1 since P3: the picker unions trained agents
+    # with the full roster (src/novamind/training/api.py::training_agents).
+    for suffix in ('"/status"', '"/agents?roster=1"', '"/lessons"', '"/fitness"',
                    '"/evolve"', '"/plan/"'):
         assert f"API.training+{suffix}" in html
 

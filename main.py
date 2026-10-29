@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import json
+import math
 import os
 import sys
 import time
@@ -11,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
-import os
+from src.security.access import AccessGuard
 
 def safe_path(path_str: str) -> str:
     base = os.path.dirname(os.path.abspath(__file__))
@@ -602,19 +603,33 @@ async def api_review(request: Request):
 
 
 # --- SECURITY FIX: AccessGuard (NC-01) ---
-from src.security.access import AccessGuard
-from fastapi.responses import JSONResponse
-from fastapi import Request
 GUARD = AccessGuard.from_env()
 if not GUARD.auth_enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
     raise RuntimeError('Refusing to start: NEXUS_AUTH_TOKEN is empty. Set NEXUS_ALLOW_OPEN=1 for local dev.')
 
 @app.middleware('http')
 async def guard_everything(request: Request, call_next):
-    verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
+    # The peer address MUST flow into the guard: without it the fail-closed
+    # policy classifies every request as non-local and refuses ALL mutating
+    # calls (POST/PUT/PATCH/DELETE) even from loopback — which 401'd every
+    # write endpoint of the suite and of tokenless local dev. Mirrors the
+    # unified-gateway middleware in nexus_agent.py (client + Retry-After +
+    # audit row per request).
+    client = request.client.host if request.client else ''
+    verdict = GUARD.check(request.method, request.url.path,
+                          dict(request.headers), client)
     if not verdict.allowed:
-        return JSONResponse({'error': 'unauthorized'}, status_code=401)
-    return await call_next(request)
+        headers = {}
+        if verdict.retry_after:
+            headers['Retry-After'] = str(max(1, math.ceil(verdict.retry_after)))
+        resp = JSONResponse(
+            {'ok': False, 'error': verdict.error or 'unauthorized'},
+            status_code=verdict.status, headers=headers)
+    else:
+        resp = await call_next(request)
+    GUARD.record(verdict, request.method, request.url.path, client=client,
+                 status=resp.status_code)
+    return resp
 # -----------------------------------------
 
 if __name__ == "__main__":

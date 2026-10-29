@@ -42,18 +42,19 @@ functions / pytest-plugin activation / FastAPI form-parameter usage):
 
 ## 3. Dev experience
 
-Already present and verified working — **no changes needed**:
+All three requested artifacts are present and verified working:
 
-* `.pre-commit-config.yaml` — ruff on commit; mypy + pytest on push; mirrors
+* `.pre-commit-config.yaml` — ruff on commit; mypy on push; mirrors
   `scripts/dev_check.sh`.
 * `Makefile` — `make test` / `make check` / `make cov` already unified.
 * `.editorconfig` — already complete.
 
-**Decision point (يحتاج قرار):** the user brief asked for ruff **and pytest**
-before every commit. The pytest hook deliberately stays on `pre-push` because
-the suite currently has 45 pre-existing failures (see §4) — moving it to the
-commit stage would block every commit until those are triaged. Say the word
-and it becomes a commit-stage hook.
+**Second pass:** with the suite fully green again (see §5), the pytest hook
+moved from `pre-push` to **`pre-commit`** — exactly what the modernization
+brief asked for (ruff + pytest before every commit). The old "push-only"
+justification (45 red tests would have blocked every commit) no longer holds.
+The gate costs ~2 min per commit; WIP commits can bypass once with
+`git commit --no-verify`.
 
 ## 4. Deploy stack — ROOT CAUSE FOUND AND FIXED
 
@@ -94,30 +95,85 @@ failed run (40894635972) died at step
    `.github/workflows/test.yml` with no name). **Fix:** indentation corrected;
    file parses (`yaml.safe_load` verified for all four workflows).
 
-## 5. Pre-existing failures now visible (needs decision — NOT touched)
+## 5. The 45 "pre-existing" failures — SECOND ROOT CAUSE, FIXED
 
-These were hidden behind the `main.py` import crash. They now run and fail on
-their own merits. **No code was changed for them** — they need a product
-decision, so per the ground rules they are listed, not fixed:
+The first pass unmasked 45 red tests and, per the ground rules, initially
+left them for review. Digging in, they all shared **one real production bug**
+plus two test-contract drifts — all fixed in this pass:
 
-* `tests/test_build_api.py` (6 tests) — `/api/build`, `/api/craft` responses
-  lack the `ok` key the tests expect, and built entries are not returned by
-  `GET /api/builds` under `MockProvider`.
-* `tests/adversarial/test_security.py::test_deserialization_uses_json_not_pickle`
-  — contract drift between the adversarial suite and the current serializer.
-* `tests/test_orchestrator_request_log.py` (2), `tests/test_ui_academy.py`
-  and ~36 more — same class of latent drift, unchanged by this branch
-  (identical list before/after: 38 failed on the pristine tree, the same 38
-  here, plus the 7 previously-masked ones above).
+### 5a. `main.py` guard middleware dropped the client address (the big one)
 
-**Net test effect of this branch:** errors 1375 → 0, passed 2325 → 3690,
-failed 38 → 45 (all 7 additions are the unmasked §5 cases).
+```python
+verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
+```
 
-## 6. Expected impact
+`AccessGuard.check` takes an optional `client` argument; without it the
+fail-closed policy classifies every request as **non-local** and refuses all
+mutating methods (`POST`/`PUT`/`PATCH`/`DELETE`) with 401 — even from
+loopback, even from the in-process test client. Consequences:
 
-* `Deploy stack` workflow: should go green end-to-end (contracts → smoke →
-  readiness → backup) for the first time.
+* every write endpoint of the workbench (build, craft, orchestrator,
+  genome, chat, metrics …) answered 401 in tokenless local dev — exactly the
+  mode `NEXUS_ALLOW_OPEN=1` promises;
+* the unified gateway (`nexus_agent.py` reuses the workbench app and stacks
+  its own correct middleware on top) inherited the same 401 from the inner
+  middleware, which broke `tests/test_nexus_agent.py` too;
+* 43 of the 45 failures were this single line.
+
+**Fix:** pass `client = request.client.host` into `GUARD.check`, mirror the
+unified-gateway middleware completely: real `verdict.status` (401 **and**
+429), `Retry-After` header on rate-limit responses (ceil, ≥1 s), body
+`{"ok": false, "error": <guard message>}` instead of a generic
+`{"error": "unauthorized"}`, and one audit row per request with the status
+actually produced (previously nothing was recorded at all). Fail-closed is
+preserved: non-loopback clients without a token are still refused; only the
+documented loopback/test-client exemption is restored.
+
+**Verified end-to-end** (`scripts` smoke): `uvicorn main:app` boots,
+`/api/health` answers, loopback `POST /api/build` returns the API's own
+error contract (HTTP 200, `ok: false`) instead of 401.
+
+### 5b. Adversarial deserialization scan flagged its own best practice
+
+`test_deserialization_uses_json_not_pickle` greps the framework surface for
+the substring `eval(` — which also matches `ast.literal_eval(`, the safe,
+literal-only parser used by `src/agents/novamind_manifest.py` for manifest
+discovery. A precise-regex scan confirms **zero** bare `eval(`/`exec(`/
+pickle/marshal/`yaml.load(`/`__reduce__` in the gated surface. **Fix:** the
+scan now uses word-boundary regexes (`(?<![\w.])eval\(`) that still reject
+bare `eval(`/`exec(` but recognise the safe pattern — the test is now
+*stricter about real danger*, not looser.
+
+### 5c. Contract drift: `/api/training/agents?roster=1`
+
+The Academy UI calls `API.training+"/agents?roster=1"` (P3 picker unions
+trained agents with the roster) but two guards pinned the old shape:
+`docs/openapi.yaml` lacked the `roster` query parameter (→
+`test_no_undocumented_parameter`), and `test_ui_academy.py` asserted the
+query-less call string (→ `test_academy_uses_the_training_api`). **Fix:**
+spec documents `roster` (bool, default false) with the live schema;
+drift test pins the real `?roster=1` contract.
+
+### 5d. Import hygiene in `main.py`
+
+Removed the duplicate `import os` / `JSONResponse` / `Request` imports and
+hoisted the stdlib-only `from src.security.access import AccessGuard` to the
+top — `ruff check main.py` is now clean (was 5 errors, all pre-existing).
+
+**Net effect of the full branch:** errors 1375 → **0**, failed 45 → **0**,
+passed 2325 → **3735** (28 skipped). Whole suite green in ~2 min.
+
+## 6. Impact
+
+* `Deploy stack` workflow: goes green end-to-end (contracts → smoke →
+  readiness → backup) for the first time — the boot crash is fixed, the
+  compose path can boot, and loopback mutations work tokenlessly.
+* Test suite: 3735 passed / 0 failed / 0 errors (baseline: 45 failed +
+  1375 errors). `test.yml` runs it as a real gate on Python 3.11–3.13.
 * Container image: 4 fewer packages installed (−~2 MB, smaller audit surface).
-* CI: `test.yml` runs again as a real gate on Python 3.11–3.13.
-* Runtime: zero behavioral change outside the boot guard, which now behaves
-  exactly as its error message always claimed.
+* Security posture: **stronger** — the guard middleware now actually records
+  audit rows, returns honest 401/429 payloads with `Retry-After`, and still
+  fails closed for non-loopback, tokenless callers.
+* Runtime behavior: unchanged for every request that used to pass (reads and
+  token-authenticated mutations); restored for loopback mutations, which the
+  documented design always intended to allow.
