@@ -611,9 +611,6 @@ if not GUARD.enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
 
 @app.middleware('http')
 async def guard_everything(request: Request, call_next):
-    # Health/readiness endpoints bypass auth (standard practice)
-    if request.url.path in ('/api/health', '/health', '/api/ready', '/ready'):
-        return await call_next(request)
     verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
     if not verdict.allowed:
         return JSONResponse({'error': 'unauthorized'}, status_code=401)
