@@ -105,23 +105,6 @@ def _app_version():
 
 app = FastAPI(title="Nexus Real Workbench", docs_url=None, redoc_url=None)
 
-from src.security.access import AccessGuard
-from fastapi.responses import JSONResponse
-from fastapi import Request
-
-GUARD = AccessGuard.from_env()
-if not GUARD.enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
-    raise RuntimeError('Refusing to start: NEXUS_AUTH_TOKEN is empty. Set NEXUS_ALLOW_OPEN=1 for local dev.')
-
-@app.middleware('http')
-from typing import Callable, Any
-async def guard_everything(request: Request, call_next: Callable[..., Any]):
-    verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
-    if not verdict.allowed:
-        return JSONResponse({'error': 'unauthorized'}, status_code=401)
-    return await call_next(request)
-
-
 
 # ═══ Docs (v1.12.1) — أصول Swagger محلية (بلا CDN) + المواصفة الحيّة ═══
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
@@ -616,6 +599,23 @@ async def api_review(request: Request):
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"Review failed: {e}"}, status_code=500)
 
+
+
+# --- SECURITY FIX: AccessGuard (NC-01) ---
+from src.security.access import AccessGuard
+from fastapi.responses import JSONResponse
+from fastapi import Request
+GUARD = AccessGuard.from_env()
+if not GUARD.enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
+    raise RuntimeError('Refusing to start: NEXUS_AUTH_TOKEN is empty. Set NEXUS_ALLOW_OPEN=1 for local dev.')
+
+@app.middleware('http')
+async def guard_everything(request: Request, call_next):
+    verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
+    if not verdict.allowed:
+        return JSONResponse({'error': 'unauthorized'}, status_code=401)
+    return await call_next(request)
+# -----------------------------------------
 
 if __name__ == "__main__":
     import uvicorn
