@@ -97,18 +97,33 @@ def normalize_tag(tag: str) -> str:
 
 
 def _manifest(agent_id: str) -> Any:
-    """The agent's manifest, or ``None`` when unavailable."""
+    """The agent's manifest, or ``None`` when unavailable.
+
+    Framework agents are looked up first (``src.agents.manifest``).  An id it
+    does not know is then asked of the NovaMind bridge, so the 60+ modules in
+    ``src/novamind/agents`` train against a real spec instead of ``default``
+    (P3).  Both lookups are pure — discovery parses the modules with ``ast``
+    and never imports them.
+    """
+    key = str(agent_id)
     for module_name in ("agents.manifest", "src.agents.manifest"):
         try:
             import importlib
 
             module = importlib.import_module(module_name)
-            return module.get_manifest(str(agent_id))
+            return module.get_manifest(key)
         except ImportError:
             continue
+        except KeyError:
+            break
         except Exception:
             return None
-    return None
+    try:
+        from src.agents.novamind_manifest import get_novamind_manifest
+
+        return get_novamind_manifest(key)
+    except Exception:  # pragma: no cover - bridge must never break training
+        return None
 
 
 def _spec_for(agent_id: str, spec: Optional[str]) -> str:

@@ -770,7 +770,7 @@ async function openAcademy(){
 }
 async function acaLoadAgents(){
   const sel=$("acaAgent");
-  let list=[];try{list=(await apiGet(API.training+"/agents")).agents||[];}catch(e){list=[];}
+  let list=[];try{list=(await apiGet(API.training+"/agents?roster=1")).agents||[];}catch(e){list=[];}
   if(!list.length){try{list=(await apiGet(API.agents)).tools||[];}catch(e){list=[];}}
   const ids=list.map(a=>a.agent_id||a.name).filter(Boolean);
   const prev=sel.value||acaAgent;

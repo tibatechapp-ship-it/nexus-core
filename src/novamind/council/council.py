@@ -437,7 +437,13 @@ class Council:
         # Mirror the same judgement into genome_v2 (the Academy's store) so the
         # flagship council's accuracy is visible there too.  Optional: no judge
         # injected → behaviour is byte-identical to before.
-        if self.judge is not None and inf:
+        #
+        # P3: when the genome handed to us IS the v2 store (the adapter marks
+        # itself with ``is_genome_v2``), the write above already landed there —
+        # calling the judge too would count every judgement twice in one session.
+        # One session, one store, one write.
+        v2_backed = bool(getattr(self.genome, "is_genome_v2", False))
+        if self.judge is not None and inf and not v2_backed:
             try:
                 self.judge(judgement_stances(inf))
             except Exception:  # a broken sink must never break a debate

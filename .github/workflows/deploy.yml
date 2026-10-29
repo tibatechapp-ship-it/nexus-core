@@ -48,6 +48,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  NEXUS_ALLOW_OPEN: "1"
   # Throwaway CI credentials. Compose is fail-closed, so they must be present --
   # they are intentionally shaped like real ones so the URL-free wiring is the
   # same code path a real deployment takes.

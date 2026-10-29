@@ -258,3 +258,31 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   F401 in tests/test_openrouter_pool.py removed); compose-spec jsonschema VALID.
 - LESSON: `--cov=src/readiness` reports "module was never imported" because the
   tests import through package paths — use `--cov=src` and grep the file.
+
+## 2026-10-29 — P3 genome unification (branch `feat/p3-genome-unification`, NOT pushed)
+
+- ONE genome now: `GenomeV2` (JSON) is the source of truth; the v1 API is served
+  by `src/novamind/genome/adapter.py::GenomeV2Adapter`. `Genome(store)` switches
+  to adapter mode when it is handed a `GenomeV2` (`is_genome_v2`), otherwise the
+  SQLite path is byte-for-byte unchanged. `docs/GENOME_UNIFICATION.md` = ADR +
+  acceptance criteria + rollback.
+- `Council` skips its injected `judge` when `genome.is_genome_v2` — one session,
+  one write. Before this the same judgement was counted in SQLite AND JSON.
+- `src/novamind/genome_migrate.py`: one-shot additive import of the legacy
+  `agent_genome` table, only when the v2 JSON does not exist yet, never raising.
+- Launcher: `get_genome()` = `Genome(get_genome_v2())` seeded with
+  `COUNCIL_MEMBERS` (6 members incl. `tork_acil`); `PATCH /api/genome/{id}`
+  writes that store. `_install_genome_layer()` seeds 20 + 6 and migrates once.
+- `src/agents/novamind_manifest.py`: AST-only bridge for `src/novamind/agents`
+  (64 ids → 56 manifests; framework's 20 always win). Skills must stay inside
+  `KNOWN_SKILLS` and gates inside `KNOWN_GATES` or `manifest_problems()` fails.
+  `training/engine._manifest()` consults it only on `KeyError`;
+  `/api/training/agents?roster=1` unions trained + genome + bridge (default
+  response stays trained-only — a pinned test depends on it).
+- Numbers: adapter/migrate/bridge 100% lines+branches (override rcfile —
+  `src/novamind/*` is omitted by `[tool.coverage.run]`, `src/agents/*` is NOT, so
+  new `src/agents` files must be at 100% for the 98 floor); genome_v2 96.92%.
+- LESSON: `Genome(...).seed()` returns an int (rows created), not the genome —
+  never chain off it. `GenomeV2` has no `get_agent`, use `snapshot()`. When a
+  test pins an endpoint's count/shape, add capability as an opt-in parameter
+  instead of changing the default contract.

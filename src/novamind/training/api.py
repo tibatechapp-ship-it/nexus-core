@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .engine import TrainingEngine, get_engine
+from .engine import TrainingEngine, _spec_for, get_engine
 from .models import GRADUATION_MIN_SCORE
 from .store import get_store
 
@@ -48,6 +48,32 @@ def register(app: Any, engine: Optional[TrainingEngine] = None) -> APIRouter:
     return router
 
 
+def _roster_ids(limit: int = 200) -> List[str]:
+    """Every trainable agent id: genome members first, then manifest bridge.
+
+    Both sources are optional — a deployment without the genome or without
+    ``src/agents`` simply yields fewer ids, never an error.
+    """
+    ids: List[str] = []
+    try:
+        from ..genome_v2 import get_genome_v2
+
+        ids.extend(str(r["agent_id"]) for r in get_genome_v2().rank())
+    except Exception:  # pragma: no cover - genome is optional here
+        pass
+    try:
+        from src.agents.novamind_manifest import training_manifests
+
+        ids.extend(sorted(training_manifests()))
+    except Exception:  # pragma: no cover - bridge is optional here
+        pass
+    out: List[str] = []
+    for agent_id in ids:
+        if agent_id and agent_id not in out:
+            out.append(agent_id)
+    return out[:max(1, int(limit))]
+
+
 def build_router(engine: Optional[TrainingEngine] = None) -> APIRouter:
     """Build the training router (``engine`` injectable for tests)."""
     router = APIRouter(prefix="/api/training", tags=["training"])
@@ -66,8 +92,18 @@ def build_router(engine: Optional[TrainingEngine] = None) -> APIRouter:
         return stats
 
     @router.get("/agents")
-    async def training_agents(limit: int = 100) -> Dict[str, Any]:
-        """Every agent that has ever trained, with its latest run."""
+    async def training_agents(limit: int = 100, roster: bool = False
+                              ) -> Dict[str, Any]:
+        """The Academy's agent picker: trained agents first, then the roster.
+
+        Before P3 this listed only agents that had already trained, so a fresh
+        install showed an empty Academy and the six council members (whose
+        evidence lives in the genome, not the training store) were invisible.
+        ``roster=true`` (what the Academy UI asks for) additionally appends
+        genome members and the manifest bridge, so a fresh install shows the
+        six council members before anyone trains.  The default response is
+        byte-for-byte the pre-P3 contract: trained agents only.
+        """
         bounded = max(1, min(int(limit), 500))
         runs = eng.store.list_runs(limit=bounded)
         seen: Dict[str, Dict[str, Any]] = {}
@@ -83,6 +119,14 @@ def build_router(engine: Optional[TrainingEngine] = None) -> APIRouter:
             row = seen.get(cert["agent_id"])
             if row is not None:
                 row["certificate_id"] = cert["certificate_id"]
+        for agent_id in (_roster_ids(limit=bounded) if roster else ()):
+            if agent_id in seen or len(seen) >= bounded:
+                continue
+            seen[agent_id] = {
+                "agent_id": agent_id,
+                "spec": _spec_for(agent_id, None),
+                "latest_run": None,
+            }
         return {"count": len(seen), "agents": list(seen.values())}
 
     @router.get("/plan/{agent_id}")
