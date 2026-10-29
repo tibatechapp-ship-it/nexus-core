@@ -82,7 +82,7 @@ class LLMOrchestrator:
             logger.warning(f"Groq pool not available: {e}")
 
         # ═══ OpenRouter (multi-key) ═══
-        for i in range(1, 6):
+        for i in range(1, 12):
             key = os.environ.get(f"OPENROUTER_API_KEY_{i}", "").strip()
             if key and len(key) > 10:
                 self.apps[f"openrouter-{i}"] = ProviderApp(

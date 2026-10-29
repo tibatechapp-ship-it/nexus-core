@@ -141,3 +141,37 @@ class TestOrphanReleaseRule:
         # tag ahead of pyproject == a released tag whose own version file
         # disagrees — exactly the drift this guard exists to catch.
         assert mod._semver("1.23.0") > mod._semver("1.22.0")
+
+
+class TestEvaluateVersions:
+    """The decision rule itself, without git or filesystem access."""
+
+    def test_released_commit_passes(self) -> None:
+        assert mod.evaluate_versions("1.46.0", "1.46.0", "1.46.0", "1.46.0", "1.46.0") == []
+
+    def test_commit_after_the_release_passes(self) -> None:
+        # The everyday case: feature commits on top of the tagged release, same
+        # version. Demanding a tag on HEAD here made every PR red.
+        assert mod.evaluate_versions("1.46.0", "1.46.0", "1.46.0", None, "1.46.0") == []
+
+    def test_no_reachable_tag_is_an_error(self) -> None:
+        errors = mod.evaluate_versions("1.46.0", "1.46.0", "1.46.0", None, None)
+        assert len(errors) == 1 and "no release tag reachable" in errors[0]
+
+    def test_untagged_bump_is_an_error(self) -> None:
+        errors = mod.evaluate_versions("1.47.0", "1.47.0", "1.47.0", None, "1.46.0")
+        assert len(errors) == 1 and "un-tagged version bump" in errors[0]
+
+    def test_orphan_release_ahead_of_the_files_is_an_error(self) -> None:
+        errors = mod.evaluate_versions("1.46.0", "1.46.0", "1.46.0", None, "1.47.0")
+        assert len(errors) == 1 and "orphan release" in errors[0]
+
+    def test_tag_on_head_must_match(self) -> None:
+        errors = mod.evaluate_versions("1.46.0", "1.46.0", "1.46.0", "1.45.9", "1.46.0")
+        assert len(errors) == 1 and "un-tagged version bump" in errors[0]
+
+    def test_file_drift_is_reported_first_and_alone(self) -> None:
+        # A file-level mismatch is the root cause; the tag rule would only add
+        # noise on top of it.
+        errors = mod.evaluate_versions("1.46.0", "1.45.0", "1.46.0", None, "1.46.0")
+        assert len(errors) == 1 and "src.__version__" in errors[0]

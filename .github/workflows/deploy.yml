@@ -1,0 +1,170 @@
+name: Deploy stack
+
+# The deploy contract is only real if it is EXECUTED. This workflow builds the
+# production image, boots the whole stack (app + Postgres + Redis) and waits for
+# `/api/ready` to answer 200 — which is the one thing the phone-only test suite
+# cannot prove, because Termux has no Docker and no psycopg.
+#
+# It also proves the parts that rot silently:
+#   * `docker compose config` rejects a missing secret (fail-closed check),
+#   * the image runs as a non-root user,
+#   * the backup service actually writes a valid dump.
+#
+# No registry push: this is a verification gate, not a release step.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "requirements-docker.txt"
+      - "scripts/backup_db.sh"
+      - "src/readiness.py"
+      - "main.py"
+      - "tests/test_ready.py"
+      - "tests/test_deploy.py"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "requirements-docker.txt"
+      - "scripts/backup_db.sh"
+      - "src/readiness.py"
+      - "main.py"
+      - "tests/test_ready.py"
+      - "tests/test_deploy.py"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Throwaway CI credentials. Compose is fail-closed, so they must be present --
+  # they are intentionally shaped like real ones so the URL-free wiring is the
+  # same code path a real deployment takes.
+  DB_PASSWORD: ci-throwaway-${{ github.run_id }}
+  REDIS_PASSWORD: ci-throwaway-${{ github.run_id }}
+  APP_PORT: "8000"
+
+jobs:
+  # ── 1. Static contracts: lint the Dockerfile, resolve the compose file ─────
+  contracts:
+    name: Dockerfile + compose contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          # DL3008/DL3013: pinned apt versions / no apt cache — we install no
+          # system packages in the runtime stage, so both are moot.
+          ignore: DL3008,DL3013
+
+      - name: docker compose config resolves
+        run: docker compose config --quiet
+
+      - name: compose refuses to start without secrets
+        # The whole point of `${DB_PASSWORD:?...}`: prove it, don't assume it.
+        env:
+          DB_PASSWORD: ""
+        run: |
+          if docker compose config --quiet 2>/tmp/err.txt; then
+            echo "::error::compose started without DB_PASSWORD — the fail-closed guard is gone"
+            exit 1
+          fi
+          grep -qi "DB_PASSWORD" /tmp/err.txt && echo "fail-closed OK"
+
+      - name: no literal secret in the rendered config
+        run: |
+          # Resolved output contains the CI values only; anything else means a
+          # password was pasted into the YAML.
+          out="$(docker compose config)"
+          if echo "$out" | grep -E "PASSWORD:\s*[A-Za-z0-9]{6,}" | grep -v -E "ci-throwaway-|\$\{"; then
+            echo "::error::a literal password is present in docker-compose.yml"
+            exit 1
+          fi
+          echo "no literal secrets"
+
+  # ── 2. Boot the real stack and prove readiness + backup ───────────────────
+  smoke:
+    name: stack smoke (build, boot, /api/ready, backup)
+    runs-on: ubuntu-latest
+    needs: contracts
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the production image
+        run: docker build --tag nexus-core:ci .
+
+      - name: Image runs as non-root
+        run: |
+          uid="$(docker run --rm --entrypoint id nexus-core:ci -u)"
+          echo "container uid = $uid"
+          test "$uid" != "0"
+
+      - name: /api/health works without any dependency
+        # Liveness must not depend on Postgres: that is the readiness split.
+        run: |
+          cid="$(docker run -d -p 18000:8000 nexus-core:ci)"
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18000/api/health >/tmp/health.json; then break; fi
+            sleep 2
+          done
+          docker stop "$cid" >/dev/null; docker rm "$cid" >/dev/null
+          python3 -c "import json;d=json.load(open('/tmp/health.json'));assert d['status']=='ok',d;print('health',d['version'])"
+
+      - name: Boot the full stack
+        run: docker compose up -d --build
+
+      - name: Wait for /api/ready = 200 (real Postgres + Redis, driver mode)
+        run: |
+          for i in $(seq 1 60); do
+            body="$(curl -fsS http://127.0.0.1:8000/api/ready 2>/dev/null)" && { echo "$body"; break; }
+            sleep 3
+          done
+          test -n "${body:-}" || { echo "::error::/api/ready never turned green"; \
+            docker compose logs --tail=80; exit 1; }
+          echo "$body" | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          assert d['ready'] is True, d
+          modes={c['name']: c['mode'] for c in d['checks']}
+          assert modes == {'postgres':'driver','redis':'driver'}, modes
+          print('ready with drivers:', modes)
+          "
+
+      - name: Readiness reports the DB coming back after a restart
+        # A probe that is green only once is not a probe.
+        run: |
+          docker compose restart postgres >/dev/null
+          for _ in $(seq 1 40); do
+            docker compose exec -T postgres pg_isready -U nexus -d nexus >/dev/null 2>&1 && break
+            sleep 3
+          done
+          curl -fsS http://127.0.0.1:8000/api/ready | grep -q '"ready": *true'
+
+      - name: Backup service writes a verified dump
+        run: |
+          docker compose --profile backup run --rm backup
+          docker compose --profile backup run --rm --entrypoint sh backup -c \
+            'ls -l /backups/*.sql.gz && gzip -t /backups/*.sql.gz && echo DUMP_OK'
+
+      - name: Stack logs (always)
+        if: always()
+        run: docker compose logs --tail=120
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile backup down -v --remove-orphans

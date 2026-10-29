@@ -18,6 +18,10 @@ Rationale for each rule:
     list every tag at HEAD and keep the semver `v`-tags only.
   * An unreleased working commit (tag behind pyproject) is FINE and expected:
     the version is bumped in the release commit, then tagged.
+  * A commit AFTER the release tag (no tag on HEAD, pyproject unchanged) is the
+    everyday feature-commit case: the guard compares against the nearest
+    reachable tag instead of demanding a tag on every commit — demanding one
+    made every post-release PR red.
 
 Off-phone/CI note: no third-party deps. `tomllib` is stdlib (py3.11+) and we
 import `src` directly, so this runs anywhere the repo runs.
@@ -118,12 +122,91 @@ def read_git_tag_on_head() -> str | None:
     return max(versions, key=_semver)
 
 
+def read_nearest_release_tag() -> str | None:
+    """Highest release tag reachable from HEAD, or None.
+
+    A commit that comes AFTER a release (a normal feature commit on top of the
+    tagged release) has no tag on HEAD, yet the version is not bumped -- that is
+    the everyday case and it must pass. What must never pass is pyproject
+    disagreeing with the last release: ahead of it (a bump nobody tagged) or
+    behind it (a tag whose own version file drifted).
+    """
+    try:
+        out = subprocess.run(
+            ["git", "tag", "--merged", "HEAD", "--list", "v*"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=ROOT,
+        )
+    except Exception:
+        return None
+    versions = [v for v in (_release_version(t) for t in out.stdout.split()) if v]
+    if not versions:
+        return None
+    return max(versions, key=_semver)
+
+
+def evaluate_versions(
+    pyproject: str,
+    src: str,
+    openapi: str,
+    tag_on_head: str | None,
+    nearest_tag: str | None,
+) -> list[str]:
+    """Pure decision: the list of problems (empty == aligned).
+
+    Kept free of git/file access so the rule itself is testable in one line.
+    """
+    errors: list[str] = []
+    if pyproject != src:
+        errors.append(f"pyproject ({pyproject}) != src.__version__ ({src})")
+    if pyproject != openapi:
+        errors.append(f"pyproject ({pyproject}) != openapi ({openapi})")
+    if errors:
+        return errors  # the file-level drift is the root cause; report it alone
+
+    try:
+        target = _semver(pyproject)
+    except ValueError as exc:
+        return [str(exc)]
+
+    if tag_on_head:
+        if _semver(tag_on_head) != target:
+            direction = (
+                "orphan release" if _semver(tag_on_head) > target else "un-tagged version bump"
+            )
+            errors.append(f"git tag ({tag_on_head}) != pyproject ({pyproject}) — {direction}")
+        return errors
+
+    if nearest_tag is None:
+        errors.append(
+            f"no release tag reachable from HEAD — pyproject is {pyproject} "
+            f"but no v{pyproject} tag exists (rebase onto a release commit)"
+        )
+        return errors
+
+    nearest = _semver(nearest_tag)
+    if nearest > target:
+        errors.append(
+            f"last release tag (v{nearest_tag}) is ahead of pyproject ({pyproject}) "
+            f"— orphan release"
+        )
+    elif nearest < target:
+        errors.append(
+            f"pyproject ({pyproject}) is ahead of the last release tag (v{nearest_tag}) "
+            f"— un-tagged version bump"
+        )
+    return errors
+
+
 def main() -> int:
     try:
         pyproject = read_pyproject()
         src = read_src_version()
         openapi = read_openapi()
         tag = read_git_tag_on_head()
+        nearest = read_nearest_release_tag()
     except Exception as exc:  # noqa: BLE001 - report and exit non-zero
         print(f"ERR: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
@@ -132,32 +215,9 @@ def main() -> int:
     print(f"src.__version__ -> {src}")
     print(f"openapi.yaml   -> {openapi}")
     print(f"git tag (HEAD) -> {tag or '(none)'}")
+    print(f"last release   -> {nearest or '(none)'}")
 
-    errors: list[str] = []
-    if pyproject != src:
-        errors.append(f"pyproject ({pyproject}) != src.__version__ ({src})")
-    if pyproject != openapi:
-        errors.append(f"pyproject ({pyproject}) != openapi ({openapi})")
-
-    if tag:
-        try:
-            if _semver(tag) != _semver(pyproject):
-                # Both directions matter:
-                #   tag > pyproject = orphan release (published a tag without bumping).
-                #   tag < pyproject = un-tagged bump (bumped pyproject without tagging).
-                # Either way, the repo's single-source invariant is broken; the
-                # fix is the same (align them), so report it once with the
-                # direction spelled out.
-                direction = "orphan release" if _semver(tag) > _semver(pyproject) else "un-tagged version bump"
-                errors.append(
-                    f"git tag ({tag}) != pyproject ({pyproject}) — {direction}"
-                )
-        except ValueError as exc:
-            errors.append(str(exc))
-    else:
-        errors.append(
-            f"no release tag on HEAD — pyproject is {pyproject} but no v{pyproject} tag exists"
-        )
+    errors = evaluate_versions(pyproject, src, openapi, tag, nearest)
 
     if errors:
         print("\nVERSION MISMATCH:", file=sys.stderr)

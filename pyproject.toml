@@ -36,7 +36,7 @@ voice = ["gTTS>=2.5.0", "SpeechRecognition>=3.17.0"]
 tui = ["textual>=0.80", "rich>=13"]
 # Ed25519 build signing (src/certification). Optional: the signer falls back to
 # SHA256 when cryptography is absent (e.g. Termux), so it is never a hard dep.
-certification = ["cryptography>=41"]
+certification = ["cryptography>=46.0.6"]
 novamind = [
     "fastapi",
     "uvicorn",
@@ -67,7 +67,7 @@ rag = [
 # OpenAI-compatible client; Gemini is reachable through its OpenAI endpoint).
 embeddings = ["openai>=3.36.1"]
 dev = [
-    "pytest>=7",
+    "pytest>=8.4.3",
     "pytest-cov",
     "pytest-textual-snapshot",
     "textual>=0.80",
@@ -154,7 +154,7 @@ select = ["E4", "E7", "E9", "F"]
 
 # ─── Type checking (mypy) ───────────────────────────────────────────────────
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 # Optional runtime imports (gTTS, speech_recognition, fastapi...) are imported
 # lazily and may be absent — don't fail the build for them.
 ignore_missing_imports = true
