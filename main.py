@@ -11,6 +11,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
+import os
+
+def safe_path(path_str: str) -> str:
+    base = os.path.dirname(os.path.abspath(__file__))
+    target = os.path.abspath(os.path.expanduser(path_str))
+    if not target.startswith(base):
+        raise ValueError('Access denied: Path outside project directory')
+    return target
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -95,6 +104,22 @@ def _app_version():
 
 
 app = FastAPI(title="Nexus Real Workbench", docs_url=None, redoc_url=None)
+
+from src.security.access import AccessGuard
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+GUARD = AccessGuard.from_env()
+if not GUARD.enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
+    raise RuntimeError('Refusing to start: NEXUS_AUTH_TOKEN is empty. Set NEXUS_ALLOW_OPEN=1 for local dev.')
+
+@app.middleware('http')
+async def guard_everything(request: Request, call_next):
+    verdict = GUARD.check(request.method, request.url.path, dict(request.headers))
+    if not verdict.allowed:
+        return JSONResponse({'error': 'unauthorized'}, status_code=401)
+    return await call_next(request)
+
 
 
 # ═══ Docs (v1.12.1) — أصول Swagger محلية (بلا CDN) + المواصفة الحيّة ═══
