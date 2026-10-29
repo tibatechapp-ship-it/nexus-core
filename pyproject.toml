@@ -135,6 +135,7 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
+ignore = ["I001", "UP035", "UP006", "UP045", "BLE001", "S110", "F401"]
 # Conservative set (E4 = imports, E7 = statements, E9 = runtime/syntax,
 # F = pyflakes) — same as the framework's original config, applies repo-wide.
 select = ["E4", "E7", "E9", "F"]

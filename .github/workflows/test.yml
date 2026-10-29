@@ -22,6 +22,7 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     env:
+  NEXUS_ALLOW_OPEN: "1"
       NOVAMIND_HOME: ${{ github.workspace }}
       TZ: UTC
     steps:

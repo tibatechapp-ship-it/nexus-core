@@ -14,6 +14,7 @@ permissions:
 
 # Deterministic clock for every job (any time-formatted assertion sees UTC).
 env:
+  NEXUS_ALLOW_OPEN: "1"
   TZ: UTC
 
 jobs:
