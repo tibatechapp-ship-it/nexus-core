@@ -2,108 +2,410 @@ openapi: 3.0.3
 info:
   title: Nexus Council API
   version: 1.46.0
-  description: |
-    Multi-agent decision council: live SSE deliberation, decision memory
-    with echo-chamber protection, and code crafting guarded by compile proofs.
+  description: |-
+    Nexus core HTTP contract — TWO apps, one spec.
 
-    ERROR MODEL (read first): /api/craft and /api/build answer HTTP 200 even on
-    functional failures (LLM error, unsafe path, py_compile failure) with
-    ok=false. Always check `ok` and `proof.ok`. Non-200 codes are protocol-level
-    only: 401 (auth enabled but token missing/wrong), 429 (rate limit exceeded),
-    400 (malformed JSON body), 404 (unknown id/asset).
+      * `main.py` (workbench) serves the council/craft API. Each operation marked
+        `x-app: main.py` belongs to it.
+      * `unified_agent.py` (gateway) serves the workspace, chat, pipeline, training,
+        knowledge, skills, verify and maintenance surfaces. `x-app: unified_agent.py`.
+      * `x-served-by` lists every app that exposes the path (they run on different
+        ports; `/api/health` exists on both with different payloads — pick the one
+        you call).
 
-    ACCESS GUARD (unified gateway only): the launcher `nexus_agent.py` installs
-    ONE HTTP middleware in front of every route — optional token auth
-    (`NEXUS_AUTH_TOKEN`, header `X-Auth-Token`), a per-client rate limit
-    (`NEXUS_RATE_LIMIT` / `NEXUS_RATE_WINDOW`, default 120 per 60s) and an
-    optional JSONL audit log (`NEXUS_AUDIT_LOG`). Only mutating methods
-    (POST/PUT/PATCH/DELETE) are guarded; GET always passes. With the guard off
-    (its defaults for auth/audit, or `NEXUS_RATE_LIMIT=0`) this spec describes
-    the standalone `main.py` behaviour exactly. Denied calls return
-    `{"ok": false, "error": "..."}`; a 429 also carries `Retry-After`.
+    ERROR MODEL (read first): several routes answer HTTP 200 on functional failure
+    with `ok=false` (craft/build/craft review, pipeline runs). Always check `ok`
+    (and `proof.ok` where present). Non-200 codes are protocol-level only:
+    401 (auth enabled, token missing/wrong), 429 (rate limit, `Retry-After` set),
+    422 (body/params do not match this schema), 400/403/404/500/503 where the
+    operation documents them.
+
+    ACCESS GUARD: the launcher installs ONE middleware in front of every mutating
+    route — optional token auth (`NEXUS_AUTH_TOKEN`, header `X-Auth-Token`), a
+    per-client rate limit (`NEXUS_RATE_LIMIT`/`NEXUS_RATE_WINDOW`, default 120 per
+    60s) and an optional JSONL audit log (`NEXUS_AUDIT_LOG`). GET always passes.
+    Denied calls return `{ok: false, error: ...}`; 429 also carries `Retry-After`.
+
+    Every path in this file is served by at least one app; the drift guard
+    (`tests/test_openapi.py`) fails CI on an undocumented route or a phantom one.
   contact:
     name: tibatechapp-ship-it
     url: https://github.com/tibatechapp-ship-it/nexus-core
 servers:
-  - url: http://127.0.0.1:8000
-    description: Local server (binds 127.0.0.1 only)
-
+- url: http://127.0.0.1:8000
+  description: Local server (binds 127.0.0.1 only)
 tags:
-  - {name: System, description: Health & status}
-  - {name: Council, description: Live deliberation via SSE}
-  - {name: Memory, description: Decision history, search, stats, topics}
-  - {name: Craft, description: Decision->bundle & brief->code with proofs}
-
+- name: System
+  description: Health, readiness, stats, metrics, db stats.
+- name: Council
+  description: Live deliberation, debates, sessions, genome.
+- name: Memory
+  description: Decision history, conversations, traces, export.
+- name: Craft
+  description: Brief→code and decision→bundle with compile proofs.
+- name: Review
+  description: Folder/code review through the live council.
+- name: Workspace
+  description: File tree, read/write inside the workspace.
+- name: Agents
+  description: Agent roster and genome reads.
+- name: Pipeline
+  description: Plan/run the proactive pipeline (SSE for streams).
+- name: Security
+  description: Security checks and their metrics.
+- name: Training
+  description: Training runs, lessons and evaluation.
+- name: Knowledge
+  description: Shared knowledge base documents and search.
+- name: Skills
+  description: Skill catalogue, reads and user overrides.
+- name: Verify
+  description: 'Verify-by-execution: run, grade, repair loop.'
+- name: Maintenance
+  description: Read-only fleet-health metrics over the genome.
+- name: Chat
+  description: Gateway chat and code analysis.
 paths:
-  /api/health:
+  /api/agents:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
     get:
-      tags: [System]
-      summary: Service health, version, component status
-      operationId: getHealth
+      tags:
+      - Agents
+      summary: List Agents
+      operationId: getAgents
+      x-app: unified_agent.py
+      description: List all 52 agents as MCP tools.
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/build:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    post:
+      tags:
+      - Craft
+      summary: Convert a council decision into a file bundle on disk
+      description: |
+        Body accepts `decision_id` (build from a stored decision), `query`
+        (deliberate then build) and `use_llm` (default true). Functional errors
+        return 200 with ok=false.
+      operationId: buildFromDecision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision_id:
+                  type: string
+                  example: decision_1792021853442372_1
+                query:
+                  type: string
+                use_llm:
+                  type: boolean
+                  default: true
+      responses:
+        '200':
+          description: result (check ok)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CraftBuildResult'
+        '401':
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the
+            token header is missing/wrong
+        '429':
+          description: the gateway rate limit is exhausted (Retry-After header set)
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      x-app: main.py
+      security:
+      - AccessToken: []
+  /api/builds:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    get:
+      tags:
+      - Craft
+      summary: List existing builds
+      operationId: listBuilds
+      parameters:
+      - name: n
+        in: query
+        schema:
+          type: integer
+          default: 20
+        description: how many recent builds
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Health'}
-              example:
-                version: "1.46.0"
-                status: ok
-                service: nexus-core
-                uptime_seconds: 42.5
-                bridge: true
-                topics: true
-                builder: true
-                builder_error: null
-                embeddings: "hashing"
-                embeddings_requested: null
-                embeddings_fallback: null
-                bridge_error: null
-
-  /api/ready:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BuildSummary'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      x-app: main.py
+  /api/builds/{build_id}:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
     get:
-      tags: [System]
-      summary: Readiness — Postgres and Redis reachable?
-      description: |
-        Liveness vs readiness: `/api/health` says the process is alive (and is
-        what the container HEALTHCHECK uses); this endpoint says the process can
-        serve work. `ready` is true only when every dependency answered, and the
-        status code follows the body: 200 ready, 503 not ready. The body shape is
-        identical in both cases so a failure is diagnosable from one response.
-
-        Each check reports `mode`: `driver` (real protocol probe — psycopg
-        `SELECT 1` / redis `PING`) or `tcp` (driver not installed, TCP connect
-        only — never claims more than it proved).
-      operationId: getReady
+      tags:
+      - Craft
+      summary: Build detail (the build manifest)
+      operationId: getBuild
+      parameters:
+      - name: build_id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
-          description: All dependencies answered
+          description: manifest (or error object)
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Readiness'}
-              example:
-                ready: true
-                status: ready
-                version: "1.46.0"
-                checks:
-                  - {name: postgres, target: "postgres:5432", ok: true, mode: driver, detail: "SELECT 1", latency_ms: 1.8}
-                  - {name: redis, target: "redis:6379", ok: true, mode: driver, detail: PING, latency_ms: 0.6}
-        '503':
-          description: At least one dependency is unreachable
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Readiness'}
-              example:
-                ready: false
-                status: not_ready
-                version: "1.46.0"
-                checks:
-                  - {name: postgres, target: "postgres:5432", ok: false, mode: driver, error: "OperationalError: could not connect", latency_ms: 2001.4}
-                  - {name: redis, target: "redis:6379", ok: true, mode: driver, detail: PING, latency_ms: 0.7}
-
-  /api/deliberate:
+              schema:
+                $ref: '#/components/schemas/BuildManifest'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      x-app: main.py
+  /api/chat:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
     post:
-      tags: [Council]
+      tags:
+      - Chat
+      summary: Chat Endpoint
+      operationId: postChat
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gw_contract__ChatRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/council/debate:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    post:
+      tags:
+      - Council
+      summary: Council Debate
+      operationId: postCouncilDebate
+      x-app: unified_agent.py
+      description: Run a full council debate and return the synthesised result.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LaCouncilRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/council/sessions:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    get:
+      tags:
+      - Council
+      summary: Council Sessions
+      operationId: getCouncilSessions
+      x-app: unified_agent.py
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/council/sessions/{sid}:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    delete:
+      tags:
+      - Council
+      summary: Council Session Delete
+      operationId: deleteCouncilSessionsSid
+      x-app: unified_agent.py
+      parameters:
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Sid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+    get:
+      tags:
+      - Council
+      summary: Council Session Get
+      operationId: getCouncilSessionsSid
+      x-app: unified_agent.py
+      parameters:
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Sid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/council/stream:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    post:
+      tags:
+      - Council
+      summary: Council Stream
+      operationId: postCouncilStream
+      x-app: unified_agent.py
+      description: Stream a live council debate as Server-Sent Events.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LaCouncilRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/craft:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    post:
+      tags:
+      - Craft
+      summary: Generate code files from a free-text brief (+ optional council review)
+      description: |
+        Flow: brief -> LLM -> strict JSON array of {path, content} -> safety gate
+        (name/extension/depth/size) -> write -> py_compile per .py file.
+        proof.ok=false means at least one .py failed to compile — errors are
+        reported honestly per file. review runs the council on the generated
+        code and returns its verdict. Failures raise inside the module and are
+        surfaced as {"ok": false, "error": "..."} with HTTP 200.
+      operationId: craftCode
+      security:
+      - CraftToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - query
+              properties:
+                query:
+                  type: string
+                  maxLength: 800
+                  example: اكتب دالة فيبوناتشي في بايثون مع اختبار بسيط
+                review:
+                  type: boolean
+                  default: false
+                  description: run council review on the generated code
+      responses:
+        '200':
+          description: result (check ok and proof.ok)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CraftBuildResult'
+              example:
+                ok: true
+                build_id: craft_1792021853442372
+                dir: /home/user/.nexus/data/builds/craft_1792021853442372
+                files:
+                - path: fib.py
+                  bytes: 214
+                - path: README.md
+                  bytes: 580
+                proof:
+                  files_written: 2
+                  py_compile:
+                    fib.py: ok
+                  ok: true
+                review:
+                  verdict: approve
+                  score: 0.85
+        '401':
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the
+            token header is missing/wrong
+        '429':
+          description: the gateway rate limit is exhausted (Retry-After header set)
+      x-app: main.py
+      x-raw-body: true
+  /api/deliberate:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    post:
+      tags:
+      - Council
       summary: Start a live deliberation — Server-Sent Events stream
       description: |
         Returns text/event-stream. Event types:
@@ -121,12 +423,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [query]
+              required:
+              - query
               properties:
                 query:
                   type: string
                   maxLength: 1000
-                  example: "هل نستخدم SQLite أم PostgreSQL؟"
+                  example: هل نستخدم SQLite أم PostgreSQL؟
                 question:
                   type: string
                   description: alias accepted for backward compatibility
@@ -135,7 +438,8 @@ paths:
           description: SSE stream (or a JSON error object for an empty query)
           content:
             text/event-stream:
-              schema: {type: string}
+              schema:
+                type: string
               example: |
                 event: status
                 data: {"phase": "init", "message": "جاري تحليل الاستعلام..."}
@@ -149,20 +453,268 @@ paths:
               schema:
                 type: object
                 properties:
-                  error: {type: string, example: "الاستعلام فارغ"}
+                  error:
+                    type: string
+                    example: الاستعلام فارغ
         '401':
-          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the
+            token header is missing/wrong
         '429':
           description: the gateway rate limit is exhausted (Retry-After header set)
-
-  /api/history:
+      x-app: main.py
+      x-raw-body: true
+      security:
+      - AccessToken: []
+  /api/diag:
+    x-served-by:
+    - nexus_agent.py
     get:
-      tags: [Memory]
+      tags:
+      - System
+      summary: Api Diag
+      operationId: getDiag
+      x-app: nexus_agent.py
+      description: 'تشخيص فوري للبوابة: أي ملف مشغّل، هل المحرك حيّ، وكم مسار في كل طبقة.'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Api Diag Api Diag Get
+  /api/exec:
+    x-served-by:
+    - nexus_agent.py
+    post:
+      tags:
+      - System
+      summary: Exec Code
+      operationId: postExec
+      x-app: nexus_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecReq'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/exec/tools:
+    x-served-by:
+    - nexus_agent.py
+    get:
+      tags:
+      - System
+      summary: Exec Tools
+      operationId: getExecTools
+      x-app: nexus_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/genome:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    get:
+      tags:
+      - Agents
+      summary: Genome List
+      operationId: getGenome
+      x-app: unified_agent.py
+      description: Every agent's genome, ranked by standing (best first).
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/genome/export:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    get:
+      tags:
+      - Agents
+      summary: Genome Export
+      operationId: getGenomeExport
+      x-app: unified_agent.py
+      description: Export the whole genome (agents + timelines) as a downloadable JSON.
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/genome/import:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    post:
+      tags:
+      - Agents
+      summary: Genome Import
+      operationId: postGenomeImport
+      x-app: unified_agent.py
+      description: Import agents from an exported genome (idempotent by agent_id).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Body
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/genome/{agent_id}:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    get:
+      tags:
+      - Agents
+      summary: Genome Detail
+      operationId: getGenomeAgent_id
+      x-app: unified_agent.py
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    patch:
+      tags:
+      - Agents
+      summary: Genome Patch
+      operationId: patchGenomeAgent_id
+      x-app: unified_agent.py
+      description: Edit an agent's persona / display name (does not touch its stats).
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenomePatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/genome/{agent_id}/reset:
+    x-served-by:
+    - nexus_agent.py
+    - unified_agent.py
+    post:
+      tags:
+      - Agents
+      summary: Genome Reset
+      operationId: postGenomeAgent_idReset
+      x-app: unified_agent.py
+      description: 'Re-train an agent: zero its stats, bump generation, keep lineage.'
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/health:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    - unified_agent.py
+    get:
+      tags:
+      - System
+      summary: Service health, version, component status
+      operationId: getHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                version: 1.46.0
+                status: ok
+                service: nexus-core
+                uptime_seconds: 42.5
+                bridge: true
+                topics: true
+                builder: true
+                builder_error: null
+                embeddings: hashing
+                embeddings_requested: null
+                embeddings_fallback: null
+                bridge_error: null
+      x-app: main.py
+  /api/history:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    get:
+      tags:
+      - Memory
       summary: Recent decisions (server-side text filter available)
       operationId: listHistory
       parameters:
-        - {name: q, in: query, schema: {type: string}, description: substring filter on query/reasoning/topic_id/category}
-        - {name: limit, in: query, schema: {type: integer, default: 10, minimum: 1, maximum: 200}}
+      - name: q
+        in: query
+        schema:
+          type: string
+        description: substring filter on query/reasoning/topic_id/category
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 200
       responses:
         '200':
           description: 'list (or {"error", "items": []} on storage failure)'
@@ -170,173 +722,289 @@ paths:
             application/json:
               schema:
                 type: array
-                items: {$ref: '#/components/schemas/HistoryItem'}
+                items:
+                  $ref: '#/components/schemas/HistoryItem'
               example:
-                - id: "decision_1792024508871482_1"
-                  query: "هل نستخدم sqlite؟"
-                  verdict: "approve"
-                  score: 0.85
-                  topic_id: ""
-                  timestamp: 1792024508.87
-
+              - id: decision_1792024508871482_1
+                query: هل نستخدم sqlite؟
+                verdict: approve
+                score: 0.85
+                topic_id: ''
+                timestamp: 1792024508.87
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      x-app: main.py
   /api/history/{rec_id}:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
     get:
-      tags: [Memory]
+      tags:
+      - Memory
       summary: Full decision record incl. transcript
       operationId: getDecision
       parameters:
-        - {name: rec_id, in: path, required: true, schema: {type: string}}
+      - name: rec_id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: 'full record (or {"error": "not found"})'
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Decision'}
-
-  /api/stats:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      x-app: main.py
+  /api/mcp/tools:
+    x-served-by:
+    - nexus_agent.py
     get:
-      tags: [Memory]
-      summary: Council verdict statistics
-      operationId: getStats
+      tags:
+      - Agents
+      summary: Api Mcp Tools
+      operationId: getMcpTools
+      x-app: nexus_agent.py
+      description: 'أدوات خادم MCP لسطح الإطار: الاسم، الوصف، والمجموعة، ومخطّط الإدخال.'
       responses:
         '200':
-          description: 'OK ({"total": 0} when no decisions stored yet)'
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Stats'}
-              example:
-                total: 18
-                by_verdict: {approve: 10, reject: 6, human_review: 2}
-                avg_score: 0.578
-                avg_rounds: 0.61
-
-  /api/topics:
-    get:
-      tags: [Memory]
-      summary: Ready-made decision topics
-      operationId: listTopics
-      responses:
-        '200':
-          description: OK
+          description: Successful Response
           content:
             application/json:
               schema:
-                type: array
-                items: {$ref: '#/components/schemas/Topic'}
-
-  /api/build:
-    post:
-      tags: [Craft]
-      summary: Convert a council decision into a file bundle on disk
-      description: |
-        Body accepts `decision_id` (build from a stored decision), `query`
-        (deliberate then build) and `use_llm` (default true). Functional errors
-        return 200 with ok=false.
-      operationId: buildFromDecision
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                decision_id: {type: string, example: "decision_1792021853442372_1"}
-                query: {type: string}
-                use_llm: {type: boolean, default: true}
-      responses:
-        '200':
-          description: result (check ok)
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/CraftBuildResult'}
-        '401':
-          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
-        '429':
-          description: the gateway rate limit is exhausted (Retry-After header set)
-
-  /api/builds:
-    get:
-      tags: [Craft]
-      summary: List existing builds
-      operationId: listBuilds
-      parameters:
-        - {name: n, in: query, schema: {type: integer, default: 20}, description: how many recent builds}
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
+                additionalProperties: true
                 type: object
-                properties:
-                  items:
-                    type: array
-                    items: {$ref: '#/components/schemas/BuildSummary'}
-
-  /api/builds/{build_id}:
-    get:
-      tags: [Craft]
-      summary: Build detail (the build manifest)
-      operationId: getBuild
-      parameters:
-        - {name: build_id, in: path, required: true, schema: {type: string}}
+                title: Response Api Mcp Tools Api Mcp Tools Get
+  /api/monitoring/clear:
+    x-served-by:
+    - nexus_agent.py
+    post:
+      tags:
+      - System
+      summary: Api Metrics Clear
+      operationId: postMonitoringClear
+      x-app: nexus_agent.py
+      description: يحذف سجلّ اليوم ويعيد عدد الاستدعاءات المحذوفة.
       responses:
         '200':
-          description: manifest (or error object)
+          description: Successful Response
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/BuildManifest'}
-
-  /api/craft:
-    post:
-      tags: [Craft]
-      summary: Generate code files from a free-text brief (+ optional council review)
-      description: |
-        Flow: brief -> LLM -> strict JSON array of {path, content} -> safety gate
-        (name/extension/depth/size) -> write -> py_compile per .py file.
-        proof.ok=false means at least one .py failed to compile — errors are
-        reported honestly per file. review runs the council on the generated
-        code and returns its verdict. Failures raise inside the module and are
-        surfaced as {"ok": false, "error": "..."} with HTTP 200.
-      operationId: craftCode
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Api Metrics Clear Api Monitoring Clear Post
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
       security:
-        - CraftToken: []
+      - AccessToken: []
+  /api/monitoring/session:
+    x-served-by:
+    - nexus_agent.py
+    get:
+      tags:
+      - System
+      summary: Api Metrics Session
+      operationId: getMonitoringSession
+      x-app: nexus_agent.py
+      description: إحصاء استدعاءات هذه الجلسة (في الذاكرة، بلا ملفّ).
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Api Metrics Session Api Monitoring Session Get
+  /api/monitoring/today:
+    x-served-by:
+    - nexus_agent.py
+    get:
+      tags:
+      - System
+      summary: Api Metrics Today
+      operationId: getMonitoringToday
+      x-app: nexus_agent.py
+      description: إحصاء استدعاءات LLM المُسجَّلة اليوم (يُقرأ من ملفّ المراقبة).
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Api Metrics Today Api Monitoring Today Get
+  /api/orchestrator/execute:
+    x-served-by:
+    - nexus_agent.py
+    post:
+      tags:
+      - System
+      summary: ' Orchestrator Execute'
+      operationId: postOrchestratorExecute
+      x-app: nexus_agent.py
+      description: |-
+        صنّف + اختر وكيلاً + نفّذ + بوابة هيئة للخطر العالي (v1.22.0).
+
+        مخرَج ``Orchestrator.execute``: ``{plan, jury, output, ok}``. بوابة الهيئة
+        تعمل الآن مع الموجّه الحقيقي عبر ``RouterLLMAdapter`` (تحويل dict→نصّ + معالجة
+        ``json_mode`` الناقص) — وإلا فإن كل عمل عالي الخطورة يُرفض بخطأ نوع.
       requestBody:
-        required: true
         content:
           application/json:
             schema:
+              additionalProperties: true
               type: object
-              required: [query]
-              properties:
-                query: {type: string, maxLength: 800, example: "اكتب دالة فيبوناتشي في بايثون مع اختبار بسيط"}
-                review: {type: boolean, default: false, description: run council review on the generated code}
+              title: Req
+        required: true
       responses:
         '200':
-          description: result (check ok and proof.ok)
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/orchestrator/metrics:
+    x-served-by:
+    - nexus_agent.py
+    get:
+      tags:
+      - System
+      summary: ' Orchestrator Metrics'
+      operationId: getOrchestratorMetrics
+      x-app: nexus_agent.py
+      description: Read-only aggregate of /api/orchestrator/execute traffic (v1.37.0).
+      parameters:
+      - name: window_days
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 7
+          title: Window Days
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/orchestrator/plan:
+    x-served-by:
+    - nexus_agent.py
+    post:
+      tags:
+      - System
+      summary: ' Orchestrator Plan'
+      operationId: postOrchestratorPlan
+      x-app: nexus_agent.py
+      description: |-
+        Classify + route a request WITHOUT executing it (v1.21.1).
+
+        Returns {agent, risk, risk_reason, router_reason} so callers can measure
+        how often the jury gate is actually needed.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Req
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/ready:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    get:
+      tags:
+      - System
+      summary: Readiness — Postgres and Redis reachable?
+      description: |
+        Liveness vs readiness: `/api/health` says the process is alive (and is
+        what the container HEALTHCHECK uses); this endpoint says the process can
+        serve work. `ready` is true only when every dependency answered, and the
+        status code follows the body: 200 ready, 503 not ready. The body shape is
+        identical in both cases so a failure is diagnosable from one response.
+
+        Each check reports `mode`: `driver` (real protocol probe — psycopg
+        `SELECT 1` / redis `PING`) or `tcp` (driver not installed, TCP connect
+        only — never claims more than it proved).
+      operationId: getReady
+      responses:
+        '200':
+          description: All dependencies answered
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/CraftBuildResult'}
+              schema:
+                $ref: '#/components/schemas/Readiness'
               example:
-                ok: true
-                build_id: "craft_1792021853442372"
-                dir: "/home/user/.nexus/data/builds/craft_1792021853442372"
-                files:
-                  - {path: "fib.py", bytes: 214}
-                  - {path: "README.md", bytes: 580}
-                proof:
-                  files_written: 2
-                  py_compile: {"fib.py": "ok"}
+                ready: true
+                status: ready
+                version: 1.46.0
+                checks:
+                - name: postgres
+                  target: postgres:5432
                   ok: true
-                review: {verdict: "approve", score: 0.85}
-        '401':
-          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
-        '429':
-          description: the gateway rate limit is exhausted (Retry-After header set)
-
+                  mode: driver
+                  detail: SELECT 1
+                  latency_ms: 1.8
+                - name: redis
+                  target: redis:6379
+                  ok: true
+                  mode: driver
+                  detail: PING
+                  latency_ms: 0.6
+        '503':
+          description: At least one dependency is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+              example:
+                ready: false
+                status: not_ready
+                version: 1.46.0
+                checks:
+                - name: postgres
+                  target: postgres:5432
+                  ok: false
+                  mode: driver
+                  error: 'OperationalError: could not connect'
+                  latency_ms: 2001.4
+                - name: redis
+                  target: redis:6379
+                  ok: true
+                  mode: driver
+                  detail: PING
+                  latency_ms: 0.7
+      x-app: main.py
   /api/review:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
     post:
-      tags: [Review]
+      tags:
+      - Review
       summary: Review a local project folder with the live council
       description: |
         Reads up to `max_files` source files (allow-listed extensions) from a
@@ -350,27 +1018,36 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path]
+              required:
+              - path
               properties:
-                path: {type: string, example: "$HOME/nexus-core/src"}
-                max_files: {type: integer, default: 8, minimum: 1, maximum: 20}
+                path:
+                  type: string
+                  example: $HOME/nexus-core/src
+                max_files:
+                  type: integer
+                  default: 8
+                  minimum: 1
+                  maximum: 20
       responses:
         '200':
           description: review result (check ok)
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/ReviewResult'}
+              schema:
+                $ref: '#/components/schemas/ReviewResult'
               example:
                 ok: true
-                project: "src"
+                project: src
                 files_reviewed: 8
                 bytes_reviewed: 26410
-                verdict: "مقبول"
+                verdict: مقبول
                 score: 0.78
-                recommendation: "تقوية التحقق من المدخلات"
+                recommendation: تقوية التحقق من المدخلات
                 transcript: []
         '401':
-          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the token header is missing/wrong
+          description: auth is enabled (CRAFT_AUTH_TOKEN and/or the gateway's NEXUS_AUTH_TOKEN) and the
+            token header is missing/wrong
         '429':
           description: the gateway rate limit is exhausted (Retry-After header set)
         '400':
@@ -383,186 +1060,2230 @@ paths:
           description: council bridge unavailable
         '500':
           description: the council review raised
+      x-app: main.py
+      x-raw-body: true
+      security:
+      - AccessToken: []
+  /api/stats:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    get:
+      tags:
+      - Memory
+      summary: Council verdict statistics
+      operationId: getStats
+      responses:
+        '200':
+          description: 'OK ({"total": 0} when no decisions stored yet)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+              example:
+                total: 18
+                by_verdict:
+                  approve: 10
+                  reject: 6
+                  human_review: 2
+                avg_score: 0.578
+                avg_rounds: 0.61
+      x-app: main.py
+  /api/status:
+    x-served-by:
+    - nexus_agent.py
+    get:
+      tags:
+      - System
+      summary: Api Status
+      operationId: getStatus
+      x-app: nexus_agent.py
+      description: |-
+        حالة الخادم الموحّد: مكوّنات الطبقات الثلاث.
 
+        عقد يستهلكه ``scripts/bin/nexus`` (``agents`` مفكّك + ``engine`` +
+        ``topics``) — شكله الفرعي ``components`` لازم يبقى قاموساً.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Api Status Api Status Get
+  /api/topics:
+    x-served-by:
+    - main.py
+    - nexus_agent.py
+    get:
+      tags:
+      - Memory
+      summary: Ready-made decision topics
+      operationId: listTopics
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Topic'
+      x-app: main.py
+  /api/analyze:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Chat
+      summary: Analyze Endpoint
+      operationId: postAnalyze
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/conversations:
+    x-served-by:
+    - unified_agent.py
+    delete:
+      tags:
+      - Memory
+      summary: Clear Conversations
+      operationId: deleteConversations
+      x-app: unified_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+      - AccessToken: []
+    get:
+      tags:
+      - Memory
+      summary: List Conversations
+      operationId: getConversations
+      x-app: unified_agent.py
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 500
+          title: Limit
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    post:
+      tags:
+      - Memory
+      summary: Create Conversation
+      operationId: postConversations
+      x-app: unified_agent.py
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCreate'
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/conversations/migrate:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Memory
+      summary: Migrate Conversations
+      operationId: postConversationsMigrate
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MigrateRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/conversations/{cid}:
+    x-served-by:
+    - unified_agent.py
+    delete:
+      tags:
+      - Memory
+      summary: Delete Conversation
+      operationId: deleteConversationsCid
+      x-app: unified_agent.py
+      parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Cid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+    get:
+      tags:
+      - Memory
+      summary: Get Conversation
+      operationId: getConversationsCid
+      x-app: unified_agent.py
+      parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Cid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    patch:
+      tags:
+      - Memory
+      summary: Update Conversation
+      operationId: patchConversationsCid
+      x-app: unified_agent.py
+      parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Cid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationUpdate'
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+    put:
+      tags:
+      - Memory
+      summary: Put Conversation
+      operationId: putConversationsCid
+      x-app: unified_agent.py
+      description: Create-or-replace a conversation (client-authoritative full sync).
+      parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Cid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationPut'
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/conversations/{cid}/export:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Memory
+      summary: Export Conversation
+      operationId: getConversationsCidExport
+      x-app: unified_agent.py
+      parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Cid
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          default: json
+          title: Format
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/conversations/{cid}/messages:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Memory
+      summary: Add Message
+      operationId: postConversationsCidMessages
+      x-app: unified_agent.py
+      parameters:
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Cid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/db/stats:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - System
+      summary: Db Stats
+      operationId: getDbStats
+      x-app: unified_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/export/conversations:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Memory
+      summary: Export All Conversations
+      operationId: getExportConversations
+      x-app: unified_agent.py
+      description: 'Bulk backup: every conversation with its messages (json or markdown).'
+      parameters:
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          default: json
+          title: Format
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/knowledge:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Knowledge
+      summary: Knowledge List
+      operationId: getKnowledge
+      x-app: unified_agent.py
+      description: كل الوثائق (بلا محتوى) + إحصاء القاعدة.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Knowledge List Api Knowledge Get
+  /api/knowledge/{name}:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Knowledge
+      summary: Knowledge Doc
+      operationId: getKnowledgeName
+      x-app: unified_agent.py
+      description: وثيقة واحدة بمحتواها الكامل، أو 404.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Knowledge Doc Api Knowledge  Name  Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/maintenance/metrics:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Maintenance
+      summary: Maintenance Metrics
+      operationId: getMaintenanceMetrics
+      x-app: unified_agent.py
+      description: Aggregate fleet-health metrics (read-only, never raises).
+      parameters:
+      - name: window_days
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 7
+          title: Window Days
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Maintenance Metrics Api Maintenance Metrics Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/maintenance/tasks:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Maintenance
+      summary: Maintenance Tasks
+      operationId: getMaintenanceTasks
+      x-app: unified_agent.py
+      description: Candidate LOW/MED maintenance tasks from the current genome state.
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 5
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Maintenance Tasks Api Maintenance Tasks Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/messages/{mid}:
+    x-served-by:
+    - unified_agent.py
+    delete:
+      tags:
+      - System
+      summary: Delete Message
+      operationId: deleteMessagesMid
+      x-app: unified_agent.py
+      parameters:
+      - name: mid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Mid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/metrics:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - System
+      summary: Get Metrics
+      operationId: getMetrics
+      x-app: unified_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/ollama/chat:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - System
+      summary: Chat With Ollama
+      operationId: postOllamaChat
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ollama_router__ChatRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/pipeline/plan:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Pipeline
+      summary: Pipeline Plan
+      operationId: postPipelinePlan
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Req
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/pipeline/run:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Pipeline
+      summary: Api Pipeline Run
+      operationId: postPipelineRun
+      x-app: unified_agent.py
+      description: Run full Proactive Pipeline on a request.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Req
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/pipeline/run/stream:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Pipeline
+      summary: Pipeline Stream
+      operationId: postPipelineRunStream
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_StreamRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/pipeline/status:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Pipeline
+      summary: Pipeline Status
+      operationId: getPipelineStatus
+      x-app: unified_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/security/check:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Security
+      summary: Security Check
+      operationId: postSecurityCheck
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Req
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/security/metrics:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Security
+      summary: Security Metrics
+      operationId: getSecurityMetrics
+      x-app: unified_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/settings/provider:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - System
+      summary: Set Provider Key
+      operationId: postSettingsProvider
+      x-app: unified_agent.py
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderKey'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/skills:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Skills
+      summary: Skills List
+      operationId: getSkills
+      x-app: unified_agent.py
+      description: كل المهارات (اسم + وصف) + مصادرها.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Skills List Api Skills Get
+  /api/skills/{name}:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Skills
+      summary: Skill Detail
+      operationId: getSkillsName
+      x-app: unified_agent.py
+      description: مهارة واحدة بمحتواها الكامل، أو 404.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Skill Detail Api Skills  Name  Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/traces:
+    x-served-by:
+    - unified_agent.py
+    delete:
+      tags:
+      - Memory
+      summary: Clear Traces
+      operationId: deleteTraces
+      x-app: unified_agent.py
+      parameters:
+      - name: conversation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Conversation Id
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+    get:
+      tags:
+      - Memory
+      summary: List Traces
+      operationId: getTraces
+      x-app: unified_agent.py
+      parameters:
+      - name: conversation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Conversation Id
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 200
+          title: Limit
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/traces/{tid}:
+    x-served-by:
+    - unified_agent.py
+    delete:
+      tags:
+      - Memory
+      summary: Delete Trace
+      operationId: deleteTracesTid
+      x-app: unified_agent.py
+      parameters:
+      - name: tid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+    get:
+      tags:
+      - Memory
+      summary: Get Trace
+      operationId: getTracesTid
+      x-app: unified_agent.py
+      parameters:
+      - name: tid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/traces/{tid}/export:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Memory
+      summary: Export Trace
+      operationId: getTracesTidExport
+      x-app: unified_agent.py
+      parameters:
+      - name: tid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tid
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          default: json
+          title: Format
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/traces/{tid}/replay:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Memory
+      summary: Replay Trace
+      operationId: postTracesTidReplay
+      x-app: unified_agent.py
+      description: Re-run a logged request through the pipeline and log the new result.
+      parameters:
+      - name: tid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tid
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/training/agents:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Agents
+      operationId: getTrainingAgents
+      x-app: unified_agent.py
+      description: Every agent that has ever trained, with its latest run.
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Agents Api Training Agents Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/batch:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Training
+      summary: Training Batch
+      operationId: postTrainingBatch
+      x-app: unified_agent.py
+      description: Train several agents in one call.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchTrainRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Training Batch Api Training Batch Post
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/training/certificates:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Certificates
+      operationId: getTrainingCertificates
+      x-app: unified_agent.py
+      description: Issued certificates, newest first.
+      parameters:
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Certificates Api Training Certificates Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/evolve:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Training
+      summary: Training Evolve
+      operationId: postTrainingEvolve
+      x-app: unified_agent.py
+      description: Run an evolution pass now and report what it changed.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Training Evolve Api Training Evolve Post
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+      - AccessToken: []
+  /api/training/field:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Field
+      operationId: getTrainingField
+      x-app: unified_agent.py
+      description: Field-loop counters (lessons absorbed, genome feeds, evolutions).
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Training Field Api Training Field Get
+  /api/training/fitness:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Fitness
+      operationId: getTrainingFitness
+      x-app: unified_agent.py
+      description: Per-agent genome standings (fitness, evidence, next action).
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Fitness Api Training Fitness Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/lessons:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Lessons
+      operationId: getTrainingLessons
+      x-app: unified_agent.py
+      description: Lessons the field loop absorbed, most confident first.
+      parameters:
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Lessons Api Training Lessons Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/plan/{agent_id}:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Plan
+      operationId: getTrainingPlanAgent_id
+      x-app: unified_agent.py
+      description: The plan an agent would run, plus its last result.
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      - name: spec
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Spec
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Plan Api Training Plan  Agent Id  Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/run:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Training
+      summary: Training Run
+      operationId: postTrainingRun
+      x-app: unified_agent.py
+      description: Train one agent and return the recorded run.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Training Run Api Training Run Post
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/training/runs:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Runs
+      operationId: getTrainingRuns
+      x-app: unified_agent.py
+      description: Run history, newest first.
+      parameters:
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Runs Api Training Runs Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/runs/{run_id}:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Run Detail
+      operationId: getTrainingRunsRun_id
+      x-app: unified_agent.py
+      description: One run by id.
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Training Run Detail Api Training Runs  Run Id  Get
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /api/training/status:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Training
+      summary: Training Status
+      operationId: getTrainingStatus
+      x-app: unified_agent.py
+      description: Aggregate counters for the dashboard.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Training Status Api Training Status Get
+  /api/verify/fix:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Verify
+      summary: Verify Fix
+      operationId: postVerifyFix
+      x-app: unified_agent.py
+      description: ينفّذ، وعند الفشل يطلب من الـLLM إصلاحاً ويعيد المحاولة.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FixRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Verify Fix Api Verify Fix Post
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/verify/run:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Verify
+      summary: Verify Run
+      operationId: postVerifyRun
+      x-app: unified_agent.py
+      description: ينفّذ الكود ويُعيد الحكم (بلا إصلاح).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Verify Run Api Verify Run Post
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/verify/tools:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Verify
+      summary: Verify Tools
+      operationId: getVerifyTools
+      x-app: unified_agent.py
+      description: ما الذي يستطيع هذا السطح فعله الآن — بصدق.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Verify Tools Api Verify Tools Get
+  /api/workspace/file:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Workspace
+      summary: Read File
+      operationId: getWorkspaceFile
+      x-app: unified_agent.py
+      parameters:
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Path
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    put:
+      tags:
+      - Workspace
+      summary: Write File
+      operationId: putWorkspaceFile
+      x-app: unified_agent.py
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/workspace/tree:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Workspace
+      summary: Get Tree
+      operationId: getWorkspaceTree
+      x-app: unified_agent.py
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
 components:
   securitySchemes:
-    CraftToken: {type: apiKey, in: header, name: X-Craft-Token, description: required only if CRAFT_AUTH_TOKEN env is set}
-    AccessToken: {type: apiKey, in: header, name: X-Auth-Token, description: required on mutating methods only when the unified gateway runs with NEXUS_AUTH_TOKEN set}
+    CraftToken:
+      type: apiKey
+      in: header
+      name: X-Craft-Token
+      description: Required only when CRAFT_AUTH_TOKEN is set (workbench).
+    AccessToken:
+      type: apiKey
+      in: header
+      name: X-Auth-Token
+      description: Required on mutating methods only when the gateway runs with NEXUS_AUTH_TOKEN set.
   schemas:
     Health:
       type: object
-      required: [status, version]
+      required:
+      - status
+      - version
       properties:
-        status: {type: string, example: ok}
-        version: {type: string, description: "pyproject.toml [project].version (single source)"}
-        service: {type: string, example: nexus-core}
-        uptime_seconds: {type: number, description: "Seconds since this process started"}
-        bridge: {type: boolean}
-        topics: {type: boolean}
-        builder: {type: boolean}
-        builder_error: {type: string, nullable: true}
-        embeddings: {type: string, nullable: true, example: hashing}
-        embeddings_requested: {type: string, nullable: true}
-        embeddings_fallback: {type: string, nullable: true}
-        bridge_error: {type: string, nullable: true}
-
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          description: pyproject.toml [project].version (single source)
+        service:
+          type: string
+          example: nexus-core
+        uptime_seconds:
+          type: number
+          description: Seconds since this process started
+        bridge:
+          type: boolean
+        topics:
+          type: boolean
+        builder:
+          type: boolean
+        builder_error:
+          type: string
+          nullable: true
+        embeddings:
+          type: string
+          nullable: true
+          example: hashing
+        embeddings_requested:
+          type: string
+          nullable: true
+        embeddings_fallback:
+          type: string
+          nullable: true
+        bridge_error:
+          type: string
+          nullable: true
     Readiness:
       type: object
-      required: [ready, status, checks]
+      required:
+      - ready
+      - status
+      - checks
       properties:
-        ready: {type: boolean}
-        status: {type: string, enum: [ready, not_ready, error]}
-        version: {type: string}
+        ready:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          - error
+        version:
+          type: string
         checks:
           type: array
-          items: {$ref: '#/components/schemas/ReadinessCheck'}
-
+          items:
+            $ref: '#/components/schemas/ReadinessCheck'
     ReadinessCheck:
       type: object
-      required: [name, ok]
+      required:
+      - name
+      - ok
       properties:
-        name: {type: string, enum: [postgres, redis]}
-        target: {type: string, example: "postgres:5432"}
-        ok: {type: boolean}
-        mode: {type: string, enum: [driver, tcp], description: "driver = protocol probe, tcp = connect-only fallback"}
-        detail: {type: string, nullable: true}
-        error: {type: string, nullable: true}
-        latency_ms: {type: number}
-
+        name:
+          type: string
+          enum:
+          - postgres
+          - redis
+        target:
+          type: string
+          example: postgres:5432
+        ok:
+          type: boolean
+        mode:
+          type: string
+          enum:
+          - driver
+          - tcp
+          description: driver = protocol probe, tcp = connect-only fallback
+        detail:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        latency_ms:
+          type: number
     HistoryItem:
       type: object
       description: Brief row returned by /api/history and /api/history?q=
       properties:
-        id: {type: string}
-        query: {type: string, description: truncated to ~100 chars}
-        verdict: {type: string, enum: [approve, reject, human_review, unknown]}
-        score: {type: number}
-        topic_id: {type: string}
-        timestamp: {type: number, description: unix seconds}
-
+        id:
+          type: string
+        query:
+          type: string
+          description: truncated to ~100 chars
+        verdict:
+          type: string
+          enum:
+          - approve
+          - reject
+          - human_review
+          - unknown
+        score:
+          type: number
+        topic_id:
+          type: string
+        timestamp:
+          type: number
+          description: unix seconds
     Decision:
       type: object
       properties:
-        id: {type: string}
-        query: {type: string}
-        verdict: {type: string}
-        score: {type: number}
-        rounds: {type: integer}
-        consensus: {type: boolean}
-        reasoning: {type: string}
+        id:
+          type: string
+        query:
+          type: string
+        verdict:
+          type: string
+        score:
+          type: number
+        rounds:
+          type: integer
+        consensus:
+          type: boolean
+        reasoning:
+          type: string
         transcript:
           type: array
           items:
             type: object
             properties:
-              phase: {type: string, example: debate_1}
-              member: {type: string, example: critic}
-              response: {type: string}
-        topic_id: {type: string}
-        category: {type: string}
-        security_events: {type: array, items: {type: object}}
-        timestamp: {type: number}
-
+              phase:
+                type: string
+                example: debate_1
+              member:
+                type: string
+                example: critic
+              response:
+                type: string
+        topic_id:
+          type: string
+        category:
+          type: string
+        security_events:
+          type: array
+          items:
+            type: object
+        timestamp:
+          type: number
     Stats:
       type: object
       properties:
-        total: {type: integer}
+        total:
+          type: integer
         by_verdict:
           type: object
           properties:
-            approve: {type: integer}
-            reject: {type: integer}
-            human_review: {type: integer}
-        avg_score: {type: number}
-        avg_rounds: {type: number}
-
+            approve:
+              type: integer
+            reject:
+              type: integer
+            human_review:
+              type: integer
+        avg_score:
+          type: number
+        avg_rounds:
+          type: number
     Topic:
       type: object
       properties:
-        id: {type: string, example: db_sqlite_vs_postgres}
-        title: {type: string}
-        category: {type: string}
-        question: {type: string}
-        risk: {type: string, example: low}
-
+        id:
+          type: string
+          example: db_sqlite_vs_postgres
+        title:
+          type: string
+        category:
+          type: string
+        question:
+          type: string
+        risk:
+          type: string
+          example: low
     CraftBuildResult:
       type: object
-      required: [ok]
+      required:
+      - ok
       properties:
-        ok: {type: boolean}
-        error: {type: string, description: present only when ok=false}
-        build_id: {type: string}
-        title: {type: string, description: present on /api/build}
-        kind: {type: string, enum: [code, plan], description: present on /api/build}
-        summary: {type: string, description: present on /api/build}
-        dir: {type: string, description: absolute path of the build folder}
+        ok:
+          type: boolean
+        error:
+          type: string
+          description: present only when ok=false
+        build_id:
+          type: string
+        title:
+          type: string
+          description: present on /api/build
+        kind:
+          type: string
+          enum:
+          - code
+          - plan
+          description: present on /api/build
+        summary:
+          type: string
+          description: present on /api/build
+        dir:
+          type: string
+          description: absolute path of the build folder
         files:
           type: array
           items:
             type: object
-            required: [path, bytes]
+            required:
+            - path
+            - bytes
             properties:
-              path: {type: string}
-              bytes: {type: integer}
+              path:
+                type: string
+              bytes:
+                type: integer
         proof:
           type: object
           properties:
-            files_written: {type: integer}
-            ok: {type: boolean}
+            files_written:
+              type: integer
+            ok:
+              type: boolean
             py_compile:
               type: object
               description: path -> "ok" | compile error message (.py files only)
-              additionalProperties: {type: string}
+              additionalProperties:
+                type: string
         review:
           nullable: true
           description: null when review=false or generation failed
           type: object
           properties:
-            verdict: {type: string, enum: [approve, reject, human_review, error]}
-            score: {type: number}
-            error: {type: string, description: present when the review call failed}
-
+            verdict:
+              type: string
+              enum:
+              - approve
+              - reject
+              - human_review
+              - error
+            score:
+              type: number
+            error:
+              type: string
+              description: present when the review call failed
     ReviewResult:
       type: object
-      required: [ok]
+      required:
+      - ok
       properties:
-        ok: {type: boolean}
-        error: {type: string, description: present only when ok=false}
-        project: {type: string, description: reviewed folder name}
-        files_reviewed: {type: integer}
-        bytes_reviewed: {type: integer}
-        verdict: {type: string, nullable: true}
-        score: {type: number, nullable: true}
-        recommendation: {type: string, nullable: true}
-        transcript: {type: array, items: {type: object}}
-
+        ok:
+          type: boolean
+        error:
+          type: string
+          description: present only when ok=false
+        project:
+          type: string
+          description: reviewed folder name
+        files_reviewed:
+          type: integer
+        bytes_reviewed:
+          type: integer
+        verdict:
+          type: string
+          nullable: true
+        score:
+          type: number
+          nullable: true
+        recommendation:
+          type: string
+          nullable: true
+        transcript:
+          type: array
+          items:
+            type: object
     BuildSummary:
       type: object
       properties:
-        build_id: {type: string}
-        title: {type: string}
-        kind: {type: string}
-        ok: {type: boolean}
-        files: {type: integer, description: file count}
-        timestamp: {type: number}
-
+        build_id:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+        ok:
+          type: boolean
+        files:
+          type: integer
+          description: file count
+        timestamp:
+          type: number
     BuildManifest:
       type: object
       properties:
-        build_id: {type: string}
-        title: {type: string}
-        kind: {type: string}
-        summary: {type: string}
-        steps: {type: array, items: {type: string}}
-        verdict: {type: string}
+        build_id:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+        summary:
+          type: string
+        steps:
+          type: array
+          items:
+            type: string
+        verdict:
+          type: string
         files:
           type: array
           items:
             type: object
             properties:
-              path: {type: string}
-              bytes: {type: integer}
-              sha256: {type: string}
-        skipped: {type: array, items: {type: string}}
-        proof: {type: object}
-        timestamp: {type: number}
+              path:
+                type: string
+              bytes:
+                type: integer
+              sha256:
+                type: string
+        skipped:
+          type: array
+          items:
+            type: string
+        proof:
+          type: object
+        timestamp:
+          type: number
+    ValidationError:
+      type: object
+      required:
+      - detail
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationErrorItem'
+    AnalyzeRequest:
+      properties:
+        task:
+          type: string
+          title: Task
+          default: security_audit
+        code:
+          type: string
+          title: Code
+      type: object
+      required:
+      - code
+      title: AnalyzeRequest
+    BatchTrainRequest:
+      properties:
+        agent_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 200
+          title: Agent Ids
+        spec:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Spec
+        quality:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Quality
+          default: 0.85
+        salt:
+          type: string
+          maxLength: 64
+          title: Salt
+          default: ''
+      type: object
+      title: BatchTrainRequest
+      description: Body of ``POST /api/training/batch``.
+    ConversationCreate:
+      properties:
+        id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id
+        title:
+          type: string
+          title: Title
+          default: ''
+        agent:
+          type: string
+          title: Agent
+          default: ''
+      type: object
+      title: ConversationCreate
+    ConversationPut:
+      properties:
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        agent:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent
+        meta:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Meta
+        messages:
+          anyOf:
+          - items:
+              additionalProperties: true
+              type: object
+            type: array
+          - type: 'null'
+          title: Messages
+      type: object
+      title: ConversationPut
+    ConversationUpdate:
+      properties:
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        agent:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent
+        meta:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Meta
+      type: object
+      title: ConversationUpdate
+    FileRequest:
+      properties:
+        path:
+          type: string
+          title: Path
+        content:
+          type: string
+          title: Content
+      type: object
+      required:
+      - path
+      - content
+      title: FileRequest
+    FixRequest:
+      properties:
+        code:
+          type: string
+          minLength: 1
+          title: Code
+        language:
+          type: string
+          maxLength: 32
+          title: Language
+          default: python
+        tests:
+          type: string
+          title: Tests
+          default: ''
+        stdin:
+          type: string
+          title: Stdin
+          default: ''
+        timeout:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Timeout
+          default: 10
+        task:
+          type: string
+          maxLength: 2000
+          title: Task
+          default: ''
+        max_attempts:
+          type: integer
+          maximum: 6.0
+          minimum: 1.0
+          title: Max Attempts
+          default: 3
+      type: object
+      required:
+      - code
+      title: FixRequest
+      description: جسم ``POST /api/verify/fix`` — يعيد المحاولة عبر الـLLM عند الفشل.
+    GenomePatch:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        persona:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Persona
+      type: object
+      title: GenomePatch
+    MessageCreate:
+      properties:
+        role:
+          type: string
+          title: Role
+          default: user
+        content:
+          type: string
+          title: Content
+          default: ''
+        ts:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Ts
+        meta:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Meta
+      type: object
+      title: MessageCreate
+    MigrateRequest:
+      properties:
+        conversations:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Conversations
+          default: []
+      type: object
+      title: MigrateRequest
+    ProviderKey:
+      properties:
+        provider:
+          type: string
+          title: Provider
+        api_key:
+          type: string
+          title: Api Key
+      type: object
+      required:
+      - provider
+      - api_key
+      title: ProviderKey
+    TrainRequest:
+      properties:
+        agent_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Agent Id
+        spec:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Spec
+        quality:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Quality
+          default: 0.85
+        salt:
+          type: string
+          maxLength: 64
+          title: Salt
+          default: ''
+      type: object
+      required:
+      - agent_id
+      title: TrainRequest
+      description: Body of ``POST /api/training/run``.
+    VerifyRequest:
+      properties:
+        code:
+          type: string
+          minLength: 1
+          title: Code
+        language:
+          type: string
+          maxLength: 32
+          title: Language
+          default: python
+        tests:
+          type: string
+          title: Tests
+          default: ''
+        stdin:
+          type: string
+          title: Stdin
+          default: ''
+        timeout:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Timeout
+          default: 10
+      type: object
+      required:
+      - code
+      title: VerifyRequest
+      description: جسم ``POST /api/verify/run``.
+    _StreamRequest:
+      properties:
+        prompt:
+          type: string
+          title: Prompt
+          default: ''
+        message:
+          type: string
+          title: Message
+          default: ''
+        thread_id:
+          type: string
+          title: Thread Id
+          default: default
+      type: object
+      title: _StreamRequest
+    gw_contract__ChatRequest:
+      properties:
+        message:
+          type: string
+          title: Message
+        thread_id:
+          type: string
+          title: Thread Id
+          default: default
+        conversation_id:
+          type: string
+          title: Conversation Id
+          default: ''
+        agent:
+          type: string
+          title: Agent
+          default: ''
+      type: object
+      required:
+      - message
+      title: ChatRequest
+    ollama_router__ChatRequest:
+      properties:
+        message:
+          type: string
+          title: Message
+        model:
+          type: string
+          title: Model
+          default: gemma4:31b
+      type: object
+      required:
+      - message
+      title: ChatRequest
+    LaCouncilRequest:
+      properties:
+        topic:
+          type: string
+          title: Topic
+        rounds:
+          type: integer
+          title: Rounds
+          default: 2
+      type: object
+      required:
+      - topic
+      title: CouncilRequest
+    ExecReq:
+      properties:
+        language:
+          type: string
+          title: Language
+        code:
+          type: string
+          title: Code
+        stdin:
+          type: string
+          title: Stdin
+          default: ''
+        timeout:
+          type: integer
+          title: Timeout
+          default: 10
+      type: object
+      required:
+      - language
+      - code
+      title: ExecReq
+    JsonObject:
+      type: object
+      additionalProperties: true
+      description: JSON object whose exact shape this route does not declare (no response_model).
+    ErrorResponse:
+      type: object
+      required:
+      - ok
+      - error
+      properties:
+        ok:
+          type: boolean
+          enum:
+          - false
+        error:
+          type: string
+          description: Human-readable reason, safe to log.
+        detail:
+          nullable: true
+          description: Optional structured detail (validation list, retry_after, hint).
+    ValidationErrorItem:
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      properties:
+        loc:
+          type: array
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+  responses:
+    Ok:
+      description: Success. Functional failures may still arrive as HTTP 200 with ok=false — check `ok`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JsonObject'
+    Unauthorized:
+      description: Auth is enabled (CRAFT_AUTH_TOKEN for /api/craft, NEXUS_AUTH_TOKEN for the gateway)
+        and the token is missing or wrong.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Per-client rate limit exhausted. `Retry-After` says how long to wait.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the window resets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationFailed:
+      description: Request body/params did not match the declared schema (FastAPI 422).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
