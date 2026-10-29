@@ -94,6 +94,7 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
+      - NEXUS_ALLOW_OPEN=1
       POSTGRES_USER: ${DB_USER:-nexus}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — see .env.example}
       POSTGRES_DB: ${DB_NAME:-nexus}
