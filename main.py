@@ -606,7 +606,7 @@ from src.security.access import AccessGuard
 from fastapi.responses import JSONResponse
 from fastapi import Request
 GUARD = AccessGuard.from_env()
-if not GUARD.enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
+if not GUARD.auth_enabled and not os.environ.get('NEXUS_ALLOW_OPEN'):
     raise RuntimeError('Refusing to start: NEXUS_AUTH_TOKEN is empty. Set NEXUS_ALLOW_OPEN=1 for local dev.')
 
 @app.middleware('http')
