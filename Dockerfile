@@ -58,16 +58,18 @@ COPY --chown=nexus:nexus . /app
 RUN mkdir -p /app/data /app/logs /app/memory /app/backups \
  && chown -R nexus:nexus /app/data /app/logs /app/memory /app/backups
 
-USER nexus
+# Numeric uid:gid — uniname would make the container fail hadolint's DL3066
+# and Kubernetes' runAsNonRoot checks (the user id is fixed at 10001 above).
+USER 10001:10001
 
 EXPOSE 8000
 
 # Liveness only: /api/health must answer without Postgres/Redis being up.
 # Dependency state is /api/ready (used by compose's depends_on + platforms).
+# Exec form (not shell form): hadolint DL3025 — no /bin/sh dependency, and the
+# probe's exit code reaches Docker directly.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import json,sys,urllib.request;\
-r=urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4);\
-sys.exit(0 if r.status==200 else 1)"
+    CMD ["python", "-c", "import sys,urllib.request;r=urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=4);sys.exit(0 if r.status==200 else 1)"]
 
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
