@@ -2002,7 +2002,8 @@ paths:
       summary: Training Agents
       operationId: getTrainingAgents
       x-app: unified_agent.py
-      description: Every agent that has ever trained, with its latest run.
+      description: 'Trained agents with their latest run; when roster=true the
+        full agent roster is appended (what the Academy picker asks for).'
       parameters:
       - name: limit
         in: query
@@ -2011,6 +2012,13 @@ paths:
           type: integer
           default: 100
           title: Limit
+      - name: roster
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Roster
       responses:
         '200':
           description: Successful Response

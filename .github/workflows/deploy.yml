@@ -117,12 +117,17 @@ jobs:
 
       - name: /api/health works without any dependency
         # Liveness must not depend on Postgres: that is the readiness split.
+        # -e NEXUS_ALLOW_OPEN=1: the container binds 0.0.0.0, so without a token
+        # it refuses to boot (fail-closed AccessGuard) — CI opts in explicitly.
         run: |
-          cid="$(docker run -d -p 18000:8000 nexus-core:ci)"
+          cid="$(docker run -d -p 18000:8000 -e NEXUS_ALLOW_OPEN=1 nexus-core:ci)"
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18000/api/health >/tmp/health.json; then break; fi
             sleep 2
           done
+          if [ ! -s /tmp/health.json ]; then
+            echo "::error::container never answered /api/health"; docker logs "$cid" 2>&1 | head -n 100 || true
+          fi
           docker stop "$cid" >/dev/null; docker rm "$cid" >/dev/null
           python3 -c "import json;d=json.load(open('/tmp/health.json'));assert d['status']=='ok',d;print('health',d['version'])"
 

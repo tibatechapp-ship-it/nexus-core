@@ -54,10 +54,14 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
-      # Full test suite — slowest, push only.
+      # Full test suite. Commit-stage per the modernization brief (ruff +
+      # pytest before every commit): the suite is green again (~2 min), so the
+      # old "push-only because 45 failures would block every commit"
+      # justification no longer holds. WIP commits can skip once via
+      # `git commit --no-verify`.
       - id: pytest
         name: pytest (ignore tests/novamind)
         entry: pytest --ignore=tests/novamind -q
         language: system
         pass_filenames: false
-        stages: [pre-push]
+        stages: [pre-commit]

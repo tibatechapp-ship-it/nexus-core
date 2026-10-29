@@ -18,13 +18,10 @@ pydantic>=2.14.1,<3
 pydantic-settings>=2.4,<3
 python-dotenv>=1.0,<2
 httpx>=0.27,<1
-aiofiles>=23,<25
 jinja2>=3.1,<4
 pyyaml>=6,<7
 sqlalchemy>=2.1.5,<3
 aiosqlite>=0.20,<1
-passlib[bcrypt]>=1.7.4,<2
-python-multipart>=0.0.12,<1
 sse-starlette>=2,<4
 
 # ── infrastructure clients (readiness probe + future persistence) ──

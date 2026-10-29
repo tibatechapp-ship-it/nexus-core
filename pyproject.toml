@@ -44,13 +44,10 @@ novamind = [
     "pydantic-settings",
     "python-dotenv>=1.2.4",
     "httpx",
-    "aiofiles",
     "jinja2",
     "pyyaml",
     "sqlalchemy>=2.1.5",
     "aiosqlite>=0.20.0",
-    "passlib[bcrypt]>=1.7.4",
-    "python-multipart>=0.0.12",
     "sse-starlette",
 ]
 observability = [
@@ -73,7 +70,6 @@ dev = [
     "textual>=0.80",
     "pytest-asyncio>=0.24",
     "pytest-benchmark>=5.3.0",
-    "hypothesis>=6.169.0",
     "syrupy>=4",
 ]
 
