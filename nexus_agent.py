@@ -138,10 +138,19 @@ def get_store_singleton() -> Any:
 
 
 def get_genome() -> Any:
-    """جينوم الوكلاء، مبذور من أدوار المجلس عند أول استخدام."""
+    """جينوم الوكلاء — متجر واحد (v2) مبذور من أدوار المجلس.
+
+    P3: كان هذا يبني ``Genome(SessionStore)`` فيكتب أحكام المجلس في جدول
+    SQLite بينما تقرأ الأكاديمية جينوم v2 ⇒ جلستان لبياناتٍ واحدة. صار
+    ``Genome`` يُبنى فوق ``get_genome_v2()`` نفسه (وضع المحوّل)، فكل قراءة
+    وكتابة تذهب إلى المخزن الواحد. السلوك القديم لـ``Genome(SessionStore)``
+    باقٍ لمن يستدعيه مباشرة، ومُهاجرٌ مرّة واحدة عند التثبيت.
+    """
     global _genome
     if _genome is None:
-        _genome = Genome(get_store_singleton())
+        from src.novamind.genome_v2 import get_genome_v2
+
+        _genome = Genome(get_genome_v2())
         _genome.seed(members=COUNCIL_MEMBERS)
     return _genome
 
@@ -574,9 +583,21 @@ def _install_genome_layer() -> None:
     global GENOME_OK, GENOME_ERR
     try:
         from src.agents.manifest import all_manifests
-        from src.novamind.genome_store import install
+        from src.novamind import genome_migrate
+        from src.novamind.genome_store import default_path, install
 
-        genome = install(agent_ids=sorted(all_manifests()))
+        # One store: the 20 framework agents **and** the six council members are
+        # seeded into the same v2 genome the Academy reads (P3 acceptance).
+        council_ids = [m.id for m in COUNCIL_MEMBERS] if COUNCIL_OK else []
+        seeded = sorted(set(all_manifests()) | set(council_ids))
+        fresh = not default_path().exists()
+        legacy = None
+        if fresh:
+            # A pre-P3 install keeps its history in the SQLite genome; fold it in
+            # exactly once (idempotent, additive-only, never fatal).
+            legacy = genome_migrate.migrate_if_fresh(
+                get_store_singleton(), default_path())
+        genome = install(agent_ids=seeded)
 
         # ── Fix "two names for one file" trap ─────────────────────────
         # pyproject.toml puts BOTH "." and "src" on pythonpath, so
@@ -599,8 +620,10 @@ def _install_genome_layer() -> None:
         GENOME_OK = True
         GENOME_ERR = None
         stats = genome.stats()
+        imported = f" · استُورد {legacy} من v1" if legacy else ""
         print(f"   Genome    : ✅ {stats['agents']} وكيل · "
-              f"{stats['observations']} حُكم · {stats['task_observations']} مهمّة")
+              f"{stats['observations']} حُكم · {stats['task_observations']} مهمّة"
+              f"{imported}")
     except Exception as exc:  # pragma: no cover - defensive
         GENOME_OK = False
         GENOME_ERR = str(exc)
@@ -897,11 +920,11 @@ def api_genome_detail(agent_id: str) -> Any:
 def api_genome_patch(agent_id: str, req: GenomePatch) -> Any:
     if not COUNCIL_OK:
         raise HTTPException(status_code=503, detail="Genome غير متوفر")
-    ok = get_store_singleton().update_agent(agent_id, name=req.name,
-                                            persona=req.persona)
+    genome = get_genome()
+    ok = genome.update_agent(agent_id, name=req.name, persona=req.persona)
     if not ok:
         raise HTTPException(status_code=404, detail="agent not found")
-    return get_store_singleton().get_agent(agent_id)
+    return genome.get_agent(agent_id)
 
 
 @app.post("/api/genome/{agent_id}/reset")

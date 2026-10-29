@@ -6,8 +6,15 @@ Genome manager turns real outcomes into updated standings, promotes the strong
 and re-trains the weak, and keeps an append-only timeline so the UI can show how
 an agent evolved.
 
-Persistence lives in :class:`~novamind.core.session_store.SessionStore`; this
-module is the brain (scoring + lifecycle), so the store stays a dumb database.
+**Two backends, one class (P3).**  The canonical genome is
+:class:`~src.novamind.genome_v2.GenomeV2` persisted by
+:mod:`src.novamind.genome_store` (JSON) — that is what the Academy, the training
+field loop and the council actually read.  Passing a ``GenomeV2`` here makes
+every method below delegate to :class:`~.adapter.GenomeV2Adapter`, so the legacy
+API writes the **same row in the same store** instead of a second SQLite copy.
+Passing a ``SessionStore`` keeps the pre-P3 SQLite behaviour byte-for-byte
+(legacy callers and their tests are untouched, the data is imported once by
+:mod:`src.novamind.genome_migrate`).
 """
 
 from __future__ import annotations
@@ -37,10 +44,40 @@ DEFAULT_NAMES: Dict[str, str] = {
 
 
 class Genome:
-    """High-level operations over the ``agent_genome`` store."""
+    """High-level operations over a genome store (v2 JSON, or legacy SQLite)."""
 
     def __init__(self, store: Any) -> None:
         self.store = store
+        # A GenomeV2 (or an adapter already wrapping one) means: one store only.
+        self._adapter: Optional[Any] = None
+        adapter_cls = _adapter_class()
+        if adapter_cls is not None:
+            if isinstance(store, adapter_cls):
+                self._adapter = store
+            else:
+                try:
+                    from ..genome_v2 import GenomeV2
+
+                    if isinstance(store, GenomeV2):
+                        self._adapter = adapter_cls(store)
+                except Exception:  # pragma: no cover - genome_v2 is always here
+                    self._adapter = None
+
+    @property
+    def is_genome_v2(self) -> bool:
+        """True when this instance writes the canonical v2 store."""
+        return self._adapter is not None
+
+    @classmethod
+    def from_genome_v2(cls, genome: Any = None,
+                       *, seed: bool = True) -> "Genome":
+        """Build a Genome over the process-wide v2 store (the production path)."""
+        from ..genome_v2 import get_genome_v2
+
+        instance = cls(genome if genome is not None else get_genome_v2())
+        if seed:
+            instance.seed()
+        return instance
 
     # ── seeding ──────────────────────────────────────────────────────────
     def seed(self, members: Optional[List[Any]] = None,
@@ -51,6 +88,9 @@ class Genome:
         ``members`` may be council member objects (with ``id``/``name``/``system``)
         or plain ids.  Existing rows are left untouched so the seed is idempotent.
         """
+
+        if self._adapter is not None:
+            return self._adapter.seed(members, personas, names)
         personas = personas if personas is not None else DEFAULT_PERSONAS
         names = names if names is not None else DEFAULT_NAMES
         created = 0
@@ -74,6 +114,9 @@ class Genome:
                consensus: Optional[float] = None, kind: str = "outcome",
                detail: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Fold one real outcome into an agent's genome; return the new row."""
+
+        if self._adapter is not None:
+            return self._adapter.record(agent_id, success=success, latency_ms=latency_ms, consensus=consensus, kind=kind, detail=detail)
         cur = self.store.get_agent(agent_id)
         if cur is None:
             cur = self.store.upsert_agent(
@@ -98,6 +141,9 @@ class Genome:
                                detail: Optional[Dict[str, Any]] = None
                                ) -> Dict[str, Any]:
         """Record a council member's result from its verdict alignment."""
+
+        if self._adapter is not None:
+            return self._adapter.outcome_from_influence(agent_id, alignment=alignment, standing_delta=standing_delta, consensus=consensus, latency_ms=latency_ms, detail=detail)
         return self.record(
             agent_id, success=standing_delta > 0, latency_ms=latency_ms,
             consensus=consensus, kind="council",
@@ -108,15 +154,55 @@ class Genome:
     # ── lifecycle ────────────────────────────────────────────────────────
     def reset(self, agent_id: str, note: str = "") -> Optional[Dict[str, Any]]:
         """Re-train an agent: zero its stats, bump generation, keep lineage."""
+
+        if self._adapter is not None:
+            return self._adapter.reset(agent_id, note=note)
         return self.store.reset_agent(agent_id, note=note)
 
     # ── views / portability ──────────────────────────────────────────────
     def rank(self) -> List[Dict[str, Any]]:
         """Every agent, best standing first."""
+
+        if self._adapter is not None:
+            return self._adapter.rank()
         return self.store.list_agents()
+
+    def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """One row (v2 mode) / ``SessionStore.get_agent`` (legacy mode)."""
+        if self._adapter is not None:
+            return self._adapter.get_agent(agent_id)
+        return self.store.get_agent(agent_id)
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """Every row, best first (both modes)."""
+        if self._adapter is not None:
+            return self._adapter.list_agents()
+        return self.store.list_agents()
+
+    def update_agent(self, agent_id: str, name: Optional[str] = None,
+                     persona: Optional[str] = None,
+                     meta: Optional[Dict[str, Any]] = None) -> bool:
+        """Rename/re-persona a row (both modes)."""
+        if self._adapter is not None:
+            return self._adapter.update_agent(agent_id, name=name,
+                                              persona=persona, meta=meta)
+        return bool(self.store.update_agent(agent_id, name=name,
+                                            persona=persona, meta=meta))
+
+    def fitness_of(self, agent_id: str) -> float:
+        """Fitness in [0, 1] for the orchestrator router (both modes)."""
+        if self._adapter is not None:
+            return self._adapter.fitness_of(agent_id)
+        row = self.store.get_agent(agent_id) or {}
+        try:
+            return float(row.get("standing", 0.5))
+        except (TypeError, ValueError):
+            return 0.5
 
     def detail(self, agent_id: str, timeline_limit: int = 100
                ) -> Optional[Dict[str, Any]]:
+        if self._adapter is not None:
+            return self._adapter.detail(agent_id, timeline_limit=timeline_limit)
         agent = self.store.get_agent(agent_id)
         if agent is None:
             return None
@@ -126,6 +212,9 @@ class Genome:
 
     def export(self) -> Dict[str, Any]:
         """Whole genome (agents + full timeline) as a JSON-ready dict."""
+
+        if self._adapter is not None:
+            return self._adapter.export()
         agents = self.store.list_agents()
         return {
             "version": 1,
@@ -136,5 +225,18 @@ class Genome:
 
     def import_(self, payload: Dict[str, Any]) -> int:
         """Import agents from an exported genome (idempotent by agent_id)."""
+
+        if self._adapter is not None:
+            return self._adapter.import_(payload)
         agents = (payload or {}).get("agents") or []
         return self.store.genome_import(agents)
+
+
+def _adapter_class() -> Any:
+    """The adapter type, imported lazily so this module stays cheap."""
+    try:
+        from .adapter import GenomeV2Adapter
+
+        return GenomeV2Adapter
+    except Exception:  # pragma: no cover - adapter ships with the module
+        return None
