@@ -43,6 +43,7 @@ x-app-env: &app-env
   NEXUS_RATE_LIMIT: ${NEXUS_RATE_LIMIT:-120}
   NEXUS_RATE_WINDOW: ${NEXUS_RATE_WINDOW:-60}
   NEXUS_AUDIT_LOG: ${NEXUS_AUDIT_LOG:-/app/logs/audit.jsonl}
+    NEXUS_ALLOW_OPEN: ${NEXUS_ALLOW_OPEN:-}
   NEXUS_LOG_LEVEL: ${NEXUS_LOG_LEVEL:-}
 
 services:
@@ -94,7 +95,6 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      - NEXUS_ALLOW_OPEN=1
       POSTGRES_USER: ${DB_USER:-nexus}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — see .env.example}
       POSTGRES_DB: ${DB_NAME:-nexus}
