@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # PR events already cover every branch, so pushing a feature branch must not
+  # double the run (it used to: `branches: ["**"]` + `pull_request` = 2 identical
+  # workflows per push, doubling CI minutes).
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
