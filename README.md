@@ -25,6 +25,12 @@ make check
 [![Release](https://img.shields.io/github/v/release/tibatechapp-ship-it/nexus-core)](https://github.com/tibatechapp-ship-it/nexus-core/releases)
 [![Docs](https://img.shields.io/badge/CONTRIBUTING-%D8%A7%D9%82%D8%B1%D8%A3%D9%87%20%D8%A3%D9%88%D9%84%D8%A7-8A2BE2)](CONTRIBUTING.md)
 
+## What it is — and who it's for
+
+- **What**: one self-hosted AI-agent runtime — 20 built-in agents, supervisor orchestration, persistent memory, continual learning, council deliberation, native MCP tooling, and an offline security scanner — with a pure-Python stdlib core that runs on modest hardware (even a phone).
+- **Who**: AI engineers and teams building autonomous agents who want an **auditable, self-hosted runtime**, not a hosted black box.
+- **Status, honestly**: infrastructure-grade today (three CI workflows green on main, 173 entries in `tests/`, release-tagged). The remaining gap to a finished *product*: admin dashboard, trace logs, a permissions UI, public benchmarks, and a one-click demo.
+
 **nexus-core** is the unified successor of two projects that grew together:
 
 - **tyb-zyv-ai** — a 20-agent framework + interactive Textual TUI + persistent
