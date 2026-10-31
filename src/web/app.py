@@ -1,7 +1,11 @@
 """Nexus-Core Web Dashboard."""
 from __future__ import annotations
 import sys
+import threading
 import time
+import html as _html
+import itertools
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +67,29 @@ def _setup_mock() -> None:
 # ═══ Cache للحالة ═══
 _status_cache: dict[str, Any] = {"data": None, "ts": 0}
 
+# ═══ تتبع المهام الجارية (قراءة-فقت للوحة) ═══
+_runs_lock = threading.Lock()
+_runs: set[str] = set()
+_run_seq = itertools.count(1)
+
+
+def _run_started() -> str:
+    """سجّل بدء مهمة — يُستدعى من المسارات الثقيلة فقط."""
+    with _runs_lock:
+        rid = f"run-{next(_run_seq)}"
+        _runs.add(rid)
+        return rid
+
+
+def _run_finished(rid: str) -> None:
+    with _runs_lock:
+        _runs.discard(rid)
+
+
+def _tasks_running() -> int:
+    with _runs_lock:
+        return len(_runs)
+
 @app.get("/api/status")
 def status() -> dict:
     import time
@@ -96,6 +123,7 @@ def list_agents() -> dict:
 
 @app.post("/api/agent/run")
 def run_agent(req: AgentRunRequest) -> dict:
+    _rid = _run_started()
     try:
         from nova.registry import REGISTRY
         agent = REGISTRY.load_agent(req.agent)
@@ -119,6 +147,8 @@ def run_agent(req: AgentRunRequest) -> dict:
                 "result": str(result)[:3000], "elapsed": time.time() - start}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    finally:
+        _run_finished(_rid)
 
 
 @app.post("/api/rag/add")
@@ -139,6 +169,7 @@ def rag_query(q: str, k: int = 5) -> dict:
 
 @app.post("/api/council/deliberate")
 def council_deliberate(req: CouncilRequest) -> dict:
+    _rid = _run_started()
     try:
         from src.council.rag_bridge import get_council_bridge
         b = get_council_bridge()
@@ -151,6 +182,8 @@ def council_deliberate(req: CouncilRequest) -> dict:
                 "security_events": result.security_events}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    finally:
+        _run_finished(_rid)
 
 
 # ═══ Topics ═══
@@ -165,6 +198,7 @@ def list_topics() -> dict:
 
 @app.post("/api/council/topic")
 def run_topic(req: CouncilRequest) -> dict:
+    _rid = _run_started()
     try:
         from src.council.topics import get_topic
         t = get_topic(req.question)  # نستخدم حقل question كـ topic_id
@@ -189,6 +223,8 @@ def run_topic(req: CouncilRequest) -> dict:
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    finally:
+        _run_finished(_rid)
 
 
 @app.get("/api/council/history")
@@ -252,6 +288,7 @@ class HybridRequest(BaseModel):
 @app.post("/api/hybrid/run")
 def hybrid_run(req: HybridRequest) -> dict:
     """يستخدم Hybrid Router (code/tool/decision)."""
+    _rid = _run_started()
     try:
         from src.orchestrator.hybrid_router import HybridRouter, classify
 
@@ -278,6 +315,8 @@ def hybrid_run(req: HybridRequest) -> dict:
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()[:500]}
+    finally:
+        _run_finished(_rid)
 
 
 DASHBOARD = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
@@ -297,6 +336,7 @@ class SmartRequest(BaseModel):
 @app.post("/api/smart/run")
 def smart_run(req: SmartRequest) -> dict:
     """يستخدم Smart Router لاختيار الاستراتيجية المثلى."""
+    _rid = _run_started()
     try:
         from src.orchestrator.supervisor import Supervisor
         
@@ -323,3 +363,122 @@ def smart_run(req: SmartRequest) -> dict:
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()[:500]}
+    finally:
+        _run_finished(_rid)
+
+
+# ═══ لوحة القراءة-فقط (Week-1: الوكلاء النشطون، المهام الجارية، آخر القرارات) ═══
+
+DASHBOARD_CATEGORIES = ('code', 'security', 'quality', 'infra',
+                        'data', 'ui', 'research', 'meta')
+
+
+def _dashboard_summary() -> dict[str, Any]:
+    """تجميع قراءة-فقط: لا ينفّذ شيئاً — يجمع حالة الوكلاء والمهام والقرارات."""
+    out: dict[str, Any] = {"ok": True}
+    try:
+        from nova.registry import REGISTRY, agents_by_category
+        out["agents"] = {
+            "total": len(REGISTRY),
+            "by_category": {c: agents_by_category(c)
+                            for c in DASHBOARD_CATEGORIES},
+        }
+    except Exception as e:
+        out["agents"] = {"total": 0, "by_category": {}, "error": str(e)}
+    out["tasks_running"] = _tasks_running()
+    try:
+        from src.council.history import get_history
+        out["recent_decisions"] = list(get_history().list_recent(5))
+    except Exception as e:
+        out["recent_decisions"] = []
+        out["decisions_error"] = str(e)
+    out["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return out
+
+
+@app.get("/api/dashboard")
+def dashboard_summary_api() -> dict:
+    """ملخص قراءة-فقت للوحة — بلا تنفيذ ولا آثار جانبية."""
+    return _dashboard_summary()
+
+
+_DASHBOARD_PAGE = """<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus-Core — لوحة القراءة-فقط</title>
+<style>
+body{font-family:system-ui,'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;
+     max-width:820px;margin:2rem auto;padding:0 1rem;line-height:1.7}
+h1{font-size:1.4rem;border-bottom:1px solid #30363d;padding-bottom:.5rem}
+section{background:#161b22;border:1px solid #30363d;border-radius:8px;
+        padding:1rem 1.25rem;margin:1rem 0}
+.num{font-size:2rem;font-weight:700;color:#58a6ff;margin:0}
+ul{padding-right:1.2rem;margin:.3rem 0}
+.muted{color:#8b949e;font-size:.85rem}
+a{color:#58a6ff;text-decoration:none}
+li{margin:.25rem 0}
+</style>
+</head>
+<body>
+<h1>🧠 Nexus-Core — لوحة القراءة-فقط</h1>
+<p class="muted">لحظة التوليد: __GENERATED_AT__ · <a href="/">الواجهة التفاعلية الكاملة</a></p>
+<section>
+  <h2>الوكلاء النشطون</h2>
+  <p class="num">__AGENTS_TOTAL__</p>
+  <ul>__CATEGORY_ITEMS__</ul>
+</section>
+<section>
+  <h2>المهام الجارية الآن</h2>
+  <p class="num">__TASKS_RUNNING__</p>
+</section>
+<section>
+  <h2>آخر القرارات (المجلس)</h2>
+  __DECISIONS_BLOCK__
+</section>
+</body>
+</html>
+"""
+
+
+def _decisions_html(items: list[Any], error: str | None) -> str:
+    if error:
+        return f'<p class="muted">سجل القرارات غير متاح: {_html.escape(error)}</p>'
+    if not items:
+        return '<p class="muted">لا قرارات مسجلة بعد.</p>'
+    lis = []
+    for it in items:
+        if isinstance(it, dict):
+            title = it.get("question") or it.get("title") or it.get("id") or "قرار"
+            verdict = it.get("verdict")
+            suffix = f" — {verdict}" if verdict else ""
+        else:
+            title, suffix = str(it), ""
+        lis.append(f'<li>{_html.escape(str(title))[:120]}'
+                   f'{_html.escape(suffix)}</li>')
+    return "<ul>" + "".join(lis) + "</ul>"
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_page() -> str:
+    """صفحة قراءة-فقت خفيفة: حالة لحظية بلا أزرار تنفيذ."""
+    s = _dashboard_summary()
+    cats = s["agents"].get("by_category", {})
+    items = "".join(
+        f"<li>{_html.escape(str(c))}: {len(v)}</li>"
+        if isinstance(v, list) else
+        f"<li>{_html.escape(str(c))}: {_html.escape(str(v))}</li>"
+        for c, v in cats.items()
+    )
+    page = _DASHBOARD_PAGE
+    for key, val in (
+        ("__GENERATED_AT__", _html.escape(str(s["generated_at"]))),
+        ("__AGENTS_TOTAL__", str(s["agents"].get("total", 0))),
+        ("__CATEGORY_ITEMS__", items),
+        ("__TASKS_RUNNING__", str(s["tasks_running"])),
+        ("__DECISIONS_BLOCK__", _decisions_html(
+            s["recent_decisions"], s.get("decisions_error"))),
+    ):
+        page = page.replace(key, val)
+    return page
