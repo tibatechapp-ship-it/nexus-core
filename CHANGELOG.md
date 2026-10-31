@@ -2,6 +2,26 @@
 
 All notable changes to this project. Newest first.
 
+## Unreleased — Week-2 من خارطة المنتَجة — Trace Logs المعيارية
+
+### Observability
+- **سجل أثر معياري**: كل تشغيل وكيل/مجلس/موجّه يكتب سطر JSON واحداً في `runs/trace.jsonl`
+  بالحقول الإلزامية `ts / agent / tool / duration_ms / outcome` (+ `error` كنوع استثناء عند الفشل).
+- وحدة جديدة `src/observability/trace.py` — stdlib فقط، خيط-آمن، كتابة best-effort
+  (فشل التتبع لا يُسقط التشغيل أبداً)، تدوير تلقائي عند 5 MiB إلى `.1`،
+  بلا محتوى مستخدم (لا PII بالتصميم).
+- توجيه عبر `NEXUS_TRACE_PATH` (موثق في `.env.example`؛ الافتراضي `<repo>/runs/trace.jsonl` — مُتجاهَل في git).
+- ربط نقاط النهاية الثقيلة الخمس: `/api/agent/run`, `/api/council/deliberate`, `/api/council/topic`, `/api/hybrid/run`, `/api/smart/run`.
+- نقطة قراءة-فقت جديدة `/api/trace/recent?limit=N` + قسم «آخر أحداث الأثر» في صفحة `/dashboard` (رسم خادمي، صفر JS، Escape كامل).
+- هدف `make trace-tail` لعرض آخر 20 حدثاً.
+
+### Tests
+- **20 اختبار انحدار** جديدة (`tests/test_trace_logs.py`): عقد الحقول الخمسة، قياس السياق،
+  الفشل لا يكسر الكتلة، 8 خيوط × 25 حدثاً بلا تلف، التدوير، التسامح مع الأسطر التالفة،
+  وربط نقاط النهاية (ok + error + HTTP 400) + Escape في الصفحة.
+- المجموعة الكاملة (بلا novamind): **3,762 passed / 28 skipped** — `make check` كاملة خضراء
+  (ruff + mypy + annotations + version-sync + coverage ≥ 95%).
+
 ## v1.46.0 — 2026-10-24 — Circuit Breaker + Multi-Key + Split UI + E2E
 
 ### LLM Providers

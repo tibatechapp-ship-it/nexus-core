@@ -21,15 +21,17 @@
 
 - **ما هو**: منصة وكلاء AI ذاتية الاستضافة — 20 وكيل مدمج، إشراف (supervisor)، ذاكرة دائمة من 4 متاجر SQLite، تعلّم مستمر من التجربة، مجلس مداولات حيّ، أدوات MCP أصلية، وماسح أمني يعمل بلا شبكة. النواة **بايثون قياسي خالص** — تعمل حتى على هاتف، بلا تثبيتات.
 - **لمن**: مهندسو وباحثو AI الذين يبنون وكلاء مستقلين ويريدون **وقت تشغيل يدققونه بأنفسهم** على أجهزتهم — لا خدمة مستضافة تُخفي قراراتها.
-- **الحالة بصدق**: جاهزية بنية تحتية عالية اليوم. ما ينقصه ليكون «منتجاً» مكتمل البنية: لوحة تحكم، trace logs موحدة، benchmarks منشورة، وdemo بنقرة — وكلها في [خارطة المنتج](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/productization-plan.md).
+- **الحالة بصدق**: جاهزية بنية تحتية عالية اليوم — ومع أسبوعي 1-2 من خارطة المنتَجة أصبح يوجد: لوحة قراءة-فقط (`/dashboard`) وسجل أثر معياري (`runs/trace.jsonl`). ما تبقى: benchmarks منشورة، OpenAPI + مصفوفة صلاحيات، وdemo بنقرة — وكلها في [خارطة المنتج](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/productization-plan.md).
 
 ## ✅ يعمل اليوم — بالدليل (2026-10-31)
 
 | القدرة | الدليل القابل للتحقق |
 |---|---|
-| كتلة اختبارات ضخمة | **3,680 حالة اختبار مجمّعة في 210 ملفات** (`pytest --collect-only`) + طبقة `tests/novamind` الاختيارية |
+| كتلة اختبارات ضخمة | **3,789 حالة اختبار مجمّعة في 212 ملفاً** (`pytest --collect-only`) + طبقة `tests/novamind` الاختيارية |
 | CI مزدوج أخضر | [CI](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml) + [Tests](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml) على main |
 | بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ~99% |
+| لوحة قراءة-فقت | `/dashboard` + `/api/dashboard` — وكلاء نشطون، مهام جارية، آخر قرارات المجلس (**8 اختبارات httpx**) |
+| سجل أثر معياري | كل تشغيل وكيل/مجلس يكتب سطر JSON (`ts/agent/tool/duration_ms/outcome`) في `runs/trace.jsonl` + `/api/trace/recent` (**20 اختبار انحدار**) |
 | حرس أحمر أمني | `tests/adversarial` — **92 متجه هجوم في 8 فئات** + قيد سلسلة توريد حي يفشل عند أي استيراد غير معلن |
 | حوكمة موثقة | [SCOPE](SCOPE.md) · [VISION_2026](VISION_2026.md) · [ADVERSARIAL](ADVERSARIAL.md) · [LESSONS](LESSONS.md) · [CHANGELOG](CHANGELOG.md) |
 | نشر | Docker + docker-compose · إصدارات مُوسومة · CITATION.cff |
@@ -39,7 +41,7 @@
 ```bash
 git clone https://github.com/tibatechapp-ship-it/nexus-core.git
 cd nexus-core
-make check        # البوابة الخضراء كاملة: ruff + mypy + annotations + 3,680 اختبار
+make check        # البوابة الخضراء كاملة: ruff + mypy + annotations + 3,789 اختبار
 ```
 
 ```bash
@@ -70,7 +72,7 @@ src/            الإطار (stdlib فقط، آمن للهاتف، مُختبر
 hyper_agent.py  Hyper-Agent 2.0 — وكيل برمجة ذاتي (BUG-1..9 مصممة من الولادة)
 connectors/     مهايئات LLM BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
 hyper_app/      سطح API للوكيل الذاتي (POST /api/agent/start)
-tests/          جناح الإطار (3,680+ حالة) + tests/adversarial (92 متجه) + tests/novamind/
+tests/          جناح الإطار (3,789+ حالة) + tests/adversarial (92 متجه) + tests/novamind/
 main.py         خادم مجلس العمل (FastAPI) + console/index.html
 zyvo-*.py       مساعدا تيليجرام والصوت المستقلان
 docs/           توثيق الإطار + novamind
@@ -128,13 +130,33 @@ curl -X POST http://127.0.0.1:8000/api/agent/start \
   -d '{"goal": "write a fibonacci function with tests", "max_iterations": 5}'
 ```
 
+## 📊 اللوحة وسجل الأثر — أسبوعا 1-2 من خارطة المنتَجة
+
+```bash
+# اللوحة (قراءة-فقت): الوكلاء النشطون + المهام الجارية + آخر قرارات المجلس + أحداث الأثر
+python -m uvicorn src.web.app:app --port 8000
+# ثم افتح http://127.0.0.1:8000/dashboard  (واجهة عربية بلا JS)
+
+# سجل الأثر المعياري: كل تشغيل وكيل/مجلس = سطر JSON واحد
+# بالحقول الإلزامية ts / agent / tool / duration_ms / outcome
+make trace-tail
+```
+
+سطر أثر فعلي:
+
+```json
+{"ts": "2026-10-31T18:34:31.126+00:00", "agent": "code-reviewer", "tool": "run", "duration_ms": 0.021, "outcome": "ok"}
+```
+
+المسار قابل للتوجيه عبر `NEXUS_TRACE_PATH`، ويتدور تلقائياً عند 5 ميغابايت، وبلا محتوى مستخدم (لا PII بالتصميم). الفشل مُوثَّق كذلك: `outcome: "error"` مع **نوع** الاستثناء فقط.
+
 ## 🚧 الحدود الصادقة (لنتحدث بها كاملة)
 
-- لا **لوحة تحكم إدارية** ولا **trace logs موحدة عبر الوكلاء** بعد — التتبع اليوم عبر `/api/traces` لطبقة الدردشة فقط.
 - لا **benchmarks منشورة** قابلية للمقارنة الخارجية — الأداء المذكور أعلاه من جلسات فعلية لكنه غير مؤتمت القياس.
+- لوحة `/dashboard` وسجل `runs/trace.jsonl` يغطيان طبقة `src/web` ووكلاء الـregistry؛ تتبع دردشة `unified_agent` (`/api/traces`) مستقل كما كان.
 - طبقة novamind تحتاج extras اختيارياً ولا تدخل بوابات الإطار (تُختبر بجناحها في CI).
 
-هذه الثلاثة أول أسبوعين من [خارطة المنتج](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/productization-plan.md) — بعدها يصبح أول 5 دقائق تجربة كاملة بلا قراءة توثيق.
+هذان أول أسبوعين من [خارطة المنتج](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/productization-plan.md) والثالث قادم (benchmarks مؤتمتة) — بعدها يصبح أول 5 دقائق تجربة كاملة بلا قراءة توثيق.
 
 ## ✅ تحقق قبل الشحن (يجب أن يجتاز الكل)
 

@@ -25,6 +25,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from src.observability.trace import read_recent, trace_context
+
 app = FastAPI(title="Nexus-Core Dashboard", version="0.12.0")
 
 
@@ -124,28 +126,34 @@ def list_agents() -> dict:
 @app.post("/api/agent/run")
 def run_agent(req: AgentRunRequest) -> dict:
     _rid = _run_started()
+    _trace: dict[str, Any] = {}
     try:
-        from nova.registry import REGISTRY
-        agent = REGISTRY.load_agent(req.agent)
-        methods = ["build","run","execute","analyze","fix","review","generate"]
-        method = next((m for m in methods if hasattr(agent, m)), None)
-        if not method:
-            raise HTTPException(400, f"لا توجد طريقة للوكيل {req.agent}")
-        prompt = req.prompt
-        if req.use_rag:
-            try:
-                from src.memory.agent_rag_bridge import get_bridge
-                b = get_bridge()
-                enriched = b.enrich_prompt(prompt, k=3)
-                if enriched != prompt:
-                    prompt = enriched
-            except Exception:
-                pass
-        start = time.time()
-        result = getattr(agent, method)(prompt)
-        return {"ok": True, "agent": req.agent, "method": method,
-                "result": str(result)[:3000], "elapsed": time.time() - start}
+        with trace_context(req.agent, "run", _trace):
+            from nova.registry import REGISTRY
+            agent = REGISTRY.load_agent(req.agent)
+            methods = ["build","run","execute","analyze","fix","review","generate"]
+            method = next((m for m in methods if hasattr(agent, m)), None)
+            if not method:
+                raise HTTPException(400, f"لا توجد طريقة للوكيل {req.agent}")
+            _trace["tool"] = method
+            prompt = req.prompt
+            if req.use_rag:
+                try:
+                    from src.memory.agent_rag_bridge import get_bridge
+                    b = get_bridge()
+                    enriched = b.enrich_prompt(prompt, k=3)
+                    if enriched != prompt:
+                        prompt = enriched
+                except Exception:
+                    pass
+            start = time.time()
+            result = getattr(agent, method)(prompt)
+            body = {"ok": True, "agent": req.agent, "method": method,
+                    "result": str(result)[:3000], "elapsed": time.time() - start}
+            _trace["outcome"] = "ok"
+            return body
     except Exception as e:
+        _trace["outcome"] = "error"
         return {"ok": False, "error": str(e)}
     finally:
         _run_finished(_rid)
@@ -170,17 +178,21 @@ def rag_query(q: str, k: int = 5) -> dict:
 @app.post("/api/council/deliberate")
 def council_deliberate(req: CouncilRequest) -> dict:
     _rid = _run_started()
+    _trace: dict[str, Any] = {"agent": "council"}
     try:
-        from src.council.rag_bridge import get_council_bridge
-        b = get_council_bridge()
-        b.engine.MAX_ROUNDS = 1
-        result = b.deliberate_with_memory(req.question)
-        return {"ok": True, "verdict": result.verdict, "score": result.score,
-                "rounds": result.rounds, "consensus": result.consensus,
-                "elapsed": result.elapsed,
-                "transcript": [{"phase": e["phase"], "member": e["member"], "response": e["response"][:500]} for e in result.transcript],
-                "security_events": result.security_events}
+        with trace_context("council", "deliberate", _trace):
+            from src.council.rag_bridge import get_council_bridge
+            b = get_council_bridge()
+            b.engine.MAX_ROUNDS = 1
+            result = b.deliberate_with_memory(req.question)
+            _trace["outcome"] = "ok"
+            return {"ok": True, "verdict": result.verdict, "score": result.score,
+                    "rounds": result.rounds, "consensus": result.consensus,
+                    "elapsed": result.elapsed,
+                    "transcript": [{"phase": e["phase"], "member": e["member"], "response": e["response"][:500]} for e in result.transcript],
+                    "security_events": result.security_events}
     except Exception as e:
+        _trace["outcome"] = "error"
         return {"ok": False, "error": str(e)}
     finally:
         _run_finished(_rid)
@@ -199,29 +211,35 @@ def list_topics() -> dict:
 @app.post("/api/council/topic")
 def run_topic(req: CouncilRequest) -> dict:
     _rid = _run_started()
+    _trace: dict[str, Any] = {"agent": "council"}
     try:
-        from src.council.topics import get_topic
-        t = get_topic(req.question)  # نستخدم حقل question كـ topic_id
-        if not t:
-            return {"ok": False, "error": "topic not found"}
-        from src.council.rag_bridge import get_council_bridge
-        b = get_council_bridge()
-        result = b.deliberate_with_memory(t.question)
-        return {
-            "ok": True,
-            "topic_id": t.id,
-            "title": t.title,
-            "verdict": result.verdict,
-            "score": result.score,
-            "rounds": result.rounds,
-            "elapsed": result.elapsed,
-            "transcript": [
-                {"phase": e["phase"], "member": e["member"],
-                 "response": e["response"][:500]}
-                for e in result.transcript
-            ],
-        }
+        with trace_context("council", "topic", _trace):
+            from src.council.topics import get_topic
+            t = get_topic(req.question)  # نستخدم حقل question كـ topic_id
+            if not t:
+                _trace["outcome"] = "error"
+                return {"ok": False, "error": "topic not found"}
+            _trace["tool"] = f"topic:{t.id}"
+            from src.council.rag_bridge import get_council_bridge
+            b = get_council_bridge()
+            result = b.deliberate_with_memory(t.question)
+            _trace["outcome"] = "ok"
+            return {
+                "ok": True,
+                "topic_id": t.id,
+                "title": t.title,
+                "verdict": result.verdict,
+                "score": result.score,
+                "rounds": result.rounds,
+                "elapsed": result.elapsed,
+                "transcript": [
+                    {"phase": e["phase"], "member": e["member"],
+                     "response": e["response"][:500]}
+                    for e in result.transcript
+                ],
+            }
     except Exception as e:
+        _trace["outcome"] = "error"
         return {"ok": False, "error": str(e)}
     finally:
         _run_finished(_rid)
@@ -289,31 +307,36 @@ class HybridRequest(BaseModel):
 def hybrid_run(req: HybridRequest) -> dict:
     """يستخدم Hybrid Router (code/tool/decision)."""
     _rid = _run_started()
+    _trace: dict[str, Any] = {"agent": "hybrid"}
     try:
-        from src.orchestrator.hybrid_router import HybridRouter, classify
+        with trace_context("hybrid", "run", _trace):
+            from src.orchestrator.hybrid_router import HybridRouter, classify
 
-        route = req.force or classify(req.prompt)
-        router = HybridRouter(use_rag=True, verbose=False)
-        result = router.run(req.prompt, force=req.force)
+            route = req.force or classify(req.prompt)
+            _trace["tool"] = route
+            router = HybridRouter(use_rag=True, verbose=False)
+            result = router.run(req.prompt, force=req.force)
+            _trace["outcome"] = "ok" if result.get("ok", False) else "error"
 
-        return {
-            "ok": result.get("ok", False),
-            "route": route,
-            "method": result.get("method", "?"),
-            "elapsed": result.get("total_elapsed", 0),
-            "answer": result.get("answer", "")[:2000],
-            "iterations": result.get("iterations", 0),
-            "trace": [
-                {"icon": t.get("icon"), "text": t.get("text", "")[:200]}
-                for t in result.get("trace", [])
-            ],
-            "verdict": result.get("verdict"),
-            "score": result.get("score"),
-            "transcript": result.get("transcript", []),
-            "agents": [r.get("agent") for r in result.get("results", [])],
-        }
+            return {
+                "ok": result.get("ok", False),
+                "route": route,
+                "method": result.get("method", "?"),
+                "elapsed": result.get("total_elapsed", 0),
+                "answer": result.get("answer", "")[:2000],
+                "iterations": result.get("iterations", 0),
+                "trace": [
+                    {"icon": t.get("icon"), "text": t.get("text", "")[:200]}
+                    for t in result.get("trace", [])
+                ],
+                "verdict": result.get("verdict"),
+                "score": result.get("score"),
+                "transcript": result.get("transcript", []),
+                "agents": [r.get("agent") for r in result.get("results", [])],
+            }
     except Exception as e:
         import traceback
+        _trace["outcome"] = "error"
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()[:500]}
     finally:
         _run_finished(_rid)
@@ -337,31 +360,35 @@ class SmartRequest(BaseModel):
 def smart_run(req: SmartRequest) -> dict:
     """يستخدم Smart Router لاختيار الاستراتيجية المثلى."""
     _rid = _run_started()
+    _trace: dict[str, Any] = {"agent": "supervisor"}
     try:
-        from src.orchestrator.supervisor import Supervisor
-        
-        sup = Supervisor(use_rag=True, verbose=False)
-        result = sup.execute(req.prompt, force_strategy=req.force_strategy)
-        
-        return {
-            "ok": result["ok"],
-            "decision": result["decision"],
-            "results": [
-                {
-                    "agent": r.get("agent", "?"),
-                    "ok": r.get("ok", False),
-                    "elapsed": r.get("elapsed", 0),
-                    "result": r.get("result", "")[:1000],
-                    "error": r.get("error", ""),
-                    "verdict": r.get("verdict"),
-                    "score": r.get("score"),
-                }
-                for r in result["results"]
-            ],
-            "elapsed": result["elapsed"],
-        }
+        with trace_context("supervisor", "run", _trace):
+            from src.orchestrator.supervisor import Supervisor
+
+            sup = Supervisor(use_rag=True, verbose=False)
+            result = sup.execute(req.prompt, force_strategy=req.force_strategy)
+            _trace["tool"] = str(result.get("decision", "run"))
+            _trace["outcome"] = "ok" if result["ok"] else "error"
+            return {
+                "ok": result["ok"],
+                "decision": result["decision"],
+                "results": [
+                    {
+                        "agent": r.get("agent", "?"),
+                        "ok": r.get("ok", False),
+                        "elapsed": r.get("elapsed", 0),
+                        "result": r.get("result", "")[:1000],
+                        "error": r.get("error", ""),
+                        "verdict": r.get("verdict"),
+                        "score": r.get("score"),
+                    }
+                    for r in result["results"]
+                ],
+                "elapsed": result["elapsed"],
+            }
     except Exception as e:
         import traceback
+        _trace["outcome"] = "error"
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()[:500]}
     finally:
         _run_finished(_rid)
@@ -402,6 +429,14 @@ def dashboard_summary_api() -> dict:
     return _dashboard_summary()
 
 
+# ═══ سجل الأثر (Week-2): قراءة-فقت فقط ═══
+
+@app.get("/api/trace/recent")
+def trace_recent(limit: int = 20) -> dict:
+    """آخر أحداث الأثر من runs/trace.jsonl — قراءة-فقت، بلا PII بالتصميم."""
+    return {"ok": True, "events": read_recent(limit)}
+
+
 _DASHBOARD_PAGE = """<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -437,9 +472,29 @@ li{margin:.25rem 0}
   <h2>آخر القرارات (المجلس)</h2>
   __DECISIONS_BLOCK__
 </section>
+<section>
+  <h2>آخر أحداث الأثر (Trace)</h2>
+  __TRACE_BLOCK__
+</section>
 </body>
 </html>
 """
+
+
+def _trace_html(events: list[Any]) -> str:
+    """رسم خادمي لآخر الأحداث — لا JS، وتنهيب كل نص قادم من الملف."""
+    if not events:
+        return '<p class="muted">لا أحداث أثر بعد — شغّل وكيلاً أو مجلساً.</p>'
+    lis = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        line = (f"{ev.get('agent', '?')} · {ev.get('tool', '?')} · "
+                f"{ev.get('outcome', '?')} · {ev.get('duration_ms', 0)}ms")
+        ts = f" — {ev.get('ts', '')}" if ev.get("ts") else ""
+        lis.append(f"<li>{_html.escape(line)}"
+                   f"<span class=\"muted\">{_html.escape(ts)}</span></li>")
+    return "<ul>" + "".join(lis) + "</ul>"
 
 
 def _decisions_html(items: list[Any], error: str | None) -> str:
@@ -479,6 +534,7 @@ def dashboard_page() -> str:
         ("__TASKS_RUNNING__", str(s["tasks_running"])),
         ("__DECISIONS_BLOCK__", _decisions_html(
             s["recent_decisions"], s.get("decisions_error"))),
+        ("__TRACE_BLOCK__", _trace_html(read_recent(5))),
     ):
         page = page.replace(key, val)
     return page

@@ -16,6 +16,7 @@ __pycache__/
 # Runtime data
 logs/
 workspace/
+runs/
 /hive/
 *.db-journal
 memory.db

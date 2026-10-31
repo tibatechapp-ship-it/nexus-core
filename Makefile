@@ -11,7 +11,7 @@
 
 PY ?= python3
 
-.PHONY: help install check lint type annotations test cov adversarial clean sync push release tag
+.PHONY: help install check lint type annotations test cov adversarial clean sync push release tag trace-tail
 
 help:
 	@echo "nexus-core — available targets:"
@@ -92,3 +92,6 @@ release:
 tag:
 	@if [ -z "$(V)" ]; then echo "Usage: make tag V=X.Y.Z"; exit 1; fi
 	git tag -a "v$(V)" -m "nexus-core v$(V)"
+
+trace-tail:
+	@tail -n 20 runs/trace.jsonl 2>/dev/null || echo "لا أحداث أثر بعد — شغّل الخدمة ووكيلاً أولا"
