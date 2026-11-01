@@ -116,3 +116,34 @@ jobs:
           bandit -r connectors hyper_app hyper_agent.py \
             src/learning src/knowledge src/skills src/security \
             -ll -q
+
+  # ── Benchmarks: 20 standard tasks + p50 regression gate (>50% fails) ──────
+  benchmarks-gate:
+    name: benchmarks (20 tasks, p50 gate >50%)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Founding mode until benchmarks/baseline.json is committed: exits 0 and
+      # writes runs/baseline-candidate.json as an artifact. Once a
+      # runner-measured candidate is adopted (--adopt), this step enforces
+      # the gate: any task whose p50 regresses >50% AND >0.2ms vs the baseline
+      # fails the job — and so does any task that no longer succeeds 100%.
+      - name: Run benchmarks + regression gate
+        run: python scripts/benchmarks/run_benchmarks.py --check
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            runs/benchmark-results.json
+            runs/baseline-candidate.json
+          if-no-files-found: ignore

@@ -11,7 +11,7 @@
 
 PY ?= python3
 
-.PHONY: help install check lint type annotations test cov adversarial clean sync push release tag trace-tail
+.PHONY: help install check lint type annotations test cov adversarial clean sync push release tag trace-tail benchmarks benchmarks-check
 
 help:
 	@echo "nexus-core — available targets:"
@@ -23,6 +23,8 @@ help:
 	@echo "  make test          — full pytest suite (no coverage)"
 	@echo "  make cov           — pytest with coverage (framework floor 95%)"
 	@echo "  make adversarial   — adversarial red-team suite"
+	@echo "  make benchmarks      — 20 standard tasks → docs/benchmarks.md + gate vs baseline"
+	@echo "  make benchmarks-check — same measurement + regression gate (CI job)"
 	@echo "  make install       — editable install with dev tooling"
 	@echo "  make clean         — remove caches and build artefacts"
 	@echo "  make sync          — fetch + fast-forward from origin"
@@ -95,3 +97,9 @@ tag:
 
 trace-tail:
 	@tail -n 20 runs/trace.jsonl 2>/dev/null || echo "لا أحداث أثر بعد — شغّل الخدمة ووكيلاً أولا"
+
+benchmarks:
+	@$(PY) scripts/benchmarks/run_benchmarks.py
+
+benchmarks-check:
+	@$(PY) scripts/benchmarks/run_benchmarks.py --check

@@ -28,6 +28,13 @@ _ALLOWED_UNDOCUMENTED = frozenset(
         "NEXUS_AGENT",  # scripts/_run_agent_with_rag.py ad-hoc
         "NEXUS_PROMPT",  # scripts/_run_agent_with_rag.py ad-hoc
         "NEXUS_RAG",  # scripts/_run_agent_with_rag.py ad-hoc
+        # scripts/benchmarks/run_benchmarks.py CI tooling knobs (defaults are
+        # sane; operators override only when re-baselining on other hardware)
+        "NEXUS_BENCH_BASELINE",
+        "NEXUS_BENCH_DOC",
+        "NEXUS_BENCH_ITERATIONS",
+        "NEXUS_BENCH_MAX_REGRESSION_PCT",
+        "NEXUS_BENCH_OUTPUT",
         "ZYVO_HEARTBEAT_INTERVAL",  # zyvo-*.py standalone assistants
         "ZYVO_MONITOR_LOG",
         "ZYVO_PORT",
