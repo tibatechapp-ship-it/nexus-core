@@ -130,6 +130,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The only third-party import in the benchmark chain is `textual`
+      # (via src/tui/__init__.py -> app.py); everything else is stdlib.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install textual
+
       # Founding mode until benchmarks/baseline.json is committed: exits 0 and
       # writes runs/baseline-candidate.json as an artifact. Once a
       # runner-measured candidate is adopted (--adopt), this step enforces
