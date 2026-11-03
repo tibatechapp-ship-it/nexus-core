@@ -51,8 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     if top and bottom and top["score"] != bottom["score"]:
         print(f"مدى الدرجات: {top['score']} ({top['name']}) ← {bottom['score']} ({bottom['name']})")
     for name, value in recon.items():
-        if value:
-            print(f"تنبيه مطابقة {name}: {value}")
+        if not value:
+            continue
+        if name == "aliases":
+            # ب2.1: توحيد معلن — معلومة لا إنذار
+            shown = ", ".join(sorted(value))
+            print(f"أسماء موحدة معلنة ({len(value)}): {shown}")
+            continue
+        print(f"تنبيه مطابقة {name}: {value}")
     for path in out:
         print(f"كُتب: {path}")
     return 0

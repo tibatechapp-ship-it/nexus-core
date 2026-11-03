@@ -2,6 +2,49 @@
 
 All notable changes to this project. Newest first.
 
+## v1.49.1 — 2026-11-04 — الموجة 2: التوحيد المعماري — ف2 وف3 مغلقتان
+
+### Name unification (ب2.1 — ف2 مغلقة)
+- **نهاية الازدواج الصامت**: الأسماء الثمانية المشتركة بين الإطارين
+  (architect, coder, compliance, devops, documentation, performance,
+  refactor, tester) قيانية في `core` وكل ما يحملها في novamind معلن
+  **alias** — `AgentRecord.canonical: false` + `NAME_ALIASES` معلن في
+  `src/fleet/inventory.py`. بلا حذف أسماء في هذا الإصدار (عقد التوافق).
+- **`reconcile` صار صادقًا**: `cross_framework_overlap == []` (كان 8
+  أسماء تعارضًا)، وبدلها `aliases` معلنة: `{name: {canonical, aliases}}`
+  — والتقرير يطبعها معلومةً لا إنذارًا. ما يخرج عن الإعلان مستقبلًا
+  يُرصد تعارضًا كما يجب.
+
+### Architectural links (ب2.2/ب2.3 — ف3 مغلقة — صفر TODO معماري حقيقي)
+- **orchestrator → Queue Manager**: `NovaMindOrchestrator(queue=TaskQueue())`
+  — `_collect_metrics` يقرأ `queue.size()` فعليًا (قراءة متزامنة آمنة)؛
+  والغياب صفر معلن لا تخمين. TODO «من Queue Manager» حُذف.
+- **executor → core/llm_router (النسختان)**: `pick_llm_for(specialty)`
+  في `factory/executor.py` و`hive/factory/executor.py` يعيد موجّه
+  الإطار المركزي عبر `get_router()` — والفشل `None` معلن لا استثناء.
+  TODO «اربط بـ core/llm_router» حُذف من الموضعين.
+- **إصلاح جانبي معلن**: `hive/factory/__init__.py` كان يلتقط ImportError
+  فقط فيقرع على AttributeError عند تلوث `sys.path` (اسم `registry`
+  يُحل لحزمة مختلفة) — الالتقاط الآن يشمل الاثنين بنفس عقد التدهور
+  الرشيق.
+- **الاختبارات**: `tests/test_novamind_architecture_links.py` — مسار
+  الطابور يمر (push → queue_length=1) وتوجيه النموذج يمر عبر
+  `llm_router` في النسختين، أوفلاين حتمي.
+
+### Known-limitations truth gate (ب2.4)
+- **الوثيقة صارت قابلة للتحقيق الآلي**: `tests/test_known_limitations_truth.py`
+  يمسح `src/novamind/` ويطابق: المجموع المعلن (19) == الواقع، وكل سطر
+  معلن له وجود، ولا بنود شبحية، ولا «Architectural decision needed»
+  بعد اليوم — القرار أو التنفيذ، لا التأجيل.
+- **تقليم الوثيقة**: الأصل كان يعلن 22 بتفاصيل قديمة (سطور تحركت، بنود
+  ناقصة كـ`quality_guardian:29` و`multilang:81`) — الآن 19 بندًا كلها
+  مصنفة (كود كشف / fixtures / نصوص تعليمات / placeholder مولّد) وكلها
+  **لا إجراء**.
+
+### Reports (مجددة --deep عند 1.49.1)
+- `reports/` تحمل حقول `canonical` لكل وكيل + قائمة `aliases` المعلنة،
+  وبلا تنبيه تعارض — 106/106 سليم، التوزيع S:78 · A:1 · B:19 · C:8.
+
 ## v1.49.0 — 2026-11-04 — الموجة 1: صدق القياس — الدرجة تفرّق (ف1 مغلقة)
 
 ### Fleet scoring (ب1.3 — نموذج الدرجة الجديد)
