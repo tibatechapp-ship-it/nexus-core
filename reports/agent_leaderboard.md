@@ -1,14 +1,14 @@
 # لوحة ترتيب أسطول الوكلاء
 
-**الإصدار:** `1.47.0` — **إجمالي الوكلاء:** 106
+**الإصدار:** `1.48.1` — **إجمالي الوكلاء:** 106
 
 ## الصحة العامة
 
 | الحالة | العدد | النسبة |
 |---|---:|---:|
-| healthy | 105 | 99.1% |
+| healthy | 106 | 100.0% |
 | degraded | 0 | 0.0% |
-| broken | 1 | 0.9% |
+| broken | 0 | 0.0% |
 
 ## التوزيع حسب الإطار
 
@@ -42,7 +42,7 @@
 20 | compliance | novamind | 100.00 | S 🥇 | healthy | 0.02
 21 | compliance | core | 100.00 | S 🥇 | healthy | 0.02
 22 | config_validator | novamind | 100.00 | S 🥇 | healthy | 0.0
-23 | crypto | novamind | 100.00 | S 🥇 | healthy | 0.02
+23 | crypto | novamind | 100.00 | S 🥇 | healthy | 0.0
 24 | css | novamind | 100.00 | S 🥇 | healthy | 0.0
 25 | data_scientist | novamind | 100.00 | S 🥇 | healthy | 0.0
 
