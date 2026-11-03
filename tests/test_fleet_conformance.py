@@ -1,9 +1,13 @@
 """اختبارات مطابقة الأسطول — **وكيل واحد، قضية اختبار واحدة** لكل الأسطول.
 
 هذا هو الاختبار القوي المطلوب لكل الوكلاء: كل سجل من الـ106 يُفحص فردياً
-(استيراد حقيقي + نقطة دخول حاضرة)، والمكسور الوحيد (``pr_reviewer``) معلن
-في قائمة أسباب معروفة — إصلاحه يُفشل الاختبار فيُجبر المُصلِح على تحديث
-القائمة، فيمتنع الصمت عن إخفاء أي تراجع.
+(استيراد حقيقي + نقطة دخول حاضرة)، والكسر معلن بقوائم أسباب لا بأعداد:
+
+* ``KNOWN_BROKEN`` — مكسور في كل البيئات (إصلاحه يُفشل الاختبار فيُجبر
+  المُصلِح على تحديث القائمة).
+* ``OPTIONAL_ENV_BROKEN`` — يتطلب إضافة اختيارية قد تكون غائبة (مثل
+  ``sse-starlette`` على CI) فيُقبل سليماً أو مكسوراً بسبب استيراد معلن.
+* أي وكيل آخر مكسور = تراجع جديد ⇒ فشل اختبار. لا صمت.
 """
 
 from __future__ import annotations
@@ -14,9 +18,14 @@ from src.fleet.conformance import SilentBackend, check_agent, run_conformance
 from src.fleet.inventory import build_inventory
 from src.fleet.record import AgentRecord
 
-#: وكلاء معروف كسرهم مع سببه — لا يُسمح بكسر جديد، وإصلاح يوجب حذف السطر.
+#: مكسور معلن في كل البيئات مع سببه — لا يُسمح بكسر جديد، وإصلاح يوجب حذفاً.
 KNOWN_BROKEN: dict[str, str] = {
     "pr_reviewer": "يستورد وحدة integration غير الموجودة في المستودع",
+}
+
+#: مكسور حيث تُغيب إضافته الاختيارية فقط (CI بلا sse-starlette) — صادق بيئياً.
+OPTIONAL_ENV_BROKEN: dict[str, str] = {
+    "nexus_agent": "يتطلب sse-starlette (إضافة اختيارية غائبة على CI)",
 }
 
 ALL_RECORDS = build_inventory()
@@ -38,6 +47,11 @@ def test_every_agent_imports_and_exposes_entrypoint(rec: AgentRecord) -> None:
             f"أصلحت {rec.name}؟ احذفه من KNOWN_BROKEN مع سببه"
         )
         assert report["reasons"], "المكسور المعلن يجب أن يعلن سببه"
+    elif rec.name in OPTIONAL_ENV_BROKEN:
+        if report["status"] == "broken":
+            assert any(r.startswith("import:") for r in report["reasons"]), (
+                "كسر الوكيل الحساس للبيئة يجب أن يكون سببه الاستيراد"
+            )
     else:
         assert report["status"] == "healthy", report["reasons"]
 
@@ -46,7 +60,14 @@ def test_conformance_aggregates_match_per_agent_truth() -> None:
     conf = run_conformance(ALL_RECORDS)
     assert conf["checked"] == len(ALL_RECORDS)
     counts = conf["counts"]
-    assert counts["broken"] == len(KNOWN_BROKEN)
+    broken_names = {r["name"] for r in conf["reports"]
+                    if r["status"] == "broken"}
+    # لا كسر جديد خارج قوائم الصدق — وأصل المعلن مكسور دائماً
+    allowed = set(KNOWN_BROKEN) | set(OPTIONAL_ENV_BROKEN)
+    assert broken_names <= allowed, (
+        f"كسور غير معلنة: {broken_names - allowed} — أعلنها في قوائم الصدق"
+    )
+    assert "pr_reviewer" in broken_names
     assert counts["healthy"] + counts["degraded"] + counts["broken"] == conf["checked"]
     healthy = [r for r in conf["reports"] if r["status"] == "healthy"]
     assert all(r["import_ms"] >= 0 for r in healthy)
