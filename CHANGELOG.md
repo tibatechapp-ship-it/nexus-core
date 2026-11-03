@@ -26,6 +26,31 @@ All notable changes to this project. Newest first.
 - المجموعة الكاملة (بلا novamind): **3,782 passed / 28 skipped** — coverage **98.13%** —
   `make check` خضراء بالكامل (ruff + mypy + annotations + version-sync + coverage).
 
+## v1.47.0 — 2026-11-03 — المرحلة الثالثة: جناح التقييم + KPIs حية + عرض بنقرة (M3.2–M3.5)
+
+### Added
+- **جناح التقييم الداخلي (M3.2)** — `src/evalsuite/`: كتالوج **50 مهمة** بأربع فئات
+  (إنشاء 12، إصلاح 16، اختبار 12، توثيق 10) ببذور معزولة وملف تحقق pytest لكل مهمة؛
+  عدّاء يشغّل محرك المراحل الخمس لكل مهمة في مجلد عمل معزول؛ تقرير آلي بمعدلات
+  النجاح كلياً ولكل فئة وأزمنة p50/p95 و**انحدارات** مقارنة بالتشغيل السابق؛
+  موصل بلا شبكة (`OfflineConnector`) يعيد الحل المرجعي كخطة `RepairPlan` صالحة؛
+  CLI: `python -m src.evalsuite` (بلا شبكة حصراً) — والمزودون الحقيقيون عبر
+  `scripts/run_evalsuite.py --connector glm` (الجسر خارج `src/` عمداً احتراماً
+  لحارس سلسلة التوريد). قبول M3.2 مثبت: **50/50 (rate 1.0)، صفر انحدارات، p50≈5.05s**.
+- **مؤشرات حية فوق لوحة القراءة (M3.3)** — `src/web/kpis.py` + `/api/kpis` +
+  قسم علوي في `/dashboard`: كل رقم مشتق حرفياً من سجلَّي الأثر والبوابة
+  (مطابقة بالتصميم، بلا حالة مخبأة)، سطور تالفة تُتخطى، تهريب HTML لكل نص.
+- **عرض بنقرة (M3.4)** — `.devcontainer/devcontainer.json`: تثبيت تلقائي، إقلاع
+  اللوحة على 8000، فتح المتصفح تلقائياً (`onAutoForward: openBrowser`) +
+  `docs/devcontainer.md` بوعد الخمس دقائق.
+- تقرير إصدار شفاف: `docs/reports/release-1.47.0.md` (النجاح والفشل معاً).
+
+### الحوكمة
+- رفع الإصدار إلى 1.47.0 (pyproject + docs/openapi.yaml) مع وسم `v1.47.0` على
+  التزامن نفسه — `check_version_sync` يمر في كل السياقات.
+- المجموعة الكاملة (بلا novamind): **3,923 passed / 28 skipped** — بوابات
+  ruff/annotations/mypy خضراء، وتغطية 100% للوحدات الجديدة.
+
 ## Unreleased — Week-2 من خارطة المنتَجة — Trace Logs المعيارية
 
 ### Observability
