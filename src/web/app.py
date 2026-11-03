@@ -26,6 +26,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from src.observability.trace import read_recent, trace_context
+from src.web.kpis import compute_kpis
 
 app = FastAPI(title="Nexus-Core Dashboard", version="0.12.0")
 
@@ -437,6 +438,14 @@ def trace_recent(limit: int = 20) -> dict:
     return {"ok": True, "events": read_recent(limit)}
 
 
+# ═══ مؤشرات حية (M3.3): أرقام مشتقة حرفياً من سجلّي الأثر والبوابة ═══
+
+@app.get("/api/kpis")
+def kpis_api(limit: int = 200) -> dict:
+    """مؤشرات KPI حية — مطابقة للسجلات، بلا حالة مخبأة ولا تنفيذ."""
+    return {"ok": True, "kpis": compute_kpis(limit=limit)}
+
+
 _DASHBOARD_PAGE = """<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -460,6 +469,10 @@ li{margin:.25rem 0}
 <h1>🧠 Nexus-Core — لوحة القراءة-فقط</h1>
 <p class="muted">لحظة التوليد: __GENERATED_AT__ · <a href="/">الواجهة التفاعلية الكاملة</a></p>
 <section>
+  <h2>مؤشرات حية (KPIs) — من سجلّي الأثر والبوابة</h2>
+  __KPI_BLOCK__
+</section>
+<section>
   <h2>الوكلاء النشطون</h2>
   <p class="num">__AGENTS_TOTAL__</p>
   <ul>__CATEGORY_ITEMS__</ul>
@@ -479,6 +492,38 @@ li{margin:.25rem 0}
 </body>
 </html>
 """
+
+
+def _fmt_num(value: Any) -> str:
+    """نسبة أو زمن أو شرطة للقيم غير المتاحة — نص مُهرّب دائماً."""
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{value * 100:.0f}%" if value <= 1 else f"{value:.0f}ms"
+    return str(value)
+
+
+def _kpis_html(kpis: dict[str, Any]) -> str:
+    """رسم خادمي لمؤشرات KPI — بلا JS، وكل نص قادم من السجلات مُهرّب."""
+    trace, gate = kpis.get("trace", {}), kpis.get("gate", {})
+    agents = trace.get("by_agent", {})
+    top = list(agents.items())[:5]
+    agent_items = "".join(
+        f"<li>{_html.escape(str(agent))}: {count}</li>"
+        for agent, count in top)
+    parts = [
+        '<p>الأثر: أحداث <b>{}</b> · نجاح <b>{}</b> · p50 <b>{}</b> · p95 <b>{}</b></p>'
+        .format(_fmt_num(trace.get("events")), _fmt_num(trace.get("ok_rate")),
+                _fmt_num(trace.get("p50_ms")), _fmt_num(trace.get("p95_ms"))),
+        '<p>البوابة: تشغيلات <b>{}</b> · نجاح <b>{}</b> · p50 <b>{}</b> · p95 <b>{}</b></p>'
+        .format(_fmt_num(gate.get("runs")), _fmt_num(gate.get("ok_rate")),
+                _fmt_num(gate.get("p50_ms")), _fmt_num(gate.get("p95_ms"))),
+    ]
+    if agent_items:
+        parts.append(f"<ul>{agent_items}</ul>")
+    if not trace.get("available") and not gate.get("available"):
+        parts.append('<p class="muted">لا سجلات بعد — شغّل وكيلاً أو محركاً أولاً.</p>')
+    return "".join(parts)
 
 
 def _trace_html(events: list[Any]) -> str:
@@ -519,6 +564,7 @@ def _decisions_html(items: list[Any], error: str | None) -> str:
 def dashboard_page() -> str:
     """صفحة قراءة-فقت خفيفة: حالة لحظية بلا أزرار تنفيذ."""
     s = _dashboard_summary()
+    kpis = compute_kpis(limit=200)
     cats = s["agents"].get("by_category", {})
     items = "".join(
         f"<li>{_html.escape(str(c))}: {len(v)}</li>"
@@ -529,6 +575,7 @@ def dashboard_page() -> str:
     page = _DASHBOARD_PAGE
     for key, val in (
         ("__GENERATED_AT__", _html.escape(str(s["generated_at"]))),
+        ("__KPI_BLOCK__", _kpis_html(kpis)),
         ("__AGENTS_TOTAL__", str(s["agents"].get("total", 0))),
         ("__CATEGORY_ITEMS__", items),
         ("__TASKS_RUNNING__", str(s["tasks_running"])),
