@@ -2,6 +2,36 @@
 
 All notable changes to this project. Newest first.
 
+## v1.50.0 — 2026-11-04 — الموجة 3: التوجيه العرقي بالدرجة — ف4 وف6 مغلقتان
+
+### Raced routing (ب3.1 — ف4 مغلقة)
+- **قارئ لوحة الترتيب الحي** (`src/fleet/reader.py`): التوجيه يقرأ
+  `reports/fleet_inventory.json` **وقت التشغيل** — سلسلة كسر التعادل
+  ثلاثية معلنة: **genome → درجة الأسطول الحية → الاسم**. بمصفوفة اصطناعية:
+  الأعلى يفوز دائماً، والمكسور يُستبعد من الفوز حتى لو كانت درجته الأعلى،
+  وغير المُقاس لا يُجامل. غياب التقرير = `{}` معلن لا انفجار.
+- **عقد التعادل القديم مُحدَّث**: `tests/test_router_aliases.py` يثبت
+  الآن سلسلة ب3.1 بدرجات محقونة بدل الاعتماد على ترتيب السجل الصامت.
+
+### Promotion gate (ب3.2)
+- **لا ترقية إلى S بلا نجاح evalsuite فعلي** (`src/fleet/promotion.py`):
+  `eval_gate` يشغّل عيّنة مهام فئة الوكيل (عدّاء قابل للحقن، افتراضه
+  أوفلاين حتمي) ويعيد `eval_suite: passed/failed`؛ `promotion_gate`
+  يرفض A→S بلا `passed` بسبب معلن — لا تخصيص يدوي.
+- **سجل الترقية في التقرير**: `reports/fleet_inventory.json` يحمل قسم
+  `promotion {rule, log}` — كل بند في السجل يحمل `eval_suite` طابعه.
+
+### Behavioral contract (ب3.3 — ف6 مغلقة)
+- **عقد سلوكي لعيّنة من كل فئة** (`tests/test_fleet_behavioral_contract.py`):
+  8 فئات × عيّنة معلنة (complexity/arabic/auth/cicd/data_scientist/
+  architecture/a11y/ci_doctor) فوق حِمل `probe` — استدعاء أوفلاين ناجح
+  ونتيجة معلنة الشكل (dict/bool/str) — الترقية بلا إثبات سلوكي انتهت.
+
+### Routing decisions in trace (ب3.4)
+- **كل قرار توجيه يحمل درجته**: `route_with_reason` يسجّل في
+  `trace_event`: `{agent, tool="route", framework, fleet_score,
+  fleet_tier}` — والاختبار يقرأ السجل ويجد الحقول لقرارين مختلفين.
+
 ## v1.49.1 — 2026-11-04 — الموجة 2: التوحيد المعماري — ف2 وف3 مغلقتان
 
 ### Name unification (ب2.1 — ف2 مغلقة)
