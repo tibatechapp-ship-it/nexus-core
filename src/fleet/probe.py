@@ -28,6 +28,13 @@
 المهلة: 10 ثوانٍ لكل محاولة عبر ``SIGALRM`` في الخيط الرئيسي فقط — خارج
 الخيط الرئيسي يُترك الاستدعاء بلا مهلة (معلَن) لأن ``SIGALRM`` قيوده الخيط
 الرئيسي وحده على لينكس.
+
+**عزل أثر التشغيل:** الوكلاء الذين يلمسون مفردات حالة التشغيل قد يجعلونها
+تكتب في المستودع (``memory/cost_tracking.json`` عبر ``cost_router``).
+الحِمل يعزل كاتب الحالة المعلن إلى مجلد مؤقت طوال القياس ويعيد الوضع كما
+كان — سجل الكتّاب المعلن: كل كاتب جديد يلمس ``memory/`` سترصده بوابة
+النظافة في ``tests/conftest.py`` فيُعزل هنا مع سببه. (مسار التبريد في
+``llm_router`` يكتب في ``~/.nexus-core`` خارج المستودع فلا يحتاج عزلاً).
 """
 
 from __future__ import annotations
@@ -36,8 +43,11 @@ import dataclasses
 import importlib
 import inspect
 import signal
+import sys
+import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 __all__ = ["probe_agent", "PROBE_TIMEOUT_S", "BLOCKING_MAIN_FUNCTIONS", "PROBE_MODE"]
@@ -77,7 +87,6 @@ def _disarm() -> None:
 
 def _ensure_src_path() -> None:
     """وحدات novamind تُستورد باسم ``novamind.*`` — ضمّد ``src/`` مرة واحدة."""
-    import sys
     from pathlib import Path
 
     src = str(Path(__file__).resolve().parents[2] / "src")
@@ -146,6 +155,66 @@ def probe_agent(record: Any) -> dict:
         }
 
 
+class _RuntimeIsolation:
+    """عزل كاتب حالة التشغيل المعلن طوال حِمل واحد (نمط sandbox معلن).
+
+    ``cost_router.CostTracker`` يحلّل مساره عند الاستيراد
+    (``NOVAMIND_HOME``/memory) فيكتب في المستودع إن بناه وكيل أثناء
+    القياس. نعيد توجيه المفرد الحي وأي بناء مستقبلي إلى مجلد مؤقت،
+    ثم نعيد كل شيء كما كان في ``restore()``.
+    """
+
+    def __init__(self) -> None:
+        self._tmp = Path(tempfile.mkdtemp(prefix="fleet-probe-"))
+        self._saved_class: Any = None
+        self._saved_path: Any = None
+        self._owner_module: Any = None
+        self._tracker: Any = None
+
+    def engage(self) -> None:
+        try:
+            # استيراد استباقي: إن استورده وكيلٌ أثناء القياس لُبِن كاتبه
+            # على المسار الحقيقي قبل أن نسلك عليه الـsandbox
+            importlib.import_module("novamind.core.cost_router")
+        except Exception:  # noqa: BLE001 — غياب الوحدة يعني لا كاتب لعزله
+            return
+        cr = sys.modules.get("novamind.core.cost_router")
+        if cr is None:
+            return
+        self._owner_module = cr
+        sandbox = self._tmp / "cost_tracking.json"
+        # 1) المفرد الحي إن كُبِن قبل الحِمل
+        router = getattr(cr, "_cost_router", None)
+        tracker = getattr(router, "tracker", None) if router else None
+        if tracker is not None and getattr(tracker, "path", None):
+            self._tracker = tracker
+            self._saved_path = tracker.path
+            tracker.path = sandbox
+        # 2) أي بناء جديد أثناء الحِمل يُبنى على الـsandbox
+        real = cr.CostTracker
+        if not getattr(real, "_fleet_sandboxed", False):
+            self._saved_class = real
+
+            class _SandboxedTracker(real):  # type: ignore[misc,valid-type]
+                def __init__(self, *a: Any, **kw: Any) -> None:
+                    kw.pop("path", None)
+                    super().__init__(path=sandbox, **kw)
+
+            _SandboxedTracker._fleet_sandboxed = True  # type: ignore[attr-defined]
+            setattr(cr, "CostTracker", _SandboxedTracker)
+
+    def restore(self) -> None:
+        try:
+            if self._owner_module is not None and self._saved_class is not None:
+                setattr(self._owner_module, "CostTracker", self._saved_class)
+            if self._tracker is not None and self._saved_path is not None:
+                self._tracker.path = self._saved_path
+        finally:
+            import shutil
+
+            shutil.rmtree(self._tmp, ignore_errors=True)
+
+
 def _probe_agent_impl(record: Any) -> dict:
     """تنفيذ الحِمل الفعلي — يستدعيه ``probe_agent`` بحارس شامل."""
     reasons: list[str] = []
@@ -175,6 +244,19 @@ def _probe_agent_impl(record: Any) -> dict:
         reasons.append(f"entrypoint: {record.symbol!r} missing")
         return out
 
+    # عزل أثر التشغيل المعلن — كتّاب الحالة لا يلمسون المستودع أثناء القياس
+    isolation = _RuntimeIsolation()
+    isolation.engage()
+    try:
+        return _probe_construct_and_call(record, module, entry, out, reasons)
+    finally:
+        isolation.restore()
+
+
+def _probe_construct_and_call(
+    record: Any, module: Any, entry: Any, out: dict, reasons: list[str]
+) -> dict:
+    """البناء + الاستدعاء المحدود — يُنفذ داخل عزل أثر التشغيل."""
     # 1) البناء الأوفلاين — عقد التهيئة (ب1.1)
     _arm()
     t0 = time.perf_counter()
