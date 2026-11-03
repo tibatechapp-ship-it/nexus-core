@@ -54,8 +54,8 @@ def test_byok_unknown_provider() -> None:
         create_llm_client_from_request({"provider": "nope"})
 
 
-def test_registry_maps_all_six_providers() -> None:
-    """All six providers are registered and the factory can build each one."""
+def test_registry_maps_all_nine_providers() -> None:
+    """All nine providers are registered and the factory can build each one."""
     assert set(PROVIDER_MAP) == {
         "openai",
         "anthropic",
@@ -63,6 +63,9 @@ def test_registry_maps_all_six_providers() -> None:
         "ollama",
         "deepseek",
         "gemini",
+        "glm-local",
+        "glm-cloud",
+        "glm",
     }
     assert sorted(list_providers()) == sorted(PROVIDER_MAP)
     for provider in PROVIDER_MAP:
