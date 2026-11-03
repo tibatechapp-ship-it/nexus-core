@@ -126,19 +126,29 @@ def test_safe_target_rejects(tmp_path: Path, bad_path: str) -> None:
         _safe_target(tmp_path, bad_path)
 
 
-def test_make_limits_runs_in_process() -> None:
-    """The rlimit caps apply cleanly in the parent process too (Termux-safe)."""
-    from src.coder.sandbox import _make_limits
-    _make_limits()  # must not raise on any platform we support
+def test_make_limits_applies_the_three_caps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CPU/FSIZE/NPROC caps are requested — setrlimit is MOCKED because a real
+    call would re-limit the WHOLE pytest process (threads + CPU) and poison
+    every later test in the suite."""
+    import resource
+
+    import src.coder.sandbox as sb
+
+    seen: list = []
+    monkeypatch.setattr(sb.resource, "setrlimit", lambda res, lim: seen.append((res, lim)))
+    sb._make_limits()
+    assert (resource.RLIMIT_CPU, (60, 60)) in seen
+    assert (resource.RLIMIT_FSIZE, (5 * 1024 * 1024, 5 * 1024 * 1024)) in seen
+    assert (resource.RLIMIT_NPROC, (64, 64)) in seen
+    assert len(seen) == 3
 
 
 def test_make_limits_tolerates_platform_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
     """A platform refusing setrlimit must not crash the sandbox bootstrap."""
-    import resource
+    import src.coder.sandbox as sb
 
     def refuse(res: int, limits: tuple) -> None:
         raise ValueError("rlimit denied by platform")
 
-    monkeypatch.setattr(resource, "setrlimit", refuse)
-    from src.coder.sandbox import _make_limits
-    _make_limits()  # swallows the refusal and returns
+    monkeypatch.setattr(sb.resource, "setrlimit", refuse)
+    sb._make_limits()  # swallows the refusal and returns
