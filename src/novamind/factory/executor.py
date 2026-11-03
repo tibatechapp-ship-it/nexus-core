@@ -2,7 +2,7 @@
 
 Usage:
     from novamind.factory.executor import execute_agent
-    
+
     result = await execute_agent(
         agent_id="coder",
         task="اكتب دالة تتحقق من أولية عدد",
@@ -17,6 +17,7 @@ Usage:
     #   "duration_ms": 2345,
     # }
 """
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -32,11 +33,11 @@ from novamind.core.hive.core.agents_registry import (
 )
 from novamind.factory.guards import build_default_chain
 from novamind.factory.llm_wrapper import make_llm_call, is_llm_available
+
 try:
     from novamind.core.hive.analytics.eval_tracker import record_eval as _record_eval
 except Exception:
     _record_eval = None
-
 
 
 # ─────────────────────────────────────────────────────
@@ -63,7 +64,6 @@ TASK_TEMPLATES = {
 {context}
 
 أعد الكود فقط في block ```python ... ```.""",
-
     "code_review": """راجع الكود التالي وأعط ملاحظات محددة:
 
 {task}
@@ -75,7 +75,6 @@ TASK_TEMPLATES = {
 1. المشاكل (كل واحدة في سطر)
 2. التحسينات المقترحة
 3. تقييم من 1-10""",
-
     "security": """افحص الكود أمنيًا:
 
 {task}
@@ -84,7 +83,6 @@ TASK_TEMPLATES = {
 {context}
 
 أعد قائمة بالثغرات (severity + description).""",
-
     "test_generator": """اكتب اختبارات pytest للكود التالي:
 
 {task}
@@ -93,7 +91,6 @@ TASK_TEMPLATES = {
 {context}
 
 أعد الاختبارات في ```python ... ```.""",
-
     "analyzer": """حلّل المتطلبات التالية:
 
 {task}
@@ -103,7 +100,6 @@ TASK_TEMPLATES = {
 
 أعد JSON:
 {{"summary": "...", "requirements": [...], "risks": [...]}}""",
-
     "task_planner": """خطّط المهمة التالية:
 
 {task}
@@ -152,8 +148,13 @@ def build_prompt(agent: Dict[str, Any], task: str, ctx: Dict[str, Any]) -> Dict[
 # ─────────────────────────────────────────────────────
 
 PYTHON_INDICATORS = (
-    "def ", "class ", "import ", "from ", "@",
-    "if __name__", "async def ",
+    "def ",
+    "class ",
+    "import ",
+    "from ",
+    "@",
+    "if __name__",
+    "async def ",
 )
 
 
@@ -184,9 +185,17 @@ def parse_output(agent_name: str, raw_text: str) -> Dict[str, Any]:
 
     # 3. code خام (بدون fences) إذا الوكيل coder/fixer/tester
     if "code" not in output:
-        if agent_name in ("coder", "fixer", "multi_fixer", "test_generator",
-                          "test_runner", "refactor_agent", "lint_agent",
-                          "type_agent", "debug_agent"):
+        if agent_name in (
+            "coder",
+            "fixer",
+            "multi_fixer",
+            "test_generator",
+            "test_runner",
+            "refactor_agent",
+            "lint_agent",
+            "type_agent",
+            "debug_agent",
+        ):
             if _looks_like_python(raw_text):
                 output["code"] = raw_text.strip()
 
@@ -227,18 +236,27 @@ def parse_output(agent_name: str, raw_text: str) -> Dict[str, Any]:
 #  LLM Router (بسيط)
 # ─────────────────────────────────────────────────────
 
-def pick_llm_for(specialty: str):
-    """يختار LLM حسب التخصص.
 
-    حاليًا يعيد None — يُستبدل لاحقًا بـ LLM Router حقيقي.
+def pick_llm_for(specialty: str):
+    """يختار LLM حسب التخصص عبر موجّه الإطار المركزي.
+
+    الربط المعماري ب2.3 (v1.49.1): الوكيل يُختار من ``core/llm_router``
+    (المفرد الوحيد للتوجيه) — وأي فشل استيراد/بناء يعيد ``None`` معلنًا
+    لا استثناء، فيبقى المسار المحلي بديلًا آمنًا.
     """
-    # TODO: اربط بـ core/llm_router
-    return None
+    try:
+        from novamind.core.llm_router import get_router
+
+        router = get_router()
+        return router if getattr(router, "providers", None) else None
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────
 #  Executor Core
 # ─────────────────────────────────────────────────────
+
 
 async def execute_agent(
     agent_id: str,
@@ -246,7 +264,7 @@ async def execute_agent(
     ctx: Optional[Dict[str, Any]] = None,
     task_id: Optional[str] = None,
     max_retries: int = 1,
-    llm_call = None,  # دالة async(prompt_dict) -> dict(text=..., tokens=...)
+    llm_call=None,  # دالة async(prompt_dict) -> dict(text=..., tokens=...)
 ) -> Dict[str, Any]:
     """ينفّذ وكيلًا واحدًا.
 
@@ -318,9 +336,7 @@ async def execute_agent(
             # سجّل التقييم الذاتي (non-blocking)
 
             if _record_eval is not None:
-
                 try:
-
                     _agent_type = getattr(agent, "specialty", None) or "unknown"
 
                     _task_id = ctx.get("task_id") if isinstance(ctx, dict) else None
@@ -334,33 +350,22 @@ async def execute_agent(
                     _checks = _gr.get("checks") or []
 
                     if _checks:
-
                         _ok = sum(1 for c in _checks if isinstance(c, dict) and c.get("passed"))
 
                         _prec = _ok / len(_checks)
 
                     _record_eval(
-
                         agent_id=agent_id,
-
                         agent_type=_agent_type,
-
                         task_id=_task_id,
-
                         precision=float(_prec),
-
                         confidence=1.0,
-
                         duration_ms=_final_dur,
-
                         success=True,
-
                         notes=f"tokens={total_tokens}",
-
                     )
 
                 except Exception:
-
                     pass
 
             return {
@@ -425,6 +430,7 @@ async def execute_agent(
 #  Sync wrapper (للاختبارات)
 # ─────────────────────────────────────────────────────
 
+
 def execute_agent_sync(agent_id: str, task: str, ctx=None, llm_call=None):
     """نسخة sync مع فحص أمني (Gatekeeper Layer 1).
 
@@ -435,10 +441,11 @@ def execute_agent_sync(agent_id: str, task: str, ctx=None, llm_call=None):
     """
     import asyncio
     import os
-    
+
     if os.environ.get("NOVAMIND_SECURITY", "on").lower() != "off":
         try:
             from novamind.core.security_gatekeeper import gatekeeper
+
             verdict = gatekeeper.analyze(task)
             if verdict.is_blocked:
                 raise SecurityError(
@@ -447,12 +454,13 @@ def execute_agent_sync(agent_id: str, task: str, ctx=None, llm_call=None):
                 )
         except ImportError:
             pass
-    
+
     return asyncio.run(execute_agent(agent_id, task, ctx, llm_call=llm_call))
 
 
 class SecurityError(RuntimeError):
     """Raised when security gatekeeper blocks a request."""
+
     def __init__(self, message: str, verdict=None):
         super().__init__(message)
         self.verdict = verdict

@@ -47,6 +47,9 @@ class AgentRecord:
     description: str = ""
     #: دالة الدخول المعلنة (novamind فقط) — للتوثيق لا للتنفيذ.
     main_function: str = ""
+    #: هل هذا الاسم قياني في إطاره (ب2.1)؟ الأسماء الثمانية المشتركة
+    #: بين الإطارين قيانية في core، وما يحملها في novamind معلن كـalias.
+    canonical: bool = True
 
     def to_json(self) -> dict:
         """إسقاط JSON خالص — كل الحقول، بلا حالات داخلية."""

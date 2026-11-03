@@ -1,4 +1,5 @@
 """Hive Factory package."""
+
 import sys
 from pathlib import Path
 import importlib
@@ -8,12 +9,15 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 # registry
+# ب2.3 (v1.49.1): الالتقاط يشمل AttributeError — قد يُحلّ الاسم
+# "registry" إلى حزمة مختلفة عند تلوث sys.path (معلن: التدهور الرشيق
+# نفسه، بلا انفجار وقت الاستيراد).
 try:
     _registry_module = importlib.import_module("registry")
     registry = _registry_module.registry
     AgentRegistry = _registry_module.AgentRegistry
     AgentSpec = _registry_module.AgentSpec
-except ImportError:
+except (ImportError, AttributeError):
     registry = None
     AgentRegistry = None
     AgentSpec = None

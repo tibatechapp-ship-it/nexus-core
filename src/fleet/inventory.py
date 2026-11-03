@@ -23,7 +23,7 @@ import yaml
 
 from src.fleet.record import AgentRecord
 
-__all__ = ["build_inventory", "reconcile", "summary", "LEGACY_AGENTS"]
+__all__ = ["build_inventory", "reconcile", "summary", "LEGACY_AGENTS", "NAME_ALIASES"]
 
 ROOT = Path(__file__).resolve().parents[2]
 NOVA_YAML = ROOT / "src" / "novamind" / "registry" / "data" / "nova.yaml"
@@ -50,6 +50,21 @@ CATEGORIES: dict[str, frozenset[str]] = {
     "legacy": frozenset({"meta"}),
 }
 _CRITICALITIES = frozenset({"core", "standard", "optional"})
+
+#: توحيد الأسماء المشتركة بين الإطارين (ب2.1 — v1.49.1): الاسم القياني في
+#: الإطار الأساسي (core)، وما يحمل الاسم نفسه في novamind معلن كـalias
+#: (``AgentRecord.canonical=False``) — بلا حذف أسماء في هذا الإصدار،
+#: وبلا ازدواج صامت: المطابقة تعلنها في ``aliases`` بدل ``overlap``.
+NAME_ALIASES: dict[str, str] = {
+    "architect": "core",
+    "coder": "core",
+    "compliance": "core",
+    "devops": "core",
+    "documentation": "core",
+    "performance": "core",
+    "refactor": "core",
+    "tester": "core",
+}
 
 
 def _repo_version() -> str:
@@ -79,6 +94,7 @@ def _novamind_records() -> list[AgentRecord]:
                 criticality=str(meta.get("criticality", "standard")),
                 description=str(meta.get("description", "")),
                 main_function=str(meta.get("main_function", "")),
+                canonical=NAME_ALIASES.get(str(name)) != "core",
             )
         )
     return records
@@ -147,14 +163,17 @@ def build_inventory() -> list[AgentRecord]:
 def reconcile(records: list[AgentRecord]) -> dict:
     """مطابقة السجل مع الكود الفعلي — تعارضات معلنة لا صمت.
 
-    يفحص: الازدواج **داخل** الإطار الواحد، تشارك الاسم **بين** الإطارات
-    (معلومة توحيد لا خطأ — لكل إطار مفردات أسماء مستقلة)، فئات غير معروفة
-    بمفردات الإطار نفسه، حرجيات غير معروفة، ومداخل novamind التي لا يقابلها
-    ملف وحدة على القرص.
+    يفحص: الازدواج **داخل** الإطار الواحد، تشارك الاسم **بين** الإطارات —
+    منذ ب2.1 (v1.49.1): الأسماء المعلنة في ``NAME_ALIASES`` تظهر في
+    ``aliases`` (قياني + أسماؤه المعلنة) ولا تُعد تعارضاً؛ ما بقي خارج
+    الإعلان يُرصد في ``cross_framework_overlap`` — فئات غير معروفة
+    بمفردات الإطار نفسه، حرجيات غير معروفة، ومداخل novamind التي لا
+    يقابلها ملف وحدة على القرص.
     """
     seen: dict[str, str] = {}
     duplicates: list[str] = []
     overlap: dict[str, list[str]] = {}
+    aliases: dict[str, dict] = {}
     bad_category: list[str] = []
     bad_criticality: list[str] = []
     missing_file: list[str] = []
@@ -173,9 +192,20 @@ def reconcile(records: list[AgentRecord]) -> dict:
         if rec.framework == "novamind" and rec.source:
             if not (ROOT / rec.source).is_file():
                 missing_file.append(rec.name)
+    for name, fws in sorted(overlap.items()):
+        canonical_fw = NAME_ALIASES.get(name)
+        if canonical_fw is not None and canonical_fw in fws:
+            # اسم موحد معلن (ب2.1): القياني + أسماؤه المعلنة — لا تعارض
+            aliases[name] = {
+                "canonical": f"{canonical_fw}:{name}",
+                "aliases": sorted(fw for fw in fws if fw != canonical_fw),
+            }
     return {
         "duplicates": duplicates,
-        "cross_framework_overlap": sorted(name for name, fws in overlap.items() if len(fws) > 1),
+        "cross_framework_overlap": sorted(
+            name for name, fws in overlap.items() if len(fws) > 1 and name not in aliases
+        ),
+        "aliases": aliases,
         "bad_category": bad_category,
         "bad_criticality": bad_criticality,
         "missing_module_file": missing_file,

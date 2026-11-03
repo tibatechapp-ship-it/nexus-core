@@ -1,7 +1,7 @@
 {
  "summary": {
   "total": 106,
-  "version": "1.49.0",
+  "version": "1.49.1",
   "by_framework": {
    "core": 20,
    "legacy": 7,
@@ -28,16 +28,57 @@
  },
  "reconcile": {
   "duplicates": [],
-  "cross_framework_overlap": [
-   "architect",
-   "coder",
-   "compliance",
-   "devops",
-   "documentation",
-   "performance",
-   "refactor",
-   "tester"
-  ],
+  "cross_framework_overlap": [],
+  "aliases": {
+   "architect": {
+    "canonical": "core:architect",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "coder": {
+    "canonical": "core:coder",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "compliance": {
+    "canonical": "core:compliance",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "devops": {
+    "canonical": "core:devops",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "documentation": {
+    "canonical": "core:documentation",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "performance": {
+    "canonical": "core:performance",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "refactor": {
+    "canonical": "core:refactor",
+    "aliases": [
+     "novamind"
+    ]
+   },
+   "tester": {
+    "canonical": "core:tester",
+    "aliases": [
+     "novamind"
+    ]
+   }
+  },
   "bad_category": [],
   "bad_criticality": [],
   "missing_module_file": []
@@ -58,7 +99,8 @@
    "category": "ui",
    "criticality": "standard",
    "description": "WCAG",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "alert_bot",
@@ -70,7 +112,8 @@
    "category": "meta",
    "criticality": "standard",
    "description": "تنبيهات",
-   "main_function": "send"
+   "main_function": "send",
+   "canonical": true
   },
   {
    "name": "analyzer",
@@ -82,7 +125,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "تحليل ثابت",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "api_design",
@@ -94,7 +138,8 @@
    "category": "ui",
    "criticality": "standard",
    "description": "REST/GraphQL",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "arabic",
@@ -106,7 +151,8 @@
    "category": "quality",
    "criticality": "standard",
    "description": "تحليل عربي",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "architect",
@@ -118,7 +164,8 @@
    "category": "research",
    "criticality": "standard",
    "description": "تفكيك مهام",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": false
   },
   {
    "name": "architecture",
@@ -130,7 +177,8 @@
    "category": "research",
    "criticality": "standard",
    "description": "SOLID",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "auth",
@@ -142,7 +190,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "مصادقة وتفويض",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "builder",
@@ -154,7 +203,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "يبني وكلاء جدد",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "chief_architect",
@@ -166,7 +216,8 @@
    "category": "research",
    "criticality": "core",
    "description": "تخطيط معمارية",
-   "main_function": "_analyze_requirements"
+   "main_function": "_analyze_requirements",
+   "canonical": true
   },
   {
    "name": "ci_doctor",
@@ -178,7 +229,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "تشخيص CI",
-   "main_function": "analyze_ci_logs"
+   "main_function": "analyze_ci_logs",
+   "canonical": true
   },
   {
    "name": "cicd",
@@ -190,7 +242,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "CI/CD",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "cleanup",
@@ -202,7 +255,8 @@
    "category": "code",
    "criticality": "standard",
    "description": "حذف آمن للملفات المؤقتة",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "code_review",
@@ -214,7 +268,8 @@
    "category": "code",
    "criticality": "core",
    "description": "مراجعة موحّدة — يجمع كل المحللات",
-   "main_function": "review"
+   "main_function": "review",
+   "canonical": true
   },
   {
    "name": "coder",
@@ -226,7 +281,8 @@
    "category": "code",
    "criticality": "core",
    "description": "يكتب كود Python من وصف",
-   "main_function": "build"
+   "main_function": "build",
+   "canonical": false
   },
   {
    "name": "complexity",
@@ -238,7 +294,8 @@
    "category": "code",
    "criticality": "optional",
    "description": "يقيس التعقيد الدوري",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "compliance",
@@ -250,7 +307,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "SOC2/ISO/HIPAA",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": false
   },
   {
    "name": "config_validator",
@@ -262,7 +320,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "مدقق إعدادات",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "crypto",
@@ -274,7 +333,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "تشفير ضعيف",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "css",
@@ -286,7 +346,8 @@
    "category": "ui",
    "criticality": "optional",
    "description": "CSS/Tailwind",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "data_scientist",
@@ -298,7 +359,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "تحليل بيانات",
-   "main_function": "_analyze"
+   "main_function": "_analyze",
+   "canonical": true
   },
   {
    "name": "db_migration",
@@ -310,7 +372,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "DB migration",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "deadcode",
@@ -322,7 +385,8 @@
    "category": "code",
    "criticality": "optional",
    "description": "يكتشف الكود الميت",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "dependency",
@@ -334,7 +398,8 @@
    "category": "meta",
    "criticality": "standard",
    "description": "تبعيات",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "devops",
@@ -346,7 +411,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "DevOps",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": false
   },
   {
    "name": "docker",
@@ -358,7 +424,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "Dockerfile",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "docker_doctor",
@@ -370,7 +437,8 @@
    "category": "meta",
    "criticality": "standard",
    "description": "طبيب Docker",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "documentation",
@@ -382,7 +450,8 @@
    "category": "quality",
    "criticality": "standard",
    "description": "توثيق تلقائي",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": false
   },
   {
    "name": "duplication",
@@ -394,7 +463,8 @@
    "category": "code",
    "criticality": "optional",
    "description": "يكتشف تكرار الكود",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "embedding",
@@ -406,7 +476,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "Vector search",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "evaluation",
@@ -418,7 +489,8 @@
    "category": "quality",
    "criticality": "standard",
    "description": "تقييم LLM",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "factory",
@@ -430,7 +502,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "مصنع الوكلاء",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "finetune",
@@ -442,7 +515,8 @@
    "category": "data",
    "criticality": "optional",
    "description": "Fine-tuning",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "fixer",
@@ -454,7 +528,8 @@
    "category": "code",
    "criticality": "standard",
    "description": "إصلاح متعدد الاستراتيجيات",
-   "main_function": "fix"
+   "main_function": "fix",
+   "canonical": true
   },
   {
    "name": "git",
@@ -466,7 +541,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "Git طبيعي",
-   "main_function": "_run"
+   "main_function": "_run",
+   "canonical": true
   },
   {
    "name": "indexing",
@@ -478,7 +554,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "فهارس",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "injection",
@@ -490,7 +567,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "يكتشف SQL/NoSQL injection",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "junior",
@@ -502,7 +580,8 @@
    "category": "code",
    "criticality": "optional",
    "description": "مهام بسيطة",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "k8s",
@@ -514,7 +593,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "Kubernetes",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "lead_researcher",
@@ -526,7 +606,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "بحث متقدم",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "learner",
@@ -538,7 +619,8 @@
    "category": "data",
    "criticality": "core",
    "description": "تعلّم من التجارب",
-   "main_function": "learn"
+   "main_function": "learn",
+   "canonical": true
   },
   {
    "name": "maintenance",
@@ -550,7 +632,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "صيانة",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "memory_keeper",
@@ -562,7 +645,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "حفظ الدروس",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "migration",
@@ -574,7 +658,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "ترحيل كود",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "monitoring",
@@ -586,7 +671,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "Observability",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "multi_fixer",
@@ -598,7 +684,8 @@
    "category": "code",
    "criticality": "standard",
    "description": "3 استراتيجيات إصلاح متوازية",
-   "main_function": "fix"
+   "main_function": "fix",
+   "canonical": true
   },
   {
    "name": "multilang",
@@ -610,7 +697,8 @@
    "category": "quality",
    "criticality": "standard",
    "description": "6 لغات",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "naming",
@@ -622,7 +710,8 @@
    "category": "code",
    "criticality": "optional",
    "description": "يكتشف تسميات سيئة",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "nginx",
@@ -634,7 +723,8 @@
    "category": "infra",
    "criticality": "optional",
    "description": "Nginx",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "nosql",
@@ -646,7 +736,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "NoSQL",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "nova_brain",
@@ -658,7 +749,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "العقل المنسّق 🧠",
-   "main_function": "handle_ci_failure"
+   "main_function": "handle_ci_failure",
+   "canonical": true
   },
   {
    "name": "orm",
@@ -670,7 +762,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "ORM",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "parallel",
@@ -682,7 +775,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "محرّك Async متوازي",
-   "main_function": "run_all"
+   "main_function": "run_all",
+   "canonical": true
   },
   {
    "name": "performance",
@@ -694,7 +788,8 @@
    "category": "quality",
    "criticality": "standard",
    "description": "أداء",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": false
   },
   {
    "name": "precommit_guard",
@@ -706,7 +801,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "حارس pre-commit",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "privacy",
@@ -718,7 +814,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "PII/GDPR",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "project_manager",
@@ -730,7 +827,8 @@
    "category": "research",
    "criticality": "core",
    "description": "إدارة مهام",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "prompt",
@@ -742,7 +840,8 @@
    "category": "quality",
    "criticality": "optional",
    "description": "هندسة prompts",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "qa_devops",
@@ -754,7 +853,8 @@
    "category": "research",
    "criticality": "standard",
    "description": "QA + DevOps",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "quality_guardian",
@@ -766,7 +866,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "معايير الجودة",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "react",
@@ -778,7 +879,8 @@
    "category": "ui",
    "criticality": "standard",
    "description": "React",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "refactor",
@@ -790,7 +892,8 @@
    "category": "code",
    "criticality": "standard",
    "description": "يقترح إعادة هيكلة",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": false
   },
   {
    "name": "rtl",
@@ -802,7 +905,8 @@
    "category": "quality",
    "criticality": "optional",
    "description": "RTL/LTR",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "secret_scanner",
@@ -814,7 +918,8 @@
    "category": "security",
    "criticality": "core",
    "description": "كاشف محلي بدون LLM",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "secrets",
@@ -826,7 +931,8 @@
    "category": "security",
    "criticality": "core",
    "description": "مفاتيح مسربة",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "security",
@@ -838,7 +944,8 @@
    "category": "security",
    "criticality": "core",
    "description": "فحص ثغرات OWASP",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "security_engineer",
@@ -850,7 +957,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "threat modeling",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "self_healer",
@@ -862,7 +970,8 @@
    "category": "meta",
    "criticality": "core",
    "description": "معالجة ذاتية",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "senior",
@@ -874,7 +983,8 @@
    "category": "code",
    "criticality": "standard",
    "description": "أنماط التصميم",
-   "main_function": "_analyze_patterns"
+   "main_function": "_analyze_patterns",
+   "canonical": true
   },
   {
    "name": "sql",
@@ -886,7 +996,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "SQL",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "tech_writer",
@@ -898,7 +1009,8 @@
    "category": "quality",
    "criticality": "standard",
    "description": "كتابة تقنية",
-   "main_function": "None"
+   "main_function": "None",
+   "canonical": true
   },
   {
    "name": "terraform",
@@ -910,7 +1022,8 @@
    "category": "infra",
    "criticality": "standard",
    "description": "IaC",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "test_generator",
@@ -922,7 +1035,8 @@
    "category": "code",
    "criticality": "standard",
    "description": "توليد اختبارات",
-   "main_function": "generate"
+   "main_function": "generate",
+   "canonical": true
   },
   {
    "name": "test_runner",
@@ -934,7 +1048,8 @@
    "category": "code",
    "criticality": "core",
    "description": "يُشغّل pytest مع coverage",
-   "main_function": "run_pytest"
+   "main_function": "run_pytest",
+   "canonical": true
   },
   {
    "name": "tester",
@@ -946,7 +1061,8 @@
    "category": "code",
    "criticality": "core",
    "description": "يُشغّل كود في بيئة معزولة",
-   "main_function": "run"
+   "main_function": "run",
+   "canonical": false
   },
   {
    "name": "transaction",
@@ -958,7 +1074,8 @@
    "category": "data",
    "criticality": "standard",
    "description": "ACID",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "vue",
@@ -970,7 +1087,8 @@
    "category": "ui",
    "criticality": "optional",
    "description": "Vue",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "watchdog",
@@ -982,7 +1100,8 @@
    "category": "meta",
    "criticality": "standard",
    "description": "مراقب دائم",
-   "main_function": "run_forever"
+   "main_function": "run_forever",
+   "canonical": true
   },
   {
    "name": "xss",
@@ -994,7 +1113,8 @@
    "category": "security",
    "criticality": "standard",
    "description": "يكتشف XSS/CSRF",
-   "main_function": "analyze"
+   "main_function": "analyze",
+   "canonical": true
   },
   {
    "name": "analyst",
@@ -1006,7 +1126,8 @@
    "category": "planning",
    "criticality": "core",
    "description": "Analyses requirements, constraints and assumptions.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "architect",
@@ -1018,7 +1139,8 @@
    "category": "core",
    "criticality": "core",
    "description": "Designs system architecture, components and data flow.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "coder",
@@ -1030,7 +1152,8 @@
    "category": "core",
    "criticality": "core",
    "description": "Writes clean, tested implementation code.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "compliance",
@@ -1042,7 +1165,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "Checks licences, policies and legal constraints.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "debugger",
@@ -1054,7 +1178,8 @@
    "category": "core",
    "criticality": "core",
    "description": "Diagnoses failures and proposes minimal fixes.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "designer",
@@ -1066,7 +1191,8 @@
    "category": "planning",
    "criticality": "core",
    "description": "Designs UI/UX, schemas and APIs.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "devops",
@@ -1078,7 +1204,8 @@
    "category": "ops",
    "criticality": "core",
    "description": "Builds, deploys and provisions infrastructure.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "documentation",
@@ -1090,7 +1217,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "Writes user and developer documentation.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "estimator",
@@ -1102,7 +1230,8 @@
    "category": "planning",
    "criticality": "core",
    "description": "Estimates effort, cost and risk with ranges.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "monitor",
@@ -1114,7 +1243,8 @@
    "category": "ops",
    "criticality": "core",
    "description": "Watches health signals and alerts on anomalies.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "orchestrator",
@@ -1126,7 +1256,8 @@
    "category": "ops",
    "criticality": "core",
    "description": "Coordinates agents and pipelines to the goal.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "performance",
@@ -1138,7 +1269,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "Finds and removes performance bottlenecks.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "planner",
@@ -1150,7 +1282,8 @@
    "category": "planning",
    "criticality": "core",
    "description": "Breaks goals into ordered, testable tasks.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "recovery",
@@ -1162,7 +1295,8 @@
    "category": "ops",
    "criticality": "core",
    "description": "Restores service after failures.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "refactor",
@@ -1174,7 +1308,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "Restructures code without changing behaviour.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "reporter",
@@ -1186,7 +1321,8 @@
    "category": "ops",
    "criticality": "core",
    "description": "Summarises outcomes for the human.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "researcher",
@@ -1198,7 +1334,8 @@
    "category": "planning",
    "criticality": "core",
    "description": "Gathers current, source-backed information.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "reviewer",
@@ -1210,7 +1347,8 @@
    "category": "core",
    "criticality": "core",
    "description": "Reviews code for correctness, style and clarity.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "security_auditor",
@@ -1222,7 +1360,8 @@
    "category": "quality",
    "criticality": "core",
    "description": "Audits code and config for vulnerabilities.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "tester",
@@ -1234,7 +1373,8 @@
    "category": "core",
    "criticality": "core",
    "description": "Writes and runs tests; reports coverage honestly.",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "groq_pool",
@@ -1246,7 +1386,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "مجمّع مفاتيح Groq",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "hyper_agent",
@@ -1258,7 +1399,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "محرك سير العمل الذاتي 2.0",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "nexus_agent",
@@ -1270,7 +1412,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "خادم Nexus-Core الموحد",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "pr_reviewer",
@@ -1282,7 +1425,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "مراجع طلبات الدمج مع حلقة تعلّم",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "review_engine",
@@ -1294,7 +1438,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "محرك المراجعة — تحميل 42 وكيلاً",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "safe_runner",
@@ -1306,7 +1451,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "حاضنة تنفيذ آمنة",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   },
   {
    "name": "unified_agent",
@@ -1318,7 +1464,8 @@
    "category": "meta",
    "criticality": "optional",
    "description": "الوكيل الموحد v10 (خادم)",
-   "main_function": ""
+   "main_function": "",
+   "canonical": true
   }
  ],
  "ranking": [
@@ -1331,7 +1478,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.01,
-   "run_ms": 0.72,
+   "run_ms": 0.75,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1346,7 +1493,7 @@
    "role": "manager",
    "status": "healthy",
    "import_ms": 0.01,
-   "run_ms": 0.17,
+   "run_ms": 0.16,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1375,8 +1522,8 @@
    "criticality": "core",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.53,
+   "import_ms": 0.01,
+   "run_ms": 0.4,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1391,7 +1538,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.01,
-   "run_ms": 0.93,
+   "run_ms": 0.97,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1436,7 +1583,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.14,
+   "run_ms": 0.13,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1451,7 +1598,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.79,
+   "run_ms": 0.82,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1496,7 +1643,7 @@
    "role": "manager",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.22,
+   "run_ms": 0.18,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1511,7 +1658,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.44,
+   "run_ms": 0.4,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1526,7 +1673,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 1.31,
+   "run_ms": 1.36,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1540,8 +1687,8 @@
    "criticality": "core",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.98,
+   "import_ms": 0.02,
+   "run_ms": 0.99,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1586,7 +1733,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.49,
+   "run_ms": 0.5,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1616,7 +1763,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.74,
+   "run_ms": 0.73,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1630,8 +1777,8 @@
    "criticality": "optional",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.53,
+   "import_ms": 0.01,
+   "run_ms": 0.5,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1645,7 +1792,7 @@
    "criticality": "standard",
    "role": "manager",
    "status": "healthy",
-   "import_ms": 0.01,
+   "import_ms": 0.0,
    "run_ms": 0.0,
    "invoke": 100.0,
    "slo": 100.0,
@@ -1661,7 +1808,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.44,
+   "run_ms": 0.41,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1751,7 +1898,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.58,
+   "run_ms": 0.61,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1766,7 +1913,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.04,
+   "run_ms": 0.05,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1795,7 +1942,7 @@
    "criticality": "optional",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
+   "import_ms": 0.01,
    "run_ms": 0.01,
    "invoke": 100.0,
    "slo": 100.0,
@@ -1856,7 +2003,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.41,
+   "run_ms": 0.43,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1871,7 +2018,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 1.4,
+   "run_ms": 1.51,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1900,8 +2047,8 @@
    "criticality": "standard",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.01,
-   "run_ms": 0.18,
+   "import_ms": 0.0,
+   "run_ms": 0.2,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1931,7 +2078,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.59,
+   "run_ms": 0.61,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1946,7 +2093,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.09,
+   "run_ms": 0.08,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1961,7 +2108,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.68,
+   "run_ms": 0.69,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -1991,7 +2138,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.43,
+   "run_ms": 0.45,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2006,7 +2153,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.95,
+   "run_ms": 0.83,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2021,7 +2168,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.01,
-   "run_ms": 0.02,
+   "run_ms": 0.01,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2066,7 +2213,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.38,
+   "run_ms": 0.39,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2111,7 +2258,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.4,
+   "run_ms": 0.42,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2125,7 +2272,7 @@
    "criticality": "standard",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
+   "import_ms": 0.01,
    "run_ms": 0.09,
    "invoke": 100.0,
    "slo": 100.0,
@@ -2171,7 +2318,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.52,
+   "run_ms": 0.51,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2186,7 +2333,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.7,
+   "run_ms": 0.71,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2201,7 +2348,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.98,
+   "run_ms": 0.95,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2306,7 +2453,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.82,
+   "run_ms": 0.86,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2380,8 +2527,8 @@
    "criticality": "standard",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.66,
+   "import_ms": 0.01,
+   "run_ms": 0.69,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2396,7 +2543,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.54,
+   "run_ms": 0.52,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2425,8 +2572,8 @@
    "criticality": "core",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.01,
-   "run_ms": 0.16,
+   "import_ms": 0.02,
+   "run_ms": 0.23,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2455,8 +2602,8 @@
    "criticality": "standard",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.48,
+   "import_ms": 0.01,
+   "run_ms": 0.72,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2470,8 +2617,8 @@
    "criticality": "optional",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.52,
+   "import_ms": 0.01,
+   "run_ms": 0.74,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2485,8 +2632,8 @@
    "criticality": "standard",
    "role": "tool",
    "status": "healthy",
-   "import_ms": 0.0,
-   "run_ms": 0.63,
+   "import_ms": 0.01,
+   "run_ms": 0.72,
    "invoke": 100.0,
    "slo": 100.0,
    "score": 100.0,
@@ -2501,7 +2648,7 @@
    "role": "tool",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 3064.54,
+   "run_ms": 3031.94,
    "invoke": 100.0,
    "slo": 0.0,
    "score": 85.0,
@@ -2516,7 +2663,7 @@
    "role": "manager",
    "status": "healthy",
    "import_ms": 0.0,
-   "run_ms": 0.01,
+   "run_ms": 0.0,
    "invoke": 40.0,
    "slo": 0.0,
    "score": 70.0,
@@ -2726,7 +2873,7 @@
    "role": "manager",
    "status": "healthy",
    "import_ms": 0.01,
-   "run_ms": 0.04,
+   "run_ms": 0.03,
    "invoke": 40.0,
    "slo": 0.0,
    "score": 70.0,
@@ -2770,7 +2917,7 @@
    "criticality": "standard",
    "role": "manager",
    "status": "healthy",
-   "import_ms": 0.0,
+   "import_ms": 0.01,
    "run_ms": 0.0,
    "invoke": 40.0,
    "slo": 0.0,
@@ -2785,7 +2932,7 @@
    "criticality": "standard",
    "role": "manager",
    "status": "healthy",
-   "import_ms": 0.0,
+   "import_ms": 0.01,
    "run_ms": 0.01,
    "invoke": 40.0,
    "slo": 0.0,

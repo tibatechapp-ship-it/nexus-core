@@ -24,8 +24,18 @@ EXPECTED_TOTAL = 106
 EXPECTED_BY_FRAMEWORK = {"novamind": 79, "core": 20, "legacy": 7}
 
 #: التقاطع المعلن بين مفردات الإطارين — مرشّح توحيد مستقبلي لا خطأ جرد.
-EXPECTED_OVERLAP = {"architect", "coder", "compliance", "devops",
-                    "documentation", "performance", "refactor", "tester"}
+#: ب2.1 (v1.49.1): الأسماء الثمانية المشتركة قيانية في core وكل ما
+#: يحملها في novamind معلن alias — فلا تعارضاً صامتاً بعد اليوم.
+EXPECTED_OVERLAP = {
+    "architect",
+    "coder",
+    "compliance",
+    "devops",
+    "documentation",
+    "performance",
+    "refactor",
+    "tester",
+}
 
 
 def test_inventory_total_matches_plan() -> None:
@@ -98,20 +108,52 @@ def test_reconcile_clean_on_current_fleet() -> None:
     assert report["bad_category"] == []
     assert report["bad_criticality"] == []
     assert report["missing_module_file"] == []
-    assert set(report["cross_framework_overlap"]) == EXPECTED_OVERLAP
+    # ب2.1: التوحيد المعلن أفرغ التعارض — الأسماء الثمانية في aliases
+    assert report["cross_framework_overlap"] == []
+    assert set(report["aliases"]) == EXPECTED_OVERLAP
+    for name, info in report["aliases"].items():
+        assert info["canonical"] == f"core:{name}"
+        assert info["aliases"] == ["novamind"]
+
+
+def test_alias_records_are_marked_non_canonical() -> None:
+    """ب2.1: الجرد يعرض canonical: false لمراكب الأسماء الموحدة."""
+    from src.fleet.inventory import NAME_ALIASES
+
+    records = build_inventory()
+    for rec in records:
+        if rec.framework == "novamind" and rec.name in NAME_ALIASES:
+            assert rec.canonical is False, rec.name
+        else:
+            assert rec.canonical is True, rec.name
+    aliased = [r for r in records if r.framework == "novamind" and not r.canonical]
+    assert len(aliased) == 8
 
 
 def test_reconcile_catches_duplicates_and_bad_metadata() -> None:
     real_source = "src/agents/base.py"  # موجود فعلاً فلا يلوث فحص الملفات
     records = [
-        AgentRecord(name="x", framework="novamind", source=real_source,
-                    module="m", symbol="S", category="not-a-category"),
-        AgentRecord(name="x", framework="novamind", source=real_source,
-                    module="m", symbol="S"),
-        AgentRecord(name="y", framework="core", source=real_source,
-                    module="m", symbol="S", category="core", criticality="urgent"),
-        AgentRecord(name="ghost", framework="novamind", source="src/ghost.py",
-                    module="m", symbol="S"),
+        AgentRecord(
+            name="x",
+            framework="novamind",
+            source=real_source,
+            module="m",
+            symbol="S",
+            category="not-a-category",
+        ),
+        AgentRecord(name="x", framework="novamind", source=real_source, module="m", symbol="S"),
+        AgentRecord(
+            name="y",
+            framework="core",
+            source=real_source,
+            module="m",
+            symbol="S",
+            category="core",
+            criticality="urgent",
+        ),
+        AgentRecord(
+            name="ghost", framework="novamind", source="src/ghost.py", module="m", symbol="S"
+        ),
     ]
     report = reconcile(records)
     assert len(report["duplicates"]) == 1
@@ -131,8 +173,7 @@ def test_module_source_mapping(tmp_path: Path) -> None:
     assert _module_source("") == ""
 
 
-def test_repo_version_fallbacks(
-        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_repo_version_fallbacks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """كل إخفاق قراءة الإصدار يهبط بأمان إلى unknown لا انهيار."""
     import src.fleet.inventory as inv
 
