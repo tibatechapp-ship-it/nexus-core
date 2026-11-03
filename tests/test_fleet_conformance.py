@@ -37,16 +37,13 @@ def _report_map(deep: bool) -> dict:
     return {r["name"]: r for r in conf["reports"]}
 
 
-@pytest.mark.parametrize("rec", ALL_RECORDS,
-                         ids=lambda r: f"{r.framework}:{r.name}")
+@pytest.mark.parametrize("rec", ALL_RECORDS, ids=lambda r: f"{r.framework}:{r.name}")
 def test_every_agent_imports_and_exposes_entrypoint(rec: AgentRecord) -> None:
     """الوكيل الواحد: استيراد حقيقي، رمز دخول حاضر، حالة معلنة عادلة."""
     report = check_agent(rec)
     assert report["name"] == rec.name
     if rec.name in KNOWN_BROKEN:
-        assert report["status"] == "broken", (
-            f"أصلحت {rec.name}؟ احذفه من KNOWN_BROKEN مع سببه"
-        )
+        assert report["status"] == "broken", f"أصلحت {rec.name}؟ احذفه من KNOWN_BROKEN مع سببه"
         assert report["reasons"], "المكسور المعلن يجب أن يعلن سببه"
     elif rec.name in OPTIONAL_ENV_BROKEN:
         if report["status"] == "broken":
@@ -61,8 +58,7 @@ def test_conformance_aggregates_match_per_agent_truth() -> None:
     conf = run_conformance(ALL_RECORDS)
     assert conf["checked"] == len(ALL_RECORDS)
     counts = conf["counts"]
-    broken_names = {r["name"] for r in conf["reports"]
-                    if r["status"] == "broken"}
+    broken_names = {r["name"] for r in conf["reports"] if r["status"] == "broken"}
     # لا كسر جديد خارج قوائم الصدق — وأصل المعلن مكسور دائماً
     allowed = set(KNOWN_BROKEN) | set(OPTIONAL_ENV_BROKEN)
     assert broken_names <= allowed, (
@@ -73,8 +69,7 @@ def test_conformance_aggregates_match_per_agent_truth() -> None:
     assert all(r["import_ms"] >= 0 for r in healthy)
     # عقد «لا رجوع للوراء»: pr_reviewer أُصلح في 1.48.1 باستيرادات مرنة معلنة
     # لا تعتمد على أي إضافة اختيارية — سليم في كل البيئات، وكسره تراجع يُفشل.
-    assert all(r["status"] == "healthy" for r in conf["reports"]
-               if r["name"] == "pr_reviewer")
+    assert all(r["status"] == "healthy" for r in conf["reports"] if r["name"] == "pr_reviewer")
 
 
 def test_pr_reviewer_degrades_gracefully_offline() -> None:
@@ -99,9 +94,57 @@ def test_pr_reviewer_degrades_gracefully_offline() -> None:
 
 def test_deep_mode_instantiates_core_agents() -> None:
     """الوضع العميق: كل الوكلاء الأساسيين العشرين يُبنون ويُشغَّلون ping."""
-    conf = run_conformance(
-        [r for r in ALL_RECORDS if r.framework == "core"], deep=True)
+    conf = run_conformance([r for r in ALL_RECORDS if r.framework == "core"], deep=True)
     assert conf["counts"]["healthy"] == 20
+
+
+NOVAMIND_INIT_CONTRACT_SAMPLES = ("a11y", "analyzer", "chief_architect")
+
+
+@pytest.mark.parametrize("name", NOVAMIND_INIT_CONTRACT_SAMPLES)
+def test_novamind_offline_init_contract(name: str) -> None:
+    """ب1.1: عقد التهيئة الأوفلاين — استيراد وبناء بلا شبكة/أقراص.
+
+    العيّنات الثلاث معلنة وتغطي الأنماط الثلاثة: أداة خفيفة (a11y)،
+    وحدة ثقيلة التبعيات (analyzer بـllm_router)، ومدير بوسيط قاموسي
+    (chief_architect). الفحص عبر ``check_agent(probe=True)`` لا يلمس
+    شبكة ولا يرفع استثناءات — والبناء نتيجته معلنة في حقل ``probe``.
+    """
+    rec = next(r for r in ALL_RECORDS if r.name == name and r.framework == "novamind")
+    report = check_agent(rec, probe=True)
+    assert report["status"] == "healthy", report["reasons"]
+    probe = report["probe"]
+    assert probe["mode"] == "fake-clock"
+    assert probe["init_ok"] is True, probe["reason"]
+    assert probe["init_ms"] is not None and probe["init_ms"] >= 0
+    # عقد التهيئة لا يوجب الاستدعاء — لكنه يعلن نوع الحِمل بصدق
+    assert probe["probe"] in {
+        "call:method",
+        "call:module",
+        "construct-only",
+        "construct-only(blocking)",
+        "call-failed:method",
+        "call-failed:module",
+    }
+
+
+def test_probe_never_raises_and_declares_reasons() -> None:
+    """الحِمل آمن: وكيل ميت الوحدة يُرجع أسباباً معلنة بلا انفجار."""
+    from src.fleet.probe import probe_agent
+
+    ghost = AgentRecord(
+        name="ghost_nm",
+        framework="novamind",
+        source="g.py",
+        module="no.such.module_probe",
+        symbol="Ghost",
+        description="x",
+    )
+    result = probe_agent(ghost)
+    assert result["init_ok"] is False
+    assert result["run_ms"] is None
+    assert any(r.startswith("import:") for r in result["reason"])
+    assert result["probe"] == "import-only"
 
 
 def test_silent_backend_is_offline_deterministic() -> None:
@@ -110,9 +153,14 @@ def test_silent_backend_is_offline_deterministic() -> None:
 
 
 def test_missing_module_is_broken_with_reason() -> None:
-    ghost = AgentRecord(name="ghost", framework="legacy", source="ghost.py",
-                        module="no.such.module_xyz", symbol="Ghost",
-                        description="x")
+    ghost = AgentRecord(
+        name="ghost",
+        framework="legacy",
+        source="ghost.py",
+        module="no.such.module_xyz",
+        symbol="Ghost",
+        description="x",
+    )
     report = check_agent(ghost)
     assert report["status"] == "broken"
     assert any(r.startswith("import:") for r in report["reasons"])
@@ -120,17 +168,21 @@ def test_missing_module_is_broken_with_reason() -> None:
 
 
 def test_missing_symbol_is_broken_not_crash() -> None:
-    half = AgentRecord(name="half", framework="legacy", source="record.py",
-                       module="src.fleet.record", symbol="NoSuchSymbol",
-                       description="x")
+    half = AgentRecord(
+        name="half",
+        framework="legacy",
+        source="record.py",
+        module="src.fleet.record",
+        symbol="NoSuchSymbol",
+        description="x",
+    )
     report = check_agent(half)
     assert report["status"] == "broken"
     assert any(r.startswith("entrypoint:") for r in report["reasons"])
 
 
 def test_empty_metadata_is_broken_without_import() -> None:
-    empty = AgentRecord(name="empty", framework="legacy", source="x.py",
-                        module="", symbol="")
+    empty = AgentRecord(name="empty", framework="legacy", source="x.py", module="", symbol="")
     report = check_agent(empty)
     assert report["status"] == "broken"
     assert report["reasons"][0].startswith("metadata:")
@@ -138,9 +190,14 @@ def test_empty_metadata_is_broken_without_import() -> None:
 
 
 def test_missing_description_is_degraded() -> None:
-    rec = AgentRecord(name="quiet", framework="legacy", source="record.py",
-                      module="src.fleet.record", symbol="AgentRecord",
-                      description="")
+    rec = AgentRecord(
+        name="quiet",
+        framework="legacy",
+        source="record.py",
+        module="src.fleet.record",
+        symbol="AgentRecord",
+        description="",
+    )
     report = check_agent(rec)
     assert report["status"] == "degraded"
     assert "metadata: empty description" in report["reasons"]
@@ -148,8 +205,7 @@ def test_missing_description_is_degraded() -> None:
 
 def test_core_agent_run_failure_is_reported() -> None:
     """عميل أساسي run يفشل ⇒ منقوص (degraded) لا سليم — عبر تجنيس الصنف."""
-    rec = next(r for r in ALL_RECORDS
-               if r.name == "coder" and r.framework == "core")
+    rec = next(r for r in ALL_RECORDS if r.name == "coder" and r.framework == "core")
 
     class EvilAgentClass:
         def __init__(self, backend: object) -> None:
@@ -160,9 +216,11 @@ def test_core_agent_run_failure_is_reported() -> None:
         def run(self, task: str) -> object:
             class R:
                 ok = False
+
             return R()
 
     import sys
+
     module = sys.modules[rec.module]
     original = getattr(module, rec.symbol)
     setattr(module, rec.symbol, EvilAgentClass)
@@ -174,16 +232,14 @@ def test_core_agent_run_failure_is_reported() -> None:
     assert any("run:" in r for r in report["reasons"])
 
 
-def test_ensure_src_on_path_appends_when_missing(
-        monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_src_on_path_appends_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """ضمّد src/ عند غيابه — وارفض الإضافة المكررة."""
     import sys
 
     from src.fleet.conformance import ROOT, ensure_src_on_path
 
     src = str(ROOT / "src")
-    monkeypatch.setattr(sys, "path",
-                        [p for p in sys.path if p != src])
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != src])
     ensure_src_on_path()
     assert sys.path.count(src) == 1
     ensure_src_on_path()
@@ -192,14 +248,14 @@ def test_ensure_src_on_path_appends_when_missing(
 
 def test_core_agent_init_crash_is_contained() -> None:
     """بناء الوكيل ينفجر ⇒ منقوص بسبب instantiate/run لا انهيار الفحص."""
-    rec = next(r for r in ALL_RECORDS
-               if r.name == "coder" and r.framework == "core")
+    rec = next(r for r in ALL_RECORDS if r.name == "coder" and r.framework == "core")
 
     class ExplodingClass:
         def __init__(self, backend: object) -> None:
             raise RuntimeError("wiring exploded")
 
     import sys
+
     module = sys.modules[rec.module]
     original = getattr(module, rec.symbol)
     setattr(module, rec.symbol, ExplodingClass)

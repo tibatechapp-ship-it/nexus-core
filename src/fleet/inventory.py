@@ -32,8 +32,7 @@ NOVA_YAML = ROOT / "src" / "novamind" / "registry" / "data" / "nova.yaml"
 #: استنتاج بالاسم: كل مدخل يجب أن يوجد فعلاً وإلا رُصد في المطابقة.
 LEGACY_AGENTS: tuple[tuple[str, str, str, str], ...] = (
     # (module, symbol, role, description)
-    ("hyper_agent", "autonomous_workflow_hyper", "manager",
-     "محرك سير العمل الذاتي 2.0"),
+    ("hyper_agent", "autonomous_workflow_hyper", "manager", "محرك سير العمل الذاتي 2.0"),
     ("unified_agent", "UnifiedChat", "manager", "الوكيل الموحد v10 (خادم)"),
     ("nexus_agent", "CouncilRequest", "manager", "خادم Nexus-Core الموحد"),
     ("pr_reviewer", "PRReviewer", "tool", "مراجع طلبات الدمج مع حلقة تعلّم"),
@@ -176,9 +175,7 @@ def reconcile(records: list[AgentRecord]) -> dict:
                 missing_file.append(rec.name)
     return {
         "duplicates": duplicates,
-        "cross_framework_overlap": sorted(
-            name for name, fws in overlap.items() if len(fws) > 1
-        ),
+        "cross_framework_overlap": sorted(name for name, fws in overlap.items() if len(fws) > 1),
         "bad_category": bad_category,
         "bad_criticality": bad_criticality,
         "missing_module_file": missing_file,
