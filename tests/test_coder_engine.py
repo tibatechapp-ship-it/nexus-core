@@ -173,12 +173,21 @@ async def test_model_plan_without_json_is_feedback(tmp_path: Path) -> None:
 
 
 async def test_trace_records_every_stage(tmp_path: Path) -> None:
-    trace_file = Path.cwd() / "runs" / "trace.jsonl"
+    """كل مرحلة تُسجَّل في ملف الأثر الموجَّه بالفكستر (tmp) — حصرية كاملة:
+    الاختبار لا يقرأ جذر المستودع إطلاقاً فلا يتأثر بسجلات التشغيل المحلية."""
+    trace_file = tmp_path / "trace.jsonl"
     conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(GOOD_STEPS, GOOD_TESTS)])
-    await run_engine("g", conn, root=tmp_path, max_iterations=2,
-                     gates=PASS_GATE, test_timeout=90)
-    # NEXUS_TRACE_PATH points at tmp (fixture); repo runs/trace.jsonl untouched
-    assert not trace_file.exists() or "coder" not in trace_file.read_text()
+    result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
+                              gates=PASS_GATE, test_timeout=90)
+    assert result["ok"] is True
+    events = [json.loads(line) for line in trace_file.read_text().splitlines()
+              if line.strip()]
+    stages = [(e["agent"], e["tool"], e["outcome"]) for e in events]
+    assert stages == [("coder", "analyze", "ok"), ("coder", "detect", "ok"),
+                      ("coder", "plan", "ok"), ("quality-gate", "run", "ok"),
+                      ("coder", "gate", "ok")]
+    required = {"ts", "agent", "tool", "duration_ms", "outcome"}
+    assert all(required <= set(e) for e in events)
 
 
 async def test_explicit_workdir_is_reused(tmp_path: Path) -> None:
