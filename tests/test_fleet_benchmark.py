@@ -155,14 +155,18 @@ def test_cli_report_end_to_end(tmp_path: Path) -> None:
     assert code == 0
     payload = json.loads((out / "fleet_inventory.json").read_text(encoding="utf-8"))
     assert payload["summary"]["total"] == 106
-    # الصدق بقوائم لا بأعداد: المكسور دائماً pr_reviewer، ونكس_agent قد
-    # يُكسر حيث تُغيب sse-starlette (إضافة اختيارية على CI).
-    broken = {r["name"] for r in payload["ranking"] if r["status"] == "broken"}
-    allowed = {"pr_reviewer", "nexus_agent"}
-    assert broken <= allowed, f"كسور غير معلنة: {broken - allowed}"
-    assert "pr_reviewer" in broken
+    # الصدق بقوائم أسباب لا أعداد ثابتة: pr_reviewer سليم منذ إصلاحه 1.48.1
+    # (استيرادات مرنة معلنة)، وnexus_agent وحده حساس بيئياً لغياب
+    # sse-starlette إن غابت — فلا يُربط الاختبار بعدد صارم يتقلب بالبيئة.
     names = {a["name"] for a in payload["agents"]}
     assert "pr_reviewer" in names and "architect" in names
+    by_name = {r["name"]: r for r in payload["ranking"]}
+    assert by_name["pr_reviewer"]["status"] == "healthy"
+    for rec in payload["ranking"]:
+        if rec["status"] == "broken":
+            assert rec["name"] == "nexus_agent", (
+                f"مكسور غير معلن: {rec['name']} — أعلنه في قوائم الصدق"
+            )
 
 
 def test_benchmark_deep_measures_core_run() -> None:
