@@ -43,7 +43,7 @@ lint:
 	ruff check .
 
 type:
-	mypy zyvo-telegram.py zyvo-voice.py src
+	mypy src
 
 annotations:
 	$(PY) scripts/check_annotations.py

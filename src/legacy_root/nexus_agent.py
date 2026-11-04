@@ -50,7 +50,7 @@ from fastapi.responses import (
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent  # repo root (moved from root in v1.53.0)
 for _p in (str(BASE_DIR), str(BASE_DIR / "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -101,7 +101,7 @@ except Exception as _e:  # pragma: no cover - defensive
 def _load_engine() -> Any:
     """حمّل unified_agent.py بالمسار تحت اسم خاص (لا تضارب اسم ``app``)."""
     spec = importlib.util.spec_from_file_location(
-        "_nexus_engine", BASE_DIR / "unified_agent.py")
+        "_nexus_engine", BASE_DIR / "src" / "legacy_root" / "unified_agent.py")
     if spec is None or spec.loader is None:  # pragma: no cover - defensive
         raise RuntimeError("تعذّر تحميل unified_agent.py")
     mod = importlib.util.module_from_spec(spec)

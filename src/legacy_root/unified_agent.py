@@ -24,7 +24,7 @@ from typing import List, Dict, Optional
 # ═══════════════════════════════════════════════════════════
 # Setup
 # ═══════════════════════════════════════════════════════════
-ROOT = Path(__file__).parent.resolve()
+ROOT = Path(__file__).resolve().parent.parent.parent  # repo root (moved from root in v1.53.0)
 logger = logging.getLogger(__name__)
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))

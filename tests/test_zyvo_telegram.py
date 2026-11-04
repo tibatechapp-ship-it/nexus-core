@@ -87,7 +87,7 @@ def test_module_import_survives_missing_config(monkeypatch, tmp_path):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))  # no telegram.env here
     spec = importlib.util.spec_from_file_location(
-        "zyvo_telegram_no_config", str(ROOT / "zyvo-telegram.py")
+        "zyvo_telegram_no_config", str(ROOT / "src" / "legacy_root" / "zyvo_telegram.py")
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

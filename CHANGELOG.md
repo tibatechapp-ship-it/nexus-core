@@ -2,6 +2,24 @@
 
 All notable changes to this project. Newest first.
 
+## v1.53.0 — 2026-11-05 — م1: توحيد الجذر — كل الكود الحي تحت src/
+
+### Root consolidation (docs/V2_ROADMAP.md م1 — ض4)
+- **18 ملفًا جذريًا هاجرت إلى `src/legacy_root/`**: hyper_agent، nexus_agent،
+  unified_agent، groq_pool، models، nova_bridge، post، pr_reviewer،
+  registry_full، review_engine، safe_runner، secure_load_v2، telegram_notify،
+  tools، user، webhook_server + إعادة تسمية zyvo-telegram/zyvo-voice إلى
+  أسماء قابلة للاستيراد (zyvo_telegram/zyvo_voice).
+- **`main.py` يبقى وحده في الجذر** — نقطة الإطلاق الرسمية، محروسة باختبار جديد.
+- **بوابة `tests/test_root_hygiene.py`**: صفر ملفات .py جذرية عدا main.py،
+  واستثناءات حزمة legacy_root المجمدة معلنة في البوابات الثلاث
+  (تغطية/أنماط/mypy) — استثناء غير معلن يُسقط CI.
+- **تعريفات المسارات أُصلحت** داخل الملفات المنقولة (BASE_DIR/ROOT تشير
+  إلى جذر المشروع بعد النقل)، وكل محمّلات الاختبار ومسارات e2e حُدّثت.
+- **أسطول 106 وكلاء بلا تغيير**: أسماء الوحدات في `LEGACY_AGENTS` صارت
+  مسارات حزمة كاملة، والتقارير جُدّدت (check_reports_fresh أخضر).
+- حزمة `src/legacy_root` مجمّدة: بلا ميزات جديدة، وإعادة تقييس تدريجية في م3.
+
 ## v1.52.0 — 2026-11-05 — ميزات: PWA قابل للتركيب + بوابة صحة الـ workflows
 
 ### Installable PWA for the web platform

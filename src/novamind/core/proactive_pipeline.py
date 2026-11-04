@@ -71,7 +71,7 @@ class ProactivePipeline:
             try:
                 from novamind.core.react_loop import ReactLoop
                 from novamind.core.llm_router import LLMRouter
-                from unified_agent import REACT_TOOLS
+                from src.legacy_root.unified_agent import REACT_TOOLS
                 router = LLMRouter()
                 self._react_loop = ReactLoop(
                     router=router,

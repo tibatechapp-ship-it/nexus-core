@@ -43,7 +43,7 @@ def test_i1_diag_does_not_leak_absolute_paths() -> None:
     try:
         import importlib
 
-        mod = importlib.import_module("nexus_agent")
+        mod = importlib.import_module("src.legacy_root.nexus_agent")
     except Exception as exc:  # pragma: no cover - env dependent
         pytest.skip(f"gateway import unavailable: {exc}")
 

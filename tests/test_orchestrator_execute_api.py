@@ -29,7 +29,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 
 def _load_unified() -> Any:
     spec = importlib.util.spec_from_file_location("nexus_orch_exec_server",
-                                                  _ROOT / "nexus_agent.py")
+                                                  _ROOT / "src" / "legacy_root" / "nexus_agent.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules["nexus_orch_exec_server"] = module
     spec.loader.exec_module(module)

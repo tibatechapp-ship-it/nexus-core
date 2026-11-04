@@ -59,8 +59,8 @@ def apps():
         sys.path.insert(0, str(_TOOLS_DIR))
     workbench = _load_by_path("nexus_workbench_main_docs", "main.py")
     workbench.CRAFT_TOKEN = ""  # auth off regardless of the ambient environment
-    gateway = _load_by_path("nexus_gateway_docs", "unified_agent.py")
-    launcher = _load_by_path("nexus_launcher_docs", "nexus_agent.py")
+    gateway = _load_by_path("nexus_gateway_docs", "src/legacy_root/unified_agent.py")
+    launcher = _load_by_path("nexus_launcher_docs", "src/legacy_root/nexus_agent.py")
     return {"main.py": workbench, "unified_agent.py": gateway, "nexus_agent.py": launcher}
 
 

@@ -45,7 +45,7 @@ def test_execute_writes_one_request_log(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_REQUEST_LOG", str(log))
     _fake_orch_module(monkeypatch)
 
-    import nexus_agent
+    from src.legacy_root import nexus_agent
 
     client = TestClient(nexus_agent.app)
     response = client.post(
@@ -64,7 +64,7 @@ def test_execute_defaults_priority_to_med(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_REQUEST_LOG", str(log))
     _fake_orch_module(monkeypatch)
 
-    import nexus_agent
+    from src.legacy_root import nexus_agent
 
     client = TestClient(nexus_agent.app)
     response = client.post("/api/orchestrator/execute", json={"request": "hi"})

@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-import hyper_agent as ha
+from src.legacy_root import hyper_agent as ha
 
 # ---------------------------------------------------------------------------
 # BUG-1 — prune replaces, never appends

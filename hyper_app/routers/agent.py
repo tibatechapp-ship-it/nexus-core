@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from hyper_agent import autonomous_workflow_hyper
+from src.legacy_root.hyper_agent import autonomous_workflow_hyper
 
 router = APIRouter()
 

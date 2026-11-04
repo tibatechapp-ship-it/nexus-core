@@ -78,7 +78,7 @@ def test_pr_reviewer_degrades_gracefully_offline() -> None:
     الإصلاح (1.48.1): التبعيات القديمة كلها أعلام ميزات — غيابها يُرجع
     ``ok: False`` بسبب واضح، لا استثناء استيراد يُسقط الأسطول كله.
     """
-    import pr_reviewer as mod
+    from src.legacy_root import pr_reviewer as mod
 
     assert isinstance(mod.GITHUB_INTEGRATION_AVAILABLE, bool)
     assert isinstance(mod.ANALYZERS_AVAILABLE, bool)

@@ -44,14 +44,13 @@ jobs:
 
       - name: Byte-compile (syntax check)
         run: |
-          python -m py_compile zyvo-telegram.py zyvo-voice.py
           python -m compileall -q src
 
       - name: Ruff lint
         run: ruff check --output-format=github . || true
 
       - name: Mypy type-check
-        run: mypy zyvo-telegram.py zyvo-voice.py src nexus_agent.py
+        run: mypy src
 
       - name: Type-hint coverage (every function annotated)
         run: python scripts/check_annotations.py
@@ -113,7 +112,7 @@ jobs:
       # intentionally outside this scope.
       - name: Bandit (medium+ severity, agent surface)
         run: |
-          bandit -r connectors hyper_app hyper_agent.py \
+          bandit -r connectors hyper_app src/legacy_root/hyper_agent.py \
             src/learning src/knowledge src/skills src/security \
             -ll -q
 

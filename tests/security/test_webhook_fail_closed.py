@@ -8,7 +8,7 @@ Same fail-open pattern as C3 (``src/security/access.py``).
 import hashlib
 import hmac
 
-from webhook_server import WebhookHandler, _resolve_bind_host
+from src.legacy_root.webhook_server import WebhookHandler, _resolve_bind_host
 
 
 def _handler(secret: str) -> WebhookHandler:
