@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="منصة نوفا مايند: مجلس ذكاء جمعي يعمل على جهازك — وكلاء، ذاكرة، وتعلّم.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NovaMind">
 <title>🧠 NovaMind Platform</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -375,6 +383,15 @@ document.getElementById('chat-input').addEventListener('keydown', e => {
     sendChat();
   }
 });
+
+// PWA: register the offline shell (only over http/https — never file://)
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {
+      /* offline shell is a bonus — the app still works without it */
+    });
+  });
+}
 </script>
 </body>
 </html>
