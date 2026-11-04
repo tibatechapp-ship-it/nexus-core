@@ -1,0 +1,80 @@
+{
+  "schema": "nexus.benchmark/v1",
+  "generated_at": "2026-11-04T23:14:04+00:00",
+  "provider": "mock",
+  "model": "",
+  "scenarios": [
+    {
+      "id": "arabic-council",
+      "title": "مجلس تحليل عربي",
+      "expected": "sqlite محلية خفيفة على الهاتف postgres للنشر المركزي",
+      "quality_fn": "overlap",
+      "procedural": {
+        "approach": "procedural",
+        "quality": 0.1429,
+        "steps": 3,
+        "wall_ms": 0.09,
+        "notes": []
+      },
+      "react": {
+        "approach": "react",
+        "quality": 0.1429,
+        "steps": 1,
+        "wall_ms": 0.03,
+        "notes": []
+      },
+      "verdict": {
+        "procedural_quality_edge": 0.0,
+        "procedural_step_cost": 2
+      }
+    },
+    {
+      "id": "code-fix-loop",
+      "title": "تصحيح كود بحلقة",
+      "expected": "def f(a, b):",
+      "quality_fn": "code",
+      "procedural": {
+        "approach": "procedural",
+        "quality": 1.0,
+        "steps": 1,
+        "wall_ms": 0.08,
+        "notes": []
+      },
+      "react": {
+        "approach": "react",
+        "quality": 1.0,
+        "steps": 2,
+        "wall_ms": 0.02,
+        "notes": []
+      },
+      "verdict": {
+        "procedural_quality_edge": 0.0,
+        "procedural_step_cost": -1
+      }
+    },
+    {
+      "id": "multi-hop-retrieval",
+      "title": "استرجاع متعدد الخطوات",
+      "expected": "sqlite على الهاتف و postgres للنشر المركزي",
+      "quality_fn": "overlap",
+      "procedural": {
+        "approach": "procedural",
+        "quality": 1.0,
+        "steps": 2,
+        "wall_ms": 0.01,
+        "notes": []
+      },
+      "react": {
+        "approach": "react",
+        "quality": 0.4,
+        "steps": 1,
+        "wall_ms": 0.02,
+        "notes": []
+      },
+      "verdict": {
+        "procedural_quality_edge": 0.6,
+        "procedural_step_cost": 1
+      }
+    }
+  ]
+}

@@ -161,3 +161,25 @@ jobs:
             git commit -m "chore: update coverage badge [skip ci]"
             git push
           fi
+
+      # م5/v1.57.0: تقارير الأسطول + البنشمارك القابل للتكرار تتجددان
+      # آليًا في كل دمج على main — بوابة خروج م5-ج.
+      - name: Regenerate fleet & benchmark reports
+        run: |
+          python -m src.fleet.report --deep
+          python scripts/run_benchmark.py
+        env:
+          NEXUS_ALLOW_OPEN: 1
+
+      - name: Commit reports
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/fleet_inventory.json reports/agent_leaderboard.md \
+                  benchmarks/results.json docs/benchmarks.md
+          if git diff --cached --quiet; then
+            echo "Reports unchanged."
+          else
+            git commit -m "chore: renew fleet & benchmark reports [skip ci]"
+            git push
+          fi
