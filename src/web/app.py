@@ -21,7 +21,7 @@ except Exception:
     pass
 
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -323,6 +323,35 @@ def trace_replay(session_id: str) -> dict:
         raise
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ═══ A2A — التشغيل البيني (م4 — ض3) ═══
+@app.get("/.well-known/agent.json")
+def a2a_well_known(request: Request) -> dict:
+    """بطاقة المنصة (A2A 0.3.0) — المسار القياسي؛ url البطاقة من
+    مضيف الطلب نفسه فتظل صحيحة في أي نشر (بلا إعدادات إضافية)."""
+    from src.a2a import build_hub_card
+    return build_hub_card(str(request.base_url).rstrip("/")).to_dict()
+
+
+@app.get("/api/a2a/cards")
+def a2a_cards(request: Request) -> dict:
+    """بطاقات 106 وكلاء — تُولَّد من جرد الأسطول الحي (مصدر واحد)."""
+    try:
+        from src.a2a import build_agent_cards
+        root = str(request.base_url).rstrip("/")
+        cards = build_agent_cards(root)
+        return {"ok": True, "count": len(cards),
+                "cards": [c.to_dict() for c in cards]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/a2a/message")
+def a2a_message(request: dict) -> dict:
+    """نقطة JSON-RPC 2.0 — message/send غير المتدفق (A2A 0.3.0)."""
+    from src.a2a import handle_jsonrpc
+    return handle_jsonrpc(request)
 
 
 # ═══ Metrics ═══

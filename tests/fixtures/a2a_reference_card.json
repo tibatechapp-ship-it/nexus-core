@@ -1,0 +1,23 @@
+{
+  "name": "reference-echo-agent",
+  "description": "A2A conformance reference peer (fixture) — deterministic echo",
+  "url": "https://reference.example/api/a2a/message",
+  "version": "1.0.0",
+  "protocolVersion": "0.3.0",
+  "preferredTransport": "JSONRPC",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "skills": [
+    {
+      "id": "echo",
+      "name": "echo",
+      "description": "Echo the received text back",
+      "tags": ["conformance", "echo"]
+    }
+  ]
+}
