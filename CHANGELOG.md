@@ -2,6 +2,41 @@
 
 All notable changes to this project. Newest first.
 
+## v1.52.0 — 2026-11-05 — ميزات: PWA قابل للتركيب + بوابة صحة الـ workflows
+
+### Installable PWA for the web platform
+- **`manifest.webmanifest`** للمنصة (`src/novamind/web_platform/backend/
+  static/`): عربي أولاً (`lang: ar` · `dir: rtl`)، بألوان المنصة الحقيقية
+  (`#0d1117`)، وأيقونات 192/512 مع نسخة `maskable` — يغلق بند VISION_2026
+  «PWA قابل للتركيب» بأول محطة صادقة: تثبيت + غلاف أوفلاين.
+- **`sw.js` — عامل خدمة سياسة صريحة**: الغلاف الثابت cache-first بمخبأ
+  مُوسم (أي تحديث يمحو المخابئ القديمة عند `activate`)، بينما `POST/PUT`
+  ومسار `/api/` يمرّان دائماً للشبكة — حالة الوكلاء والمجلس لا تُخبَّأ
+  أبداً. التدهور الأوفلاين صادق: 503 بجسم JSON معلن لا خطأ متصفح أعمى.
+- **أيقونات مولّدة برمجياً** (192/512 PNG): عقدة مركزية + 6 عقد مدارية
+  بألوان المنصة، قناع maskable آمن (زوايا معتمة داخل المنطقة الآمنة 80%).
+- **ربط كامل في `index.html`**: manifest + theme-color + apple-touch-icon
+  + تسجيل SW محروس بالبروتوكول (`http/https` فقط، لا `file://`).
+- **عقد آلي جديد `tests/test_pwa_assets.py`** (13 اختباراً): صحة الـ
+  manifest وهوية عربية، أبعاد الأيقونات الحقيقية تساوي المعلن (تفكيك
+  PNG stdlib بلا PIL)، زوايا الأيقونة القناعية معتمة بلون الخلفية
+  (تفكيك IDAT + unfilter كامل)، SW لا يلمس `/api/`، وكل أصول الغلاف
+  المُخبَّأة موجودة فعلاً، والربط في `index.html` بمسارات نسبية محمولة.
+
+### Workflow-health gate
+- **`tests/test_workflow_health.py`** (10 اختبارات): لا شيء في المستودع
+  كان يقرأ ملفات `.github/workflows/` — ملف YAML سليم الشكل لكنه فاسد
+  المعنى (فلتر `branches: ain]` بدل `[main]` مثلاً) يمرّ على كل
+  المدققات ويلغي زناد الدفع بصمت. البوابة تفحص بنيوياً: parse + name +
+  triggers (مع مفاتيح `on`/`True` في YAML 1.1) + فلاتر مراجع نظيفة +
+  jobs بخطوات غير فارغة، وتثبت العقد: ci.yml وtest.yml و
+  deploy-landing.yml تستهدف `main` في `push.branches`.
+
+### Project plan reconciled
+- `docs/PROJECT_PLAN.md` حُدّث ليعمل الواقع: الصفحة الهبوطية ثابتة
+  (HTML/JS بلا Astro)، ومرحلة النشر مُغلقة بالأدلة، ومرحلة PWA جديدة
+  مُغلقة ببنودها ومعايير قبولها.
+
 ## v1.51.0 — 2026-11-04 — الموجة 4: التحصين والتجديد — خطة التحسين مُغلقة كاملة
 
 ### Reports freshness in CI (ب4.1)
