@@ -38,7 +38,9 @@ ROOT = Path(__file__).resolve().parents[2]
 # Framework surface only — the src/novamind package is a separate opt-in
 # layer (declared extras) and is excluded from the stdlib-only invariants.
 FRAMEWORK_FILES = [
-    path for path in (ROOT / "src").rglob("*.py") if "novamind" not in path.parts
+    path
+    for path in (ROOT / "src").rglob("*.py")
+    if "novamind" not in path.parts and "legacy_root" not in path.parts
 ]
 
 # In-tree top-level packages (live under src/, not third-party dependencies).

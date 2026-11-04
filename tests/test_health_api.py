@@ -9,7 +9,7 @@ pytest.importorskip("sse_starlette")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-import nexus_agent  # noqa: E402
+from src.legacy_root import nexus_agent  # noqa: E402
 
 
 def test_health_returns_200_and_ok():

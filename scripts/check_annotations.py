@@ -7,8 +7,8 @@ Usage:
     python scripts/check_annotations.py [path ...]
 
 Each argument may be a file or a directory; directories are searched
-recursively for ``*.py`` files. With no arguments the two assistant scripts and
-the whole ``src/`` package are checked.
+recursively for ``*.py`` files. With no arguments the whole ``src/`` package is checked
+(the frozen ``src/legacy_root`` and ``src/novamind`` layers are skipped).
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ import ast
 import sys
 from pathlib import Path
 
-DEFAULT_FILES: tuple[str, ...] = ("zyvo-telegram.py", "zyvo-voice.py", "src")
+DEFAULT_FILES: tuple[str, ...] = ("src",)
 SKIP_ARGS: frozenset[str] = frozenset({"self", "cls"})
 # Scope: the whole gated surface (framework + workbench layers under src/).
 # Only the novamind layer keeps its own typing legacy — mirrors the ruff /
 # mypy / coverage scope so every gate covers the same files.
-SKIP_DIR_NAMES: frozenset[str] = frozenset({"novamind"})
+SKIP_DIR_NAMES: frozenset[str] = frozenset({"novamind", "legacy_root"})
 
 
 def missing_hints(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:

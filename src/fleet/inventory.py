@@ -32,13 +32,13 @@ NOVA_YAML = ROOT / "src" / "novamind" / "registry" / "data" / "nova.yaml"
 #: استنتاج بالاسم: كل مدخل يجب أن يوجد فعلاً وإلا رُصد في المطابقة.
 LEGACY_AGENTS: tuple[tuple[str, str, str, str], ...] = (
     # (module, symbol, role, description)
-    ("hyper_agent", "autonomous_workflow_hyper", "manager", "محرك سير العمل الذاتي 2.0"),
-    ("unified_agent", "UnifiedChat", "manager", "الوكيل الموحد v10 (خادم)"),
-    ("nexus_agent", "CouncilRequest", "manager", "خادم Nexus-Core الموحد"),
-    ("pr_reviewer", "PRReviewer", "tool", "مراجع طلبات الدمج مع حلقة تعلّم"),
-    ("review_engine", "load_agents", "manager", "محرك المراجعة — تحميل 42 وكيلاً"),
-    ("groq_pool", "GroqKeyPool", "service", "مجمّع مفاتيح Groq"),
-    ("safe_runner", "SafeRunner", "service", "حاضنة تنفيذ آمنة"),
+    ("src.legacy_root.hyper_agent", "autonomous_workflow_hyper", "manager", "محرك سير العمل الذاتي 2.0"),
+    ("src.legacy_root.unified_agent", "UnifiedChat", "manager", "الوكيل الموحد v10 (خادم)"),
+    ("src.legacy_root.nexus_agent", "CouncilRequest", "manager", "خادم Nexus-Core الموحد"),
+    ("src.legacy_root.pr_reviewer", "PRReviewer", "tool", "مراجع طلبات الدمج مع حلقة تعلّم"),
+    ("src.legacy_root.review_engine", "load_agents", "manager", "محرك المراجعة — تحميل 42 وكيلاً"),
+    ("src.legacy_root.groq_pool", "GroqKeyPool", "service", "مجمّع مفاتيح Groq"),
+    ("src.legacy_root.safe_runner", "SafeRunner", "service", "حاضنة تنفيذ آمنة"),
 )
 
 #: مفردات الفئة لكل إطار — الإطارات لا تتشارك تقاليد، والتحقق يُراعى ذلك.
@@ -139,9 +139,9 @@ def _legacy_records() -> list[AgentRecord]:
     """سجلات الجذر القديمة — الحضور يُتحقق منه في المطابقة لا هنا."""
     return [
         AgentRecord(
-            name=module,
+            name=module.rsplit(".", 1)[-1],
             framework="legacy",
-            source=module + ".py",
+            source=module.replace(".", "/") + ".py",
             module=module,
             symbol=symbol,
             role=role,

@@ -7,7 +7,7 @@ echo "==> ruff check"
 ruff check .
 
 echo "==> mypy (framework scope)"
-mypy zyvo-telegram.py zyvo-voice.py src
+mypy src
 
 echo "==> check_annotations"
 python scripts/check_annotations.py

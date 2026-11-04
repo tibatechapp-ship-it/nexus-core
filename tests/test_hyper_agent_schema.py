@@ -1,5 +1,5 @@
 """BUG-5 regression: hyper_agent uses a strict JSON schema."""
-from hyper_agent import HYPER_AGENT_SCHEMA
+from src.legacy_root.hyper_agent import HYPER_AGENT_SCHEMA
 
 
 def test_schema_has_exactly_4_actions():
@@ -20,7 +20,7 @@ def test_schema_forbids_extra_fields():
 
 def test_parse_action_accepts_schema_output():
     """_parse_action must accept exactly what generate_json returns."""
-    from hyper_agent import _parse_action
+    from src.legacy_root.hyper_agent import _parse_action
     import json
     raw = json.dumps({"action": "CODE", "content": "print(1)"})
     result = _parse_action(raw)

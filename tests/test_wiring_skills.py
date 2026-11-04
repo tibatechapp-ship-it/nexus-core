@@ -31,7 +31,7 @@ _SKILLS_HEADER = "### المهارات المُفعَّلة (Skills)"
 def _load_unified() -> Any:
     """Load the repo-root ``nexus_agent.py`` by path (fresh module per call)."""
     spec = importlib.util.spec_from_file_location(
-        "nexus_unified_skills_wiring", _ROOT / "nexus_agent.py"
+        "nexus_unified_skills_wiring", _ROOT / "src" / "legacy_root" / "nexus_agent.py"
     )
     module = importlib.util.module_from_spec(spec)
     sys.modules["nexus_unified_skills_wiring"] = module  # Pydantic forward refs

@@ -88,7 +88,7 @@ def test_core_records_come_from_agent_classes() -> None:
 
 def test_legacy_records_are_the_explicit_seven() -> None:
     records = [r for r in build_inventory() if r.framework == "legacy"]
-    assert {r.name for r in records} == {m for m, *_ in LEGACY_AGENTS}
+    assert {r.name for r in records} == {m.rsplit(".", 1)[-1] for m, *_ in LEGACY_AGENTS}
     assert len(LEGACY_AGENTS) == 7
 
 
@@ -169,7 +169,7 @@ def test_module_source_mapping(tmp_path: Path) -> None:
 
     assert _module_source("novamind.agents.analyzer") == "src/novamind/agents/analyzer.py"
     assert _module_source("src.agents.architect") == "src/agents/architect.py"
-    assert _module_source("hyper_agent") == "hyper_agent.py"
+    assert _module_source("src.legacy_root.hyper_agent") == "src/legacy_root/hyper_agent.py"
     assert _module_source("") == ""
 
 

@@ -157,13 +157,13 @@ def _load(name: str, filename: str) -> types.ModuleType:
 @pytest.fixture(scope="session")
 def tg() -> types.ModuleType:
     """The loaded ``zyvo-telegram.py`` module."""
-    return _load("zyvo_telegram_under_test", "zyvo-telegram.py")
+    return _load("zyvo_telegram_under_test", "src/legacy_root/zyvo_telegram.py")
 
 
 @pytest.fixture(scope="session")
 def voice() -> types.ModuleType:
     """The loaded ``zyvo-voice.py`` module."""
-    return _load("zyvo_voice_under_test", "zyvo-voice.py")
+    return _load("zyvo_voice_under_test", "src/legacy_root/zyvo_voice.py")
 
 
 @pytest.fixture(autouse=True)
@@ -285,7 +285,7 @@ def pytest_terminal_summary(
 def _reset_nexus_agent_globals():
     """Reset global state in nexus_agent so tests don't leak into each other."""
     try:
-        import nexus_agent
+        from src.legacy_root import nexus_agent
         nexus_agent._council = None
         nexus_agent.GENOME_OK = False
         nexus_agent.GENOME_ERR = None

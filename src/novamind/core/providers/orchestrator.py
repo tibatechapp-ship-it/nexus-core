@@ -62,7 +62,7 @@ class LLMOrchestrator:
 
         # ═══ Groq Pool (20 keys with rotation) ═══
         try:
-            from groq_pool import GroqKeyPool
+            from src.legacy_root.groq_pool import GroqKeyPool
             groq_pool = GroqKeyPool()
             for idx, key in enumerate(groq_pool.keys, 1):
                 app_name = f"groq-{idx:02d}"

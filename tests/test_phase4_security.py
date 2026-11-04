@@ -119,8 +119,8 @@ def test_no_hardcoded_secrets_in_the_shipped_source() -> None:
     root = Path(__file__).resolve().parent.parent
     targets = [
         *sorted((root / "src").rglob("*.py")),
-        root / "zyvo-telegram.py",
-        root / "zyvo-voice.py",
+        root / "src" / "legacy_root" / "zyvo_telegram.py",
+        root / "src" / "legacy_root" / "zyvo_voice.py",
     ]
     offenders: list[str] = []
     for path in targets:

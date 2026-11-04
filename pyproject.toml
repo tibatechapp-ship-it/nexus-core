@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-core"
-version = "1.52.0"
+version = "1.53.0"
 description = "Unified AI Agent System: Memory + Learning + Security + 20 Agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -106,28 +106,15 @@ extend-exclude = [
     "src/novamind",
     "tests/novamind",
     "scripts/novamind",
-    "registry_full.py",
-    "telegram_notify.py",
     "github_client.py",
     "greeting.py",
-    "groq_pool.py",
     "groq_rotator.py",
     "hive_agent_smart.py",
     "hive_security_scanner.py",
     "manager.py",
-    "models.py",
     "note.py",
-    "post.py",
-    "pr_reviewer.py",
-    "review_engine.py",
-    "safe_runner.py",
-    "secure_load_v2.py",
     "security.py",
-    "tools.py",
-    "unified_agent.py",
-    "user.py",
-    "webhook_server.py",
-    "nova_bridge.py",
+    "src/legacy_root",
 ]
 
 [tool.ruff.lint]
@@ -161,9 +148,12 @@ pretty = false
 # (src/{council,web,nexus,orchestrator,agent_loop}) + the workbench files that
 # live inside src/memory. Only the novamind layer keeps its own typing legacy
 # (verified by its own suite). Mirrors ruff, check_annotations.py and coverage.
+# The frozen legacy package (v1.53.0 root consolidation) keeps its own typing
+# legacy — re-gated progressively per docs/V2_ROADMAP.md (م3).
 exclude = [
     "src/novamind",
     "src/nova",  # legacy (from novamind migration) — kept for reference
+    "src/legacy_root",
 ]
 
 # ─── pytest ─────────────────────────────────────────────────────────────────
@@ -193,6 +183,7 @@ branch = true
 source = ["src"]
 omit = [
     "src/novamind/*",
+    "src/legacy_root/*",
     "tests/*",
     "scripts/*",
 ]

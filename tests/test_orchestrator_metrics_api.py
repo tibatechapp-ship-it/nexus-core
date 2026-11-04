@@ -33,7 +33,7 @@ def test_metrics_endpoint_returns_schema(tmp_path, monkeypatch):
         ],
     )
 
-    import nexus_agent
+    from src.legacy_root import nexus_agent
 
     client = TestClient(nexus_agent.app)
     response = client.get("/api/orchestrator/metrics?window_days=7")
@@ -52,7 +52,7 @@ def test_metrics_endpoint_empty_log(tmp_path, monkeypatch):
     log = tmp_path / "request_log.jsonl"
     monkeypatch.setenv("NEXUS_REQUEST_LOG", str(log))
 
-    import nexus_agent
+    from src.legacy_root import nexus_agent
 
     client = TestClient(nexus_agent.app)
     response = client.get("/api/orchestrator/metrics")

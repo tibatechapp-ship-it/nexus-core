@@ -99,7 +99,7 @@ def main() -> int:
 
     env = dict(os.environ, NEXUS_PORT=str(PORT), NEXUS_GENOME_PATH=str(GENOME),
                NEXUS_DB=str(DB), PYTHONPATH=f"{ROOT}:{ROOT / 'src'}")
-    proc = subprocess.Popen([sys.executable, "nexus_agent.py"], cwd=ROOT, env=env,
+    proc = subprocess.Popen([sys.executable, "src/legacy_root/nexus_agent.py"], cwd=ROOT, env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         if not wait_ready(proc):

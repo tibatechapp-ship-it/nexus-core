@@ -16,4 +16,4 @@ def test_no_hyphenated_hyper_agent_shadow() -> None:
 
 def test_canonical_hyper_agent_exists() -> None:
     root = Path(__file__).resolve().parents[1]
-    assert (root / "hyper_agent.py").is_file()
+    assert (root / "src" / "legacy_root" / "hyper_agent.py").is_file()

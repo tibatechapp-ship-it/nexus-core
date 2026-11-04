@@ -18,7 +18,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 def _load_safe_path():
     """Import ``safe_path`` from the repo-root ``unified_agent`` by path."""
-    spec = importlib.util.spec_from_file_location("_ua_root", _ROOT / "unified_agent.py")
+    spec = importlib.util.spec_from_file_location("_ua_root", _ROOT / "src" / "legacy_root" / "unified_agent.py")
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

@@ -42,7 +42,7 @@ _WORKBENCH_ROUTES = {
 def _load_unified():
     """Load the repo-root ``nexus_agent.py`` by path (a fresh app per call)."""
     spec = importlib.util.spec_from_file_location("nexus_unified_server",
-                                                  _ROOT / "nexus_agent.py")
+                                                  _ROOT / "src" / "legacy_root" / "nexus_agent.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules["nexus_unified_server"] = module  # Pydantic resolves __module__ here
     spec.loader.exec_module(module)

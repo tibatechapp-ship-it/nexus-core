@@ -874,7 +874,7 @@ def test_module_detects_rtl_via_path_lookup(monkeypatch):
     monkeypatch.setattr("os.path.exists", lambda p: False)      # "~/bin/rtl" absent
     monkeypatch.setattr("shutil.which", lambda n: "/usr/bin/rtl")
     spec = importlib.util.spec_from_file_location(
-        "zyvo_voice_reload", str(root / "zyvo-voice.py"))
+        "zyvo_voice_reload", str(root / "src" / "legacy_root" / "zyvo_voice.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules["zyvo_voice_reload"] = module
     spec.loader.exec_module(module)
