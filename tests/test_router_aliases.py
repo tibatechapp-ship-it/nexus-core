@@ -29,8 +29,30 @@ def test_performance_verb_beats_the_zero_score_tie():
     assert result["score"] > 0.0
 
 
-def test_aliases_off_restores_zero_score_tie(monkeypatch):
+def test_aliases_off_tie_is_broken_by_fleet_score(monkeypatch):
+    """بلا توسيع: التعادل (researcher/performance بنفس درجة التوكن)
+    يُكسَر بسلسلة ب3.1 — درجة الأسطول الحية ثم الاسم (v1.50.0).
+    نحقن مصفوفة درجات اصطناعية: الأعلى يفوز دائماً — لا ترتيب سجل صامت."""
     monkeypatch.setenv("NEXUS_ALIASES", "0")
+    from src.fleet.reader import FleetScore
+    from src.orchestrator import router as router_mod
+
+    fake = {
+        ("core", "researcher"): FleetScore(
+            "researcher", "core", 100.0, "S", "healthy"),
+        ("core", "performance"): FleetScore(
+            "performance", "core", 85.0, "A", "healthy"),
+    }
+    monkeypatch.setattr(router_mod, "_fleet_rank", lambda cands, reg: fake)
     result = route_with_reason("optimize the token overlap search")
-    # without expansion the verb "optimize" no longer reaches performance
-    assert result["agent"] != "performance"
+    assert result["agent"] == "researcher"  # الأعلى درجة يفوز دائماً
+
+    # وعند تساوي الدرجة الحية: الاسم حتمياً
+    fake2 = {
+        ("core", "researcher"): FleetScore(
+            "researcher", "core", 90.0, "A", "healthy"),
+        ("core", "performance"): FleetScore(
+            "performance", "core", 90.0, "A", "healthy"),
+    }
+    monkeypatch.setattr(router_mod, "_fleet_rank", lambda cands, reg: fake2)
+    assert route_with_reason("optimize the token overlap search")["agent"] == "performance"

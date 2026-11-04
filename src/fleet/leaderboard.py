@@ -14,6 +14,19 @@ __all__ = ["render_markdown", "write_reports"]
 
 _TIER_ICON = {"S": "🥇", "A": "🥈", "B": "🥉", "C": "⚠️"}
 
+#: قاعدة بوابة الترقية المعلنة (ب3.2) — تظهر في التقرير كما هي
+PROMOTION_RULE = "A→S requires eval_suite=passed via src.fleet.promotion (no manual overrides)"
+
+
+def promotion_section() -> dict:
+    """قسم سجل الترقية للتقرير — سجل حي من reports/promotion_log.json."""
+    try:
+        from src.fleet.promotion import read_log
+
+        return {"rule": PROMOTION_RULE, "log": read_log()}
+    except Exception:  # noqa: BLE001 — غياب السجل قائمة فارغة معلنة
+        return {"rule": PROMOTION_RULE, "log": []}
+
 
 def render_markdown(inventory_summary: dict, ranked: list[dict], conformance: dict) -> str:
     """لوحة الترتيب النهائية — أعلى 25 صفًا + توزيع الطبقات + الصحة."""
@@ -100,6 +113,9 @@ def write_reports(
         "conformance_counts": conformance["counts"],
         "agents": [r.to_json() if hasattr(r, "to_json") else r for r in records],
         "ranking": ranked,
+        # ب3.2 (v1.50.0): سجل الترقية في التقرير — كل بند يحمل eval_suite،
+        # والقاعدة: لا ترقية إلى S بلا eval_suite=passed (بلا تخصيص يدوي)
+        "promotion": promotion_section(),
     }
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     md_path.write_text(render_markdown(summary, ranked, conformance), encoding="utf-8")
