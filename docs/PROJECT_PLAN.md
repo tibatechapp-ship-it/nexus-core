@@ -42,3 +42,12 @@
       + تسجيل SW محروس بالبروتوكول)
 - [x] عقد آلي: `tests/test_pwa_assets.py` (manifest صادق الأبعاد، أيقونات
       موجودة فعلية بحجمها المعلن، SW لا يلمس API، الربط موجود)
+
+## Phase 6: Strategic evaluation & v2 roadmap (2026-11-05)
+- [x] [EVALUATION_v1_52.md](EVALUATION_v1_52.md) — تقرير التقييم المفصّل عند v1.52.0
+      (الحكم: على الطريق الصحيح + 8 نقاط ضعف محصورة ض1–ض8)
+- [x] [COMPETITIVE_REVERSE_ENGINEERING.md](COMPETITIVE_REVERSE_ENGINEERING.md) —
+      هندسة عكسية لـ LangGraph / AutoGen→MAF / CrewAI / OpenAI Agents SDK
+      + مصفوفة مقارنة 12 بُعدًا + 5 دروس ممنوعة التكرار
+- [x] [V2_ROADMAP.md](V2_ROADMAP.md) — خطة v2 المحكمة: 6 مراحل v1.53.0→v2.0.0
+      ببوابات خروج قابلة للاختبار، كل نقطة ضعف مربوطة بمرحلتها
