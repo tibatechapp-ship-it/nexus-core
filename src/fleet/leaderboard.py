@@ -28,6 +28,57 @@ def promotion_section() -> dict:
         return {"rule": PROMOTION_RULE, "log": []}
 
 
+#: الأهداف المعلنة لدين الإصدار (ب4.3 — v1.51.0)
+DEBT_TARGETS = {
+    "architectural_todos": 0,
+    "known_broken": 0,
+    "behavioral_categories_min": 8,
+}
+
+
+def debt_section() -> dict:
+    """عدّادات الدين المقيس من مصادرها المعلنة (ب4.3).
+
+    * ``architectural_todos`` — بنود وثيقة القيود المصنفة تأجيلاً معماريًا
+      (الهدف: صفر — انظر ``docs/known-limitations.md``).
+    * ``known_broken`` — مفاتيح عقد الصدق ``KNOWN_BROKEN`` في اختبارات
+      المطابقة (الهدف: صفر منذ 1.48.1).
+    * ``behavioral_categories_covered`` — عيّنات العقد السلوكي المعلنة
+      في ``tests/test_fleet_behavioral_contract.py`` (الهدف: ≥8).
+    """
+    import re as _re
+
+    root = Path(__file__).resolve().parents[2]
+    try:
+        doc = (root / "docs" / "known-limitations.md").read_text(encoding="utf-8")
+        architectural = sum(
+            1 for line in doc.splitlines() if "Architectural decision needed" in line
+        )
+    except OSError:
+        architectural = -1  # وثيقة مفقودة = دين غير مقيس (يُعلن لا يُخفى)
+    try:
+        conftext = (root / "tests" / "test_fleet_conformance.py").read_text(encoding="utf-8")
+        block = _re.search(r"KNOWN_BROKEN[^=]*=\s*\{([^}]*)\}", conftext, _re.DOTALL)
+        known_broken = len(_re.findall(r'["\']([\w-]+)["\']\s*:', block.group(1))) if block else -1
+    except OSError:
+        known_broken = -1
+    try:
+        behavior = (root / "tests" / "test_fleet_behavioral_contract.py").read_text(
+            encoding="utf-8"
+        )
+        samples = _re.search(r"CATEGORY_SAMPLES[^=]*=\s*\{(.*?)\n\}", behavior, _re.DOTALL)
+        covered = len(_re.findall(r'"[\w-]+"\s*:', samples.group(1))) if samples else 0
+    except OSError:
+        covered = 0
+    return {
+        "targets": dict(DEBT_TARGETS),
+        "architectural_todos": architectural,
+        "known_broken": known_broken,
+        "behavioral_categories_covered": covered,
+        "at_target": (architectural == 0 and known_broken == 0 and covered >= 8),
+    }
+
+
 def render_markdown(inventory_summary: dict, ranked: list[dict], conformance: dict) -> str:
     """لوحة الترتيب النهائية — أعلى 25 صفًا + توزيع الطبقات + الصحة."""
     counts = conformance["counts"]
@@ -116,6 +167,8 @@ def write_reports(
         # ب3.2 (v1.50.0): سجل الترقية في التقرير — كل بند يحمل eval_suite،
         # والقاعدة: لا ترقية إلى S بلا eval_suite=passed (بلا تخصيص يدوي)
         "promotion": promotion_section(),
+        # ب4.3 (v1.51.0): عدّادات الدين المقيس مقابل أهدافها المعلنة
+        "debt": debt_section(),
     }
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     md_path.write_text(render_markdown(summary, ranked, conformance), encoding="utf-8")

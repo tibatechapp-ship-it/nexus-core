@@ -162,5 +162,38 @@
 | 31–60 | توحيد الأسماء الثمانية المشتركة (نسخة واحدة + alias معلن) | `cross_framework_overlap` فارغ |
 | 61–90 | توجيه عِرقي بالدرجة (router يقرأ leaderboard آلياً) + قياس novamind آمن (invocation بطاطم زائفة معلنة) | توجيه حسب الدرجة في الأثر |
 
+## 7. الدورة التشغيلية القياسية — قياس ← ترقية ← توجيه (ب4.4، v1.51.0)
+
+الدورة كاملة أصبحت إجراءً تشغيلياً قياسياً (SOP) بلا حلقات يدوية:
+
+```
+1. قِس        python3 -m src.fleet.report --deep
+              → fleet_inventory.json + agent_leaderboard.md
+              (بوابة النضارة في CI تفشل على تقارير قديمة — ب4.1)
+
+2. قيّم الدين reports/fleet_inventory.json → قسم "debt"
+              (architectural_todos = 0 · known_broken = 0 ·
+               behavioral_categories_covered ≥ 8 — ب4.3)
+
+3. رقِّ بالبوابة src.fleet.promotion
+              eval_gate(الوكيل) → eval_suite: passed/failed
+              promotion_gate(current, target, eval_suite)
+              → لا A→S بلا نجاح evalsuite فعلي (ب3.2)
+              → أضف القرار إلى reports/promotion_log.json (eval_suite مسجّل)
+
+4. وجِّه       route_with_reason(الطلب)
+              → سلسلة كسر التعادل: genome → درجة الأسطول الحية → الاسم
+              → المكسور مستبعد، والقرار محمول درجته في trace_event (ب3.1/ب3.4)
+```
+
+**أمثلة الجولة الأولى (2026-11-04):**
+
+* القياس كشف بطء `test_runner` الحقيقي (2.9 ثانية بطيء زائف) → هبط إلى A
+  بموجب `ROLE_SLO_BUDGETS` — لا اجتماع، القياس قرر.
+* بوابة الترقية ترفض أي A→S بلا `eval_suite=passed` — `unmeasured`
+  يرفض كالـ`failed`، وإعادة الاختبار بعد الإصلاح ليست جلسة.
+* التوجيه عند تعادل توكني بين `researcher` و`performance` يقرأ درجات
+  الأسطول الحية — والأعلى يفوز دائماً والمكسور مستبعد.
+
 ---
 *مولّد بجانب `src/fleet` — أعد التوليد بعد كل تغيير جوهري في الأسطول.*
