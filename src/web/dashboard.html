@@ -189,6 +189,61 @@ textarea::placeholder{color:var(--text-dim)}
 .loading-dots span:nth-child(2){animation-delay:-.16s}
 @keyframes bounce{0%,80%,100%{transform:scale(.6);opacity:.5}40%{transform:scale(1);opacity:1}}
 
+/* Replay panel (م3 — الرؤية التشغيلية) */
+.replay-btn{
+  background:var(--bg-3);color:var(--text);border:1px solid var(--line);
+  border-radius:8px;padding:8px 14px;cursor:pointer;font-size:.85em;
+}
+.replay-btn:hover{border-color:var(--accent-2);color:var(--accent-2)}
+.overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);
+  z-index:50;align-items:center;justify-content:center;padding:16px;
+}
+.overlay.open{display:flex}
+.panel{
+  background:var(--bg-2);border:1px solid var(--line);border-radius:14px;
+  width:min(720px,100%);max-height:86vh;display:flex;flex-direction:column;overflow:hidden;
+}
+.panel-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 18px;border-bottom:1px solid var(--line);
+}
+.panel-head b{font-size:1.05em}
+.panel-close{background:none;border:none;color:var(--text-dim);font-size:1.4em;cursor:pointer}
+.panel-close:hover{color:var(--red)}
+.panel-body{padding:14px 18px;overflow-y:auto;flex:1}
+.session-item{
+  display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+  margin-bottom:8px;cursor:pointer;font-size:.85em;
+}
+.session-item:hover{border-color:var(--accent-2)}
+.session-item .sid{font-family:monospace;color:var(--accent-2)}
+.session-item .sdate{color:var(--text-dim);font-size:.8em}
+.player-step{
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;
+}
+.player-step.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.player-step.dim{opacity:.45}
+.step-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.step-name{font-weight:700;font-size:.95em}
+.step-agent{color:var(--purple);font-size:.78em}
+.step-meta{display:flex;gap:10px;font-size:.75em;color:var(--text-dim);flex-wrap:wrap}
+.badge{padding:2px 8px;border-radius:6px;font-size:.72em}
+.badge.ok{background:rgba(16,185,129,.15);color:var(--green)}
+.badge.error{background:rgba(239,68,68,.15);color:var(--red)}
+.player-ctl{
+  display:flex;gap:8px;align-items:center;justify-content:center;
+  padding:10px;border-top:1px solid var(--line);flex-wrap:wrap;
+}
+.player-ctl button{
+  background:var(--bg-3);border:1px solid var(--line);color:var(--text);
+  border-radius:8px;padding:7px 14px;cursor:pointer;font-size:.85em;
+}
+.player-ctl button:hover{border-color:var(--accent)}
+.player-ctl .pos{color:var(--text-dim);font-size:.8em;min-width:70px;text-align:center}
+.player-ctl .playing{border-color:var(--green);color:var(--green)}
+
 /* Mobile */
 @media(max-width:600px){
   .logo h1{font-size:1em}
@@ -215,8 +270,29 @@ textarea::placeholder{color:var(--text-dim)}
     <div class="stat-item"><b id="sAgents">—</b><span>وكيل</span></div>
     <div class="stat-item"><b id="sCalls">—</b><span>استدعاء</span></div>
     <div class="stat-item"><b id="sCost">—</b><span>تكلفة</span></div>
+    <button class="replay-btn" onclick="openReplay()">⏱ إعادة العرض</button>
   </div>
 </header>
+
+<!-- Replay overlay (م3) -->
+<div class="overlay" id="replayOverlay">
+  <div class="panel">
+    <div class="panel-head">
+      <b id="replayTitle">⏱ إعادة عرض المجلس — ترى التفكير بعد الحدث</b>
+      <button class="panel-close" onclick="closeReplay()">×</button>
+    </div>
+    <div class="panel-body" id="replayBody">
+      <div style="color:var(--text-dim);font-size:.85em">…تحميل الجلسات</div>
+    </div>
+    <div class="player-ctl" id="playerCtl" style="display:none">
+      <button onclick="stepPrev()">▶ السابق</button>
+      <button id="playToggle" onclick="togglePlay()">⏵ تشغيل تلقائي</button>
+      <button onclick="stepNext()">التالي ◀</button>
+      <div class="pos" id="stepPos">0 / 0</div>
+      <button onclick="backToSessions()">العودة للجلسات</button>
+    </div>
+  </div>
+</div>
 
 <div class="main">
   <div class="chat-area">
@@ -494,6 +570,97 @@ async function loadStats(){
 
 loadStats();
 setInterval(loadStats,20000);
+
+// ═══ Trace Replay (م3 — الرؤية التشغيلية) ═══
+let replaySteps=[];
+let replayIdx=0;
+let playTimer=null;
+
+async function openReplay(){
+  $('replayOverlay').classList.add('open');
+  $('replayTitle').textContent='⏱ إعادة عرض المجلس — ترى التفكير بعد الحدث';
+  $('replayBody').innerHTML='<div style="color:var(--text-dim);font-size:.85em">…تحميل الجلسات</div>';
+  $('playerCtl').style.display='none';
+  try{
+    const r=await fetch('/api/traces/sessions');
+    const d=await r.json();
+    if(!d.ok||!d.sessions.length){
+      $('replayBody').innerHTML='<div style="color:var(--text-dim);font-size:.9em">لا جلسات مؤرشفة بعد — شغّل مداولة مجلس أولاً.</div>';
+      return;
+    }
+    $('replayBody').innerHTML=d.sessions.map(s=>
+      `<div class="session-item" onclick="openSession('${escapeHtml(s.session_id)}')">`+
+      `<span class="sid">${escapeHtml(s.session_id.slice(0,12))}…</span>`+
+      `<span class="sdate">${escapeHtml(s.ts.replace('T',' ').slice(0,19))} · ${(s.bytes/1024).toFixed(1)}KB</span></div>`
+    ).join('');
+  }catch(e){
+    $('replayBody').innerHTML='<div style="color:var(--red)">فشل تحميل الجلسات</div>';
+  }
+}
+
+async function openSession(sid){
+  try{
+    const r=await fetch('/api/traces/'+sid);
+    const d=await r.json();
+    if(!d.ok){throw new Error(d.detail||d.error||'فشل')}
+    replaySteps=d.steps;
+    replayIdx=0;
+    $('replayTitle').textContent='جلسة '+sid.slice(0,12)+'… — '+replaySteps.length+' خطوة';
+    renderStep();
+    $('playerCtl').style.display='flex';
+  }catch(e){
+    $('replayBody').innerHTML='<div style="color:var(--red)">فشل تحميل الجلسة</div>';
+  }
+}
+
+function renderStep(){
+  const body=$('replayBody');
+  if(!replaySteps.length){return}
+  body.innerHTML=replaySteps.map((s,i)=>{
+    const cls=i===replayIdx?'player-step current':(i<replayIdx?'player-step dim':'player-step');
+    const attrs=Object.entries(s.attributes||{}).map(([k,v])=>
+      `<span>${escapeHtml(k)}=${escapeHtml(String(v))}</span>`).join(' ');
+    return `<div class="${cls}">`+
+      `<div class="step-top"><span class="step-name">${escapeHtml(s.name)}</span>`+
+      `<span class="badge ${s.outcome==='ok'?'ok':'error'}">${s.outcome==='ok'?'✓ نجاح':'✗ خطأ'}</span></div>`+
+      `<div class="step-meta"><span class="step-agent">🤖 ${escapeHtml(s.agent)}</span>`+
+      `<span>⏱ ${s.duration_ms}ms</span><span>🔧 ${escapeHtml(s.start_ts||'')}</span>${attrs}</div></div>`;
+  }).join('');
+  $('stepPos').textContent=(replayIdx+1)+' / '+replaySteps.length;
+  const cur=body.children[replayIdx];
+  if(cur){cur.scrollIntoView({block:'nearest',behavior:'smooth'})}
+}
+
+function stepNext(){
+  if(replayIdx<replaySteps.length-1){replayIdx++;renderStep()}
+  else{stopPlay()}
+}
+function stepPrev(){
+  if(replayIdx>0){replayIdx--;renderStep()}
+}
+function togglePlay(){
+  if(playTimer){stopPlay();return}
+  if(replayIdx>=replaySteps.length-1){replayIdx=0}
+  $('playToggle').classList.add('playing');
+  $('playToggle').textContent='⏸ إيقاف';
+  playTimer=setInterval(()=>{
+    stepNext();
+    if(replayIdx>=replaySteps.length-1){stopPlay()}
+  },900);
+}
+function stopPlay(){
+  if(playTimer){clearInterval(playTimer);playTimer=null}
+  const b=$('playToggle');if(b){b.classList.remove('playing');b.textContent='⏵ تشغيل تلقائي'}
+}
+function backToSessions(){
+  stopPlay();
+  $('playerCtl').style.display='none';
+  openReplay();
+}
+function closeReplay(){
+  stopPlay();
+  $('replayOverlay').classList.remove('open');
+}
 </script>
 </body>
 </html>
