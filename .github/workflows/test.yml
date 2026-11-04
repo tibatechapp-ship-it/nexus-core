@@ -50,6 +50,11 @@ jobs:
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
 
+      # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
+      # match a fresh deep generation (identity/reconcile/measurement/rule)
+      - name: Reports freshness (deep regen matches committed)
+        run: python scripts/check_reports_fresh.py
+
       # ── Layer 2: the former novamind package (its own env + data) ──────────
       - name: Set up novamind test data
         run: |
