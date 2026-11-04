@@ -26,6 +26,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from src.observability.trace import read_recent, trace_context
+from src.observability.otrace import replay_steps  # م3 — replay بعد الحدث
 from src.web.kpis import compute_kpis
 
 app = FastAPI(title="Nexus-Core Dashboard", version="0.12.0")
@@ -180,21 +181,37 @@ def rag_query(q: str, k: int = 5) -> dict:
 def council_deliberate(req: CouncilRequest) -> dict:
     _rid = _run_started()
     _trace: dict[str, Any] = {"agent": "council"}
+    # م3: جلسة تتبّع عميق مُؤرشفة لكل مداولة — replay بصري بعد الحدث.
+    from src.observability.otrace import DeepTracer
+    tracer = DeepTracer()
+    _trace_session: dict[str, Any] = {}
     try:
         with trace_context("council", "deliberate", _trace):
-            from src.council.rag_bridge import get_council_bridge
-            b = get_council_bridge()
-            b.engine.MAX_ROUNDS = 1
-            result = b.deliberate_with_memory(req.question)
+            with tracer.session():
+                _trace_session["session_id"] = tracer.trace_id
+                with tracer.span("council.deliberate", agent="council",
+                                 attributes={"rounds_cap": 1}) as sp:
+                    from src.council.rag_bridge import get_council_bridge
+                    b = get_council_bridge()
+                    b.engine.MAX_ROUNDS = 1
+                    with tracer.span("council.deliberate_with_memory",
+                                     agent="council") as sp_inner:
+                        result = b.deliberate_with_memory(req.question)
+                    sp.attributes["rounds"] = int(getattr(result, "rounds", 0))
+                    sp.attributes["score"] = float(getattr(result, "score", 0.0))
+                    sp.attributes["members"] = len(getattr(result, "transcript", []))
+                    sp_inner.attributes["phases"] = len(
+                        getattr(result, "transcript", []))
             _trace["outcome"] = "ok"
             return {"ok": True, "verdict": result.verdict, "score": result.score,
                     "rounds": result.rounds, "consensus": result.consensus,
                     "elapsed": result.elapsed,
+                    "trace_session": _trace_session.get("session_id", ""),
                     "transcript": [{"phase": e["phase"], "member": e["member"], "response": e["response"][:500]} for e in result.transcript],
                     "security_events": result.security_events}
     except Exception as e:
         _trace["outcome"] = "error"
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "trace_session": _trace_session.get("session_id", "")}
     finally:
         _run_finished(_rid)
 
@@ -272,6 +289,38 @@ def cache_clear() -> dict:
         from src.council.cache import get_cache
         count = get_cache().clear()
         return {"ok": True, "cleared": count}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ═══ Trace Replay (م3 — الرؤية التشغيلية) ═══
+@app.get("/api/traces/sessions")
+def trace_sessions() -> dict:
+    """جرد جلسات التتبّع المؤرشفة — الأحدث أولًا."""
+    try:
+        from src.observability.otrace import list_sessions
+        return {"ok": True, "sessions": list_sessions()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/traces/{session_id}")
+def trace_replay(session_id: str) -> dict:
+    """خطوات جلسة واحدة للـ replay خطوة-بخطوة في PWA."""
+    # صارم: session_id معرّف hex فقط — يمنع أي عبور مسار.
+    if not session_id or not all(c in "0123456789abcdef" for c in session_id) \
+            or len(session_id) != 32:
+        raise HTTPException(status_code=400, detail="invalid session id")
+    try:
+        from src.observability.otrace import traces_dir
+        path = traces_dir() / f"{session_id}.jsonl"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="session not found")
+        steps = replay_steps(path)
+        return {"ok": True, "session_id": session_id, "steps": steps,
+                "count": len(steps)}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
