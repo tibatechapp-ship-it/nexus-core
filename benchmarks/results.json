@@ -1,6 +1,6 @@
 {
   "schema": "nexus.benchmark/v1",
-  "generated_at": "2026-11-05T13:38:47+00:00",
+  "generated_at": "2026-11-05T15:55:08+00:00",
   "provider": "mock",
   "model": "",
   "scenarios": [
@@ -13,14 +13,14 @@
         "approach": "procedural",
         "quality": 0.1429,
         "steps": 3,
-        "wall_ms": 0.06,
+        "wall_ms": 0.09,
         "notes": []
       },
       "react": {
         "approach": "react",
         "quality": 0.1429,
         "steps": 1,
-        "wall_ms": 0.02,
+        "wall_ms": 0.03,
         "notes": []
       },
       "verdict": {
@@ -37,14 +37,14 @@
         "approach": "procedural",
         "quality": 1.0,
         "steps": 1,
-        "wall_ms": 0.09,
+        "wall_ms": 0.08,
         "notes": []
       },
       "react": {
         "approach": "react",
         "quality": 1.0,
         "steps": 2,
-        "wall_ms": 0.03,
+        "wall_ms": 0.02,
         "notes": []
       },
       "verdict": {

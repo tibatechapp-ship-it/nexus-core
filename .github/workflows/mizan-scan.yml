@@ -72,8 +72,9 @@ jobs:
         run: |
           git config --global user.name "MIZAN AI Bot"
           git config --global user.email "mizan-ai@users.noreply.github.com"
-          # ض10 (v1.58.0): the old `git add .` committed the scanner's own
-          # working tree — node_modules/ (1200+ files), package.json,
+          # ض10 (v1.58.0): the old blanket add-everything committed the
+          # scanner's own working tree — node_modules/ (1200+ files),
+          # package.json,
           # package-lock.json and SARIF/report artifacts all landed in git.
           # Only source repairs may be committed; the artifacts are
           # gitignored and excluded here as a second belt.
