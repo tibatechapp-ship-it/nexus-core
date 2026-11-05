@@ -25,5 +25,5 @@ aiosqlite>=0.20,<1
 sse-starlette>=2,<4
 
 # ── infrastructure clients (readiness probe + future persistence) ──
-redis>=5,<8
+redis>=8.1.0,<9
 psycopg[binary]>=3.2,<4
