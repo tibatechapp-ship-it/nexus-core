@@ -49,7 +49,7 @@ jobs:
       - name: Run MIZAN Scan (SAST)
         id: mizan_scan
         continue-on-error: true
-        run: python run_mizan.py
+        run: python scripts/mizan/run_mizan.py
 
       - name: GitGuardian Secret Scan
         id: ggshield_scan
@@ -61,11 +61,16 @@ jobs:
 
       - name: Remove Detected Secrets
         if: always()
-        run: python src/mizan/secret_remover.py
+        run: |
+          # ض11 (v1.58.0): optional integrations degrade gracefully — the
+          # scripts may not be installed in this repo yet; a missing helper
+          # must skip, not red-bar the whole check.
+          if [ -f src/mizan/secret_remover.py ]; then python src/mizan/secret_remover.py; else echo "secret_remover not installed — skipped"; fi
 
       - name: AI Auto-Fix
         if: always()
-        run: python src/mizan/ai_fixer.py
+        run: |
+          if [ -f src/mizan/ai_fixer.py ]; then python src/mizan/ai_fixer.py; else echo "ai_fixer not installed — skipped"; fi
 
       - name: Commit and Push Fixes
         if: always()
@@ -100,14 +105,19 @@ jobs:
         env:
           GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python src/mizan/email_reporter.py
+        run: |
+          if [ -f src/mizan/email_reporter.py ]; then python src/mizan/email_reporter.py; else echo "email_reporter not installed — skipped"; fi
 
       - name: Comment on PR
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body-file mizan_report.md
+          if [ -f mizan_report.md ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file mizan_report.md
+          else
+            echo "mizan_report.md not produced — comment skipped"
+          fi
 
       - name: Fail if MIZAN found issues
         if: steps.mizan_scan.outcome == 'failure'

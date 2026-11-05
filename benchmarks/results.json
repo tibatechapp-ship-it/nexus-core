@@ -1,6 +1,6 @@
 {
   "schema": "nexus.benchmark/v1",
-  "generated_at": "2026-11-05T15:55:08+00:00",
+  "generated_at": "2026-11-05T16:22:00+00:00",
   "provider": "mock",
   "model": "",
   "scenarios": [
@@ -37,7 +37,7 @@
         "approach": "procedural",
         "quality": 1.0,
         "steps": 1,
-        "wall_ms": 0.08,
+        "wall_ms": 0.1,
         "notes": []
       },
       "react": {
@@ -68,7 +68,7 @@
         "approach": "react",
         "quality": 0.4,
         "steps": 1,
-        "wall_ms": 0.01,
+        "wall_ms": 0.02,
         "notes": []
       },
       "verdict": {

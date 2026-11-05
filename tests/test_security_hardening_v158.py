@@ -444,3 +444,74 @@ def test_d10_scanner_artifacts_are_not_tracked() -> None:
     for artifact in ("bandit.sarif", "semgrep.sarif", "test_mizan.txt",
                      "package.json", "package-lock.json"):
         assert artifact not in tracked, artifact
+
+
+# ═══════ ض11 — the MIZAN scanner actually exists and degrades honestly ══════
+#
+# Found during the v1.58.0 verification pass: the MIZAN workflow referenced
+# run_mizan.py + three helper scripts that were NEVER committed — every PR
+# carried a permanently red check, "green" only via continue-on-error.
+
+
+def test_d11_run_mizan_exists_and_matches_ci_bandit_surface() -> None:
+    """The scan entrypoint must exist and audit the same surface as ci.yml."""
+    entry = _ROOT / "scripts" / "mizan" / "run_mizan.py"
+    assert entry.exists(), "run_mizan.py missing — MIZAN is theater again"
+
+    import runpy
+
+    ns = runpy.run_path(str(entry))
+    targets = ns["SCAN_TARGETS"]
+
+    ci_text = (_WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    assert "bandit -r" in ci_text
+    for target in targets:
+        assert target in ci_text, f"{target} not in ci.yml bandit surface"
+
+
+def test_d11_degraded_run_writes_valid_sarif(monkeypatch) -> None:
+    """No scanner installed → empty-but-valid SARIF + report, exit 0 (never a
+    fake green from continue-on-error, never a red-bar either)."""
+    import runpy
+
+    ns = runpy.run_path(str(_ROOT / "scripts" / "mizan" / "run_mizan.py"))
+    monkeypatch.setattr(ns["shutil"], "which", lambda _: None)
+
+    # call main() directly with ROOT pinned to the real repo (gitignored outputs)
+    rc = ns["main"]()
+    assert rc == 0
+    import json
+
+    sarif = json.loads((_ROOT / "bandit.sarif").read_text(encoding="utf-8"))
+    assert sarif["version"] == "2.1.0" and isinstance(sarif["runs"], list)
+    report = (_ROOT / "mizan_report.md").read_text(encoding="utf-8")
+    assert "MIZAN" in report
+
+
+def test_d11_sarif_converter_maps_severities() -> None:
+    """HIGH→error, MEDIUM→warning; bandit JSON in, SARIF 2.1.0 out."""
+    import runpy
+
+    ns = runpy.run_path(str(_ROOT / "scripts" / "mizan" / "run_mizan.py"))
+    sarif = ns["_to_sarif"]({
+        "results": [
+            {"test_id": "B602", "issue_severity": "HIGH", "issue_text": "shell=True",
+             "filename": "/x/y.py", "line_number": 12},
+            {"test_id": "B108", "issue_severity": "MEDIUM", "issue_text": "tmp",
+             "filename": "/a/b.py", "line_number": 3},
+        ],
+    })
+    results = sarif["runs"][0]["results"]
+    assert results[0]["level"] == "error" and results[1]["level"] == "warning"
+    assert results[0]["locations"][0]["physicalLocation"]["region"]["startLine"] == 12
+
+
+def test_d11_optional_mizan_steps_degrade_gracefully() -> None:
+    """Helper steps must skip (not fail) when their scripts are absent."""
+    data = _load_workflow("mizan-scan.yml")
+    steps = data["jobs"]["mizan-security-scan"]["steps"]
+    for name in ("Remove Detected Secrets", "AI Auto-Fix", "Send Email Report"):
+        step = next(s for s in steps if s.get("name") == name)
+        assert "not installed" in step["run"], name
+    comment = next(s for s in steps if s.get("name") == "Comment on PR")
+    assert "mizan_report.md not produced" in comment["run"]
