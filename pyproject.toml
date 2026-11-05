@@ -57,7 +57,7 @@ observability = [
     "prometheus-client>=0.19",
 ]
 rag = [
-    "chromadb>=0.4.22",
+    "chromadb>=0.6.3",
     "sentence-transformers>=6.1.0",
 ]
 # Remote embedding providers (src/memory/providers/{openai,gemini}.py use the
