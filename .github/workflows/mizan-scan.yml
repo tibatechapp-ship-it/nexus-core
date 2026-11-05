@@ -87,7 +87,8 @@ jobs:
             ':(exclude)node_modules' ':(exclude)package.json' \
             ':(exclude)package-lock.json' ':(exclude)bandit.sarif' \
             ':(exclude)semgrep.sarif' ':(exclude)ggshield-results.json' \
-            ':(exclude)mizan_report.md' ':(exclude)test_mizan.txt'
+            ':(exclude)mizan_report.md' ':(exclude)test_mizan.txt' \
+            || echo "nothing to add — the tree only has gitignored scanner artifacts"
           git commit -m "Security Fix: MIZAN repaired vulnerabilities or redacted secrets [skip ci]" || echo "No changes to commit"
           git push origin HEAD:${{ github.event.pull_request.head.ref }} || echo "Nothing to push"
 
@@ -96,9 +97,11 @@ jobs:
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: |
-            bandit.sarif
-            semgrep.sarif
+          # ض11 (v1.58.0): upload-sarif v4 no longer accepts a newline list of
+          # files — the old two-file form made every upload fail with
+          # "Path does not exist" (masked by continue-on-error). The real scan
+          # output is bandit.sarif; the semgrep stub is empty anyway.
+          sarif_file: bandit.sarif
 
       - name: Send Email Report
         if: always()
