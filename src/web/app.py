@@ -22,14 +22,48 @@ except Exception:
 
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from src.observability.trace import read_recent, trace_context
 from src.observability.otrace import replay_steps  # م3 — replay بعد الحدث
+from src.security.access import AccessGuard  # ض9 (v1.58.0)
 from src.web.kpis import compute_kpis
 
 app = FastAPI(title="Nexus-Core Dashboard", version="0.12.0")
+
+
+# ═══ ض9 (v1.58.0) — حارس الوصول الموحد: token + حدّ معدّل + سجل تدقيق ═══
+# نفس طبقة البوابة الموحدة (``src/security/access.py``) تُركَّب هنا على تطبيق
+# الويب نفسه — أمن هذا التطبيق لم يعد يعتمد على أن تطبيقًا آخر في المستودع
+# يحمل حارسًا. المصادقة عبر ``NEXUS_AUTH_TOKEN`` (رأس ``X-Auth-Token``)،
+# وبدون توكن تُرفض الطلبات المتغيّرة من غير loopback (فشل مغلق)، وحدّ المعدّل
+# ``NEXUS_RATE_LIMIT``/``NEXUS_RATE_WINDOW`` (120/60s افتراضيًا) على المتغيّر،
+# والتدقيق ``NEXUS_AUDIT_LOG``. القراءات تمرّ دائمًا.
+GUARD: AccessGuard = AccessGuard.from_env()
+
+
+@app.middleware("http")
+async def _access_guard(request: Request, call_next: Any) -> Any:
+    """بوّابة واحدة لكل الطلبات: فحص ⇒ مرور ⇒ تسجيل."""
+    import math
+
+    client = request.client.host if request.client else ""
+    decision = GUARD.check(request.method, request.url.path,
+                           request.headers, client)
+    if decision.allowed:
+        response = await call_next(request)
+    else:
+        payload: dict[str, Any] = {"ok": False, "error": decision.error}
+        if decision.retry_after:
+            payload["retry_after"] = decision.retry_after
+        response = JSONResponse(payload, status_code=decision.status)
+        if decision.retry_after:
+            response.headers["Retry-After"] = str(
+                max(1, math.ceil(decision.retry_after)))
+    GUARD.record(decision, request.method, request.url.path, client=client,
+                 status=response.status_code)
+    return response
 
 
 class AgentRunRequest(BaseModel):

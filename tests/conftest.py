@@ -25,6 +25,16 @@ ROOT: Path = Path(__file__).resolve().parent.parent
 _TESTS_DIR: Path = Path(__file__).resolve().parent
 _ADVERSARIAL_DIR: Path = _TESTS_DIR / "adversarial"
 
+# Path bootstrap FIRST (v1.58.0): pytest.ini shadows pyproject's
+# ``pythonpath = [".", "src"]``, so without this the ``nova.*``/``novamind.*``
+# top-level imports resolved only when the ini happened to apply. Insert ROOT
+# (``src.*`` package imports) and SRC (``nova``/``novamind`` top-level
+# packages) before every other entry so collection order can never break them.
+_SRC = ROOT / "src"
+for _entry in (str(_SRC), str(ROOT)):
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
+
 # The adversarial suite lives in its own sub-directory and imports `report` and
 # `attacks` from there, plus the shared `deep_helpers` from tests/. Put both dirs
 # on sys.path up-front so those imports resolve regardless of collection order.

@@ -10,7 +10,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  # ض8 (v1.58.0): least privilege — the workflow default is READ-only; the
+  # only job that commits back (coverage badge + fleet/benchmark reports)
+  # declares its own write permission below. Novamind suites stay explicitly
+  # labelled non-blocking reports (their own env + data, not a merge gate).
+  contents: read
 
 jobs:
   # ── Run the pytest suite with coverage on every supported Python ──────────
@@ -97,6 +101,9 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # ض8: the ONLY job allowed to write back — scoped here, not workflow-wide.
+    permissions:
+      contents: write
     env:
       NOVAMIND_HOME: ${{ github.workspace }}
       TZ: UTC

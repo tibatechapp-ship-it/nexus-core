@@ -172,13 +172,15 @@ def _fix_tasks() -> tuple[Task, ...]:
         out.append(Task(
             id=tid, category="fix",
             goal=(f"[{tid}] أصلح العيب في calc.py ({name}) بحيث يمر ملف "
-                  f"test_task.py دون تعديل الاختبار. لا تحذف شيئاً من الملف."),
+                  f"test_task.py دون تعديل الاختبار: استبدل التعريف المعيب "
+                  f"بالكامل بتعريف صحيح."),
             seed={"calc.py": buggy, "test_task.py": verifier},
             expect=("calc.py",),
             solution_steps=({
                 "file": "calc.py", "action": "edit", "risk": LOW,
                 "reason": f"إصلاح عيب {name} في calc.py ليمر اختبار التحقق",
                 "patch_hint": fixed,
+                "find": buggy,  # ض6 (v1.58.0): استبدال فريد لا إلحاق
             },),
         ))
     return tuple(out)
@@ -243,19 +245,22 @@ def _docs_tasks() -> tuple[Task, ...]:
     out: list[Task] = []
     for i, kw in enumerate(keywords, start=1):
         tid = f"docs-{i:02d}"
+        closing = "مشروع قصير بلا توثيق كافٍ بعد.\n"
         out.append(Task(
             id=tid, category="docs",
             goal=(f"[{tid}] أكمل README.md بإضافة قسم عنوانه {kw} (عنوان من "
                   f"المستوى الثاني) بحيث يمر test_task.py دون تعديله."),
             seed={
-                "README.md": f"# مشروع {i:02d}\n\nمشروع قصير بلا توثيق كافٍ بعد.\n",
+                "README.md": f"# مشروع {i:02d}\n\n{closing}",
                 "test_task.py": _docs_test(kw),
             },
             expect=("README.md",),
             solution_steps=({
                 "file": "README.md", "action": "edit", "risk": LOW,
                 "reason": f"قسم {kw} مطلوب ليمر اختبار التحقق",
-                "patch_hint": f"\n## {kw}\n\nقسم {kw}: شرح موجز ومثال تطبيقي.\n",
+                # ض6 (v1.58.0): استبدال السطر الختامي فريدًا بإضافة القسم بعده
+                "find": closing,
+                "patch_hint": closing + f"\n## {kw}\n\nقسم {kw}: شرح موجز ومثال تطبيقي.\n",
             },),
         ))
     return tuple(out)

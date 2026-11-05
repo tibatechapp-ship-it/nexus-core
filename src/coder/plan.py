@@ -14,13 +14,19 @@ RISK_LEVELS = ("low", "medium", "high")
 
 @dataclass
 class Step:
-    """One auditable file mutation, declared before it is ever executed."""
+    """One auditable file mutation, declared before it is ever executed.
+
+    ض6 (v1.58.0): ``edit`` now carries an explicit ``find`` block — the unique
+    text to replace — instead of relying on an append. ``create``/``delete``
+    leave it empty.
+    """
 
     file: str            # target file, repo-relative
     action: str          # edit | create | delete
     reason: str          # why this change, human-readable
     patch_hint: str = ""  # model hint for the edit content (required for edit/create)
     risk: str = "low"    # low | medium | high
+    find: str = ""       # unique block an 'edit' replaces (required for edit)
 
 
 @dataclass
@@ -51,6 +57,7 @@ def plan_from_json(data: dict) -> RepairPlan:
                 reason=str(raw.get("reason", "")),
                 patch_hint=str(raw.get("patch_hint", "")),
                 risk=str(raw.get("risk", "low")),
+                find=str(raw.get("find", "")),
             )
         )
     raw_defects = data.get("defects")
@@ -82,6 +89,8 @@ def validate(plan: RepairPlan) -> list:
             errors.append(f"unsafe path in plan: {s.file!r}")
         if s.action in ("edit", "create") and not s.patch_hint:
             errors.append(f"missing patch_hint in {s.file}")
+        if s.action == "edit" and not s.find:
+            errors.append(f"edit requires a unique 'find' block in {s.file}")
         if s.action != "create" and not s.reason:
             errors.append(f"missing reason in {s.file}")
     return errors

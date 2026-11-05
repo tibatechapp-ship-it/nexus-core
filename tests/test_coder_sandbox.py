@@ -37,12 +37,38 @@ def test_apply_plan_create_makes_parents(tmp_path: Path) -> None:
     assert (tmp_path / "pkg" / "sub" / "mod.py").read_text() == "x = 1\n"
 
 
-def test_apply_plan_edit_appends(tmp_path: Path) -> None:
-    (tmp_path / "a.py").write_text("first\n")
-    plan = _plan([Step(file="a.py", action="edit", reason="r", patch_hint="second\n")])
+def test_apply_plan_edit_replaces_unique_block(tmp_path: Path) -> None:
+    """ض6 (v1.58.0): an edit is a unique find→replace, no longer an append."""
+    (tmp_path / "a.py").write_text("first\nsecond_line\nthird\n")
+    plan = _plan([Step(file="a.py", action="edit", reason="r",
+                       patch_hint="SECOND", find="second_line")])
     res = apply_plan(plan, tmp_path)
     assert res["ok"] is True
-    assert "first\nsecond\n" in (tmp_path / "a.py").read_text()
+    assert (tmp_path / "a.py").read_text() == "first\nSECOND\nthird\n"
+
+
+def test_apply_plan_edit_requires_find(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("content\n")
+    plan = _plan([Step(file="a.py", action="edit", reason="r", patch_hint="x")])
+    res = apply_plan(plan, tmp_path)
+    assert res["ok"] is False
+    assert "'find' block" in res["errors"][0]["error"]
+
+
+def test_apply_plan_create_refuses_overwrite(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("keep\n")
+    plan = _plan([Step(file="a.py", action="create", reason="r", patch_hint="x")])
+    res = apply_plan(plan, tmp_path)
+    assert res["ok"] is False
+    assert "refusing to overwrite" in res["errors"][0]["error"]
+    assert (tmp_path / "a.py").read_text() == "keep\n"
+
+
+def test_apply_plan_unknown_action_is_rejected(tmp_path: Path) -> None:
+    plan = _plan([Step(file="a.py", action="upsert", reason="r", patch_hint="x")])
+    res = apply_plan(plan, tmp_path)
+    assert res["ok"] is False
+    assert "unknown action" in res["errors"][0]["error"]
 
 
 def test_apply_plan_delete_removes(tmp_path: Path) -> None:
