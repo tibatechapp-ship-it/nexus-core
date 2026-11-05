@@ -1,4 +1,14 @@
-"""Shell command execution tools with safety"""
+"""Shell command execution tools with safety
+
+ض2 (v1.58.0) — التحصين:
+* هاتان الأداتان **معطّلتان افتراضيًا**: لا تُسجّلان في سجل الأدوات إلا عند
+  ضبط ``NEXUS_ENABLE_SHELL_TOOLS=1`` صراحةً قبل الاستيراد. أي نشر غير موثوق
+  يجب ألا يفعّلهما إلا داخل عزل على مستوى نظام التشغيل (حاوية بلا صلاحيات،
+  شبكة مقطوعة، ملفات للقراءة فقط، حدود CPU/ذاكرة/عمليات).
+* قائمة ``SAFE_COMMANDS`` هي راحة استخدام فقط وليست حدّاً أمنياً: حذفنا منها
+  المفسّرات وجلب الشبكة والحذف/الصلاحيات (``python3 pip3 curl wget rm chmod``)
+  وحصرنا ``git`` في أوامر القراءة فقط.
+"""
 from pathlib import Path
 import subprocess
 import shlex
@@ -6,18 +16,29 @@ import sys
 import tempfile
 import os
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# ض2 (v1.58.0): path-independent import — the repo root has its own ``tools``
+# package, and a sibling module imported it first would shadow ours from
+# sys.modules regardless of sys.path order. Prefer the canonical package path.
+try:
+    from novamind.tools.base import Tool, ToolResult, registry
+except ImportError:  # pragma: no cover - legacy layout (src/novamind on path)
+    from tools.base import Tool, ToolResult, registry  # type: ignore[no-redef]
 
-from tools.base import Tool, ToolResult, registry
-
+#: صمّام التفعيل الصريح (ض2): الأداتان لا تُسجّلان إلا عند ضبطه قبل الاستيراد.
+ENABLE_ENV = "NEXUS_ENABLE_SHELL_TOOLS"
 
 SAFE_COMMANDS = {
     "ls", "cat", "head", "tail", "wc", "grep", "find",
     "echo", "pwd", "date", "whoami", "uname", "df", "du",
-    "python3", "pip3", "git", "curl", "wget",
-    "mkdir", "touch", "cp", "mv", "rm", "chmod",
+    "mkdir", "touch", "cp", "mv",
     "sort", "uniq", "awk", "sed", "tr", "cut", "xargs",
     "which", "file", "stat", "dif", "tar", "gzip", "gunzip",
+}
+
+#: git مقصور على القراءة/التدقيق فقط (لا push ولا config ولا hooks).
+GIT_READONLY_SUBCOMMANDS = {
+    "status", "diff", "log", "show", "branch", "ls-files", "grep",
+    "rev-parse", "describe", "blame",
 }
 
 BLOCKED_PATTERNS = [
@@ -56,7 +77,14 @@ class RunCommandTool(Tool):
             return ToolResult(ok=False, error="empty command")
 
         base = parts[0]
-        if base not in SAFE_COMMANDS:
+        if base == "git":
+            # ض2: git مسموح بأوامر القراءة فقط — لا كتابة ولا تنفيذ hooks.
+            if len(parts) < 2 or parts[1] not in GIT_READONLY_SUBCOMMANDS:
+                return ToolResult(
+                    ok=False,
+                    error="git limited to read-only: " + ",".join(sorted(GIT_READONLY_SUBCOMMANDS)),
+                )
+        elif base not in SAFE_COMMANDS:
             return ToolResult(ok=False, error="not allowed: " + base)
 
         try:
@@ -127,5 +155,7 @@ class RunPythonTool(Tool):
                     pass
 
 
-registry.register(RunCommandTool())
-registry.register(RunPythonTool())
+# ض2: التسجيل مشروط بموافقة صريحة عبر البيئة — الافتراضي هو التعطيل.
+if os.environ.get(ENABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}:
+    registry.register(RunCommandTool())
+    registry.register(RunPythonTool())

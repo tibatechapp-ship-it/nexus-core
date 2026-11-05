@@ -46,8 +46,11 @@ jobs:
         run: |
           python -m compileall -q src
 
+      # ض7 (v1.58.0): ruff is a real merge gate now — the old `|| true` made it
+      # advisory-only (lint errors kept the workflow green). The tree is clean
+      # under pyproject [tool.ruff]; any new violation fails the build.
       - name: Ruff lint
-        run: ruff check --output-format=github . || true
+        run: ruff check --output-format=github .
 
       - name: Mypy type-check
         run: mypy src

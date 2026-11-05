@@ -88,14 +88,15 @@ async def test_offline_task_end_to_end(task_id: str,
     assert rec["duration_ms"] >= 0
 
 
-async def test_fix_task_solution_appends_redefinition(tmp_path: Path) -> None:
-    """M2 edit semantics: append — the corrected def shadows the buggy one."""
+async def test_fix_task_solution_replaces_buggy_definition(tmp_path: Path) -> None:
+    """ض6 (v1.58.0) edit semantics: unique find→replace — the buggy def is
+    gone, not shadowed by an appended copy."""
     task = get_task("fix-01")
     wd = tmp_path / "fix"
     rec = await run_task(task, offline_factory(task), keep_workdir=wd)
     assert rec["ok"] is True, rec["reason"]
     text = (wd / "calc.py").read_text(encoding="utf-8")
-    assert text.count("def calc(") == 2  # buggy + fixed shadow
+    assert text.count("def calc(") == 1  # replaced in place, no shadow copy
 
 
 class _BrokenPlan:

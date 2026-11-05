@@ -36,7 +36,9 @@ PLAN_PROMPT = (
     "You are the planning stage of a coding agent. Reply with ONLY one JSON "
     'object: {"goal": str, "defects": [str], "steps": [{"file": str, '
     '"action": "edit"|"create"|"delete", "reason": str, "patch_hint": str, '
-    '"risk": "low"|"medium"|"high"}], "tests_to_run": [str]}.\n'
+    '"find": str, "risk": "low"|"medium"|"high"}], "tests_to_run": [str]}.\n'
+    'For "edit" steps "find" MUST be the exact unique text being replaced; '
+    'use "" for create/delete steps.\n'
 )
 
 JsonDict = dict

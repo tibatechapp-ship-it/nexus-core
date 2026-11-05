@@ -403,12 +403,25 @@ def _positive_int(raw: Any, *, default: int) -> int:
 
 
 def _walk_text_files(start: Path) -> Iterator[Path]:
-    """Yield plausible text files under ``start`` (skipping known junk dirs)."""
+    """Yield plausible text files under ``start`` (skipping known junk dirs).
+
+    ض3 (v1.58.0): each candidate is resolved and re-checked for containment
+    inside ``start`` — a symlink planted in the workspace pointing outside
+    (file or directory) is skipped instead of read. ``rglob`` may *follow*
+    directory symlinks on Python < 3.13, so the per-candidate check is the
+    real boundary, not the traversal.
+    """
     if start.is_file():
         yield start
         return
     for candidate in sorted(start.rglob("*")):
         if not candidate.is_file():
+            continue
+        try:
+            resolved = candidate.resolve()
+            if resolved != start and not resolved.is_relative_to(start):
+                continue  # symlink escape — refuse to read
+        except OSError:  # pragma: no cover - unresolvable entry
             continue
         if _SKIP_DIRS.intersection(candidate.parts):
             continue

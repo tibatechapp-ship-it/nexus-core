@@ -1,8 +1,12 @@
 """
 SafeVfs - Safe Virtual File System
-- Path whitelisting
+- Hard containment: every path must stay inside PROJECT_ROOT (v1.58.0 ض1)
 - File size limits
-- Prevent writes outside project root
+- Prevent reads/writes/deletes/lists outside project root
+
+سابقاً كانت "الحماية" مجرد قائمة بادئات ممنوعة — مسار مطلق خارج الجذر مثل
+``/home/u/.ssh/id_rsa`` كان يمرّ. الآن يُحلّ المسار (حلّ الروابط الرمزية
+شاملاً) ثم يُشترط بقاءه داخل الجذر؛ أي خروج ⇒ ``FORBIDDEN_PATH``.
 """
 from pathlib import Path
 from typing import Optional, List, Dict
@@ -32,6 +36,14 @@ class SafeVfs:
         return p.resolve()
 
     def _check(self, path: Path) -> Optional[VfsError]:
+        # ض1 (v1.58.0): hard containment — after symlink resolution the path
+        # MUST remain inside PROJECT_ROOT; the old forbidden-prefix list alone
+        # allowed absolute paths anywhere on the filesystem.
+        root = PROJECT_ROOT.resolve()
+        if path != root and not path.is_relative_to(root):
+            return VfsError(
+                "FORBIDDEN_PATH", "path escapes project root: " + str(path)
+            )
         s = str(path)
         for forbidden in FORBIDDEN_PATHS:
             if s.startswith(forbidden):
@@ -85,6 +97,8 @@ class SafeVfs:
 
     def list_dir(self, path: str = ".") -> List[Dict]:
         p = self._resolve(path)
+        if self._check(p):
+            return []  # outside the root lists as nothing (v1.58.0 ض1)
         if not p.exists() or not p.is_dir():
             return []
         items = []
