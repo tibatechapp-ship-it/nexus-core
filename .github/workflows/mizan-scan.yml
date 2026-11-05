@@ -1,6 +1,13 @@
 name: MIZAN Automated Scan
+# ض10 (v1.58.0): `pull_request_target` ran this workflow with WRITE tokens and
+# repo secrets while checking out and EXECUTING the PR's own code
+# (run_mizan.py / secret_remover.py / ai_fixer.py) — any PR could have
+# exfiltrated the token by editing those scripts. `pull_request` keeps the same
+# behavior for same-repo branches while GitHub strips write tokens and secrets
+# from fork PRs automatically (their push step degrades to a no-op, which the
+# step already tolerates).
 on:
-  pull_request_target:
+  pull_request:
     branches: [ "main" ]
 permissions:
   contents: write
@@ -65,7 +72,16 @@ jobs:
         run: |
           git config --global user.name "MIZAN AI Bot"
           git config --global user.email "mizan-ai@users.noreply.github.com"
-          git add .
+          # ض10 (v1.58.0): the old `git add .` committed the scanner's own
+          # working tree — node_modules/ (1200+ files), package.json,
+          # package-lock.json and SARIF/report artifacts all landed in git.
+          # Only source repairs may be committed; the artifacts are
+          # gitignored and excluded here as a second belt.
+          git add -A -- ':/' \
+            ':(exclude)node_modules' ':(exclude)package.json' \
+            ':(exclude)package-lock.json' ':(exclude)bandit.sarif' \
+            ':(exclude)semgrep.sarif' ':(exclude)ggshield-results.json' \
+            ':(exclude)mizan_report.md' ':(exclude)test_mizan.txt'
           git commit -m "Security Fix: MIZAN repaired vulnerabilities or redacted secrets [skip ci]" || echo "No changes to commit"
           git push origin HEAD:${{ github.event.pull_request.head.ref }} || echo "Nothing to push"
 

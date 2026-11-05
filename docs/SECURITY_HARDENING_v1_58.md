@@ -3,7 +3,9 @@
 > **المنهجية**: المراجعة الخارجية رصدت 9 نقاط ضد الالتزام `ed92aa9`. قبل أي
 > إصلاح، فُحصت كل نقطة ضد الكود الفعلي سطرًا سطرًا (اعتمد الصحيح فقط). النتيجة:
 > **9/9 مؤكدة** (7 كلية، 2 جزئية بفروق تنفيذ)، ومعها **قراران مضادان** موثقان
-> أسفل الجدول. كل إصلاح مقترن باختبار انحدار في
+> أسفل الجدول. وفي جولة التحقق نفسها رُصدت نقطة **عاشرة** (ض10) لم تغطّها
+> المراجعة — ظهرت بعد `ed92aa9` بدمج الماسح الآلي MIZAN — وأُقرّت وأُصلحت
+> هنا أيضًا. كل إصلاح مقترن باختبار انحدار في
 > `tests/test_security_hardening_v158.py` يذكر الثغرة ودفاعها.
 
 ## جدول الإقرار
@@ -19,6 +21,7 @@
 | ض7 | Ruff لا يوقف CI | **مؤكد** | `ci.yml`: `ruff check ... \|\| true` — أخطاء lint تبقي الـ workflow أخضر | إزالة `\|\| true`؛ الشجرة نظيفة تحت `[tool.ruff]` (تحقق محليًا قبل التغيير) | `test_d7_ruff_is_a_hard_gate_in_ci` (يفحص نص الـ workflow + يشغّل ruff فعليًا) |
 | ض8 | صلاحية كتابة واسعة + novamind غير حاجبة | **مؤكد جزئيًا** | `test.yml`: `contents: write` على مستوى الـ workflow بينما الوظيفة الوحيدة التي تكتب فعليًا هي `coverage-badge` (شارة + تقارير)؛ اختبارات novamind `continue-on-error` موثقة كتقارير | أقل امتياز: `contents: read` افتراضيًا للـ workflow و`contents: write` على وظيفة `coverage-badge` حصرًا. بند «اجعل novamind حاجبًا» **مرفوض** (قرار مضاد 1 أدناه) | `test_d8_test_workflow_is_least_privilege` |
 | ض9 | واجهات الويب بلا حارس مصادقة | **مؤكد** | `src/web/app.py`: 9 نقاط نهاية متغيّرة (`/api/agent/run`, `/api/rag/add`, `/api/cache/clear`, `/api/metrics/clear`, `/api/council/*`, `/api/hybrid/run`, `/api/smart/run`, `/api/a2a/message`) بلا middleware؛ الحارس `AccessGuard` موجود في المستودع لكنه مركّب على البوابة الموحدة فقط | تركيب نفس `AccessGuard` (token ثابت الزمن + حدّ معدّل 120/60s + تدقيق + فشل مغلق لغير loopback) كـ HTTP middleware على التطبيق نفسه؛ القراءات تمر دائمًا | `test_d9_web_app_guard_requires_token_for_mutations`، `test_d9_web_app_guard_reads_token_from_env` |
+| ض10 | خط أنابيب MIZAN قابل للاختراق بأي PR + تلوّث المستودع | **مؤكد (رصد ذاتي)** | `.github/workflows/mizan-scan.yml`: `pull_request_target` مع صلاحيات كتابة وأسرار المستودع بينما يُخرَج ويُنفَّذ كود الـ PR نفسه (`run_mizan.py`/`secret_remover.py`/`ai_fixer.py`) — أي PR يمكنه تسريب التوكن؛ و`git add .` ألزم `node_modules/` كاملة (+1200 ملف) و`package.json` وأشعة SARIF في git | تحويل المشغّل إلى `pull_request` (تُسلب صلاحيات الكتابة والأسرار عن PR الشوكة تلقائيًا)؛ استبدال `git add .` بمسارات صريحة تستثني مخرجات الماسح؛ حذف الملفات المتلوّثة من الشجرة (`node_modules/`, `package.json`, `package-lock.json`, `bandit.sarif`, `semgrep.sarif`, `test_mizan.txt`) وضمانة `.gitignore` | `test_d10_mizan_workflow_uses_pull_request_not_target`، `test_d10_mizan_autocommit_excludes_scanner_artifacts`، `test_d10_scanner_artifacts_are_gitignored`، `test_d10_scanner_artifacts_are_not_tracked` |
 
 ## القراران المضادان (ما رُفض من التقييم مع السبب)
 
@@ -42,7 +45,7 @@
 ## أثر التحصين على الاختبارات والبوابات
 
 - الحزمة الكاملة خضراء مع التغطية الإلزامية ≥95% (بوابة القائمة).
-- اختبارات جديدة: `tests/test_security_hardening_v158.py` (21 اختبارًا) +
+- اختبارات جديدة: `tests/test_security_hardening_v158.py` (25 اختبارًا) +
   3 اختبارات محدّثة في `tests/test_coder_sandbox.py`.
 - تغيير عقد واحد معلن: مخطط خطوات `RepairPlan` اكتسب حقل `find` الاختياري
   (مطلوب لـ `edit`)، وموجه التخطيط في `src/coder/engine.py` محدّث؛ JSON القديم
@@ -51,6 +54,8 @@
 
 ## البصمة الزمنية
 
-- الالتزام الأساس: `ed92aa9` (v1.57.0 + تجديد التقارير).
+- الالتزام الأساس: `ed92aa9` — وأُعيد الأساس على `0916111` (ترقيات dependabot
+  #75–#80 + دمج MIZAN) قبل الفتح، مع الحفاظ على الترقيات وإسقاط ما أضافه
+  الماسح من تلوّث (ض10).
 - الفرع: `feat/v1.58.0-security-hardening`.
 - الإصدار: 1.58.0 (pyproject.toml + docs/openapi.yaml + src/__init__ الديناميكي).

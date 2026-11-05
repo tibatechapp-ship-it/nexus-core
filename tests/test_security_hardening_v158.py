@@ -1,4 +1,4 @@
-"""Regression tests for the v1.58.0 security-hardening wave (ض1..ض9).
+"""Regression tests for the v1.58.0 security-hardening wave (ض1..ض10).
 
 Each test maps 1:1 to a finding of the static security review adopted in
 v1.58.0: the docstring states the exploit and asserts the defence.
@@ -378,3 +378,69 @@ def test_d9_web_app_guard_reads_token_from_env(monkeypatch) -> None:
     assert guard.auth_enabled is True
     guard2 = AccessGuard.from_env({})
     assert guard2.auth_enabled is False
+
+
+# ═══════════════════ ض10 — MIZAN workflow cannot be pwned by a PR ═══════════
+#
+# Found during the v1.58.0 verification pass (not in the external review):
+# `.github/workflows/mizan-scan.yml` used `pull_request_target` (write token +
+# repo secrets) while checking out and EXECUTING the PR's own Python — a
+# textbook pwn-a-PR pipeline. Its `git add .` also committed the scanner's
+# working tree: 1200+ files of node_modules, package.json, SARIF stubs.
+
+
+def _load_workflow(name: str) -> dict:
+    import yaml
+
+    path = _WORKFLOWS / name
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_d10_mizan_workflow_uses_pull_request_not_target() -> None:
+    """`pull_request_target` runs with repo write tokens and secrets even for
+    hostile forks; `pull_request` strips both automatically."""
+    data = _load_workflow("mizan-scan.yml")
+    assert "pull_request_target" not in data[True]  # `on:` parses as True
+    assert "pull_request" in data[True]
+
+
+def test_d10_mizan_autocommit_excludes_scanner_artifacts() -> None:
+    """The bot's commit step must never re-add the scanner working tree."""
+    data = _load_workflow("mizan-scan.yml")
+    steps = data["jobs"]["mizan-security-scan"]["steps"]
+    commit_step = next(s for s in steps if s.get("name") == "Commit and Push Fixes")
+    run = commit_step["run"]
+    assert "git add ." not in run
+    for artifact in (
+        "node_modules", "package.json", "package-lock.json",
+        "bandit.sarif", "semgrep.sarif", "mizan_report.md",
+    ):
+        assert f":(exclude){artifact}" in run, artifact
+
+
+def test_d10_scanner_artifacts_are_gitignored() -> None:
+    """`.gitignore` blocks the artifacts even if a future step uses git add."""
+    ignored = (_ROOT / ".gitignore").read_text(encoding="utf-8")
+    for line in (
+        "node_modules/", "package-lock.json", "bandit.sarif",
+        "semgrep.sarif", "mizan_report.md",
+    ):
+        assert line in ignored, line
+
+
+def test_d10_scanner_artifacts_are_not_tracked() -> None:
+    """Nothing under node_modules/ and no SARIF stub is in the index."""
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:  # pragma: no cover - git always in CI
+        pytest.skip("git not available")
+    out = subprocess.run(
+        ["git", "ls-files"], cwd=_ROOT, capture_output=True, text=True,
+        timeout=30,
+    ).stdout.splitlines()
+    tracked = set(out)
+    assert not any(p == "node_modules" or p.startswith("node_modules/") for p in tracked)
+    for artifact in ("bandit.sarif", "semgrep.sarif", "test_mizan.txt",
+                     "package.json", "package-lock.json"):
+        assert artifact not in tracked, artifact

@@ -99,3 +99,13 @@ data/
 .env.bak*
 scripts/chess/
 *.egg-info/
+
+# ض10 (v1.58.0): scanner working-tree artifacts — the MIZAN bot's `git add .`
+# once committed 1200+ files of node_modules; these must never be tracked.
+node_modules/
+package-lock.json
+bandit.sarif
+semgrep.sarif
+ggshield-results.json
+mizan_report.md
+test_mizan.txt
