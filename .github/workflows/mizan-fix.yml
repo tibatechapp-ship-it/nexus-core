@@ -1,0 +1,65 @@
+name: MIZAN Auto-Fix
+# س1 (docs/MIZAN_ROADMAP.md): dependency auto-remediation — the deterministic
+# planner (src/mizan/fixer.py) computes minimal safe bumps from OSV.dev, and
+# when the manifest changes a single aggregated fix PR is opened for human
+# review.
+#
+# Security posture (ض10 lessons applied):
+#   * trigger is workflow_dispatch/schedule on the default branch only —
+#     the fork-PR trigger with write tokens is never used here;
+#   * `git add` lists explicit paths (the blanket-add form is banned);
+#   * write permission is scoped to this single job (workflow-level stays
+#     read-only);
+#   * known GitHub limitation, documented: a PR opened with GITHUB_TOKEN
+#     does not itself trigger CI runs — human review is the merge gate.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1" # weekly, Monday 03:17 UTC
+permissions:
+  contents: read
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # this job alone: push the fix branch
+      pull-requests: write # this job alone: open the fix PR
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Plan and apply fixes (degrades honestly when OSV unreachable)
+        run: |
+          python scripts/mizan/mizan_fix.py requirements.txt \
+            --osv --apply \
+            --diff-file /tmp/mizan_fix.diff \
+            --report-md /tmp/mizan_fix_report.md
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet -- requirements.txt; then
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open fix PR
+        if: steps.diff.outputs.changed == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BR="mizan/fix/deps-$(date +%Y%m%d%H%M%S)"
+          git config user.name "mizan-bot"
+          git config user.email "mizan-bot@users.noreply.github.com"
+          git checkout -b "$BR"
+          git add requirements.txt
+          git commit -m "fix(deps): MIZAN auto-remediation (س1) — minimal safe bumps"
+          git push origin HEAD
+          gh pr create \
+            --base main --head "$BR" \
+            --title "fix(deps): MIZAN auto-remediation — minimal safe bumps" \
+            --body-file /tmp/mizan_fix_report.md
