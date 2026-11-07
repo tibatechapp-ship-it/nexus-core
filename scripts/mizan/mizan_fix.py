@@ -23,8 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.mizan.advisories import Advisory, AdvisoryError, fetch_osv, load_offline
-from src.mizan.fixer import PlanResult, apply_plans, plan_fixes, render_diff
+from src.mizan.fixer import FixPlan, PlanResult, apply_plans, plan_fixes, render_diff
 from src.mizan.manifest import normalize_name, parse_requirements
+from src.mizan.reachability import assess_tree
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -41,6 +42,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                      help="fetch advisories live from OSV.dev")
     p.add_argument("--apply", action="store_true",
                    help="write the fixed manifest (default: dry-run)")
+    p.add_argument("--reachability", action="store_true",
+                   help="tri-state reachability verdicts (س2): plans for "
+                        "packages with no direct import are downgraded, "
+                        "never dropped")
     p.add_argument("--diff-file", metavar="PATH",
                    help="also write the unified diff here")
     p.add_argument("--report-md", metavar="PATH",
@@ -52,20 +57,52 @@ def _severity_sort_key(sev: str) -> int:
     return {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}.get(sev.upper(), 1)
 
 
-def _report_md(path: Path, result: PlanResult) -> None:
+_REACH_ORDER = {"reachable": 0, "import-only": 1, "absent": 2}
+_DOWN_NOTE = "(أولوية مخفضة: لا استيراد مباشر — حد س2 المعلن)"
+
+
+def _reach_sort_key(verdicts: dict[str, str], plan: FixPlan) -> tuple[int, int]:
+    return (_REACH_ORDER.get(verdicts.get(plan.package, "absent"), 2),
+            plan.line_index)
+
+
+def _report_md(path: Path, result: PlanResult,
+               verdicts: dict[str, str] | None = None) -> None:
     lines = [
         "## MIZAN auto-fix — خطة إصلاح حتمية (س1)",
         "",
-        "| الحزمة | الحالي | الهدف | الخطورة | الإعلانات |",
-        "|---|---|---|---|---|",
     ]
-    for p in sorted(result.plans,
-                    key=lambda x: -_severity_sort_key(x.severity)):
-        ids = ", ".join(p.advisory_ids) or "—"
-        lines.append(
+    if verdicts is None:
+        lines += [
+            "| الحزمة | الحالي | الهدف | الخطورة | الإعلانات |",
+            "|---|---|---|---|---|",
+        ]
+        ordered = sorted(result.plans,
+                         key=lambda x: -_severity_sort_key(x.severity))
+        rows = [
             f"| {p.display_name} | `{p.current_spec}` | `{p.target_spec}` "
-            f"| {p.severity} | {ids} |"
+            f"| {p.severity} | {', '.join(p.advisory_ids) or '—'} |"
+            for p in ordered
+        ]
+    else:
+        lines += [
+            "| الحزمة | الحالي | الهدف | الخطورة | الإعلانات | الوصول (س2) |",
+            "|---|---|---|---|---|---|",
+        ]
+        ordered = sorted(
+            result.plans,
+            key=lambda x: _reach_sort_key(verdicts, x),
         )
+        rows = []
+        for p in ordered:
+            verdict = verdicts.get(p.package, "absent")
+            cell = verdict + (f" {_DOWN_NOTE}" if verdict == "absent" else "")
+            rows.append(
+                f"| {p.display_name} | `{p.current_spec}` | `{p.target_spec}` "
+                f"| {p.severity} | {', '.join(p.advisory_ids) or '—'} "
+                f"| {cell} |"
+            )
+    lines += rows
     if result.skipped:
         lines += ["", "### تخطٍّ معلن", ""]
         for s in result.skipped:
@@ -81,19 +118,39 @@ def _report_md(path: Path, result: PlanResult) -> None:
 
 def _emit_side_files(
     args: argparse.Namespace, original: str, updated: str, result: PlanResult,
+    verdicts: dict[str, str] | None = None,
 ) -> None:
     if args.diff_file:
         Path(args.diff_file).write_text(
             render_diff(original, updated, args.path), encoding="utf-8",
         )
     if args.report_md:
-        _report_md(Path(args.report_md), result)
+        _report_md(Path(args.report_md), result, verdicts)
 
 
-def _print_plans(result: PlanResult) -> None:
-    for p in result.plans:
+def _reachability_verdicts(
+    manifest: Path, result: PlanResult,
+) -> dict[str, str] | None:
+    """س2 hook: verdicts for planned packages (None = feature off)."""
+    if not result.plans:
+        return None
+    assessment = assess_tree(
+        manifest.resolve().parent, {p.package for p in result.plans},
+    )
+    return assessment.verdicts()
+
+
+def _print_plans(result: PlanResult,
+                 verdicts: dict[str, str] | None = None) -> None:
+    ordered = (
+        sorted(result.plans, key=lambda x: _reach_sort_key(verdicts, x))
+        if verdicts is not None else result.plans
+    )
+    for p in ordered:
+        reach = f" reach={verdicts.get(p.package, 'absent')}" \
+            if verdicts is not None else ""
         print(f"  {p.display_name}: {p.current_spec} → {p.target_spec} "
-              f"[{p.severity}] {', '.join(p.advisory_ids) or '(no ids)'}")
+              f"[{p.severity}] {', '.join(p.advisory_ids) or '(no ids)'}{reach}")
     for s in result.skipped:
         print(f"  skip {s.package}: {s.reason}", file=sys.stderr)
 
@@ -128,19 +185,21 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     result = plan_fixes(reqs, advisories)
+    verdicts = _reachability_verdicts(manifest, result) \
+        if args.reachability else None
     if not result.changed:
         print("MIZAN auto-fix: no actionable fixes")
         _emit_side_files(args, original, original, result)
         return 0
 
     updated = apply_plans(original, reqs, result.plans)
-    _emit_side_files(args, original, updated, result)
+    _emit_side_files(args, original, updated, result, verdicts)
     if args.apply:
         manifest.write_text(updated, encoding="utf-8")
         print(f"MIZAN auto-fix: applied {len(result.plans)} fix(es) to {manifest}")
         return 0
     print(f"MIZAN auto-fix: {len(result.plans)} fix(es) available (dry-run):")
-    _print_plans(result)
+    _print_plans(result, verdicts)
     print(render_diff(original, updated, args.path))
     return 2
 

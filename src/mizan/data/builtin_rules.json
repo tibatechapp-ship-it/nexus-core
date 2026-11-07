@@ -1,0 +1,55 @@
+{
+  "schema": "mizan.rules/1",
+  "note": "القواعد المدمجة للسلسلة س6 — قواعد مُراجَعة تُهاجر تدريجياً من قائمة bandit النصية إلى هذا المخطط (dogfooding). لا تغطي كل bandit — النطاق معلن.",
+  "rules": [
+    {
+      "id": "MIZ-EVAL",
+      "match": {"node": "Call", "pattern": "eval", "regex": ""},
+      "severity": "CRITICAL",
+      "message": "استدعاء eval() على محتوى غير مُتحقق منه — تنفيذ كود عشوائي محتمل.",
+      "fix-hint": "استبدل بتحليل صريح (json.loads / ast.literal_eval) للمخرجات المهيكلة."
+    },
+    {
+      "id": "MIZ-EXEC",
+      "match": {"node": "Call", "pattern": "exec", "regex": ""},
+      "severity": "CRITICAL",
+      "message": "استدعاء exec() ينفذ كوداً مُركّباً وقت التشغيل.",
+      "fix-hint": "أعد هيكلة الكود ديناميكي إلى دوال/فئات صريحة قابلة للتدقيق."
+    },
+    {
+      "id": "MIZ-SYSTEM",
+      "match": {"node": "Call", "pattern": "os.system", "regex": ""},
+      "severity": "HIGH",
+      "message": "os.system يشغّل أمراً عبر الصدفة — حقن أوامر محتمل.",
+      "fix-hint": "استخدم subprocess بقائمة وسائط بلا shell=True."
+    },
+    {
+      "id": "MIZ-POPEN-SHELL",
+      "match": {"node": "Call", "pattern": "subprocess.Popen", "regex": "shell[ ]*=[ ]*True"},
+      "severity": "HIGH",
+      "message": "Popen مع shell=True يفتح باب حقن الأوامر.",
+      "fix-hint": "مرّر الأمر كقائمة وأزل shell=True."
+    },
+    {
+      "id": "MIZ-PICKLE",
+      "match": {"node": "Call", "pattern": "pickle.loads", "regex": ""},
+      "severity": "HIGH",
+      "message": "تفكيك pickle من مصدر غير موثوق ينفذ كوداً عشوائياً.",
+      "fix-hint": "استخدم JSON أو توقيعاً مُتحققاً قبل التفكيك."
+    },
+    {
+      "id": "MIZ-YAML-LOAD",
+      "match": {"node": "Call", "pattern": "yaml.load", "regex": "Loader[ ]*=[ ]*yaml\\.Loader"},
+      "severity": "HIGH",
+      "message": "yaml.load بـ Loader كامل ينفذ وسوم بايثون من الملف.",
+      "fix-hint": "استخدم yaml.safe_load أو Loader=yaml.SafeLoader."
+    },
+    {
+      "id": "MIZ-TEMPNAM",
+      "match": {"node": "Call", "pattern": "os.tempnam", "regex": ""},
+      "severity": "MEDIUM",
+      "message": "os.tempnam ملغى وغير آمن سباقياً (TOCTOU).",
+      "fix-hint": "استخدم tempfile.mkstemp."
+    }
+  ]
+}

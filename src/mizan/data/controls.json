@@ -1,0 +1,77 @@
+{
+  "schema": "mizan.controls/1",
+  "note": "خرائط ضوابط مقترحة (proposed mapping) — لا ادعاء شهادات. كل ضابط يربط عائلات قواعد MIZAN/bandit بأدلة فحص آلية؛ التغطية تعني «يوجد فحص آلي ذو صلة» لا «امتثال مُحقَّق».",
+  "frameworks": {
+    "iso27001": [
+      {
+        "id": "A.8.8",
+        "title": "إدارة الثغرات التقنية",
+        "rule_ids": ["B101", "B102", "B301", "B307", "B506", "B602", "B603", "TAINT-EVAL", "TAINT-EXEC", "TAINT-SHELL", "TAINT-SQL", "TAINT-PICKLE", "MIZ-DEP"]
+      },
+      {
+        "id": "A.8.25",
+        "title": "دورة التطوير الآمن",
+        "rule_ids": ["B105", "B106", "B107", "TAINT-ENV"]
+      },
+      {
+        "id": "A.8.28",
+        "title": "الترميز الآمن",
+        "rule_ids": ["B307", "B506", "B602", "TAINT-EVAL", "TAINT-SHELL", "TAINT-SQL"]
+      },
+      {
+        "id": "A.5.23",
+        "title": "أمن الخدمات السحابية وسلسلة التوريد",
+        "rule_ids": ["MIZ-DEP", "MIZ-REACH"]
+      },
+      {
+        "id": "A.8.9",
+        "title": "إدارة تكوين البرمجيات",
+        "rule_ids": ["MIZ-DEP", "MIZ-FIX"]
+      }
+    ],
+    "soc2": [
+      {
+        "id": "CC7.1",
+        "title": "كشف التغييرات والانحرافات عن التكوين",
+        "rule_ids": ["B101", "B102", "B307", "TAINT-EVAL", "TAINT-EXEC"]
+      },
+      {
+        "id": "CC7.2",
+        "title": "مراقبة الحالات الشاذة وكشف الثغرات",
+        "rule_ids": ["MIZ-DEP", "MIZ-REACH", "TAINT-SHELL", "TAINT-SQL"]
+      },
+      {
+        "id": "CC6.1",
+        "title": "ضوابط الوصول المنطقي",
+        "rule_ids": ["B105", "B106", "B107", "TAINT-ENV"]
+      },
+      {
+        "id": "CC8.1",
+        "title": "إدارة التغييرات في بيئة الإنتاج",
+        "rule_ids": ["MIZ-FIX", "MIZ-DEP"]
+      }
+    ],
+    "pci_dss": [
+      {
+        "id": "6.2.1",
+        "title": "إدارة الثغرات في المكونات المخصصة والتجارية",
+        "rule_ids": ["B307", "B506", "B602", "TAINT-EVAL", "TAINT-SHELL", "TAINT-SQL", "MIZ-DEP"]
+      },
+      {
+        "id": "6.2.3",
+        "title": "مراجعة كود للتطبيقات المكشوفة للعامة",
+        "rule_ids": ["B101", "B102", "B301", "TAINT-EVAL", "TAINT-EXEC", "TAINT-PICKLE"]
+      },
+      {
+        "id": "6.4.2",
+        "title": "حماية بيانات الحساب من التخزين غير المصرّح",
+        "rule_ids": ["B105", "B106", "B107", "TAINT-ENV"]
+      },
+      {
+        "id": "11.3.1",
+        "title": "فحص الثغرات الداخلي",
+        "rule_ids": ["MIZ-DEP", "MIZ-REACH", "MIZ-FIX"]
+      }
+    ]
+  }
+}
