@@ -3,34 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>nexus-core — نظام وكلاء ذكاء اصطناعي موحّد</title>
-<meta name="description" content="نظام وكلاء ذكاء اصطناعي موحّد: ذاكرة + تعلّم + أمان + 20 وكيلاً. بايثون قياسي فقط، 1218 اختباراً بتغطية 99%.">
-<meta property="og:title" content="nexus-core — نظام وكلاء ذكاء اصطناعي موحّد">
-<meta property="og:description" content="ذاكرة + تعلّم + أمان + 20 وكيلاً.">
+<title>nexus-core — منصة الوكلاء الموحّدة: 106 وكيلاً + مجلس + ذاكرة + MIZAN</title>
+<meta name="description" content="منصة وكلاء ذكاء اصطناعي كاملة على جهازك: أسطول 106 وكلاء، مجلس قرارات، ذاكرة طويلة المدى، ومنظومة أمن MIZAN بستة محركات. 4,513 اختباراً بتغطية 97%، نواة بايثون قياسي خالصة بلا اعتماديات.">
+<meta property="og:title" content="nexus-core — منصة الوكلاء الموحّدة">
+<meta property="og:description" content="106 وكيلاً · مجلس قرارات حيّ · ذاكرة طويلة المدى · منظومة MIZAN الأمنية بستة محركات — نواة stdlib خالصة تعمل حتى على هاتف.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0b1f1b">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#061312;--surface:rgba(255,255,255,.08);--text-1:#e8fffc;--text-2:#9fb9b6;
   --accent:#3fbfa5;--on-accent:#04110e;--line:rgba(255,255,255,.12);
-  --radius:18px;--radius-sm:12px;--container:1120px;
+  --amber:#e8b34b;--radius:18px;--radius-sm:12px;--container:1120px;
   --space-3:16px;--space-4:24px;--space-5:48px;--space-6:96px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Inter,system-ui,-apple-system,sans-serif;background:radial-gradient(1200px 800px at 50% 0%,#0c1f1c,#061312);color:var(--text-1);line-height:1.65}
 header{position:sticky;top:0;z-index:10;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);background:rgba(6,19,18,.7);border-bottom:1px solid var(--line)}
-nav{max-width:var(--container);margin:0 auto;padding:10px 20px;display:flex;align-items:center;justify-content:space-between}
+nav{max-width:var(--container);margin:0 auto;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .logo{font-family:Space Grotesk,system-ui;font-size:1.1rem;font-weight:700;letter-spacing:-.02em}
+.logo .ver{color:var(--accent);font-size:.75rem;font-family:'JetBrains Mono',monospace;vertical-align:super}
 nav a{color:var(--text-2);text-decoration:none;margin:0 10px;font-size:.98rem}
 nav a.cta{background:linear-gradient(145deg,#4fcfb0,#3fbfa5);color:var(--on-accent);padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);box-shadow:0 8px 20px rgba(63,191,165,.25);transition:transform .25s ease,box-shadow .25s ease}
 nav a.cta:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(63,191,165,.3)}
 section{padding-block:var(--space-6)}.container{max-width:var(--container);margin:0 auto;padding:0 20px}
 .hero{text-align:center;padding-block:96px}.eyebrow{color:var(--accent);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px;font-weight:600}
-h1{font-family:Space Grotesk,system-ui;font-size:clamp(2.6rem,7vw,5rem);line-height:1.05;margin-bottom:18px;letter-spacing:-.02em}
-.sub{color:var(--text-2);max-width:720px;margin:0 auto 32px;font-size:1.05rem}
+h1{font-family:Space Grotesk,system-ui;font-size:clamp(2.4rem,6.5vw,4.6rem);line-height:1.08;margin-bottom:18px;letter-spacing:-.02em}
+h1 .glow{background:linear-gradient(120deg,#4fcfb0,#7fe8d2,#3fbfa5);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--text-2);max-width:760px;margin:0 auto 28px;font-size:1.06rem}
+.badge-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
+.badge-row img{height:20px;border-radius:4px}
 .btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
 .btn{padding:10px 16px;border-radius:999px;text-decoration:none;border:1px solid var(--line);background:var(--surface);color:var(--text-1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .2s ease,border-color .2s ease}
 .btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.25)}
@@ -38,131 +42,236 @@ h1{font-family:Space Grotesk,system-ui;font-size:clamp(2.6rem,7vw,5rem);line-hei
 .terminal{max-width:860px;margin:40px auto 0;border:1px solid var(--line);border-radius:var(--radius);background:rgba(0,10,9,.6);box-shadow:0 30px 80px rgba(0,0,0,.4);overflow:hidden}
 .terminal-header{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.05)}
 .dot{width:10px;height:10px;border-radius:50%}.d1{background:#ff5f56}.d2{background:#ffbd2e}.d3{background:#27c93f}
-.terminal-body{padding:18px 20px;font-family:'JetBrains Mono',monospace;color:#c6fff5;font-size:.98rem;white-space:pre-wrap;text-align:left;line-height:1.8}
-h2{font-family:Space Grotesk,system-ui;font-size:clamp(1.6rem,4vw,2.6rem);margin-bottom:18px;letter-spacing:-.02em}
+.terminal-body{padding:18px 20px;font-family:'JetBrains Mono',monospace;color:#c6fff5;font-size:.95rem;white-space:pre-wrap;text-align:left;line-height:1.8}
+.terminal-body .ok{color:#7fe8d2}.terminal-body .dim{color:#5f8781}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;max-width:1020px;margin:56px auto 0;padding:0 20px}
+.stat{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:18px 12px;text-align:center}
+.stat b{display:block;font-family:Space Grotesk,system-ui;font-size:1.9rem;color:var(--accent);letter-spacing:-.02em}
+.stat span{color:var(--text-2);font-size:.82rem}
+h2{font-family:Space Grotesk,system-ui;font-size:clamp(1.6rem,4vw,2.5rem);margin-bottom:18px;letter-spacing:-.02em}
+h3{font-size:1.15rem}
+.lead{color:var(--text-2);max-width:820px;margin-bottom:28px}
 .grid{display:grid;gap:18px}.features{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 .card{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-.card h3{margin-bottom:8px;font-size:1.15rem}
+.card h3{margin-bottom:8px}
 .muted{color:var(--text-2)}
 .code{border:1px solid var(--line);border-radius:var(--radius-sm);background:rgba(0,10,9,.6);padding:16px;overflow:auto}
-pre{font-family:'JetBrains Mono',monospace;font-size:.98rem;line-height:1.8}
+pre{font-family:'JetBrains Mono',monospace;font-size:.95rem;line-height:1.8}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{border:1px solid var(--line);padding:10px 12px;text-align:right;vertical-align:top}
+th{background:rgba(255,255,255,.05);font-family:Space Grotesk,system-ui}
+.cmp td:first-child{font-weight:600;white-space:nowrap}
+.cmp .win{color:var(--accent);font-weight:600}
+.prims{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.prim{text-align:center;padding:16px}
+.prim b{display:block;font-size:1.05rem;margin-bottom:4px}
+.prim code{color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:.78rem}
+.engine .limit{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);color:var(--amber);font-size:.85rem}
+.engine .limit b{color:var(--amber)}
+.engine code.cmd{display:block;margin-top:10px;color:#7fe8d2;font-family:'JetBrains Mono',monospace;font-size:.8rem;direction:ltr;text-align:left;overflow-x:auto;white-space:nowrap}
+.limits{border-color:rgba(232,179,75,.35)}
+.limits h2{color:var(--amber)}
+.limits li{margin:8px 0 8px 0;color:var(--text-2)}
+.tree{font-family:'JetBrains Mono',monospace;font-size:.9rem;line-height:1.9;color:#c6fff5}
 .links{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 footer{padding:40px 0;border-top:1px solid var(--line);text-align:center;color:var(--text-2)}
-@media (max-width:640px){section{padding-block:64px}.hero{padding-block:72px}nav a{margin:0 6px}}
+footer a{color:var(--accent);text-decoration:none}
+@media (max-width:640px){section{padding-block:64px}.hero{padding-block:72px}nav a{margin:0 6px}th,td{padding:7px 8px}}
 </style>
 <script src="i18n.js"></script>
 </head>
 <body>
 <header>
   <nav>
-    <div class="logo">nexus-core</div>
+    <div class="logo">nexus-core <span class="ver">v1.59.0</span></div>
     <div>
       <a href="#features">الميزات</a>
+      <a href="#mizan">MIZAN</a>
+      <a href="#architecture">البنية</a>
       <a href="#install">التثبيت</a>
-      <a href="#docs">المستندات</a>
+      <a href="#docs">الوثائق</a>
       <a href="#" onclick="nexusSwitchLang('en');return false;" title="English">EN</a>
       <a class="cta" href="https://github.com/tibatechapp-ship-it/nexus-core">جيت هاب</a>
     </div>
   </nav>
 </header>
+
 <section class="hero">
   <div class="container">
-    <p class="eyebrow">نظام وكلاء ذكاء اصطناعي موحّد</p>
-    <h1>ذاكرة + تعلّم + أمان + 20 وكيلاً</h1>
-    <p class="sub">مستودع واحد، طبقان. الإطار بايثون قياسي بالكامل (آمن على الهاتف). 1218 اختباراً بتغطية 99%. كل ميزة محفوظة.</p>
+    <p class="eyebrow">منصة وكلاء ذكاء اصطناعي موحّدة — تعمل على جهازك</p>
+    <h1>أسطول <span class="glow">106 وكلاء</span> · مجلس قرارات · ذاكرة طويلة المدى · أمن MIZAN</h1>
+    <p class="sub">منصة وكلاء كاملة بنواة <b>بايثون قياسي خالص (stdlib فقط)</b> — صفر اعتماديات تشغيل، تعمل حتى على هاتف، وقابلة للتدقيق سطراً بسطر. لا صندوق أسود.</p>
+    <div class="badge-row">
+      <img src="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml/badge.svg" alt="CI">
+      <img src="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml/badge.svg" alt="Tests">
+      <img src="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml/badge.svg" alt="MIZAN Security">
+      <img src="https://img.shields.io/badge/coverage-97.27%25-brightgreen" alt="Coverage">
+      <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python">
+      <img src="https://img.shields.io/github/v/release/tibatechapp-ship-it/nexus-core" alt="Release">
+    </div>
     <div class="btns">
-      <a class="btn primary" href="#install">بداية سريعة</a>
-      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core">تصفّح على جيت هاب</a>
+      <a class="btn primary" href="#install">ابدأ في 60 ثانية</a>
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core#readme">الوثائق الكاملة</a>
     </div>
     <div class="terminal" dir="ltr">
       <div class="terminal-header"><div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div></div>
-      <div class="terminal-body">$ python -m pytest --cov
-1218 passed, 1 skipped, 99% coverage
-$ ruff check . && echo "OK"
-All checks passed
-$ python -m src.security . --fail-on high
-Security scan: 0 high issues</div>
+      <div class="terminal-body">$ make check
+<span class="dim">ruff · mypy · annotations · version-sync</span>
+<span class="ok">✓ all gates green</span>
+
+$ python -m pytest --cov --cov-fail-under=95
+<span class="ok">4,484 passed</span> · 29 skipped
+<span class="ok">Required test coverage of 95% reached — 97.27%</span>
+
+$ python -m pytest tests/adversarial -q
+<span class="ok">98 passed</span> <span class="dim">· 8 attack categories (injection · DOS · manipulation · chaos · fuzz)</span></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>4,513</b><span>حالة اختبار (4,484 ناجح / 29 متخطى)</span></div>
+      <div class="stat"><b>97.27%</b><span>تغطية — بوابة ≥95% مفروضة</span></div>
+      <div class="stat"><b>106</b><span>وكيل في الأسطول (20 مدمجاً)</span></div>
+      <div class="stat"><b>0</b><span>اعتماديات تشغيل في النواة</span></div>
+      <div class="stat"><b>98</b><span>متجه هجوم معادي في 8 فئات</span></div>
+      <div class="stat"><b>6</b><span>محركات MIZAN — 156 اختبار انحدار</span></div>
     </div>
   </div>
 </section>
+
 <section id="features">
   <div class="container">
-    <h2>الميزات الأساسية</h2>
-    <div class="grid features">
-      <div class="card"><h3>20 وكيل ذكاء اصطناعي</h3><p class="muted">جوهر/تخطيط/جودة/عمليات + سجل/وكيل فرعي بحدود العمق وتحديد نطاق الأدوات.</p></div>
-      <div class="card"><h3>ذاكرة من أربعة أنواع</h3><p class="muted">حلقية، دلالية، إجرائية، عاطفية — مخازن SQLite مع استدعاء/نسيان واستبقاء.</p></div>
-      <div class="card"><h3>التعلّم المستمر</h3><p class="muted">خبرة ← دروس، مقاومة النسيان، دمج ومنسّق تعلّم.</p></div>
-      <div class="card"><h3>الأمان دون اتصال</h3><p class="muted">8 وكلاء regex + منسّق، واجهة CLI مع <code>--fail-on</code> (منخفض/متوسط/عالٍ/حرج).</p></div>
-      <div class="card"><h3>سير العمل</h3><p class="muted">مشرف، خط أنابيب (نقاط استئناف)، توزيع، تفويض، لوح أسود.</p></div>
-      <div class="card"><h3>TUI + تتبّع الأدوات</h3><p class="muted">شاشات ToolRuns و Lessons، بث، نقاط تحقق وتصدير أمني.</p></div>
+    <h2>لماذا nexus-core؟</h2>
+    <p class="lead">أدوات الأمن والوكلاء تفرض عليك مفاضلة: منصات ضخمة تملك سير عملك، أو موزّعات صاخبة تُعلّم فريقك تجاهل التنبيهات. nexus-core هو الخيار الثالث — منصة تعمل محلياً، وتُثبت كل ادعاء بأمر واحد.</p>
+    <table class="cmp">
+      <tr><th></th><th>nexus-core</th><th>المنصات المستضافة النمطية</th></tr>
+      <tr><td>مكان التنفيذ</td><td class="win">جهازك — حتى هاتف (Termux)</td><td>سحابة المزوّد</td></tr>
+      <tr><td>اعتماديات النواة</td><td class="win">صفر (stdlib فقط)</td><td>عشرات الحزم</td></tr>
+      <tr><td>قابلية التدقيق</td><td class="win">كل قرار مقروء في الكود</td><td>صندوق أسود</td></tr>
+      <tr><td>الأمن</td><td class="win">MIZAN: ستة محركات `ast` خالص</td><td>غالباً خارجي/سحابي</td></tr>
+      <tr><td>الإثبات</td><td class="win">4,513 اختبار + 98 متجه معادي + بوابة تغطية</td><td>—</td></tr>
+    </table>
+    <h3 style="margin-top:40px">البدائيات الخمس — الواجهة الذهنية للمنصة</h3>
+    <div class="grid prims" style="margin-top:16px">
+      <div class="card prim"><b>وكيل</b><span class="muted">وحدة عمل بدور محدود وسقف صلاحيات</span><br><code>nova.registry · 106</code></div>
+      <div class="card prim"><b>مجلس</b><span class="muted">مداولة بإجماع مُقاس (token-Jaccard ≥0.8)</span><br><code>src.council.engine</code></div>
+      <div class="card prim"><b>منسّق</b><span class="muted">توجيه مخاطر → تفكيك → لجنة تحكيم</span><br><code>src.orchestrator</code></div>
+      <div class="card prim"><b>ذاكرة</b><span class="muted">4 متاجر SQLite + استرجاع RAG</span><br><code>src.memory</code></div>
+      <div class="card prim"><b>سياج</b><span class="muted">حواجز fail-closed تُرفض لا تُهمَّل</span><br><code>src.security</code></div>
     </div>
   </div>
 </section>
+
+<section id="mizan">
+  <div class="container">
+    <h2>🛡️ منظومة MIZAN — ستة محركات تغلق فجوات Snyk/Semgrep</h2>
+    <p class="lead">مقارنة تنافسية مستقلة (نوفمبر 2026) رصدت ست فجوات مقابل منصات المؤسسات — <b>أُغلقت كلها في v1.59.0</b> بـ`ast` خالص، وكل محرك يعلن حدوده بصراحة. 156 اختبار انحدار، وست أدوات CLI بأكواد خروج موثقة.</p>
+    <div class="grid features">
+      <div class="card engine"><h3>س1 الإصلاح الحتمي</h3><p class="muted">خطط bump بأدنى إصدار مُصلح معلن، تجفيف افتراضي، workflow أسبوعي يفتح PR بأقل صلاحية.</p><div class="limit"><b>الحد الصادق:</b> لا يخمّن إصدارات لم يعلن المصدر إصلاحاً لها.</div><code class="cmd">python scripts/mizan/mizan_fix.py requirements.txt</code></div>
+      <div class="card engine"><h3>س2 Reachability</h3><p class="muted">حكم ثلاثي لكل إعلان: <code>reachable</code> / <code>import-only</code> / <code>absent</code> — والإصلاحات تُرتّب لا تُحذف.</p><div class="limit"><b>الحد الصادق:</b> استيراد مباشر فقط؛ الانتقالي قد يبقى غير مرئي.</div><code class="cmd">python scripts/mizan/mizan_reach.py . --manifest requirements.txt</code></div>
+      <div class="card engine"><h3>س3 تلويث عبر الملفات</h3><p class="muted">مصدر→مصرف عبر الملفات بسلسلة مخيطة: «a.py:2 input() → b.py:7 get() → c.py eval».</p><div class="limit"><b>الحد الصادق:</b> داخل المشروع؛ أسماء نصية؛ ميزانية خطوات معلنة.</div><code class="cmd">python scripts/mizan/mizan_taint.py .</code></div>
+      <div class="card engine"><h3>س4 مرآة الإعلانات</h3><p class="muted"><code>sqlite3</code> من ملف واحد بـ SLA نضارة 24 ساعة معلن — فشل الشبكة يُعلن ولا يُفرّغ.</p><div class="limit"><b>الحد الصادق:</b> لا قاعدة ملكية ولا zero-days — مصادر عامة فقط.</div><code class="cmd">python scripts/mizan/mizan_mirror.py --db .mizan/adv.db sync --osv</code></div>
+      <div class="card engine"><h3>س5 لوحة GRC</h3><p class="muted">HTML ساكن (RTL، صفر JS) يجمّع مستودعات عدة + خرائط ISO 27001 / SOC 2 / PCI DSS.</p><div class="limit"><b>الحد الصادق:</b> «تغطية ضوابط مقترحة» — لا ادعاء شهادات.</div><code class="cmd">python scripts/mizan/mizan_grc.py --report r1.json --out dashboard.html</code></div>
+      <div class="card engine"><h3>س6 قواعد مخصصة</h3><p class="muted">DSL بصيغة JSON فوق `ast` (عقدة + نمط dotted + regex مسطح) + 7 قواعد مدمجة مُراجَعة.</p><div class="limit"><b>الحد الصادق:</b> النطاق مطابقة بسيطة — لا Semgrep كاملاً.</div><code class="cmd">python scripts/mizan/mizan_rules.py check . --rules team-rules.json</code></div>
+    </div>
+    <div class="links" style="margin-top:20px">
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/MIZAN_ROADMAP.md">الخارطة الكاملة بالأحكام الصادقة ←</a>
+    </div>
+  </div>
+</section>
+
+<section id="evidence">
+  <div class="container">
+    <h2>✅ يعمل اليوم — بالدليل</h2>
+    <table class="cmp">
+      <tr><th>القدرة</th><th>الدليل القابل للتحقق</th></tr>
+      <tr><td>كتلة اختبارات ضخمة</td><td>4,513 حالة (4,484 passed / 29 skipped) + جناح novamind الاختياري في CI</td></tr>
+      <tr><td>CI ثلاثي أخضر</td><td><a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml">CI</a> + <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml">Tests</a> + <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml">MIZAN Security</a> على main</td></tr>
+      <tr><td>بوابة جودة واحدة</td><td><code>make check</code> = ruff + mypy + التعليقات النمطية + تغطية ≥95% + مزامنة الإصدار بثلاثة مواضع</td></tr>
+      <tr><td>لوحة قراءة-فقط</td><td><code>/dashboard</code> + <code>/api/dashboard</code> — وكلاء نشطون، مهام جارية، قرارات المجلس</td></tr>
+      <tr><td>سجل أثر معياري</td><td>سطر JSON لكل تشغيل في <code>runs/trace.jsonl</code> + <code>/api/trace/recent</code> — دوران عند 5MB، بلا PII</td></tr>
+      <tr><td>قياسات معيارية آلية</td><td>20 مهمة على مسار EchoBackend + بوابة انحدار مزدوجة — <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/benchmarks.md">docs/benchmarks.md</a></td></tr>
+      <tr><td>حرس أحمر أمني</td><td><code>tests/adversarial</code> — 98 متجه في 8 فئات + قيد سلسلة توريد حي + بوابة ReDoS</td></tr>
+      <tr><td>نشر</td><td>Docker + docker-compose · إصدارات موسومة · CITATION.cff · صفحة هبوط</td></tr>
+    </table>
+  </div>
+</section>
+
 <section id="architecture">
   <div class="container">
     <h2>البنية المعمارية</h2>
     <div class="card">
-      <pre dir="ltr" style="white-space:pre-wrap">src/
-  agents/       20 built-in agents
-  core/         types, backend, streaming, context, resilience
-  patterns/     Supervisor, Pipeline (resumable), Fanout, Delegation, Blackboard
-  memory/       4 SQLite stores
-  learning/     experience collector → lessons → anti-forgetting
-  security/     offline scanner (8 agents) + CLI
-  tools/        read-only ReAct loop
-  tui/          Textual UI (tool traces, lessons)
-  novamind/     opt-in extras (server/RAG/observability)</pre>
+      <pre class="tree" dir="ltr">src/
+  agents/     20 built-in agents — والأسطول الكامل 106
+  core/       types, LLM backend protocol, streaming, context, resilience
+  patterns/   Supervisor, Pipeline (resumable), Fanout, Delegation, Blackboard
+  memory/     4 SQLite stores + RAG
+  learning/   experience collector → lessons → anti-forgetting
+  security/   offline scanner (8 agents) + AccessGuard + CLI
+  mizan/      security suite س1..س6 (fix / reach / taint / mirror / GRC / rules)
+  tools/      read-only ReAct loop, bounded root
+  tui/        terminal UI (screens, tool traces, security)
+  mcp/        Model Context Protocol server/client + agent bridge (30 tools)
+  council/    council engine (3 members) + Craft generation
+  web/        read-only /dashboard + /api/dashboard + trace
+  novamind/   server layer (opt-in extra)
+hyper_agent.py   Hyper-Agent 2.0 — self-coding agent (BUG-1..9 by design)
+connectors/      LLM adapters BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
+scripts/mizan/   six security CLIs with documented exit codes
+tests/           4,513 cases + tests/adversarial (98 vectors) + tests/novamind/</pre>
     </div>
   </div>
 </section>
+
 <section id="install">
   <div class="container">
-    <h2>بداية سريعة</h2>
-    <div class="code" dir="ltr"><pre># Framework (stdlib-only)
-python -c "from src.core.backend import EchoBackend; print('OK')"
-
-# TUI (Echo backend offline)
+    <h2>بداية في 60 ثانية</h2>
+    <div class="code" dir="ltr"><pre>git clone https://github.com/tibatechapp-ship-it/nexus-core.git
+cd nexus-core
+make check    # full green gate: ruff + mypy + 4,484 tests + coverage ≥95%</pre></div>
+    <div class="code" dir="ltr" style="margin-top:14px"><pre># TUI — stdlib core, no dependency
 python -c "from src.core.backend import EchoBackend; from src.tui.app import run_app; run_app(backend=EchoBackend())"
 
-# Install extras
-python -m pip install -e ".[dev]"           # tests/tooling
-python -m pip install -e ".[voice,tui]"     # voice + TUI
-python -m pip install -e ".[novamind]"      # opt-in server layer</pre></div>
-    <h3 style="margin-top:32px">التحقق قبل النشر</h3>
-    <div class="code" dir="ltr"><pre>ruff check .
-mypy zyvo-telegram.py zyvo-voice.py src
-python scripts/check_annotations.py
-python -m pytest --cov  # 1218 tests @ 99%</pre></div>
+# offline static security scanner
+python -m src.security . --fail-on high
+
+# chat server + live council + genome (opt-in layer)
+python -m pip install -e ".[novamind]"
+PYTHONPATH=src/novamind:src:. python unified_agent.py   # http://localhost:8000</pre></div>
   </div>
 </section>
+
+<section id="limits">
+  <div class="container">
+    <div class="card limits">
+      <h2>🚧 الحدود الصادقة — لنتحدث بها كاملة</h2>
+      <p class="muted" style="margin-bottom:10px">هوية المشروع: <b>الصراحة قبل الذكاء</b>. هذه الحدود معلنة في الكود والتوثيق، لا نخفيها:</p>
+      <ul>
+        <li>القياسات المعيارية تقيس <b>إطار العمل</b> على مسار EchoBackend الخالص — قياس النماذج الحية ليس بعد أداة منشورة.</li>
+        <li>MIZAN س3 (التلويث) يغطي داخل المشروع فقط؛ وس4 مرآة مصادر عامة — لا نملك قاعدة ثغرات ملكية ولا نزعم ذلك.</li>
+        <li>لوحة <code>/dashboard</code> وسجل الأثر يغطيان طبقة <code>src/web</code> ووكلاء الـregistry؛ تتبع دردشة <code>unified_agent</code> مستقل.</li>
+        <li>طبقة novamind اختيارية (extras) ولا تدخل بوابات الإطار — لها جناحها في CI.</li>
+        <li>خرائط ضوابط GRC «تغطية مقترحة» من ملف بيانات مُراجَع — لا شهادات.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <section id="docs">
   <div class="container">
     <h2>الوثائق</h2>
     <div class="grid features">
-      <div class="card"><h3>README</h3><p class="muted">نظرة عامة، التثبيت، التشغيل.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core#readme">اقرأ على جيت هاب</a></div></div>
-      <div class="card"><h3>AGENTS.md</h3><p class="muted">ذاكرة المشروع، القرارات، البوابات.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/AGENTS.md">اقرأ على جيت هاب</a></div></div>
-      <div class="card"><h3>ARCHITECTURE</h3><p class="muted">الوحدات الأساسية والتصميم.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/ARCHITECTURE.md">اقرأ على جيت هاب</a></div></div>
-      <div class="card"><h3>SECURITY</h3><p class="muted">الماسح، المستويات، الاستخدام.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/SECURITY.md">اقرأ على جيت هاب</a></div></div>
+      <div class="card"><h3>README</h3><p class="muted">الخريطة الكاملة: البدائيات، MIZAN، الأدلة، الحدود.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core#readme">اقرأ على جيت هاب</a></div></div>
+      <div class="card"><h3>MIZAN_ROADMAP</h3><p class="muted">خارطة الفجوات الست وأحكامها الصادقة.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/MIZAN_ROADMAP.md">اقرأ على جيت هاب</a></div></div>
+      <div class="card"><h3>SCOPE + VISION_2026</h3><p class="muted">حوكمة النطاق والرؤية.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/SCOPE.md">اقرأ على جيت هاب</a></div></div>
+      <div class="card"><h3>ADVERSARIAL + LESSONS</h3><p class="muted">منهجية الحرس الأحمر وسجل الدروس.</p><div class="links"><a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/ADVERSARIAL.md">اقرأ على جيت هاب</a></div></div>
     </div>
   </div>
 </section>
-<section id="demo">
+
+<footer>
   <div class="container">
-    <h2>عرض توضيحي</h2>
-    <div class="card"><p class="muted">واجهة TUI تعتمد الطرفية أولاً مع شاشات ToolRuns + Lessons، بث، خطوط أنابيب قابلة للاستئناف ونقاط تحقق. خلفية بايثون قياسية تعمل دون اتصال.</p></div>
+    <p>رخصة MIT — © 2026 nexus-core · v1.59.0</p>
+    <p style="margin-top:8px">جزء من <a href="https://github.com/tibatechapp-ship-it/vixona-github-profile">محفظة TibaTech</a></p>
   </div>
-</section>
-<section id="community">
-  <div class="container">
-    <h2>مجتمع</h2>
-    <div class="links">
-      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core">جيت هاب</a>
-      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/issues">المشاكل</a>
-      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/discussions">المناقشات</a>
-      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/LICENSE">رخصة (MIT)</a>
-    </div>
-  </div>
-</section>
-<footer><div class="container">رخصة MIT — © 2026 nexus-core</div></footer>
+</footer>
 </body>
 </html>
