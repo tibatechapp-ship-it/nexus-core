@@ -4,12 +4,16 @@
 
 # nexus-core — النظام الجامع للوكلاء
 
-> **نظام وكلاء ذكاء اصطناعي موحّد يعمل على جهازك** — ذاكرة طويلة المدى، تعلّم مستمر، أمن offline، ومجلس قرارات حيّ. قابل للتدقيق سطراً بسطر، لا صندوق أسود.
+> **منصة وكلاء ذكاء اصطناعي كاملة تعمل على جهازك** — 106 وكيل، ذاكرة طويلة
+> المدى، مجلس قرارات حيّ، ومنظومة أمن **MIZAN** بمحركات ستة. النواة
+> **بايثون قياسي خالص (stdlib فقط)**: بلا اعتماديات تشغيل، تعمل حتى على
+> هاتف، وقابلة للتدقيق سطراً بسطر — لا صندوق أسود.
 
-**Unified AI Agent System: Memory + Learning + Security + 20 Agents — self-hosted, auditable, stdlib-only core.**
+**Unified AI Agent Platform: 106-Agent Fleet + Memory + Council + MIZAN Security Suite — self-hosted, auditable, stdlib-only core.**
 
 [![CI](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml/badge.svg)](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml)
 [![Tests](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml/badge.svg)](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml)
+[![MIZAN Security](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml/badge.svg)](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/tibatechapp-ship-it/nexus-core/main/.github/badges/coverage.json)](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
@@ -17,131 +21,159 @@
 
 ---
 
+## ⚡ ما الذي يميّز هذا المشروع؟
+
+| | nexus-core | المنصات المستضافة النمطية |
+|---|---|---|
+| **مكان التنفيذ** | جهازك — حتى هاتف (Termux) | سحابة المزوّد |
+| **اعتماديات النواة** | **صفر** (stdlib فقط) | عشرات الحزم |
+| **قابلية التدقيق** | كل قرار مقروء في الكود | صندوق أسود |
+| **الأمن** | MIZAN: إصلاح تلقائي + Reachability + تلويث عبر الملفات + مرآة إعلانات + لوحة GRC + قواعد مخصصة — كلها `ast` خالص | غالباً خارجي/سحابي |
+| **الإثبات** | **4,513 حالة اختبار** (4,484 ناجح / 29 متخطى) + 92 متجه هجوم معادي + بوابة تغطية ≥95% | — |
+
+كل رقم في هذا الملف **قابل للتحقق محلياً** بأمر واحد: `make check`.
+
 ## 🧩 البدائيات الخمس — الواجهة الذهنية للمنصة
 
-المنصة كلها تُشرح بخمس بدايات فقط (نفس الفلسفة التي جعلت واجهة OpenAI
-Agents SDK مشهورة — مع بديلين إضافيين لنا: **مجلس** و**منسّق رباعي
-الطبقات**):
+المنصة كلها تُشرح بخمس بدايات فقط — وكل ما تبقى يُبنى فوقها لا بجانبها:
 
 | البداية | ما هي | من أين |
 | --- | --- | --- |
-| **وكيل** | وحدة عمل واحدة بدور محدود وسقف صلاحيات | `nova.registry` · 106 في الأسطول |
-| **مجلس** | مداولة متعددة الأدوار بإجماع مُقاس | `src.council.engine` |
+| **وكيل** | وحدة عمل واحدة بدور محدود وسقف صلاحيات | `nova.registry` · **106** في الأسطول |
+| **مجلس** | مداولة متعددة الأدوار بإجماع مُقاس (token-Jaccard، توقف مبكر ≥0.8) | `src.council.engine` |
 | **منسّق** | توجيه مخاطر → توجيه وكيل → تفكيك → لجنة تحكيم | `src.orchestrator` |
-| **ذاكرة** | تخزين دائم + استرجاع (RAG) عبر 4 متاجر SQLite | `src.memory` |
+| **ذاكرة** | تخزين دائم + استرجاع (RAG) عبر 4 متاجر SQLite (episodic/semantic/procedural/emotional) | `src.memory` |
 | **سياج** | حواجز أمنية fail-closed تُرفض لا تُهمَّل | `src.security` · `src.durable` |
 
-كل ما تبقى (التتبّع العميق، A2A، HITL) يُبنى فوق هذه الخمسة لا بجانبها —
-راجع `examples/` للخمسة كما هي بالداخل.
+## 🛡️ منظومة MIZAN الأمنية — ستة محركات تغلق فجوات Snyk/Semgrep
 
----
+مقارنة تنافسية مستقلة (نوفمبر 2026) رصدت ست فجوات بين MIZAN ومنصات
+المؤسسات — **أُغلقت كلها في v1.59.0** بـ `ast` خالص، وبتجفيف افتراضي،
+وبحدود معلنة بصراحة (الصراحة قبل الذكاء):
 
-## 🎯 ما هذا؟ ولمن هذا؟
+| المحرك | ما يفعله | الحد المعلن بصراحة |
+|---|---|---|
+| **س1 الإصلاح الحتمي** | خطط bump بأدنى إصدار مُصلح معلن، تجفيف افتراضي، workflow أسبوعي يفتح PR بأقل صلاحية | لا يخمّن إصدارات لم يعلن المصدر إصلاحاً لها |
+| **س2 Reachability** | حكم ثلاثي لكل إعلان: `reachable` / `import-only` / `absent` — والإصلاحات تُرتّب لا تُحذف | استيراد مباشر فقط؛ الانتقالي قد يبقى غير مرئي |
+| **س3 تلويث عبر الملفات** | مصدر→مصرف عبر الملفات بسلسلة مخيطة («a.py:2 input() → b.py:7 get() → c.py eval») | داخل المشروع؛ أسماء نصية؛ ميزانية خطوات معلنة |
+| **س4 مرآة الإعلانات** | `sqlite3` من ملف واحد بـ SLA نضارة 24 ساعة معلن — فشل الشبكة يُعلن ولا يُفرّغ | لا قاعدة ملكية ولا zero-days — مصدر عام فقط |
+| **س5 لوحة GRC** | HTML ساكن (RTL، صفر JS) يجمّع مستودعات عدة + خرائط ISO 27001/SOC 2/PCI DSS | «تغطية ضوابط مقترحة» — لا ادعاء شهادات |
+| **س6 قواعد مخصصة** | DSL بصيغة JSON فوق `ast` (عقدة + نمط dotted + regex مسطح) + 7 قواعد مدمجة مُراجَعة | النطاق: المطابقة البسيطة — لا Semgrep كاملاً |
 
-- **ما هو**: منصة وكلاء AI ذاتية الاستضافة — 20 وكيل مدمج، إشراف (supervisor)، ذاكرة دائمة من 4 متاجر SQLite، تعلّم مستمر من التجربة، مجلس مداولات حيّ، أدوات MCP أصلية، وماسح أمني يعمل بلا شبكة. النواة **بايثون قياسي خالص** — تعمل حتى على هاتف، بلا تثبيتات.
-- **لمن**: مهندسو وباحثو AI الذين يبنون وكلاء مستقلين ويريدون **وقت تشغيل يدققونه بأنفسهم** على أجهزتهم — لا خدمة مستضافة تُخفي قراراتها.
-- **الحالة بصدق**: جاهزية بنية تحتية عالية اليوم — ومع أسابيع 1-3 من خارطة المنتَجة أصبح يوجد: لوحة قراءة-فقط (`/dashboard`)، سجل أثر معياري (`runs/trace.jsonl`)، وقياسات معيارية آلية ببوابة انحدار في CI (`docs/benchmarks.md`). ما تبقى: OpenAPI + مصفوفة صلاحيات، وdemo بنقرة — وكلها في [خارطة المنتج](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/productization-plan.md).
+```bash
+# خطّط إصلاحات الاعتماديات (تجفيف افتراضي — لا يكتب شيئاً)
+python scripts/mizan/mizan_fix.py requirements.txt --advisories adv.json --reachability
 
-## ✅ يعمل اليوم — بالدليل (2026-10-31)
+# هل الكود يستدعي الحزمة المصابة فعلاً؟ (حكم ثلاثي)
+python scripts/mizan/mizan_reach.py . --manifest requirements.txt
 
-| القدرة | الدليل القابل للتحقق |
-|---|---|
-| كتلة اختبارات ضخمة | **3,810 حالة اختبار** (3,782 passed / 28 skipped في آخر بوابة كاملة 2026-11-01) + طبقة `tests/novamind` الاختيارية |
-| CI مزدوج أخضر | [CI](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml) + [Tests](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml) على main |
-| بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ~99% |
-| لوحة قراءة-فقت | `/dashboard` + `/api/dashboard` — وكلاء نشطون، مهام جارية، آخر قرارات المجلس (**8 اختبارات httpx**) |
-| سجل أثر معياري | كل تشغيل وكيل/مجلس يكتب سطر JSON (`ts/agent/tool/duration_ms/outcome`) في `runs/trace.jsonl` + `/api/trace/recent` (**20 اختبار انحدار**) |
-| قياسات معيارية آلية | 20 مهمة على مسار `EchoBackend` الخالص + بوابة انحدار p50 (>50% **و**فارق >0.2ms يسقط) + بوابة تشغيلية (أي مهمة دون 100% نجاح تسقط) + وضع تأسيس/اعتماد — [`docs/benchmarks.md`](docs/benchmarks.md) مولّد آلياً + job `benchmarks-gate` في CI (**20 اختبار انحدار**) |
-| حرس أحمر أمني | `tests/adversarial` — **92 متجه هجوم في 8 فئات** + قيد سلسلة توريد حي يفشل عند أي استيراد غير معلن |
-| حوكمة موثقة | [SCOPE](SCOPE.md) · [VISION_2026](VISION_2026.md) · [ADVERSARIAL](ADVERSARIAL.md) · [LESSONS](LESSONS.md) · [CHANGELOG](CHANGELOG.md) |
-| نشر | Docker + docker-compose · إصدارات مُوسومة · CITATION.cff |
+# تدفقات مصدر→مصرف عبر الملفات، بسلسلة مخيطة
+python scripts/mizan/mizan_taint.py .
+
+# مرآة إعلانات محلية بـ SLA نضارة (خروج 3 عند التقادم — جاهز لبوابات CI)
+python scripts/mizan/mizan_mirror.py --db .mizan/adv.db sync --osv --manifest requirements.txt
+python scripts/mizan/mizan_mirror.py --db .mizan/adv.db status --require-fresh
+
+# لوحة حوكمة ساكنة من تقارير عدة مستودعات + خرائط الضوابط
+python scripts/mizan/mizan_grc.py --report r1.json --report r2.json --out dashboard.html
+
+# قواعدك المخصصة فوق ast
+python scripts/mizan/mizan_rules.py check . --rules team-rules.json
+```
+
+156 اختبار انحدار لتغطية السلسلة (تغطية الحزمة **97%**) — الخارطة الكاملة
+بالأحكام الصادقة: [`docs/MIZAN_ROADMAP.md`](docs/MIZAN_ROADMAP.md).
 
 ## 🚀 البدء في 60 ثانية
 
 ```bash
 git clone https://github.com/tibatechapp-ship-it/nexus-core.git
 cd nexus-core
-make check        # البوابة الخضراء كاملة: ruff + mypy + annotations + 3,782 اختباراً (28 skipped) + coverage ≥ 95%
+make check        # البوابة الخضراء كاملة: ruff + mypy + annotations
+                  # + 4,484 اختباراً (29 skipped) + coverage ≥ 95%
 ```
 
 ```bash
-# TUI لوكلاء العشرين (نواة stdlib — بلا أي تبعية)
+# TUI وكلاء الأسطول (نواة stdlib — بلا أي تبعية)
 python -c "from src.core.backend import EchoBackend; from src.tui.app import run_app; run_app(backend=EchoBackend())"
 
-# مساعد تيليجرام / صوتي / ماسح أمني
+# ماسح أمني ثابت بلا شبكة
+python -m src.security . --fail-on high
+
+# مساعدا تيليجرام والصوت
 python zyvo-telegram.py
 python zyvo-voice.py
-python -m src.security . --fail-on high
 ```
 
-## 🗺️ المعمارية — مستودع واحد، طبقتان، كل الميزات
+## 🗺️ خريطة المستودع
 
 ```
 src/            الإطار (stdlib فقط، آمن للهاتف، مُختبر بالكامل)
-  agents/       20 وكيل مدمج (core/planning/quality/ops)
+  agents/       20 وكيل مدمج (core/planning/quality/ops) — والأسطول الكامل 106
   core/         أنواع، بروتوكول مزودات LLM، بث، سياق، صمود
   patterns/     Supervisor, Pipeline (قابل للاستئناف), Fanout, Delegation, Blackboard
-  memory/       4 متاجر SQLite (episodic/semantic/procedural/emotional) + RAG
+  memory/       4 متاجر SQLite + RAG
   learning/     جامع تجارب → دروس → ضد النسيان
-  security/     ماسح أمني ثابت offline (8 وكلاء) + CLI
+  security/     ماسح أمني ثابت offline (8 وكلاء) + AccessGuard + CLI
+  mizan/        منظومة الأمن س1..س6 (إصلاح/وصول/تلويث/مرآة/GRC/قواعد)
   tools/        تنفيذ أدوات قراءة فقط (حلقة ReAct، جذر محصور)
   tui/          واجهة Textual طرفية (شاشات، آثار أدوات، أمن)
   mcp/          خادم/عميل Model Context Protocol + جسر وكلاء (30 أداة)
   council/      محرك مجلس العمل (3 أعضاء) + توليد Craft
+  web/          لوحة /dashboard قراءة-فقط + /api/dashboard + trace
   novamind/     طبقة الخادم (extras اختياري `novamind`)
 hyper_agent.py  Hyper-Agent 2.0 — وكيل برمجة ذاتي (BUG-1..9 مصممة من الولادة)
 connectors/     مهايئات LLM BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
-hyper_app/      سطح API للوكيل الذاتي (POST /api/agent/start)
-tests/          جناح الإطار (3,810 حالة) + tests/adversarial (92 متجه) + tests/novamind/
+scripts/mizan/  ست أدوات CLI أمنية بأكواد خروج موثقة
+tests/          4,513 حالة + tests/adversarial (92 متجه هجوم) + tests/novamind/
+docs/           MIZAN_ROADMAP · V2_ROADMAP · SECURITY_HARDENING · benchmarks
 main.py         خادم مجلس العمل (FastAPI) + console/index.html
-zyvo-*.py       مساعدا تيليجرام والصوت المستقلان
-docs/           توثيق الإطار + novamind
 ```
 
-## 💬 خادم دردشة + واجهة ويب (v1.5)
+## ✅ يعمل اليوم — بالدليل (2026-11-07)
 
-طبقة FastAPI (`unified_agent.py`) تخدم واجهة بأسلوب ChatGPT + API JSON صغير — التاريخ محفوظ في SQLite خادمياً، مع «آلة زمن» لكل طلب.
+| القدرة | الدليل القابل للتحقق |
+|---|---|
+| كتلة اختبارات ضخمة | **4,513 حالة اختبار** (4,484 passed / 29 skipped في آخر بوابة كاملة) + جناح `tests/novamind` الاختياري |
+| CI ثلاثي أخضر | [CI](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml) + [Tests](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml) + [MIZAN Security](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml) على main |
+| منظومة أمن كاملة | MIZAN س1..س6 — 156 اختبار، تغطية 97%، ست أدوات CLI، جدول الفجوات أعلاه |
+| بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ≥95% + مزامنة الإصدار في ثلاثة مواضع |
+| لوحة قراءة-فقط | `/dashboard` + `/api/dashboard` — وكلاء نشطون، مهام جارية، آخر قرارات المجلس |
+| سجل أثر معياري | كل تشغيل وكيل/مجلس يكتب سطر JSON (`ts/agent/tool/duration_ms/outcome`) في `runs/trace.jsonl` + `/api/trace/recent` — دوران عند 5MB وبلا PII بالتصميم |
+| قياسات معيارية آلية | 20 مهمة على مسار `EchoBackend` الخالص + بوابة انحدار مزدوجة (p50 >50% **و**فارق >0.2ms يُسقط) + وضع تأسيس/اعتماد — [`docs/benchmarks.md`](docs/benchmarks.md) |
+| حرس أحمر أمني | `tests/adversarial` — **92 متجه هجوم في 8 فئات** + قيد سلسلة توريد حي يفشل عند أي استيراد غير معلن + بوابة ReDoS نصية على كل `src/` |
+| حوكمة موثقة | [SCOPE](SCOPE.md) · [VISION_2026](VISION_2026.md) · [ADVERSARIAL](ADVERSARIAL.md) · [LESSONS](LESSONS.md) · [MIZAN_ROADMAP](docs/MIZAN_ROADMAP.md) · [CHANGELOG](CHANGELOG.md) |
+| نشر | Docker + docker-compose · إصدارات مُوسومة · CITATION.cff · صفحة هبوط منشورة |
+
+## 💬 خادم الدردشة + المجلس الحيّ + الجينوم (طبقة novamind)
 
 ```bash
 python -m pip install -e ".[novamind]"
 PYTHONPATH=src/novamind:src:. python unified_agent.py   # http://localhost:8000
 ```
 
-- **Persistence** — `data/sessions.db` (sqlite3 قياسي، WAL) + ترحيل تلقائي من `localStorage`.
-- **Time Machine** — كل طلب مُسجّل (رسالة، رد، وكيل، زمن، حالة، مخرج المخطط) تحت `/api/traces` مع إعادة تشغيل وتصدير JSON/Markdown.
-- **API** — `/api/chat` (بث SSE)، `/api/conversations[...]`، `/api/traces[...]`، `/api/export/conversations`، `/api/db/stats`.
-
-## ⚖️ مجلس العمل + Craft (v1.12) والمجلس الحيّ (v2.0)
-
-ثلاثة أعضاء (Profiler/Analyst/Critic) يداومون سؤالاً بالعربية أو الإنجليزية ويعيدون حكماً + درجة ثقة + توصية، مبثوثة حياً عبر SSE. **Craft** (`POST /api/craft`) يحول وصفاً حراً إلى **كود عامل فعلياً**: مسارات محصورة، امتدادات مُدرجة بيضاء، وكل `.py` مولّد يمر عبر `py_compile` — الرد يحمل كتلة `proof` (لا نجاح صامت).
-
-**المجلس الحيّ (v2.0)**: 5 أعضاء متخصصين يداومون 1–5 جولات بأسهم موقف تعلو أو تهبط حسب انسجامهم مع القرار النهائي:
-
-- **Engine** — `src/novamind/council/council.py` + إجماع لكل جولة (token-Jaccard) وتوقف مبكر عند ≥ 0.8.
-- **يعمل offline** — محاكاة محلية حتمية بلا مزود؛ فشل حي يقلب الجلسة offline لـ60 ثانية (شفاء ذاتي).
-- **API** — `POST /api/council/stream` (SSE)، `POST /api/council/debate`، `GET|DELETE /api/council/sessions/{id}`.
-
-## 🧬 جينوم الوكلاء (v2.0)
-
-لكل وكيل جينوم دائم: شخصية، نسب (جيل/والد)، وأداء مدى الحياة (تشغيلات، نجاحات، زمن، انسجام مع الأحكام). الموقف يرتفع وينخفض عبر الجلسات — القوي يُرقّى، والضعيف يُوضع تحت المراقبة ويُعاد تدريبه.
-
-- **Engine** — `src/novamind/genome/`: `scoring.py` نقي + مدير `Genome` فوق جدولي SQLite `agent_genome` و`genome_events`.
-- **API** — `GET /api/genome` (ترتيب الوكلاء)، `PATCH /api/genome/{id}` (تعديل شخصية)، `POST /api/genome/{id}/reset` (إعادة تدريب)، `GET /api/genome/export`.
-
-## 📱 PWA + offline (v2.0)
-
-الواجهة تطبيق ويب تقدمي قابل للتثبيت (عربي RTL) يستمر بلا شبكة: service worker يحفظ الهيكل مسبقاً ولا يخزن `/api/*` أبداً (البث يبقى حياً)، ورسائل offline تصطف في IndexedDB وتُعاد تلقائياً عند رجوع الاتصال.
+- **دردشة بأسلوب ChatGPT** مع persistence في SQLite خادمياً (WAL) و«آلة زمن»
+  لكل طلب تحت `/api/traces` (إعادة تشغيل وتصدير JSON/Markdown).
+- **المجلس الحيّ**: 5 أعضاء متخصصين يداومون 1–5 جولات بأسهم موقف تعلو أو
+  تهبط حسب انسجامهم مع القرار النهائي؛ إجماع token-Jaccard بتوقف مبكر ≥0.8؛
+  يعمل offline بمحاكاة حتمية وفشل حي يقلب الجلسة offline لـ60 ثانية.
+- **Craft**: `POST /api/craft` يحول وصفاً حراً إلى **كود عامل فعلياً** — كل
+  `.py` مولّد يمر عبر `py_compile`، والرد يحمل كتلة `proof` (لا نجاح صامت).
+- **جينوم الوكلاء**: لكل وكيل شخصية ونسب وأداء مدى الحياة؛ القوي يُرقّى
+  والضعيف يُوضع تحت المراقبة — `GET /api/genome` و`PATCH`/`reset`/`export`.
+- **PWA عربية RTL** تعمل بلا شبكة: service worker لا يخزن `/api/*` أبداً،
+  ورسائل offline تصطف في IndexedDB وتُعاد تلقائياً.
 
 ## 🤖 Hyper-Agent 2.0 — وكيل برمجة ذاتي (BYOK)
 
-حلقة برمجة ذاتية القيادة: LLM يقترح فعل JSON واحداً كل دورة (`CODE`/`TEST`/`DONE`/`ERROR`)، يُنفذ في صندوق subprocess بحدود rlimits (يعمل حتى على Android)، و`verify_goal` يبوّب الخروج. كل دورة تُلحق بسجل JSONL قابل لإعادة التشغيل سطراً بسطر. أنماط الفشل التسعة (BUG-1..9) مصممة من الولادة — التاريخ يُستبدل لا يُلحق، وكشف التجمد ينهي التشغيل المتجمد، و`last_parse_error` يُطعم للنموذج ليصحح JSON.
-
-- **`connectors/`** — BYOK خلف عقد واحد `{"ok": bool, "reply"|"error": str}` لستة مزودين، المفاتيح من متغيرات البيئة المعتادة.
-- **Tests** — `tests/test_hyper_agent.py` + `tests/test_byok_integration.py` (41 اختباراً محكماً بلا شبكة). تغطية `hyper_agent.py` = 99%، `src/learning` = 100%.
-- **أداء موثق** — قاطع دارات + تعدد مفاتيح (Ollama Cloud ×7، OpenRouter ×10) أنزل متوسط الاستجابة من 30–40 ثانية فشل مزود إلى **~2.3 ثانية** (v1.46)، وواجهة Split UI مفصولة CSS/JS (v1.47)، و4 اختبارات E2E للدردشة (v1.48).
+حلقة برمجة ذاتية القيادة: LLM يقترح فعل JSON واحداً كل دورة
+(`CODE`/`TEST`/`DONE`/`ERROR`)، يُنفذ في صندوق subprocess بحدود rlimits
+(يعمل حتى على Android)، و`verify_goal` يبوّب الخروج. أنماط الفشل التسعة
+(BUG-1..9) مصممة من الولادة — التاريخ يُستبدل لا يُلحق، وكشف التجمد ينهي
+التشغيل المتجمد، و`last_parse_error` يُطعم للنموذج ليصحح JSON.
 
 ```bash
-# اختبارات الحلقة
+# اختبارات الحلقة (41 اختباراً محكماً بلا شبكة)
 PYTHONPATH=.:src python3 -m pytest tests/test_hyper_agent.py tests/test_byok_integration.py -q
 
 # هدف واحد عبر API (يتطلب مفتاح مزود مُعداً)
@@ -150,67 +182,52 @@ curl -X POST http://127.0.0.1:8000/api/agent/start \
   -d '{"goal": "write a fibonacci function with tests", "max_iterations": 5}'
 ```
 
-## 📊 اللوحة وسجل الأثر — أسبوعا 1-2 من خارطة المنتَجة
+**أداء موثق**: قاطع دارات + تعدد مفاتيح (Ollama Cloud ×7، OpenRouter ×10)
+أنزل متوسط الاستجابة من 30–40 ثانية فشل مزود إلى **~2.3 ثانية**.
+
+## 📊 القياسات المعيارية — برهان مُقاس لا ادعاء
 
 ```bash
-# اللوحة (قراءة-فقت): الوكلاء النشطون + المهام الجارية + آخر قرارات المجلس + أحداث الأثر
-python -m uvicorn src.web.app:app --port 8000
-# ثم افتح http://127.0.0.1:8000/dashboard  (واجهة عربية بلا JS)
-
-# سجل الأثر المعياري: كل تشغيل وكيل/مجلس = سطر JSON واحد
-# بالحقول الإلزامية ts / agent / tool / duration_ms / outcome
-make trace-tail
+make benchmarks          # 20 مهمة × 30 تكراراً → docs/benchmarks.md
+make benchmarks-check    # نفس القياس + بوابة الانحدار ضد baseline
 ```
 
-سطر أثر فعلي:
-
-```json
-{"ts": "2026-10-31T18:34:31.126+00:00", "agent": "code-reviewer", "tool": "run", "duration_ms": 0.021, "outcome": "ok"}
-```
-
-المسار قابل للتوجيه عبر `NEXUS_TRACE_PATH`، ويتدور تلقائياً عند 5 ميغابايت، وبلا محتوى مستخدم (لا PII بالتصميم). الفشل مُوثَّق كذلك: `outcome: "error"` مع **نوع** الاستثناء فقط.
-
-## 📊 القياسات المعيارية الآلية — أسبوع 3 من خارطة المنتَجة
-
-```bash
-make benchmarks          # 20 مهمة معيارية × 30 تكراراً → docs/benchmarks.md + runs/benchmark-results.json
-make benchmarks-check    # نفس القياس + بوابة الانحدار ضد benchmarks/baseline.json
-```
-
-- **20 مهمة معيارية** على مسار `EchoBackend` الخالص (بلا شبكة ولا نموذج حي): الوكلاء الثمانية، بناء فريق العشرين، خط أنابيب رباعي، جولة التسجيل، تشغيل TUI، التوجيه الثلاثي، التفكيك، ثلاثية سجل الأثر، وأرضية التوليد.
-- **بوابة مزدوجة في CI** (job `benchmarks-gate`): انحدار p50 > 50% **و**فارق مطلق > 0.2ms ضد `benchmarks/baseline.json` يسقط الوظيفة — وأي مهمة دون 100% نجاح تسقط القياس كله مهما كان زمنه.
-- **وضع التأسيس**: قبل اعتماد خط أساس، يكتب CI مرشّحاً `runs/baseline-candidate.json` كـartifact ثم يُعتمد بـ`--adopt` — لا انحدارات وهمية من فروق العتاد بين المحلي والـrunner.
-- مجلس القرار خارج القياس عمداً (ينام 0.3s/عضو بتصميمه) — التقرير يقولها صراحة.
-- التقرير الكامل: [`docs/benchmarks.md`](docs/benchmarks.md) — مولّد آلياً، لا يُعدّل يدوياً.
+- كل المهمات على مسار `EchoBackend` الخالص (بلا شبكة ولا نموذج حي) —
+  **معلن بصراحة**: هذا قياس الإطار (تجميع/توجيه/تتبع) لا النماذج.
+- مجلس القرار خارج القياس عمداً (ينام 0.3s/عضو بتصميمه) — والتقرير يقولها.
+- [`docs/benchmarks.md`](docs/benchmarks.md) مولّد آلياً، لا يُعدّل يدوياً.
 
 ## 🚧 الحدود الصادقة (لنتحدث بها كاملة)
 
-- قياساتنا المؤتمتة تقيس **إطار العمل** (تجميع/توجيه/تتبع) على مسار `EchoBackend` — قياس النماذج الحية ومقارنات المزودين الخارجية ليست بعد أداة منشورة.
-- لوحة `/dashboard` وسجل `runs/trace.jsonl` يغطيان طبقة `src/web` ووكلاء الـregistry؛ تتبع دردشة `unified_agent` (`/api/traces`) مستقل كما كان.
-- طبقة novamind تحتاج extras اختيارياً ولا تدخل بوابات الإطار (تُختبر بجناحها في CI).
-
-هذه أول ثلاثة أسابيع من [خارطة المنتج](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/productization-plan.md) — القادم: نشر آلي لـ`openapi.json` ونتائج القياسات وdemo مستضاف — حتى يصبح أول 5 دقائق تجربة كاملة بلا قراءة توثيق.
+- قياساتنا تقيس **إطار العمل** على مسار `EchoBackend` — قياس النماذج الحية
+  ومقارنات المزودين ليست بعد أداة منشورة.
+- MIZAN س3 (التلويث) يغطي **داخل المشروع فقط** ولا ينمذج أطر الويب الخارجية؛
+  وس4 مرآة مصادر عامة — لا نClaim قاعدة ملكية ولا zero-days.
+- لوحة `/dashboard` وسجل `runs/trace.jsonl` يغطيان طبقة `src/web` ووكلاء
+  الـregistry؛ تتبع دردشة `unified_agent` (`/api/traces`) مستقل كما كان.
+- طبقة novamind تحتاج extras اختيارياً ولا تدخل بوابات الإطار (تُختبر
+  بجناحها في CI).
+- خرائط ضوابط GRC «تغطية مقترحة» من ملف بيانات مُراجَع — لا شهادات.
 
 ## ✅ تحقق قبل الشحن (يجب أن يجتاز الكل)
 
 ```bash
 make check
-```
-
-أو يدوياً:
-
-```bash
-ruff check .
-mypy zyvo-telegram.py zyvo-voice.py src
-python scripts/check_annotations.py        # كل دالة معلّمة الأنواع
+# أو يدوياً:
+ruff check .                                # lint — بوابة صلبة بلا استثناءات جديدة
+mypy src                                    # فحص أنواع صارم (238 ملفاً)
+python scripts/check_annotations.py         # كل دالة معلّمة الأنواع
 python -m pytest --cov --cov-fail-under=95 --ignore=tests/novamind
+python scripts/check_version_sync.py        # الإصدار متطابق في ثلاثة مواضع
 ```
 
 جناح novamind يحتاج الـextras ويعمل في CI (يُتخطى تلقائياً عند غيابها).
 
 ## 🧭 المكان في المحفظة
 
-nexus-core هو **الدرجة الأولى** في [محفظة TibaTech](https://github.com/tibatechapp-ship-it/vixona-github-profile) — انظر [بطاقة الأداء الكاملة](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/scorecard.md) وخارطة المنتَجة لما تبقى.
+nexus-core هو **الدرجة الأولى** في [محفظة TibaTech](https://github.com/tibatechapp-ship-it/vixona-github-profile) — انظر
+[بطاقة الأداء الكاملة](https://github.com/tibatechapp-ship-it/vixona-github-profile/blob/main/docs/scorecard.md)
+وخارطة [V2_ROADMAP](docs/V2_ROADMAP.md) لما تبقى (م6/v2.0: تكامل التجربة).
 
 ## LICENSE
 

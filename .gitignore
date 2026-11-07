@@ -91,6 +91,10 @@ web_page.py
 # (tracked historical files + AGENTS_HISTORY.md) is NOT accidentally ignored.
 /legacy/
 data/
+# MIZAN reviewed data files ship with the package (س5/س6) — the
+# blanket data/ rule above must not swallow them.
+!src/mizan/data/
+!src/mizan/data/**
 *.db
 *.log
 

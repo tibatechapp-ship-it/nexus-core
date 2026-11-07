@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Nexus Council API
-  version: 1.58.0
+  version: 1.59.0
   description: |-
     Nexus core HTTP contract — TWO apps, one spec.
 
