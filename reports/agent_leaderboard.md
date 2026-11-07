@@ -6,9 +6,9 @@
 
 | الحالة | العدد | النسبة |
 |---|---:|---:|
-| healthy | 106 | 100.0% |
+| healthy | 105 | 99.1% |
 | degraded | 0 | 0.0% |
-| broken | 0 | 0.0% |
+| broken | 1 | 0.9% |
 
 ## التوزيع حسب الإطار
 
@@ -18,8 +18,8 @@
 
 ## توزيع الطبقات
 
-- **S**: 78
-- **A**: 1
+- **S**: 77
+- **A**: 2
 - **B**: 19
 - **C**: 8
 
@@ -27,29 +27,29 @@
 
 # | الوكيل | الإطار | الدرجة | الطبقة | الحالة | استيراد ms | استدعاء ms
 ---|---|---|---:|---|---|---:|---:
-1 | a11y | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.74
-2 | alert_bot | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.15
+1 | a11y | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.9
+2 | alert_bot | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.1
 3 | analyst | core | 100.00 | S 🥇 | healthy | 0.0 | 0.03
-4 | analyzer | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.47
-5 | api_design | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.94
-6 | arabic | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.0
+4 | analyzer | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.26
+5 | api_design | novamind | 100.00 | S 🥇 | healthy | 0.01 | 1.17
+6 | arabic | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.0
 7 | architect | core | 100.00 | S 🥇 | healthy | 0.0 | 0.01
-8 | architecture | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.13
-9 | auth | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.79
-10 | builder | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.02
+8 | architecture | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.15
+9 | auth | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.91
+10 | builder | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.01
 11 | chief_architect | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.0
-12 | ci_doctor | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.19
-13 | cicd | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.4
-14 | code_review | novamind | 100.00 | S 🥇 | healthy | 0.0 | 1.28
-15 | coder | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.85
+12 | ci_doctor | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.21
+13 | cicd | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.51
+14 | code_review | novamind | 100.00 | S 🥇 | healthy | 0.0 | 1.51
+15 | coder | novamind | 100.00 | S 🥇 | healthy | 0.0 | 1.06
 16 | coder | core | 100.00 | S 🥇 | healthy | 0.0 | 0.01
-17 | complexity | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.0
-18 | compliance | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.47
+17 | complexity | novamind | 100.00 | S 🥇 | healthy | 0.01 | 0.0
+18 | compliance | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.51
 19 | compliance | core | 100.00 | S 🥇 | healthy | 0.0 | 0.01
-20 | crypto | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.72
-21 | css | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.51
+20 | crypto | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.86
+21 | css | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.59
 22 | data_scientist | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.0
-23 | db_migration | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.39
+23 | db_migration | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.47
 24 | deadcode | novamind | 100.00 | S 🥇 | healthy | 0.0 | 0.0
 25 | debugger | core | 100.00 | S 🥇 | healthy | 0.0 | 0.01
 
