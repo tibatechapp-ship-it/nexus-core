@@ -26,4 +26,4 @@ sse-starlette>=2,<4
 
 # ── infrastructure clients (readiness probe + future persistence) ──
 redis>=8.1.0,<9
-psycopg[binary]>=3.2,<4
+psycopg[binary]>=3.3.8,<4
