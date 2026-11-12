@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>nexus-core — Unified Agent Platform: 106 Agents + Council + Memory + MIZAN</title>
-<meta name="description" content="A complete AI agent platform that runs on your machine: a 106-agent fleet, decision council, long-term memory, and the MIZAN security suite with six engines. 4,513 test cases at 97% coverage, pure-stdlib core, zero runtime dependencies.">
+<meta name="description" content="A complete AI agent platform that runs on your machine: a 106-agent fleet, decision council, long-term memory, and the MIZAN security suite with six engines. 4,570 test cases at 97% coverage, pure-stdlib core, zero runtime dependencies.">
 <meta property="og:title" content="nexus-core — Unified Agent Platform">
 <meta property="og:description" content="106-agent fleet · live decision council · long-term memory · MIZAN security suite (six engines) — a stdlib-only core that runs even on a phone.">
 <meta property="og:type" content="website">
@@ -120,14 +120,14 @@ footer a{color:var(--accent);text-decoration:none}
 <span class="ok">✓ all gates green</span>
 
 $ python -m pytest --cov --cov-fail-under=95
-<span class="ok">4,484 passed</span> · 29 skipped
+<span class="ok">4,541 passed</span> · 29 skipped
 <span class="ok">Required test coverage of 95% reached — 97.27%</span>
 
 $ python -m pytest tests/adversarial -q
 <span class="ok">98 passed</span> <span class="dim">· 8 attack categories (injection · DOS · manipulation · chaos · fuzz)</span></div>
     </div>
     <div class="stats">
-      <div class="stat"><b>4,513</b><span>test cases (4,484 passed / 29 skipped)</span></div>
+      <div class="stat"><b>4,570</b><span>test cases (4,541 passed / 29 skipped)</span></div>
       <div class="stat"><b>97.27%</b><span>coverage — ≥95% gate enforced</span></div>
       <div class="stat"><b>106</b><span>agents in the fleet (20 built-in)</span></div>
       <div class="stat"><b>0</b><span>runtime dependencies in the core</span></div>
@@ -147,7 +147,7 @@ $ python -m pytest tests/adversarial -q
       <tr><td>Core dependencies</td><td class="win">Zero (stdlib only)</td><td>Dozens of packages</td></tr>
       <tr><td>Auditability</td><td class="win">Every decision readable in code</td><td>Black box</td></tr>
       <tr><td>Security</td><td class="win">MIZAN: six pure-`ast` engines</td><td>Usually external/cloud</td></tr>
-      <tr><td>Proof</td><td class="win">4,513 tests + 98 adversarial vectors + coverage gate</td><td>—</td></tr>
+      <tr><td>Proof</td><td class="win">4,570 tests + 98 adversarial vectors + coverage gate</td><td>—</td></tr>
     </table>
     <h3 style="margin-top:40px">The five primitives — the platform's mental model</h3>
     <div class="grid prims" style="margin-top:16px">
@@ -178,12 +178,22 @@ $ python -m pytest tests/adversarial -q
   </div>
 </section>
 
+<section id="formal">
+  <div class="container">
+    <h2>🔬 The formal layer — the agent searches, the judge decides</h2>
+    <p class="lead">A reverse-engineered translation of the reference architecture (AlphaProof / Lean 4 / TLA+ / Dafny / CodeQL) into a stdlib core: a bounded model checker with full counterexample traces, a requires/ensures contract checker by bounded enumeration, and a prover loop (generator → judge → evidence-guided repairer → terminator). 57 tests at 96% coverage, with honest exit codes: 0 accept / 1 reject / 2 could-not-verify — the same contract as MIZAN.</p>
+    <div class="links">
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/FORMAL_REFERENCE.md">Full reference map with honest limits →</a>
+    </div>
+  </div>
+</section>
+
 <section id="evidence">
   <div class="container">
     <h2>✅ Works today — with evidence</h2>
     <table class="cmp">
       <tr><th>Capability</th><th>Verifiable proof</th></tr>
-      <tr><td>Massive test block</td><td>4,513 cases (4,484 passed / 29 skipped) + the optional novamind suite in CI</td></tr>
+      <tr><td>Massive test block</td><td>4,570 cases (4,541 passed / 29 skipped) + the optional suites in CI</td></tr>
       <tr><td>Tri-green CI</td><td><a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml">CI</a> + <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml">Tests</a> + <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml">MIZAN Security</a> on main</td></tr>
       <tr><td>One quality gate</td><td><code>make check</code> = ruff + mypy + style comments + coverage ≥95% + version sync in three places</td></tr>
       <tr><td>Read-only dashboard</td><td><code>/dashboard</code> + <code>/api/dashboard</code> — active agents, running tasks, recent council decisions</td></tr>
@@ -216,7 +226,7 @@ $ python -m pytest tests/adversarial -q
 hyper_agent.py   Hyper-Agent 2.0 — self-coding agent (BUG-1..9 by design)
 connectors/      LLM adapters BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
 scripts/mizan/   six security CLIs with documented exit codes
-tests/           4,513 cases + tests/adversarial (98 vectors) + tests/novamind/</pre>
+tests/           4,570 cases + tests/adversarial (98 vectors) + tests/formal + tests/novamind/</pre>
     </div>
   </div>
 </section>
@@ -226,7 +236,7 @@ tests/           4,513 cases + tests/adversarial (98 vectors) + tests/novamind/<
     <h2>Start in 60 seconds</h2>
     <div class="code"><pre>git clone https://github.com/tibatechapp-ship-it/nexus-core.git
 cd nexus-core
-make check    # full green gate: ruff + mypy + 4,484 tests + coverage ≥95%</pre></div>
+make check    # full green gate: ruff + mypy + 4,541 tests + coverage ≥95%</pre></div>
     <div class="code" style="margin-top:14px"><pre># TUI — stdlib core, no dependency
 python -c "from src.core.backend import EchoBackend; from src.tui.app import run_app; run_app(backend=EchoBackend())"
 

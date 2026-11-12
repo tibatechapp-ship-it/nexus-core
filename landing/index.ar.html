@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>nexus-core — منصة الوكلاء الموحّدة: 106 وكيلاً + مجلس + ذاكرة + MIZAN</title>
-<meta name="description" content="منصة وكلاء ذكاء اصطناعي كاملة على جهازك: أسطول 106 وكلاء، مجلس قرارات، ذاكرة طويلة المدى، ومنظومة أمن MIZAN بستة محركات. 4,513 اختباراً بتغطية 97%، نواة بايثون قياسي خالصة بلا اعتماديات.">
+<meta name="description" content="منصة وكلاء ذكاء اصطناعي كاملة على جهازك: أسطول 106 وكلاء، مجلس قرارات، ذاكرة طويلة المدى، ومنظومة أمن MIZAN بستة محركات. 4,570 اختباراً بتغطية 97%، نواة بايثون قياسي خالصة بلا اعتماديات.">
 <meta property="og:title" content="nexus-core — منصة الوكلاء الموحّدة">
 <meta property="og:description" content="106 وكيلاً · مجلس قرارات حيّ · ذاكرة طويلة المدى · منظومة MIZAN الأمنية بستة محركات — نواة stdlib خالصة تعمل حتى على هاتف.">
 <meta property="og:type" content="website">
@@ -120,14 +120,14 @@ footer a{color:var(--accent);text-decoration:none}
 <span class="ok">✓ all gates green</span>
 
 $ python -m pytest --cov --cov-fail-under=95
-<span class="ok">4,484 passed</span> · 29 skipped
+<span class="ok">4,541 passed</span> · 29 skipped
 <span class="ok">Required test coverage of 95% reached — 97.27%</span>
 
 $ python -m pytest tests/adversarial -q
 <span class="ok">98 passed</span> <span class="dim">· 8 attack categories (injection · DOS · manipulation · chaos · fuzz)</span></div>
     </div>
     <div class="stats">
-      <div class="stat"><b>4,513</b><span>حالة اختبار (4,484 ناجح / 29 متخطى)</span></div>
+      <div class="stat"><b>4,570</b><span>حالة اختبار (4,541 ناجح / 29 متخطى)</span></div>
       <div class="stat"><b>97.27%</b><span>تغطية — بوابة ≥95% مفروضة</span></div>
       <div class="stat"><b>106</b><span>وكيل في الأسطول (20 مدمجاً)</span></div>
       <div class="stat"><b>0</b><span>اعتماديات تشغيل في النواة</span></div>
@@ -147,7 +147,7 @@ $ python -m pytest tests/adversarial -q
       <tr><td>اعتماديات النواة</td><td class="win">صفر (stdlib فقط)</td><td>عشرات الحزم</td></tr>
       <tr><td>قابلية التدقيق</td><td class="win">كل قرار مقروء في الكود</td><td>صندوق أسود</td></tr>
       <tr><td>الأمن</td><td class="win">MIZAN: ستة محركات `ast` خالص</td><td>غالباً خارجي/سحابي</td></tr>
-      <tr><td>الإثبات</td><td class="win">4,513 اختبار + 98 متجه معادي + بوابة تغطية</td><td>—</td></tr>
+      <tr><td>الإثبات</td><td class="win">4,570 اختبار + 98 متجه معادي + بوابة تغطية</td><td>—</td></tr>
     </table>
     <h3 style="margin-top:40px">البدائيات الخمس — الواجهة الذهنية للمنصة</h3>
     <div class="grid prims" style="margin-top:16px">
@@ -178,12 +178,22 @@ $ python -m pytest tests/adversarial -q
   </div>
 </section>
 
+<section id="formal">
+  <div class="container">
+    <h2>🔬 الطبقة الشكلية — المقترح يبحث، والحاكم يحكم</h2>
+    <p class="lead">إعادة هندسة عكسية للبنية المرجعية (AlphaProof / Lean 4 / TLA+ / Dafny / CodeQL) إلى نواة stdlib: فاحص نماذج محدود بأثر خالق كامل، فاحص عقود requires/ensures بسرد محدود، وحلقة إثبات (مولّد ← حاكم ← مصلح موجّه بالدليل ← منهي). 57 اختباراً بتغطية 96%، وأكواد خروج صادقة: 0 قبول / 1 رفض / 2 تعذّر التحقق — عقد MIZAN نفسه.</p>
+    <div class="links">
+      <a class="btn" href="https://github.com/tibatechapp-ship-it/nexus-core/blob/main/docs/FORMAL_REFERENCE.md">الخريطة المرجعية الكاملة بالحدود ←</a>
+    </div>
+  </div>
+</section>
+
 <section id="evidence">
   <div class="container">
     <h2>✅ يعمل اليوم — بالدليل</h2>
     <table class="cmp">
       <tr><th>القدرة</th><th>الدليل القابل للتحقق</th></tr>
-      <tr><td>كتلة اختبارات ضخمة</td><td>4,513 حالة (4,484 passed / 29 skipped) + جناح novamind الاختياري في CI</td></tr>
+      <tr><td>كتلة اختبارات ضخمة</td><td>4,570 حالة (4,541 passed / 29 skipped) + الجناحان الاختياريان في CI</td></tr>
       <tr><td>CI ثلاثي أخضر</td><td><a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml">CI</a> + <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml">Tests</a> + <a class="muted" href="https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml">MIZAN Security</a> على main</td></tr>
       <tr><td>بوابة جودة واحدة</td><td><code>make check</code> = ruff + mypy + التعليقات النمطية + تغطية ≥95% + مزامنة الإصدار بثلاثة مواضع</td></tr>
       <tr><td>لوحة قراءة-فقط</td><td><code>/dashboard</code> + <code>/api/dashboard</code> — وكلاء نشطون، مهام جارية، قرارات المجلس</td></tr>
@@ -216,7 +226,7 @@ $ python -m pytest tests/adversarial -q
 hyper_agent.py   Hyper-Agent 2.0 — self-coding agent (BUG-1..9 by design)
 connectors/      LLM adapters BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
 scripts/mizan/   six security CLIs with documented exit codes
-tests/           4,513 cases + tests/adversarial (98 vectors) + tests/novamind/</pre>
+tests/           4,570 cases + tests/adversarial (98 vectors) + tests/formal + tests/novamind/</pre>
     </div>
   </div>
 </section>
@@ -226,7 +236,7 @@ tests/           4,513 cases + tests/adversarial (98 vectors) + tests/novamind/<
     <h2>بداية في 60 ثانية</h2>
     <div class="code" dir="ltr"><pre>git clone https://github.com/tibatechapp-ship-it/nexus-core.git
 cd nexus-core
-make check    # full green gate: ruff + mypy + 4,484 tests + coverage ≥95%</pre></div>
+make check    # full green gate: ruff + mypy + 4,541 tests + coverage ≥95%</pre></div>
     <div class="code" dir="ltr" style="margin-top:14px"><pre># TUI — stdlib core, no dependency
 python -c "from src.core.backend import EchoBackend; from src.tui.app import run_app; run_app(backend=EchoBackend())"
 
