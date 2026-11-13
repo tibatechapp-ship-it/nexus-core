@@ -2,6 +2,42 @@
 
 All notable changes to this project. Newest first.
 
+## v1.60.0 — 2026-11-13 — موجة ما بعد الدمج: سبع PRs مدموجة أول بأول + الطبقة الخصمية تبلغ 100 متجه
+
+دفع دفعة dependabot كاملة إلى main عبر دمج تسلسلي على GitHub (الترتيب
+الرقمي، PR بعد PR)، ثم تحصين ما بعد الدمج: اختبارا حرس جددان يحرسان
+أرضيات الدمج نفسها من التراجع الصامت.
+
+### الدمج أول بأول (#86..#93)
+- **الأكشنز**: `actions/setup-node@v7` (#86) · `actions/checkout@v7` (#87) ·
+  `actions/setup-python@v7` (#88) — عبر كل الـ workflows السبعة.
+- **الاعتماديات**: `pydantic>=2.14.3` (#90) · `uvicorn[standard]>=0.54.0,<1` (#91) ·
+  `psycopg[binary]>=3.3.8,<4` (#92) · `pydantic-settings>=2.16.2,<3` (#93).
+- تعارضان حيّان حُلّا في `requirements-docker.txt` بالاتحاد الحتمي:
+  أرضية uvicorn من PR #91 مع أرضية pydantic من main بعد #90، ثم أرضية
+  pydantic-settings من PR #93 مع الاثنين — بلا فقدان أي ترقية، وبلا
+  حذف أي قيد.
+
+### ما بعد الدمج — 100 متجه معادي (كان 98)
+- **`tests/adversarial/test_security.py`** — اختبارا حرس جدد في فئة
+  `4-security` (10 → 12 متجه):
+  - `test_patched_dependency_floors_cannot_be_silently_downgraded` —
+    أرضيات الدمج (#90..#93) مقروءة حيّاً من `pyproject.toml` و
+    `requirements-docker.txt` وبمقارنة إصدارات رقمية — أي تراجع
+    («chore» مزيف يعيد نطاقاً مصاباً) يفشل فوراً.
+  - `test_ci_action_majors_stay_at_bumped_floor` — كل مرجع
+    `actions/checkout|setup-node|setup-python` في كل workflow عند v7
+    على الأقل، وحذف المرجع كله لتفادي البوابة فشل أيضاً.
+- **النتيجة المقاسة**: 94 متجه مصنّف — 94 HELD، 0 BROKEN (مرونة 100%)،
+  و100 اختبار فعلي في `tests/adversarial`.
+
+### البيئة والإصدار
+- فجوات بيئة محلية أُغلقت (`pytest-benchmark`، `ruff`، `syrupy`،
+  `textual`) — السويت الكامل أخضر محلياً بعد الدمج: 4,543 ناجحاً /
+  29 متخطى.
+- الإصدار متزامن: `pyproject.toml` + شارتا `landing/` (عربي/إنجليزي)
+  + `README.md` (4 مواضع) + `ADVERSARIAL.md`.
+
 ## v1.59.0 — 2026-11-07 — سلسلة MIZAN كاملة: س1..س6 (إغلاق الفجوات الست مقابل Snyk/Semgrep/Trivy/Checkov)
 
 مقارنة تنافسية رصدت ست فجوات تفصل MIZAN عن منصات المؤسسات؛ خارطة المعالجة

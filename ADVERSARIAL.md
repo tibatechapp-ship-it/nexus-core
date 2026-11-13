@@ -27,7 +27,7 @@ python -m pytest tests/adversarial/ -m "not slow"   # skip the heavy vectors
 python -m pytest tests/adversarial/test_dos.py      # one category
 ```
 
-**Result: 92 vectors — 92 HELD, 0 BROKEN (100 % resilience).**
+**Result: 94 vectors — 94 HELD, 0 BROKEN (100 % resilience).**
 
 ## The eight categories
 
@@ -36,7 +36,7 @@ python -m pytest tests/adversarial/test_dos.py      # one category
 | 1 | Injection           |   28    | prompt / command / SQL / path / template / header injection, unicode |
 | 2 | DoS / exhaustion    |    8    | endless loops, recursion, huge & bomb payloads, floods, ReDoS       |
 | 3 | Manipulation        |   11    | role confusion, context flip, nested orders, authority, gaslighting |
-| 4 | Security            |   10    | secret leak, permission drift, sandbox escape, concurrency, SSRF   |
+| 4 | Security            |   12    | secret leak, permission drift, sandbox escape, concurrency, SSRF   |
 | 5 | Integration failure |    8    | cascade, deadlock, livelock, Byzantine, partition, clock, split brain |
 | 6 | Comprehension       |    8    | ambiguity, contradiction, paradox, sarcasm, code-switch, typos      |
 | 7 | Fuzzing (bonus)     |    8    | 1,000+ random hostile strings/props (seeded, deterministic)         |

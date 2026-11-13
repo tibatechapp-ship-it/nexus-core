@@ -351,3 +351,77 @@ def test_errors_are_bounded_and_leak_no_internals(monkeypatch: pytest.MonkeyPatc
     assert secret not in result.error
     recorded = agent.state.to_dict()["last_error"] or ""
     assert len(recorded) <= 500
+
+
+def _version_tuple(raw: str) -> tuple[int, int, int]:
+    parts = tuple(int(p) for p in re.findall(r"\d+", raw))
+    return (parts + (0, 0, 0))[:3]
+
+
+def _dependency_floor(text: str, dist: str) -> tuple[int, int, int]:
+    """Return the ``>=`` floor of ``dist`` as a 3-tuple, or fail loudly."""
+    m = re.search(
+        rf"(?m)^\s*[\"']?{re.escape(dist)}(\[[^\]]*\])?>=([0-9][0-9.]*)", text
+    )
+    assert m, f"{dist}: the pinned floor vanished from the manifest"
+    return _version_tuple(m.group(2))
+
+
+@pytest.mark.adversarial
+def test_patched_dependency_floors_cannot_be_silently_downgraded() -> None:
+    """The merge-wave dependency floors stay pinned; a revert must fail here.
+
+    Scenario: a supply-chain regression re-opens a patched vulnerability by
+    editing the dependency floor back to a vulnerable range inside a noisy
+    "chore(deps)" commit — invisible to a human reviewer reading the diff
+    summary. The v1.60.0 merge wave (#90..#93) raised pydantic to 2.14.3,
+    pydantic-settings to 2.16.2, uvicorn to 0.54.0 and psycopg to 3.3.8;
+    DEFENCE: the floors are read live from ``pyproject.toml`` and
+    ``requirements-docker.txt`` and asserted at-least, so a downgrade (or a
+    vanished manifest line) fails immediately.
+    """
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    docker = (ROOT / "requirements-docker.txt").read_text(encoding="utf-8")
+
+    assert _dependency_floor(pyproject, "pydantic") >= (2, 14, 3), (
+        "pyproject.toml: pydantic floor downgraded below the merged 2.14.3"
+    )
+    assert _dependency_floor(docker, "pydantic") >= (2, 14, 3)
+    assert _dependency_floor(docker, "uvicorn") >= (0, 54, 0), (
+        "requirements-docker.txt: uvicorn floor downgraded below the merged 0.54.0"
+    )
+    assert _dependency_floor(docker, "pydantic-settings") >= (2, 16, 2)
+    assert _dependency_floor(docker, "psycopg") >= (3, 3, 8)
+
+
+@pytest.mark.adversarial
+def test_ci_action_majors_stay_at_bumped_floor() -> None:
+    """The bumped action majors stay pinned; a downgrade re-opens old windows.
+
+    Scenario: the merge wave (#86..#88) moved actions/checkout, setup-node and
+    setup-python to v7 across every workflow. A regression that reverts one
+    reference to an older major (or deletes the step to dodge the gate)
+    silently re-opens the tag-takeover windows those bumps closed. DEFENCE:
+    every ``uses:`` reference in every workflow is asserted at-least at the
+    bumped major, and a fully-vanished action fails too.
+    """
+    workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    assert workflows, ".github/workflows vanished from the tree"
+
+    floors = {
+        "actions/checkout": 7,
+        "actions/setup-node": 7,
+        "actions/setup-python": 7,
+    }
+    seen: dict[str, int] = dict.fromkeys(floors, 0)
+    for wf in workflows:
+        text = wf.read_text(encoding="utf-8")
+        for action, want in floors.items():
+            for m in re.finditer(rf"{re.escape(action)}@(\w+)", text):
+                seen[action] += 1
+                got = _version_tuple(m.group(1))[0]
+                assert got >= want, (
+                    f"{wf.name}: {action}@{m.group(1)} downgraded below v{want}"
+                )
+    for action, count in seen.items():
+        assert count, f"{action} references vanished from every workflow"

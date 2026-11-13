@@ -29,7 +29,7 @@
 | **اعتماديات النواة** | **صفر** (stdlib فقط) | عشرات الحزم |
 | **قابلية التدقيق** | كل قرار مقروء في الكود | صندوق أسود |
 | **الأمن** | MIZAN: إصلاح تلقائي + Reachability + تلويث عبر الملفات + مرآة إعلانات + لوحة GRC + قواعد مخصصة — كلها `ast` خالص | غالباً خارجي/سحابي |
-| **الإثبات** | **4,570 حالة اختبار** (4,541 ناجح / 29 متخطى) + 98 متجه هجوم معادي + بوابة تغطية ≥95% | — |
+| **الإثبات** | **4,572 حالة اختبار** (4,543 ناجح / 29 متخطى) + 100 متجه هجوم معادي + بوابة تغطية ≥95% | — |
 
 كل رقم في هذا الملف **قابل للتحقق محلياً** بأمر واحد: `make check`.
 
@@ -151,7 +151,7 @@ src/            الإطار (stdlib فقط، آمن للهاتف، مُختبر
 hyper_agent.py  Hyper-Agent 2.0 — وكيل برمجة ذاتي (BUG-1..9 مصممة من الولادة)
 connectors/     مهايئات LLM BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
 scripts/mizan/  ست أدوات CLI أمنية بأكواد خروج موثقة
-tests/          4,570 حالة + tests/adversarial (98 متجه هجوم) + tests/formal + tests/novamind/
+tests/          4,572 حالة + tests/adversarial (100 متجه هجوم) + tests/formal + tests/novamind/
 docs/           MIZAN_ROADMAP · V2_ROADMAP · SECURITY_HARDENING · benchmarks
 main.py         خادم مجلس العمل (FastAPI) + console/index.html
 ```
@@ -160,14 +160,14 @@ main.py         خادم مجلس العمل (FastAPI) + console/index.html
 
 | القدرة | الدليل القابل للتحقق |
 |---|---|
-| كتلة اختبارات ضخمة | **4,570 حالة اختبار** (4,541 passed / 29 skipped في آخر بوابة كاملة) + جناح `tests/novamind` الاختياري |
+| كتلة اختبارات ضخمة | **4,572 حالة اختبار** (4,543 passed / 29 skipped في آخر بوابة كاملة) + جناح `tests/novamind` الاختياري |
 | CI ثلاثي أخضر | [CI](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml) + [Tests](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml) + [MIZAN Security](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml) على main |
 | منظومة أمن كاملة | MIZAN س1..س6 — 156 اختبار، تغطية 97%، ست أدوات CLI، جدول الفجوات أعلاه |
-| بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ≥95% (4,570 حالة) + مزامنة الإصدار في ثلاثة مواضع |
+| بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ≥95% (4,572 حالة) + مزامنة الإصدار في ثلاثة مواضع |
 | لوحة قراءة-فقط | `/dashboard` + `/api/dashboard` — وكلاء نشطون، مهام جارية، آخر قرارات المجلس |
 | سجل أثر معياري | كل تشغيل وكيل/مجلس يكتب سطر JSON (`ts/agent/tool/duration_ms/outcome`) في `runs/trace.jsonl` + `/api/trace/recent` — دوران عند 5MB وبلا PII بالتصميم |
 | قياسات معيارية آلية | 20 مهمة على مسار `EchoBackend` الخالص + بوابة انحدار مزدوجة (p50 >50% **و**فارق >0.2ms يُسقط) + وضع تأسيس/اعتماد — [`docs/benchmarks.md`](docs/benchmarks.md) |
-| حرس أحمر أمني | `tests/adversarial` — **98 متجه هجوم في 8 فئات** + قيد سلسلة توريد حي يفشل عند أي استيراد غير معلن + بوابة ReDoS نصية على كل `src/` |
+| حرس أحمر أمني | `tests/adversarial` — **100 متجه هجوم في 8 فئات** + قيد سلسلة توريد حي يفشل عند أي استيراد غير معلن + بوابة ReDoS نصية على كل `src/` |
 | طبقة شكلية | `src/formal` — 57 اختبار، تغطية 96%، أكواد خروج صادقة 0/1/2، ووثيقة الخريطة المرجعية [`docs/FORMAL_REFERENCE.md`](docs/FORMAL_REFERENCE.md) |
 | حوكمة موثقة | [SCOPE](SCOPE.md) · [VISION_2026](VISION_2026.md) · [ADVERSARIAL](ADVERSARIAL.md) · [LESSONS](LESSONS.md) · [MIZAN_ROADMAP](docs/MIZAN_ROADMAP.md) · [CHANGELOG](CHANGELOG.md) |
 | نشر | Docker + docker-compose · إصدارات مُوسومة · CITATION.cff · صفحة هبوط منشورة |
