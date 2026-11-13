@@ -29,7 +29,7 @@
 | **اعتماديات النواة** | **صفر** (stdlib فقط) | عشرات الحزم |
 | **قابلية التدقيق** | كل قرار مقروء في الكود | صندوق أسود |
 | **الأمن** | MIZAN: إصلاح تلقائي + Reachability + تلويث عبر الملفات + مرآة إعلانات + لوحة GRC + قواعد مخصصة — كلها `ast` خالص | غالباً خارجي/سحابي |
-| **الإثبات** | **4,513 حالة اختبار** (4,484 ناجح / 29 متخطى) + 98 متجه هجوم معادي + بوابة تغطية ≥95% | — |
+| **الإثبات** | **4,570 حالة اختبار** (4,541 ناجح / 29 متخطى) + 98 متجه هجوم معادي + بوابة تغطية ≥95% | — |
 
 كل رقم في هذا الملف **قابل للتحقق محلياً** بأمر واحد: `make check`.
 
@@ -84,13 +84,38 @@ python scripts/mizan/mizan_rules.py check . --rules team-rules.json
 156 اختبار انحدار لتغطية السلسلة (تغطية الحزمة **97%**) — الخارطة الكاملة
 بالأحكام الصادقة: [`docs/MIZAN_ROADMAP.md`](docs/MIZAN_ROADMAP.md).
 
+## 🔬 الطبقة الشكلية — «المُقترح يبحث، والحاكم يحكم»
+
+إعادة هندسة عكسية للبنية المرجعية (AlphaProof / Lean 4 / TLA+ / Dafny /
+CodeQL) إلى نواة stdlib — بصدق كامل حول الحدود:
+
+| المستوى المرجعي | نكافئه بـ | الحد الصادق |
+|---|---|---|
+| TLA+ + TLC | فاحص نماذج محدود — متغيرات سلامة بأثر خالق كامل، استقرار محدود يُحترم الحلقات فيه | إثبات محدود بميزانية معلنة — لا غير محدود |
+| Dafny (SMT) | فاحص عقود requires/ensures بسرد محدود على مجال معلن | لا SMT — مجالات صغيرة معلنة |
+| Lean 4 kernel | عقد الحاكم: حكم ثلاثي حتمي، «تعذّر التحقق» معدٍ، لا قبول إلا بحكم | لا نظرية أنواع تابعة — إثبات بالسرد المحدود |
+| AlphaProof Nexus | حلقة مولّد ← حاكم ← مصلح موجّه بالدليل ← منهي بميزانية صارمة | بلا بحث شجري — ميزانية خطية معلنة |
+
+```bash
+# فاحص النماذج: بروتوكول تسليم بين وكيلين — ونسخة معطوبة تُري أثر الخالق
+python -m src.formal.cli model
+python -m src.formal.cli model --breaking   # خروج 1 مع أثر كامل
+
+# فاحص العقود + حلقة الإثبات (0 قبول / 1 رفض / 2 تعذّر — عقد MIZAN نفسه)
+python -m src.formal.cli contract
+python -m src.formal.cli loop --broken      # خروج 2: المولّد استنفد
+```
+
+57 اختباراً بتغطية **96%** للطبقة — الخريطة المرجعية الكاملة بالحدود:
+[`docs/FORMAL_REFERENCE.md`](docs/FORMAL_REFERENCE.md).
+
 ## 🚀 البدء في 60 ثانية
 
 ```bash
 git clone https://github.com/tibatechapp-ship-it/nexus-core.git
 cd nexus-core
 make check        # البوابة الخضراء كاملة: ruff + mypy + annotations
-                  # + 4,484 اختباراً (29 skipped) + coverage ≥ 95%
+                  # + 4,541 اختباراً (29 skipped) + coverage ≥ 95%
 ```
 
 ```bash
@@ -116,6 +141,7 @@ src/            الإطار (stdlib فقط، آمن للهاتف، مُختبر
   learning/     جامع تجارب → دروس → ضد النسيان
   security/     ماسح أمني ثابت offline (8 وكلاء) + AccessGuard + CLI
   mizan/        منظومة الأمن س1..س6 (إصلاح/وصول/تلويث/مرآة/GRC/قواعد)
+  formal/       الطبقة الشكلية: فاحص نماذج + فاحص عقود + حلقة إثبات (المقترح يبحث، الحاكم يحكم)
   tools/        تنفيذ أدوات قراءة فقط (حلقة ReAct، جذر محصور)
   tui/          واجهة Textual طرفية (شاشات، آثار أدوات، أمن)
   mcp/          خادم/عميل Model Context Protocol + جسر وكلاء (30 أداة)
@@ -125,7 +151,7 @@ src/            الإطار (stdlib فقط، آمن للهاتف، مُختبر
 hyper_agent.py  Hyper-Agent 2.0 — وكيل برمجة ذاتي (BUG-1..9 مصممة من الولادة)
 connectors/     مهايئات LLM BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
 scripts/mizan/  ست أدوات CLI أمنية بأكواد خروج موثقة
-tests/          4,513 حالة + tests/adversarial (98 متجه هجوم) + tests/novamind/
+tests/          4,570 حالة + tests/adversarial (98 متجه هجوم) + tests/formal + tests/novamind/
 docs/           MIZAN_ROADMAP · V2_ROADMAP · SECURITY_HARDENING · benchmarks
 main.py         خادم مجلس العمل (FastAPI) + console/index.html
 ```
@@ -134,14 +160,15 @@ main.py         خادم مجلس العمل (FastAPI) + console/index.html
 
 | القدرة | الدليل القابل للتحقق |
 |---|---|
-| كتلة اختبارات ضخمة | **4,513 حالة اختبار** (4,484 passed / 29 skipped في آخر بوابة كاملة) + جناح `tests/novamind` الاختياري |
+| كتلة اختبارات ضخمة | **4,570 حالة اختبار** (4,541 passed / 29 skipped في آخر بوابة كاملة) + جناح `tests/novamind` الاختياري |
 | CI ثلاثي أخضر | [CI](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/ci.yml) + [Tests](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/test.yml) + [MIZAN Security](https://github.com/tibatechapp-ship-it/nexus-core/actions/workflows/mizan-scan.yml) على main |
 | منظومة أمن كاملة | MIZAN س1..س6 — 156 اختبار، تغطية 97%، ست أدوات CLI، جدول الفجوات أعلاه |
-| بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ≥95% + مزامنة الإصدار في ثلاثة مواضع |
+| بوابة جودة واحدة | `make check` = ruff + mypy + فحص التعليقات النمطية + اختبارات بتغطية ≥95% (4,570 حالة) + مزامنة الإصدار في ثلاثة مواضع |
 | لوحة قراءة-فقط | `/dashboard` + `/api/dashboard` — وكلاء نشطون، مهام جارية، آخر قرارات المجلس |
 | سجل أثر معياري | كل تشغيل وكيل/مجلس يكتب سطر JSON (`ts/agent/tool/duration_ms/outcome`) في `runs/trace.jsonl` + `/api/trace/recent` — دوران عند 5MB وبلا PII بالتصميم |
 | قياسات معيارية آلية | 20 مهمة على مسار `EchoBackend` الخالص + بوابة انحدار مزدوجة (p50 >50% **و**فارق >0.2ms يُسقط) + وضع تأسيس/اعتماد — [`docs/benchmarks.md`](docs/benchmarks.md) |
 | حرس أحمر أمني | `tests/adversarial` — **98 متجه هجوم في 8 فئات** + قيد سلسلة توريد حي يفشل عند أي استيراد غير معلن + بوابة ReDoS نصية على كل `src/` |
+| طبقة شكلية | `src/formal` — 57 اختبار، تغطية 96%، أكواد خروج صادقة 0/1/2، ووثيقة الخريطة المرجعية [`docs/FORMAL_REFERENCE.md`](docs/FORMAL_REFERENCE.md) |
 | حوكمة موثقة | [SCOPE](SCOPE.md) · [VISION_2026](VISION_2026.md) · [ADVERSARIAL](ADVERSARIAL.md) · [LESSONS](LESSONS.md) · [MIZAN_ROADMAP](docs/MIZAN_ROADMAP.md) · [CHANGELOG](CHANGELOG.md) |
 | نشر | Docker + docker-compose · إصدارات مُوسومة · CITATION.cff · صفحة هبوط منشورة |
 
