@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/tibatechapp-ship-it/MIZAN",
+  "ref": "693850d603cbe091560b531bd4165347f8a890bf",
+  "version_at_pin": "0.16.0-dev",
+  "pin_type": "immutable_commit",
+  "reason": "Use the upstream full-scan engine and fail-closed scanner status contract without following a moving branch."
+}
