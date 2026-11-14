@@ -105,6 +105,9 @@ jobs:
     permissions:
       contents: write
     env:
+      # نفس شرط مهمة الاختبار: main.py يرفض الإقلاع بلا تصريح صريح
+      # (v1.61.0: تركيب sse-starlette أضاء استيراد test_health_api للبوابة).
+      NEXUS_ALLOW_OPEN: "1"
       NOVAMIND_HOME: ${{ github.workspace }}
       TZ: UTC
     steps:
