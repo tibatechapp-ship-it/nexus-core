@@ -407,26 +407,32 @@ def _load_workflow(name: str) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def test_d10_mizan_workflow_uses_pull_request_not_target() -> None:
-    """`pull_request_target` runs with repo write tokens and secrets even for
-    hostile forks; `pull_request` strips both automatically."""
+def test_d10_mizan_workflow_is_read_only_for_pull_requests() -> None:
+    """PR scanning must not receive repo-write permissions or repository secrets."""
     data = _load_workflow("mizan-scan.yml")
-    assert "pull_request_target" not in data[True]  # `on:` parses as True
-    assert "pull_request" in data[True]
+    events = data[True]  # PyYAML's YAML 1.1 parser maps the key 'on' to True.
+    assert "pull_request" in events
+    assert "pull_request_target" not in events
+    assert data["permissions"] == {"contents": "read"}
+    job = data["jobs"]["codeql"]
+    assert job["permissions"] == {
+        "contents": "read",
+        "security-events": "write",
+        "pull-requests": "read",
+    }
+    assert all("write" not in permission for permission in data["permissions"].values())
 
 
-def test_d10_mizan_autocommit_excludes_scanner_artifacts() -> None:
-    """The bot's commit step must never re-add the scanner working tree."""
+def test_d10_mizan_workflow_never_executes_pr_scripts_or_receives_secrets() -> None:
+    """Only first-party analysis actions are allowed in the untrusted PR job."""
     data = _load_workflow("mizan-scan.yml")
-    steps = data["jobs"]["mizan-security-scan"]["steps"]
-    commit_step = next(s for s in steps if s.get("name") == "Commit and Push Fixes")
-    run = commit_step["run"]
-    assert "git add ." not in run
-    for artifact in (
-        "node_modules", "package.json", "package-lock.json",
-        "bandit.sarif", "semgrep.sarif", "mizan_report.md",
-    ):
-        assert f":(exclude){artifact}" in run, artifact
+    steps = data["jobs"]["codeql"]["steps"]
+    assert all("uses" in step and "run" not in step for step in steps)
+    assert not any("secrets." in str(step) for step in steps)
+    assert not any("token:" in str(step).lower() for step in steps)
+    checkout = next(step for step in steps if step.get("name") == "Checkout source")
+    assert checkout["with"]["persist-credentials"] is False
+    assert not any("push" in str(step).lower() for step in steps)
 
 
 def test_d10_scanner_artifacts_are_gitignored() -> None:
@@ -517,12 +523,66 @@ def test_d11_sarif_converter_maps_severities() -> None:
     assert results[0]["locations"][0]["physicalLocation"]["region"]["startLine"] == 12
 
 
-def test_d11_optional_mizan_steps_degrade_gracefully() -> None:
-    """Helper steps must skip (not fail) when their scripts are absent."""
+def test_d11_mizan_pr_workflow_has_no_privileged_repair_steps() -> None:
+    """Repair, notification and PR-comment actions are deliberately out of band."""
     data = _load_workflow("mizan-scan.yml")
-    steps = data["jobs"]["mizan-security-scan"]["steps"]
-    for name in ("Remove Detected Secrets", "AI Auto-Fix", "Send Email Report"):
-        step = next(s for s in steps if s.get("name") == name)
-        assert "not installed" in step["run"], name
-    comment = next(s for s in steps if s.get("name") == "Comment on PR")
-    assert "mizan_report.md not produced" in comment["run"]
+    steps = data["jobs"]["codeql"]["steps"]
+    names = {step.get("name") for step in steps}
+    assert names == {"Checkout source", "Initialize CodeQL", "Analyze source"}
+    forbidden = ("Auto-Fix", "Commit and Push", "Send Email", "Comment on PR")
+    assert not any(any(token in (name or "") for token in forbidden) for name in names)
+
+
+# ── d12: the unified evidence job (MIZAN engine, #95) ────────────────────────
+# The PR-scan workflow runs a second, independent job that installs the pinned
+# MIZAN engine and produces the immutable evidence contract. The engine is
+# first-party code at a recorded upstream commit; the PR's code is only read.
+
+
+def test_d12_mizan_evidence_job_is_read_only() -> None:
+    """The engine job must hold no write capability and receive no secrets."""
+    data = _load_workflow("mizan-scan.yml")
+    job = data["jobs"]["mizan-evidence"]
+    assert job["permissions"] == {"contents": "read"}
+    steps = job["steps"]
+    assert not any("secrets." in str(step) for step in steps)
+    assert not any("token:" in str(step).lower() for step in steps)
+    checkout = next(step for step in steps
+                    if step.get("name") == "Checkout exact PR revision")
+    assert checkout["with"]["persist-credentials"] is False
+    runs_text = " ".join(str(step.get("run", "")) for step in steps)
+    assert "git push" not in runs_text
+    assert "git commit" not in runs_text
+
+
+def test_d12_mizan_engine_pin_is_an_immutable_commit() -> None:
+    """The engine install pins a 40-hex upstream commit, never a mutable tag.
+
+    Tags move (that is how the dev cycle works); commits do not. The pin is
+    bumped by a dedicated chore commit, never silently inside a feature PR.
+    """
+    import re
+
+    data = _load_workflow("mizan-scan.yml")
+    steps = data["jobs"]["mizan-evidence"]["steps"]
+    install = next(step for step in steps
+                   if step.get("name") == "Install pinned MIZAN engine")
+    m = re.search(
+        r"git\+https://github\.com/tibatechapp-ship-it/MIZAN\.git@([0-9a-f]{40})",
+        install["run"],
+    )
+    assert m, "MIZAN engine must be installed at a pinned 40-hex commit"
+    assert not re.search(r"MIZAN\.git@v[\w.+-]+", install["run"]), (
+        "a mutable tag ref is not an acceptable engine pin"
+    )
+
+
+def test_d12_evidence_contract_degrades_honestly() -> None:
+    """A missing or failed evidence upload must be named, never faked."""
+    data = _load_workflow("mizan-scan.yml")
+    steps = data["jobs"]["mizan-evidence"]["steps"]
+    upload = next(step for step in steps if step.get("name") == "Upload MIZAN evidence")
+    assert upload["with"]["if-no-files-found"] == "error"
+    summary = next(step for step in steps
+                   if step.get("name") == "Publish report link in workflow summary")
+    assert "not produced or upload failed" in summary["run"]

@@ -1,11 +1,18 @@
-name: MIZAN PR Evidence Scan
+name: MIZAN Pull Request Security Scan
 
 on:
   pull_request:
     branches: ["main"]
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
-# The scan executes no code from the PR and has no write-capable token.
+# Untrusted pull-request code is analyzed without executing repository scripts,
+# installing project dependencies, receiving secrets, or writing to the repo.
+# Two independent read-only jobs:
+#   1. codeql          — first-party static analysis (actions only, no run steps).
+#   2. mizan-evidence  — the pinned MIZAN engine full scan producing an
+#                        immutable evidence contract (mizan.pr-evidence.v1).
+# The engine itself is first-party code installed at an immutable upstream
+# commit; the PR's code is only ever READ by it, never executed.
 permissions:
   contents: read
 
@@ -14,6 +21,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  codeql:
+    name: Read-only static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+          build-mode: none
+
+      - name: Analyze source
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python"
+
   mizan-evidence:
     name: MIZAN evidence / full-scan
     runs-on: ubuntu-latest
@@ -37,7 +68,10 @@ jobs:
       - name: Install pinned MIZAN engine
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "git+https://github.com/tibatechapp-ship-it/MIZAN.git@v0.17.0-dev"
+          # Immutable upstream engine pin — resolves to the v0.17.0-dev wave-2
+          # tag at the time of recording. Tags are mutable; commits are not.
+          # Bump via a dedicated chore commit, never in a feature PR.
+          python -m pip install "git+https://github.com/tibatechapp-ship-it/MIZAN.git@f68053c6b43a0481bd077a121eedb163d00b4073"
 
       - name: Run full scan and build evidence contract
         id: scan
