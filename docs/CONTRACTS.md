@@ -104,6 +104,49 @@
 
 ---
 
+## 2.د عقد `ops` — الطبقة التشغيلية الداخلية (`src/ops`, v1.62.0+)
+
+الأنواع الخمسة الموحّدة وآلة الحالات — التفصيل الكامل في
+[OPS_LAYER.md](OPS_LAYER.md)، والاختبار الحارس `tests/test_ops_*.py`.
+
+### 2.د.1 الأنواع الخمسة
+
+| العقد | قواعد البناء المثبتة |
+| --- | --- |
+| `Signal` | id حتمي = `stable_id(source, url)`؛ score رقم؛ url HTTP(S) |
+| `Verdict` | verdict ∈ {confirmed, safe, inconclusive}؛ **evidence غير فارغ إلزامي**؛ confidence ∈ [0,1] |
+| `Ticket` | origin ∈ {radar, sandbox, webqa, manual}؛ state ∈ TICKET_STATES؛ publish_allowed منطقي |
+| `GateResult` | فشل بلا findings مرفوض؛ blocking/passed منطقيان صريحان |
+| `Digest` | kind ∈ {morning, evening, cycle}؛ (kind, day) مفتاح upsert — ملخص واحد لكل يوم |
+
+### 2.د.2 آلة حالات التذكرة
+
+* `ALLOWED_TRANSITIONS` هي المرجع الوحيد: `open→branched→executed→
+  reported→reviewed→(merged|closed)` + `closed` من كل حالة نشطة.
+* `ticket_advance(id, to, actor, ci_green)`: إلى `merged` يتطلب
+  `actor != "agent"` و`ci_green=True` — خلاف ذلك `OpsError`.
+* `ticket_set_publish(id, True)`: قرار بشري فقط وبعد reviewed/merged.
+
+### 2.د.3 خريطة حكم العزل
+
+حرج (سر/قائمة سوداء) ⇒ `confirmed` · فحوص نافذة نظيفة ≥2 ⇒ `safe` ·
+غير ذلك ⇒ `inconclusive` (الافتراضي). المؤكَّد وغير المحسوم يفتحان
+تذكرة آلية إلزامية التكرار (`ensure_ticket`).
+
+### 2.د.4 عقد استرجاع الفهرس
+
+`OpsIndex.retrieve(query, budget_tokens=None, top_k=None,
+acl="team:all")` يعيد دائمًا `{"slices", "tokens_used", "citations"}`
+— التغليف يتوقف عند أول شريحة تتجاوز الميزانية، وفلتر ACL قبل
+الحساب (`team:all` عام، `team:*` wildcard للفريق، مطابقة تامة غيرها).
+
+### 2.د.5 عقد الخروج لـ CLI
+
+`nexus ops …` يرجع `0` سليم · `1` فشل/بوابة حاجبة/استخدام غير صحيح ·
+`2` حكم عزل مؤكَّد — وفشل أي أمر يُطبع سطرًا صريحًا لا استثناء متطايرًا.
+
+---
+
 ## 3. إجراء تعديل عقد
 
 1. افتح PR يعدّل الواجهة **وهذه الوثيقة واختبار العقد معًا**.

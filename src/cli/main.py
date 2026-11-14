@@ -317,6 +317,10 @@ def cmd_delegate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """نقطة الدخول الرئيسية."""
+    argv_list: list[str] = list(sys.argv[1:]) if argv is None else list(argv)
+    if argv_list and argv_list[0] == "ops":
+        from src.ops.cli import run_ops_command
+        return run_ops_command(argv_list[1:])
     parser = argparse.ArgumentParser(
         prog="nexus",
         description="Nexus-Core CLI — واجهة موحدة لوكلاء nexus-core",
