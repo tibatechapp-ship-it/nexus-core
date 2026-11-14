@@ -37,7 +37,7 @@ jobs:
       - name: Install pinned MIZAN engine
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "git+https://github.com/tibatechapp-ship-it/MIZAN.git@693850d603cbe091560b531bd4165347f8a890bf"
+          python -m pip install "git+https://github.com/tibatechapp-ship-it/MIZAN.git@7aded07aae5b1d609a48b0204f534f9e45720e3f"
 
       - name: Run full scan and build evidence contract
         id: scan
