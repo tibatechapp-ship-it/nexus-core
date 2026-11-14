@@ -42,12 +42,13 @@ _SECRET_PATTERNS = (
         r"""(\s*[:=]\s*)(["']?)[A-Za-z0-9_./+=:-]{8,}(["']?)"""
     ),
 )
-_SECRET_KEYS = ("password", "secret_value", "private_key", "access_token", "api_key", "client_secret")
+_SECRET_KEYS = ("password", "secret", "private_key", "access_token", "api_key", "client_secret", "credential")
 
 
 def sanitize(value: Any, key: str = "") -> Any:
     """Redact obvious credentials before a report is uploaded as an artifact."""
-    if any(part in key.lower() for part in _SECRET_KEYS):
+    normalized_key = key.lower().replace("-", "_")
+    if normalized_key in _SECRET_KEYS or normalized_key.endswith(("_secret", "_token", "_password", "_credential")):
         if isinstance(value, (str, int, float)) and value not in (None, ""):
             return "[REDACTED]"
     if isinstance(value, dict):
@@ -102,6 +103,24 @@ def incomplete_sources(scan: dict[str, Any]) -> list[str]:
     return sorted(set(incomplete))
 
 
+
+def scanner_statuses(scan: dict[str, Any], incomplete: list[str]) -> list[dict[str, Any]]:
+    statuses = []
+    for name in REQUIRED_SCANNERS:
+        section = scan.get(name)
+        related_incomplete = (
+            name in incomplete
+            or (name == "dependencies" and any(x.startswith("osv") for x in incomplete))
+            or (name == "analysis" and "custom-rules" in incomplete)
+        )
+        error = section.get("error") if isinstance(section, dict) else "missing-or-invalid"
+        statuses.append({
+            "name": name,
+            "status": "failed" if related_incomplete else "completed",
+            "error": error,
+        })
+    return statuses
+
 def build_envelope(
     scan: dict[str, Any],
     repository: str,
@@ -138,14 +157,7 @@ def build_envelope(
         "mizan_version": version,
         "scan_timestamp": timestamp or datetime.now(timezone.utc).isoformat(),
         "completion_status": "incomplete" if incomplete else "complete",
-        "scanner_status": [
-            {
-                "name": name,
-                "status": "failed" if name in incomplete else "completed",
-                "error": (scan.get(name) or {}).get("error"),
-            }
-            for name in REQUIRED_SCANNERS
-        ],
+        "scanner_status": scanner_statuses(scan, incomplete),
         "limitations": [
             "MIZAN ran in read-only mode; this workflow did not repair or modify repository files.",
             "Findings are evidence for independent review, not an automatic approval or merge decision.",
