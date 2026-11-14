@@ -70,7 +70,7 @@ jobs:
             echo "## MIZAN PR Evidence"
             echo
             echo "- Pull request: #${PR_NUMBER}"
-            echo "- Scanned revision: `${HEAD_SHA}`"
+            echo "- Scanned revision: ${HEAD_SHA}"
             if [ -n "$ARTIFACT_URL" ]; then
               echo "- Evidence report: [Download JSON report]($ARTIFACT_URL)"
             else
