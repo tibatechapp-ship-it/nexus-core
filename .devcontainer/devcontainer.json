@@ -3,11 +3,13 @@
   "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
   "features": {},
   "postCreateCommand": "pip install -e . && pip install pytest pytest-cov ruff mypy",
-  "postStartCommand": "nohup python -m uvicorn src.web.app:app --host 0.0.0.0 --port 8000 >/tmp/nexus-dashboard.log 2>&1 &",
-  "forwardPorts": [8000],
+  "postStartCommand": "nohup env NEXUS_ALLOW_OPEN=1 python -m uvicorn main:app --host 0.0.0.0 --port 8000 >/tmp/nexus-zui.log 2>&1 &",
+  "forwardPorts": [
+    8000
+  ],
   "portsAttributes": {
     "8000": {
-      "label": "Nexus Dashboard (لوحة القراءة-فقط)",
+      "label": "Nexus ZUI (الواجهة الموحدة)",
       "onAutoForward": "openBrowser"
     }
   },

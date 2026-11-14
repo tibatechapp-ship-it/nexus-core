@@ -7,8 +7,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 import threading
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,10 +25,25 @@ from src.observability.trace import (
     trace_event,
     trace_path,
 )
-from src.web import app as webapp
-from src.web.app import app
 
-client = TestClient(app)
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_gateway() -> Any:
+    """حمّل البوابة الموحدة (unified_agent.py) — مسارات الأثر تعيش فيها
+    بعد حذف اللوحة القديمة (v1.61.0: المسارات نُقلت فنُقل الاختبار معها)."""
+    name = "_nexus_gateway_trace_logs"
+    mod = sys.modules.get(name)
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(
+            name, _ROOT / "src" / "legacy_root" / "unified_agent.py")
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+client = TestClient(_load_gateway().app)
 
 
 @pytest.fixture(autouse=True)
@@ -269,29 +287,9 @@ def test_trace_recent_endpoint(tmp_path: Any) -> None:
         assert field in body["events"][-1]
 
 
-def test_dashboard_page_renders_trace_section(tmp_path: Any) -> None:
-    trace_event("supervisor", "run", outcome="ok", duration_ms=3.0)
-    r = client.get("/dashboard")
-    assert r.status_code == 200
-    assert "آخر أحداث الأثر" in r.text                  # القسم الجديد
-    assert "<script" not in r.text.lower()              # قراءة-فقت: صفر JS
-    assert "supervisor" in r.text and "3.0ms" in r.text
-
-
-def test_dashboard_page_escapes_trace_content(tmp_path: Any) -> None:
-    """وكيل باسم خبيث في ملف الأثر لا يجتاز Escape إلى الصفحة."""
-    path = tmp_path / "trace.jsonl"
-    payload = {"ts": "t", "agent": "<script>alert(1)</script>", "tool": "run",
-               "duration_ms": 1, "outcome": "ok"}
-    path.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
-    r = client.get("/dashboard")
-    assert "<script>alert(1)</script>" not in r.text
-    assert "&lt;script&gt;" in r.text
-
-
 def test_run_tracker_still_released_with_trace(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    """التتبع لا يعطّل إطلاق خانة المهام الجارية (سلوك Week-1 يبقى سليماً)."""
+    """التتبع لا يعطّل تشغيل الوكيل عبر البوابة (سلوك Week-1 يبقى سليماً)."""
     import nova.registry as reg_mod
 
     class _Echo:
@@ -306,6 +304,12 @@ def test_run_tracker_still_released_with_trace(
             return _Echo()
 
     monkeypatch.setattr(reg_mod, "REGISTRY", _Reg())
-    before = client.get("/api/dashboard").json()["tasks_running"]
-    client.post("/api/agent/run", json={"agent": "e", "prompt": "p", "use_rag": False})
-    assert client.get("/api/dashboard").json()["tasks_running"] == before
+    trace_event("supervisor", "run", outcome="ok", duration_ms=1.0)
+    before = len(client.get("/api/trace/recent", params={"limit": 200})
+                 .json()["events"])
+    body = client.post("/api/agent/run",
+                       json={"agent": "supervisor", "prompt": "ping",
+                             "use_rag": False}).json()
+    assert body.get("ok") is True and body.get("result") == "ok"
+    after_events = client.get("/api/trace/recent", params={"limit": 200}).json()
+    assert len(after_events["events"]) >= before

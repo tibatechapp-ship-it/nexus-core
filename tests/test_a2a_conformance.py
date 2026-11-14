@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +32,25 @@ from src.a2a import (
     host_allowed,
     validate_card,
 )
-from src.web.app import app
+
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_gateway() -> Any:
+    """البوابة الموحدة (unified_agent.py) — مسارات A2A تعيش فيها
+    بعد حذف اللوحة القديمة (v1.61.0: المسارات نُقلت فنُقل الاختبار معها)."""
+    name = "_nexus_gateway_a2a"
+    mod = sys.modules.get(name)
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(
+            name, _ROOT / "src" / "legacy_root" / "unified_agent.py")
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+app = _load_gateway().app
 
 FIXTURE_CARD = Path(__file__).resolve().parent / "fixtures" / "a2a_reference_card.json"
 

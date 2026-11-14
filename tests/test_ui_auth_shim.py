@@ -1,17 +1,18 @@
-"""Drift guards for the access-token shim inside BOTH consoles.
+"""Drift guards for the access-token shim inside the unified console.
 
 The access guard (``src/security/access.py``) gates every mutating request with
-``X-Auth-Token``. The consoles are plain HTML, so when the guard is switched on
-they would 401 on every save unless a shim attaches the header. The shim must:
+``X-Auth-Token``. The console is plain HTML, so when the guard is switched on
+it would 401 on every save unless a shim attaches the header. The shim must:
 
 * stay a strict no-op when no token is stored (auth-off is the default),
 * bootstrap from ``/?token=XXX`` and then scrub the token out of the URL,
-* cover ``fetch`` AND ``XMLHttpRequest`` (both consoles use plain ``fetch``, but
+* cover ``fetch`` AND ``XMLHttpRequest`` (the ZUI uses plain ``fetch``, but
   the header must be attached whatever transport a caller picks),
 * be valid JavaScript — proven behaviourally, not by grep.
 
-``web/unified_ui.html`` is served by the engine, ``index.html`` by the
-workbench — both sit behind the same gateway middleware, so both need the shim.
+``web/zui/index.html`` is the single console since v1.61.0 (خطة التناغم
+ب3.1): served by the engine, the gateway and the workbench alike — all sit
+behind the same gateway middleware, so the shim ships once, inside it.
 Stdlib-only, so it runs in the phone gate.
 """
 from __future__ import annotations
@@ -26,8 +27,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CONSOLES = {
-    "workbench": ROOT / "index.html",
-    "engine": ROOT / "web" / "unified_ui.html",
+    "zui": ROOT / "web" / "zui" / "index.html",
 }
 TOKEN = "tok-" + "1" * 40
 
@@ -195,5 +195,5 @@ def test_shim_bootstraps_the_token_from_the_url(
 
 @pytest.fixture(scope="module")
 def html() -> str:
-    """The engine console (the richest page) for the single-page checks."""
-    return CONSOLES["engine"].read_text(encoding="utf-8")
+    """The single ZUI console for the single-page checks."""
+    return CONSOLES["zui"].read_text(encoding="utf-8")

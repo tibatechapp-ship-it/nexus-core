@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Nexus Council API
-  version: 1.60.0
+  version: "1.61.0"
   description: |-
     Nexus core HTTP contract — TWO apps, one spec.
 
@@ -65,7 +65,184 @@ tags:
   description: Read-only fleet-health metrics over the genome.
 - name: Chat
   description: Gateway chat and code analysis.
+- name: Traces
+  description: Standard trace log reads and archived deep-trace sessions.
+- name: A2A
+  description: Agent-to-agent interop (A2A 0.3.0) — cards and JSON-RPC messaging.
 paths:
+  /api/agent/run:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Agents
+      x-app: unified_agent.py
+      summary: Run a novamind registry agent (traced)
+      description: |
+        Functional errors return 200 with ok=false and an error field;
+        guard failures return 401/429 before routing.
+      operationId: postAgentRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - agent
+              - prompt
+              properties:
+                agent:
+                  type: string
+                  example: coder
+                prompt:
+                  type: string
+                use_rag:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: run result (check ok)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/council/deliberate:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - Council
+      x-app: unified_agent.py
+      summary: Council deliberation with memory bridge + deep-trace session (م3)
+      operationId: postCouncilDeliberate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - question
+              properties:
+                question:
+                  type: string
+      responses:
+        '200':
+          description: deliberation result (check ok)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/trace/recent:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Traces
+      x-app: unified_agent.py
+      summary: Recent standard trace events from runs/trace.jsonl (read-only)
+      operationId: getTraceRecent
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+        description: maximum number of events returned (newest last)
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/traces/sessions:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - Traces
+      x-app: unified_agent.py
+      summary: Archived deep-trace sessions (newest first) — م3
+      operationId: getTraceSessions
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /.well-known/agent.json:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - A2A
+      x-app: unified_agent.py
+      summary: Platform agent card (A2A 0.3.0)
+      description: بطاقة المركز القياسية — url البطاقة من مضيف الطلب نفسه.
+      operationId: getA2aWellKnown
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/a2a/cards:
+    x-served-by:
+    - unified_agent.py
+    get:
+      tags:
+      - A2A
+      x-app: unified_agent.py
+      summary: Fleet agent cards (106) generated from the live inventory
+      operationId: getA2aCards
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+  /api/a2a/message:
+    x-served-by:
+    - unified_agent.py
+    post:
+      tags:
+      - A2A
+      x-app: unified_agent.py
+      summary: JSON-RPC 2.0 message/send (non-streaming, A2A 0.3.0)
+      operationId: postA2aMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: raw JSON-RPC 2.0 request (jsonrpc, id, method, params)
+      responses:
+        '200':
+          description: JSON-RPC 2.0 response
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      security:
+      - AccessToken: []
+  /api/monitor:
+    x-served-by:
+    - nexus_agent.py
+    get:
+      tags:
+      - Agents
+      x-app: nexus_agent.py
+      summary: Council monitor — deterministic agent evaluations from the trace log
+      description: |
+        دور المجلس الدائم (ب1.4 — v1.61.0): تقييم حتمي لكل وكيل ظهر في
+        runs/trace.jsonl — معدل النجاح والمتوسط وآخر نتيجة وحكم معلن
+        (monitor-clear / watch / council-review / insufficient-data).
+        قراءة-فقط: بلا شبكة بلا LLM، وغياب السجل يعيد تقييمات فارغة معلنة.
+      operationId: getMonitor
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
   /api/agents:
     x-served-by:
     - nexus_agent.py

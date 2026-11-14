@@ -35,7 +35,8 @@ def test_dashboard_port_forwarded_with_open_browser() -> None:
 def test_post_start_boots_the_dashboard() -> None:
     cmd = _config()["postStartCommand"]
     assert "uvicorn" in cmd
-    assert "src.web.app:app" in cmd
+    assert "main:app" in cmd                      # الواجهة الموحدة (v1.61.0)
+    assert "NEXUS_ALLOW_OPEN=1" in cmd            # حارس الدخول يتطلب تصريحاً صريحاً للتجربة المحلية
     assert "--port" in cmd and "8000" in cmd
 
 

@@ -134,6 +134,17 @@ async def docs_root():
     return RedirectResponse("/docs/swagger")
 
 
+# v1.61.0 — ZUI static assets (واجهة واحدة: css/js/manifest/sw عبر /zui)
+try:
+    from fastapi.staticfiles import StaticFiles
+
+    _ZUI_DIR = os.path.join(BASE_DIR, "web", "zui")
+    if os.path.isdir(_ZUI_DIR):
+        app.mount("/zui", StaticFiles(directory=_ZUI_DIR), name="zui")
+except Exception:  # pragma: no cover - defensive
+    pass
+
+
 @app.get("/docs/swagger", response_class=HTMLResponse, include_in_schema=False)
 async def docs_swagger():
     p = os.path.join(DOCS_DIR, "swagger.html")
@@ -171,7 +182,9 @@ def _craft_auth(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    with open(os.path.join(BASE_DIR, "index.html"), "r", encoding="utf-8") as f:
+    # v1.61.0: الواجهة الوحيدة ZUI — كونسول workbench القديم حُذف (ب3.2)
+    zui = os.path.join(BASE_DIR, "web", "zui", "index.html")
+    with open(zui, "r", encoding="utf-8") as f:
         return f.read()
 
 

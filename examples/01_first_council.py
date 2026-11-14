@@ -19,10 +19,10 @@ os.environ.setdefault("NEXUS_ALLOW_OPEN", "1")
 os.environ.setdefault("NOVAMIND_HOME", str(
     Path(__file__).resolve().parents[1]))
 
-# بيئة مغلقة: مولّد mock حتمي (نفس دالة لوحة التحكم src/web/app.py).
-from src.web.app import _setup_mock  # noqa: E402
+# بيئة مغلقة: مولّد mock حتمي (src/llm/mock_router.py — مالك الوهم المعتمد).
+from src.llm.mock_router import setup_mock  # noqa: E402
 
-_setup_mock()
+setup_mock()
 
 
 def main() -> int:

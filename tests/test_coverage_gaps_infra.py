@@ -176,17 +176,5 @@ def test_skill_loader_reads_the_first_heading(tmp_path: Path) -> None:
 
 
 # ── web/app ──────────────────────────────────────────────────────────────
-def test_web_app_loads_without_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The dashboard must import cleanly when ``python-dotenv`` is absent."""
-
-    source_path = ROOT / "src" / "web" / "app.py"
-    source = source_path.read_text(encoding="utf-8")
-    monkeypatch.setitem(sys.modules, "dotenv", None)
-
-    namespace: dict[str, Any] = {
-        "__name__": "src.web.app_no_dotenv",
-        "__file__": str(source_path),
-    }
-    exec(compile(source, str(source_path), "exec"), namespace)
-
-    assert namespace["app"].title == "Nexus-Core Dashboard"
+# (اللوحة القديمة حُذفت في v1.61.0 — اختبار استيرادها بلا dotenv انتهى معها،
+#  والواجهة الموحدة تُفحص استيرادها في test_openapi وtest_zui_contract.)

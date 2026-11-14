@@ -329,6 +329,21 @@ def _agent_system(agent_id: Optional[str], task: str = "") -> str:
     else:
         fallback = _DEFAULT_SYSTEM
         identity = agent_id or "default"
+        # ب2.4 (v1.61.0): وكلاء novamind بلا فئة core — هويتهم تُبنى من
+        # وصفهم في السجل الموحد (nova.yaml) حتى لا تُفقد شخصيتهم في البرومبت.
+        if agent_id:
+            try:
+                from src.orchestrator.unified_registry import get_unified_registry
+
+                spec = get_unified_registry().spec(agent_id)
+                if spec is not None and getattr(spec, "framework", "") == "novamind":
+                    fallback = (
+                        f"{fallback}\n\nYou are the novamind agent "
+                        f"'{agent_id}' ({spec.domain}). "
+                        f"Agent description: {spec.description or 'novamind fleet member'}."
+                    ).strip()
+            except Exception:  # pragma: no cover - defensive: never break chat
+                pass
     try:
         from src.knowledge import inject_into_prompt
 
@@ -504,6 +519,19 @@ def api_metrics_clear() -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════
 # /api/agents — الوكلاء المدمجون (حقيقي، من السجلّ لا رقم مكتوب يدويًا)
 # ═══════════════════════════════════════════════════════════════════════
+@app.get("/api/monitor")
+def api_monitor() -> Dict[str, Any]:
+    """دور المجلس الدائم: تقييم الوكلاء من سجل الأثر — حتمي قراءة-فقط (ب1.4)."""
+    try:
+        from src.council.monitor import evaluate_agents, summary
+
+        evals = evaluate_agents()
+        return {"ok": True, "evaluations": evals, "summary": summary(evals)}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}",
+                "evaluations": {}, "summary": {}}
+
+
 @app.get("/api/agents")
 def api_agents() -> Dict[str, Any]:
     classes = _agent_classes()
@@ -981,15 +1009,15 @@ def api_mcp_tools() -> Dict[str, Any]:
     return {"ok": True, "total": len(tools), "tools": tools}
 
 
-# لوحة المحرّك الموحّدة (web/unified_ui.html): الوالد يفوز بـ "/" لذا يحتاج
-# المحرك مساراً صريحاً — /ui = نفس الصفحة التي يخدمها unified_agent وحده
-# (المجلس الحيّ + الجينوم + الأكاديمية) على منفذ الخدمة نفسه.
+# الواجهة الموحدة ZUI (web/zui/ — الواجهة الوحيدة المعتمدة): الوالد يفوز
+# بـ "/" لذا يحتاج المحرك مساراً صريحاً — /ui = نفس الصفحة التي يخدمها
+# unified_agent وحده (المجلس الحيّ + التتبع + التقييم) على منفذ الخدمة نفسه.
 @app.get("/ui", response_class=HTMLResponse)
 async def engine_ui() -> HTMLResponse:
-    ui_path = BASE_DIR / "web" / "unified_ui.html"
+    ui_path = BASE_DIR / "web" / "zui" / "index.html"
     if ui_path.exists():
         return HTMLResponse(ui_path.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>web/unified_ui.html not found</h1>", status_code=404)
+    return HTMLResponse("<h1>web/zui/index.html not found</h1>", status_code=404)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1012,12 +1040,11 @@ if _vendor_dir.exists():
     app.mount("/vendor", StaticFiles(directory=str(_vendor_dir)), name="vendor")
     print(f"✅ vendor مركّب: {_vendor_dir}")
 
-# v1.47.0 — static assets for split UI
-_web_static = Path(__file__).parent / "web"
-if (_web_static / "css").exists():
-    app.mount("/css", StaticFiles(directory=str(_web_static / "css")), name="css")
-if (_web_static / "js").exists():
-    app.mount("/js", StaticFiles(directory=str(_web_static / "js")), name="js")
+# v1.61.0 — ZUI static assets (لوحة واحدة لا نسخ: css/js/manifest/sw عبر /zui)
+_web_static = BASE_DIR / "web" / "zui"
+if _web_static.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/zui", StaticFiles(directory=str(_web_static)), name="zui")
 
 if ENGINE_OK:
     app.mount("/", _engine.app)

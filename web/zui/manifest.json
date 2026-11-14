@@ -1,0 +1,14 @@
+{
+  "name": "Nexus ZUI",
+  "short_name": "Nexus ZUI",
+  "description": "واجهة البرمجة الموحدة لـ nexus-core: حوار متدفق، مجلس حي، تتبع وتقييم وكلاء.",
+  "start_url": "/ui",
+  "display": "standalone",
+  "background_color": "#0d0f13",
+  "theme_color": "#0d0f13",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {"src": "/zui/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+  ]
+}

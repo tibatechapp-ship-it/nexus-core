@@ -46,7 +46,6 @@ MOVE_MAP = {
     "nova/core": "src/novamind/core",
     "nova/eval": "src/novamind/eval",
     "nova/security": "src/novamind/security",
-    "nova/dashboard": "src/novamind/dashboard",
     "nova/cli": "src/novamind/cli",
     "nova/tools": "src/novamind/tools",
     "nova/scripts": "scripts",

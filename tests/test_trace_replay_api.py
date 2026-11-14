@@ -6,6 +6,8 @@ Offline بالكامل: نكتب جلسات مؤقتة عبر ``NEXUS_TRACES_DIR
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +15,25 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.observability.otrace import DeepTracer
-from src.web.app import app
 
-client = TestClient(app)
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_gateway() -> Any:
+    """حمّل البوابة الموحدة (unified_agent.py) — مسارات التتبع تعيش فيها
+    بعد حذف اللوحة القديمة (v1.61.0: نقلت المسارات لا اختباراتها)."""
+    name = "_nexus_gateway_trace_replay"
+    mod = sys.modules.get(name)
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(
+            name, _ROOT / "src" / "legacy_root" / "unified_agent.py")
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+client = TestClient(_load_gateway().app)
 
 
 @pytest.fixture()
@@ -107,7 +125,6 @@ def test_deliberate_response_includes_trace_session(
     traces_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """مداولة المجلس تُرجع trace_session قابلاً للفتح فورًا في replay."""
-    from src.web import app as webapp
 
     class FakeResult:
         verdict = "ok"

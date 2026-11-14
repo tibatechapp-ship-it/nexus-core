@@ -76,10 +76,17 @@ def spec() -> dict:
 
 
 def _live_paths(app) -> dict[str, set[str]]:
-    """path → verbs actually served by this app (spec endpoint excluded)."""
+    """path → verbs actually served by this app (spec endpoint excluded).
+
+    ``/api/`` عائلة المسارات الأساسية، و``/.well-known/`` بطاقة اكتشاف A2A
+    الموثَّقة — كلاهما يُحتسب في الاتحاد؛ ما عدا ذلك (الصفحات والأصول)
+    خارج العقد لا يدخل المقارنة أصلاً.
+    """
     paths: dict[str, set[str]] = {}
     for path, item in app.app.openapi()["paths"].items():
-        if not path.startswith("/api/") or path == _SELF:
+        if path == _SELF:
+            continue
+        if not (path.startswith("/api/") or path.startswith("/.well-known/")):
             continue
         verbs = {v for v in item if v in _VERBS}
         if verbs:

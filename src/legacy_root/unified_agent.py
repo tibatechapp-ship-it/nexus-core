@@ -38,7 +38,8 @@ except ImportError:
 
 # FastAPI
 from fastapi import FastAPI
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Request
+from src.observability.trace import trace_context
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.responses import FileResponse
@@ -384,15 +385,15 @@ class AnalyzeRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
-    ui_path = ROOT / "web" / "unified_ui.html"
+    ui_path = ROOT / "web" / "zui" / "index.html"
     if ui_path.exists():
         return ui_path.read_text(encoding="utf-8")
-    return "<h1>NovaMind Unified</h1><p>UI not found. Create web/unified_ui.html</p>"
+    return "<h1>Nexus ZUI</h1><p>UI not found. Create web/zui/index.html</p>"
 
 
 # ── PWA assets (v2.0) ────────────────────────────────────────────────
 def _web_file(name: str) -> Path:
-    return ROOT / "web" / name
+    return ROOT / "web" / "zui" / name
 
 
 @app.get("/manifest.json")
@@ -424,17 +425,160 @@ async def pwa_offline():
 
 @app.get("/icon-{size}.png")
 async def pwa_icon(size: str):
-    # Only the three published icons; reject anything else.
-    name = {
-        "192": "icon-192.png",
-        "512": "icon-512.png",
-        "maskable-512": "icon-maskable-512.png",
-    }.get(size)
-    path = _web_file(name) if name else None
-    if path is None or not path.exists():
+    # v1.61.0: أيقونة SVG واحدة في web/zui/ — الأحجام القديمة تُخدَم بنفس الأيقونة.
+    if size not in {"192", "512", "maskable-512"}:
         raise HTTPException(status_code=404, detail="icon not found")
-    return FileResponse(str(path), media_type="image/png",
+    path = ROOT / "web" / "zui" / "icon.svg"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="icon not found")
+    return FileResponse(str(path), media_type="image/svg+xml",
                         headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ── ZUI static assets + vendored highlighter (v1.61.0) ───────────────
+def _mount_static(prefix: str, directory: Path) -> None:
+    try:
+        from fastapi.staticfiles import StaticFiles
+
+        if directory.exists():
+            app.mount(prefix, StaticFiles(directory=str(directory)), name=prefix.strip("/"))
+    except Exception:  # pragma: no cover - defensive: UI API يبقى أولاً
+        pass
+
+
+_mount_static("/zui", ROOT / "web" / "zui")
+_mount_static("/vendor", ROOT / "web" / "vendor")
+
+
+# ═══ A2A — التشغيل البيني (م4 — ض3؛ نُقلت من src/web بعد حذف اللوحة v1.61.0) ═══
+@app.get("/.well-known/agent.json")
+def a2a_well_known(request: Request) -> dict:
+    """بطاقة المنصة (A2A 0.3.0) — المسار القياسي؛ url البطاقة من
+    مضيف الطلب نفسه فتظل صحيحة في أي نشر (بلا إعدادات إضافية)."""
+    from src.a2a import build_hub_card
+    return build_hub_card(str(request.base_url).rstrip("/")).to_dict()
+
+
+@app.get("/api/a2a/cards")
+def a2a_cards(request: Request) -> dict:
+    """بطاقات 106 وكلاء — تُولَّد من جرد الأسطول الحي (مصدر واحد)."""
+    try:
+        from src.a2a import build_agent_cards
+        root = str(request.base_url).rstrip("/")
+        cards = build_agent_cards(root)
+        return {"ok": True, "count": len(cards),
+                "cards": [c.to_dict() for c in cards]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/a2a/message")
+def a2a_message(request: dict) -> dict:
+    """نقطة JSON-RPC 2.0 — message/send غير المتدفق (A2A 0.3.0)."""
+    from src.a2a import handle_jsonrpc
+    return handle_jsonrpc(request)
+
+
+# ═══ Fleet run + council + trace (نُقلت من src/web بعد حذف اللوحة — v1.61.0) ═══
+class AgentRunRequest(BaseModel):
+    agent: str
+    prompt: str
+    use_rag: bool = False
+
+
+class CouncilDeliberateRequest(BaseModel):
+    question: str
+
+
+@app.get("/api/traces/sessions")
+def trace_sessions() -> dict:
+    """جرد جلسات التتبّع العميق المؤرشفة (م3) — الأحدث أولًا.
+
+    مُعرَّفة قبل المسار الديناميكي ``/api/traces/{tid}`` كي لا يبتلعها.
+    """
+    try:
+        from src.observability.otrace import list_sessions
+
+        return {"ok": True, "sessions": list_sessions()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/agent/run")
+def run_agent(req: AgentRunRequest) -> dict:
+    """تشغيل وكيل novamind من السجل الحي — trace_context يوثّق كل مسار."""
+    _trace: dict = {}
+    try:
+        with trace_context(req.agent, "run", _trace):
+            from nova.registry import REGISTRY
+
+            agent = REGISTRY.load_agent(req.agent)
+            methods = ["build", "run", "execute", "analyze", "fix", "review", "generate"]
+            method = next((m for m in methods if hasattr(agent, m)), None)
+            if not method:
+                raise HTTPException(400, f"لا توجد طريقة للوكيل {req.agent}")
+            _trace["tool"] = method
+            prompt = req.prompt
+            if req.use_rag:
+                try:
+                    from src.memory.agent_rag_bridge import get_bridge
+
+                    enriched = get_bridge().enrich_prompt(prompt, k=3)
+                    if enriched != prompt:
+                        prompt = enriched
+                except Exception:
+                    pass
+            start = time.time()
+            result = getattr(agent, method)(prompt)
+            _trace["outcome"] = "ok"
+            return {"ok": True, "agent": req.agent, "method": method,
+                    "result": str(result)[:3000], "elapsed": time.time() - start}
+    except Exception as e:
+        _trace["outcome"] = "error"
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/council/deliberate")
+def council_deliberate(req: CouncilDeliberateRequest) -> dict:
+    """مداولة مجلس بريدج الذاكرة — جلسة تتبّع عميق مؤرشفة لكل مداولة (م3)."""
+    _trace: dict = {"agent": "council"}
+    from src.observability.otrace import DeepTracer
+
+    tracer = DeepTracer()
+    _trace_session: dict = {}
+    try:
+        with trace_context("council", "deliberate", _trace):
+            with tracer.session():
+                _trace_session["session_id"] = tracer.trace_id
+                with tracer.span("council.deliberate", agent="council",
+                                 attributes={"rounds_cap": 1}):
+                    from src.council.rag_bridge import get_council_bridge
+
+                    b = get_council_bridge()
+                    b.engine.MAX_ROUNDS = 1
+                    with tracer.span("council.deliberate_with_memory", agent="council"):
+                        result = b.deliberate_with_memory(req.question)
+            _trace["outcome"] = "ok"
+            return {"ok": True, "verdict": result.verdict, "score": result.score,
+                    "rounds": result.rounds, "consensus": result.consensus,
+                    "elapsed": result.elapsed,
+                    "trace_session": _trace_session.get("session_id", ""),
+                    "transcript": [{"phase": e["phase"], "member": e["member"],
+                                    "response": e["response"][:500]}
+                                   for e in result.transcript],
+                    "security_events": result.security_events}
+    except Exception as e:
+        _trace["outcome"] = "error"
+        return {"ok": False, "error": str(e),
+                "trace_session": _trace_session.get("session_id", "")}
+
+
+@app.get("/api/trace/recent")
+def trace_recent(limit: int = 20) -> dict:
+    """آخر أحداث الأثر من runs/trace.jsonl — قراءة-فقط، بلا PII بالتصميم."""
+    from src.observability.trace import read_recent
+
+    return {"ok": True, "events": read_recent(limit)}
 
 
 @app.get("/api/health")
@@ -817,10 +961,29 @@ async def list_traces(conversation_id: str = "", q: str = "", limit: int = 200):
 
 @app.get("/api/traces/{tid}")
 async def get_trace(tid: str):
+    # فصل صريح بين «المشوه» و«غير الموجود»: المعرف بحرف مسار أو نقطة مسار
+    # يُرفض 400 قبل أي قراءة. بعد فشل مخزن المحادثات، كل معرف ليس
+    # hex-32 هو معرف مشوه (400) — والمعرف السليم غير الموجود وحده
+    # يستحق 404. (نقل من src/web — v1.61.0)
+    if "/" in tid or ".." in tid:
+        raise HTTPException(status_code=400, detail="invalid trace id")
     tr = store.get_trace(tid)
-    if tr is None:
-        raise HTTPException(status_code=404, detail="trace not found")
-    return tr
+    if tr is not None:
+        return tr
+    if len(tid) == 32 and all(c in "0123456789abcdef" for c in tid):
+        # v1.61.0: جلسة تتبّع عميق (م3 — نُقلت من src/web): معرّف hex-32 فقط،
+        # يُفحص بعد مخزن المحادثات فلا يفسد أي عقد قديم.
+        from src.observability.otrace import replay_steps, traces_dir
+
+        path = traces_dir() / f"{tid}.jsonl"
+        if path.exists():
+            steps = replay_steps(path)
+            return {"ok": True, "session_id": tid, "steps": steps,
+                    "count": len(steps)}
+        raise HTTPException(status_code=404, detail="session not found")
+    raise HTTPException(
+        status_code=400,
+        detail="deep-trace session id must be hex-32")
 
 
 @app.delete("/api/traces/{tid}")

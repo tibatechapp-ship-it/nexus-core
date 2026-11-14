@@ -1,7 +1,7 @@
 """Agent registry — loads skills_registry.json and validates vs manifest."""
 from __future__ import annotations
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional
 
@@ -20,6 +20,10 @@ class AgentSpec:
     not_scope: tuple
     input_schema: dict
     output_schema: dict
+    #: إطار الوكيل (ب2.1 — v1.61.0): يغلق عمى الإطار في `_fleet_rank` —
+    #: المفتاح الحقيقي للوحة الأسطول هو ``(framework, name)`` لا الاسم وحده.
+    framework: str = "core"
+    description: str = ""
 
 
 class AgentRegistry:
@@ -67,6 +71,10 @@ class AgentRegistry:
         if name not in self._specs:
             raise KeyError(f"agent not registered: {name!r}")
         return self._specs[name]
+
+    def spec(self, name: str) -> Optional[AgentSpec]:
+        """الواصفة إن وُجدت وإلا ``None`` — تُستخدم للتوجيه المُدرك للإطار."""
+        return self._specs.get(name)
 
     def in_domain(self, domain: str) -> List[str]:
         return list(self._by_domain.get(domain, ()))

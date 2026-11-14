@@ -19,7 +19,7 @@ from src.coder import sandbox
 from src.coder.analyzer import analyze_repo
 from src.coder.detector import detect
 from src.coder.plan import RepairPlan, plan_from_json, validate
-from src.coder.policy import RiskPolicy
+from src.coder.policy import ESCALATE_AFTER_FAILURES, RiskPolicy
 from src.observability.trace import trace_event
 from src.quality_gate.runner import run_gate
 
@@ -29,8 +29,9 @@ MAX_FEEDBACK = 400
 DEFAULT_COUNCIL_TIMEOUT = 30.0
 
 #: أوضاع المجلس — راجع ``src/coder/policy.py`` للشرح الكامل.
-#: ``async`` هو المعيار الجديد: لا توقف عمل، ومداولة متوازية، وبوابة ترقية.
-COUNCIL_MODES = ("async", "blocking", "off")
+#: ``escalate`` هو المعيار الجديد (v1.61.0): لا مداولة استباقية — تصعيد واحد
+#: عند العجز فقط، ودور المجلس الدائم مراقبة وتقييم عبر ``src.council.monitor``.
+COUNCIL_MODES = ("escalate", "async", "blocking", "off")
 
 PLAN_PROMPT = (
     "You are the planning stage of a coding agent. Reply with ONLY one JSON "
@@ -69,15 +70,20 @@ async def _ask_plan(connector: Any, goal: str, defects: list, context: dict,
     return plan, ""
 
 
-async def _council_verdict(council: Callable, plan: RepairPlan) -> str:
-    """استدعاء المجلس داعماً للمزامن وغير المتزامن — نص القرار كما عاد."""
+async def _council_verdict(council: Callable, plan: RepairPlan | None) -> str:
+    """استدعاء المجلس داعماً للمزامن وغير المتزامن — نص القرار كما عاد.
+
+    الخطة قد تكون غائبة (``None``) حين كان العجز في مرحلة التخطيط نفسها —
+    والمجلس عندنا يُستشار بسياق العجز لا بالخطة وحدها (ب1.2).
+    """
     result = council(plan)
     if asyncio.iscoroutine(result):
         result = await result
     return str(result)
 
 
-def _start_council(council: Callable | None, plan: RepairPlan) -> asyncio.Task | None:
+def _start_council(council: Callable | None,
+                   plan: RepairPlan | None) -> asyncio.Task | None:
     """إطلاق مداولة المجلس كمهمة متوازية — لا تنتظرها الحلقة الآن."""
     if council is None:
         return None
@@ -134,23 +140,46 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
     trace_event("coder", "detect", outcome="ok", extra={"defects": str(len(defects))})
     feedback = ""
     attempts: list = []
+    last_plan: RepairPlan | None = None
+    failures = 0
+    escalated = False
+    escalation: JsonDict = {"triggered": False, "iteration": 0, "verdict": ""}
 
     for iteration in range(1, max_iterations + 1):
         started = time.monotonic()
+        # ب1.2 — التصعيد عند العجز (وضع escalate فقط): بعد ESCALATE_AFTER_FAILURES
+        # محاولة فاشلة في التشغيل نفسه يُستشار المجلس مرة واحدة بسياق العجز،
+        # ليحلّ لا ليوقف — نص حكمه يصير feedback المحاولة التالية.
+        if (council_mode == "escalate" and council is not None
+                and not escalated and failures >= ESCALATE_AFTER_FAILURES):
+            escalated = True
+            escalation = {"triggered": True, "iteration": iteration, "verdict": ""}
+            trace_event("coder", "council", outcome="escalated",
+                        extra={"failures": str(failures)})
+            verdict = await _await_council(_start_council(council, last_plan),
+                                           council_timeout)
+            escalation["verdict"] = verdict
+            tail = feedback[-MAX_FEEDBACK // 2:]
+            feedback = f"council escalation: {verdict} | previous: {tail}" if feedback \
+                else f"council escalation: {verdict}"
+
         plan, error = await _ask_plan(connector, goal, defects, context, feedback)
         if plan is None:
+            failures += 1
             feedback = error
             attempts.append({"iteration": iteration, "stage": "plan", "error": error})
             trace_event("coder", "plan", outcome="fail", extra={"error": error})
             continue
         errors = validate(plan)
         if errors:
+            failures += 1
             feedback = "fix plan errors: " + "; ".join(errors)
             attempts.append({"iteration": iteration, "stage": "plan", "error": feedback})
             trace_event("coder", "plan", outcome="fail", extra={"error": feedback})
             continue
         trace_event("coder", "plan", outcome="ok",
                     extra={"steps": str(len(plan.steps)), "iteration": str(iteration)})
+        last_plan = plan
 
         high_risk = policy.needs_council(plan)
         council_task = None
@@ -164,15 +193,22 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
                 trace_event("coder", "council", outcome="rejected")
                 return {"ok": False, "error": "council_required", "iterations": iteration,
                         "plan": plan.to_json(), "attempts": attempts,
-                        "promotion": promotion, "workdir": str(workdir)}
+                        "promotion": promotion, "workdir": str(workdir),
+                        "escalation": escalation}
             trace_event("coder", "council", outcome="approved")
         elif high_risk and council_mode == "async":
-            # المعيار الجديد: مداولة متوازية — التنفيذ لا ينتظر أحداً.
+            # الوضع القديم المتاح: مداولة متوازية — التنفيذ لا ينتظر أحداً.
             council_task = _start_council(council, plan)
             trace_event("coder", "council", outcome="started")
+        elif high_risk and council_mode == "escalate":
+            # المعيار الجديد (ب1.1): لا مداولة استباقية — الخطة تُنفّذ وتبقى
+            # pending حتى توقيع صريح، إلا إذا سبق تصعيدٌ حكمَ على الهدف.
+            trace_event("coder", "council", outcome="deferred",
+                        extra={"mode": "escalate"})
 
         execution = sandbox.apply_plan(plan, workdir)
         if not execution["ok"]:
+            failures += 1
             feedback = "sandbox rejected steps: " + json.dumps(execution["errors"])[:MAX_FEEDBACK]
             attempts.append({"iteration": iteration, "stage": "execute", "error": feedback})
             trace_event("coder", "execute", outcome="fail")
@@ -186,12 +222,19 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
         })
         _append_record(workdir, plan, {"tests": tests, "gate": gate_results})
         if tests["ok"] and gate_ok:
-            promotion = "auto"
             if high_risk:
                 if council_mode == "off":
                     promotion = "pending"
                     trace_event("coder", "council", outcome="skipped",
                                 extra={"mode": "off"})
+                elif council_mode == "escalate":
+                    # ب1.1: بلا تصعيد سابق ⇒ pending؛ مع تصعيد ⇒ حكمه يُحتسب.
+                    verdict = escalation["verdict"] if escalated else "none"
+                    promotion = _promotion(verdict, high_risk=True)
+                    outcome = {"approved": "approved", "rejected": "rejected"}.get(
+                        promotion, "pending")
+                    trace_event("coder", "council", outcome=outcome,
+                                extra={"mode": "escalate", "escalated": str(escalated)})
                 else:
                     if council_mode == "blocking":
                         # الحكم سبق وجُوبِض قبل التنفيذ — لا انتظار ثانٍ.
@@ -204,18 +247,23 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
                         promotion, "pending")
                     trace_event("coder", "council", outcome=outcome,
                                 extra={"promotion": promotion})
+            else:
+                promotion = "auto"
             trace_event("coder", "gate", outcome="ok",
                         duration_ms=round((time.monotonic() - started) * 1000, 2))
             return {"ok": True, "iterations": iteration, "plan": plan.to_json(),
                     "gate": gate_results, "promotion": promotion,
-                    "workdir": str(workdir), "attempts": attempts}
+                    "workdir": str(workdir), "attempts": attempts,
+                    "escalation": escalation}
+        failures += 1
         feedback = "gate failed: " + _summarize(gate_results) + f" | tests: {tests['stderr'][-120:]}"
         trace_event("coder", "gate", outcome="fail")
         if council_task is not None:
             council_task.cancel()
 
     return {"ok": False, "error": "max_iterations", "iterations": max_iterations,
-            "attempts": attempts, "workdir": str(workdir)}
+            "attempts": attempts, "workdir": str(workdir),
+            "escalation": escalation}
 
 
 def _append_record(workdir: Path, plan: RepairPlan, outcome: dict) -> None:
@@ -237,7 +285,7 @@ async def run_engine(
     workdir: Path | str | None = None,
     max_iterations: int = MAX_ITERATIONS,
     council: Callable | None = None,
-    council_mode: str = "async",
+    council_mode: str = "escalate",
     council_timeout: float = DEFAULT_COUNCIL_TIMEOUT,
     policy: RiskPolicy | None = None,
     gates: list | None = None,
@@ -247,14 +295,19 @@ async def run_engine(
 
     ``connector`` is any BYOK object exposing ``async generate()``. ``council``
     is an optional callable (sync or async). ``council_mode`` chooses how the
-    council is involved: ``"async"`` (default — deliberation runs in parallel
-    with execution, work never stops, the verdict lands in ``promotion``),
+    council is involved: ``"escalate"`` (default — no preemption: work never
+    waits, high-risk green results stay ``pending`` for explicit sign-off,
+    and the council is consulted exactly once after
+    ``ESCALATE_AFTER_FAILURES`` failed attempts — its verdict becomes the
+    next iteration's feedback and lands in result ``escalation``),
+    ``"async"`` (legacy — parallel deliberation on every high-risk plan),
     ``"blocking"`` (legacy — high-risk plans wait for an explicit approval),
     or ``"off"`` (never consulted; high-risk results stay ``pending``).
-    ``policy`` scopes *when* the council is consulted at all (effective risk
-    by path and action — docs/tests never wake the council). Returns a JSON
-    result whose ``attempts`` list is the full audit trail of every
-    iteration's stage outcomes.
+    The council's permanent monitoring/evaluating duty lives in
+    ``src.council.monitor``. Returns a JSON result whose ``attempts`` list
+    is the full audit trail of every iteration's stage outcomes, and whose
+    ``escalation`` records whether the impasse escalation fired, at which
+    iteration, and its verdict.
     """
     if council_mode not in COUNCIL_MODES:
         raise ValueError(f"council_mode must be one of {COUNCIL_MODES}, "

@@ -148,7 +148,8 @@ async def test_council_approval_lets_high_risk_proceed(tmp_path: Path) -> None:
         return "approve"
 
     result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
-                              council=council, gates=PASS_GATE, test_timeout=90)
+                              council=council, council_mode="async",
+                              gates=PASS_GATE, test_timeout=90)
     assert result["ok"] is True and len(seen) == 1
     assert result["promotion"] == "approved"
 
@@ -257,6 +258,7 @@ async def test_async_council_approve_overlaps_execution(tmp_path: Path) -> None:
     conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(HIGH_STEPS, GOOD_TESTS)])
     result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
                               council=lambda plan: "approve",
+                              council_mode="async",
                               gates=PASS_GATE, test_timeout=90)
     assert result["ok"] is True and result["promotion"] == "approved"
 
@@ -266,6 +268,7 @@ async def test_async_council_reject_flags_but_does_not_stop(tmp_path: Path) -> N
     conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(HIGH_STEPS, GOOD_TESTS)])
     result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
                               council=lambda plan: "veto",
+                              council_mode="async",
                               gates=PASS_GATE, test_timeout=90)
     assert result["ok"] is True and result["promotion"] == "rejected"
     from src.coder.engine import promote
@@ -283,6 +286,7 @@ async def test_async_slow_council_times_out_to_pending(tmp_path: Path) -> None:
     conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(HIGH_STEPS, GOOD_TESTS)])
     result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
                               council=slow_council, council_timeout=0.05,
+                              council_mode="async",
                               gates=PASS_GATE, test_timeout=90)
     assert result["ok"] is True and result["promotion"] == "pending"
 
@@ -295,6 +299,7 @@ async def test_async_broken_council_yields_pending(tmp_path: Path) -> None:
     conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(HIGH_STEPS, GOOD_TESTS)])
     result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
                               council=exploding_council,
+                              council_mode="async",
                               gates=PASS_GATE, test_timeout=90)
     assert result["ok"] is True and result["promotion"] == "pending"
 

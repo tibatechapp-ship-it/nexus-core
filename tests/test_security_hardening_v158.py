@@ -344,19 +344,30 @@ def test_d8_test_workflow_is_least_privilege() -> None:
 # ═══════════════════ ض9 — unified guard on the web app ══════════════════════
 
 
-def test_d9_web_app_guard_requires_token_for_mutations(monkeypatch) -> None:
-    """EXPLOIT: anyone reaching the dashboard server could trigger agent runs
+def test_d9_workbench_guard_requires_token_for_mutations(monkeypatch) -> None:
+    """EXPLOIT: anyone reaching the workbench server could trigger agent runs
     and state changes — the guard existed but only the gateway installed it.
 
-    DEFENCE: the same AccessGuard is middleware on the app itself; mutating
-    requests need X-Auth-Token, reads stay open.
+    DEFENCE: the same AccessGuard is middleware on the app itself (main.py
+    — the unified workbench that survived v1.61.0); mutating requests need
+    X-Auth-Token, reads stay open.
     """
+    import importlib.util
+    import sys
+
     from fastapi.testclient import TestClient
 
-    from src.web import app as webapp
+    name = "_nexus_workbench_guard_d9"
+    mod = sys.modules.get(name)
+    if mod is None:
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location(name, root / "main.py")
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
 
-    monkeypatch.setattr(webapp.GUARD, "token", "s3cret-token")
-    client = TestClient(webapp.app)
+    monkeypatch.setattr(mod.GUARD, "token", "s3cret-token")
+    client = TestClient(mod.app)
     # mutating request without / with wrong token → 401 before routing
     r = client.post("/api/__no_such_route__")
     assert r.status_code == 401

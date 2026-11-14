@@ -457,11 +457,11 @@ def test_main_starts_when_the_lock_is_free(env, tmp_path, monkeypatch):
     assert calls[0][1]["port"] == 8132
 
 
-def test_engine_ui_route_serves_unified_ui(env):
-    """/ui تخدم لوحة المحرّك (unified_ui.html) من منفذ البوابة نفسه.
+def test_engine_ui_route_serves_zui(env):
+    """/ui تخدم الواجهة الموحدة ZUI (web/zui/index.html) من منفذ البوابة نفسه.
 
-    الوالد يفوز بـ "/" (index.html)، فبدون هذا المسار لا يمكن الوصول إلى
-    مجلس/الجينوم/الأكاديمية من البوابة الموحّدة.
+    الوالد يفوز بـ "/"، فبدون هذا المسار لا يمكن الوصول إلى المجلس/التتبع/
+    التقييم من البوابة الموحّدة — الواجهة الوحيدة منذ v1.61.0 (ب3.1).
     """
     _mod, client, _store = env
     resp = client.get("/ui")
