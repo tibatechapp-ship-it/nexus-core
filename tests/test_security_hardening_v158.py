@@ -531,3 +531,58 @@ def test_d11_mizan_pr_workflow_has_no_privileged_repair_steps() -> None:
     assert names == {"Checkout source", "Initialize CodeQL", "Analyze source"}
     forbidden = ("Auto-Fix", "Commit and Push", "Send Email", "Comment on PR")
     assert not any(any(token in (name or "") for token in forbidden) for name in names)
+
+
+# ── d12: the unified evidence job (MIZAN engine, #95) ────────────────────────
+# The PR-scan workflow runs a second, independent job that installs the pinned
+# MIZAN engine and produces the immutable evidence contract. The engine is
+# first-party code at a recorded upstream commit; the PR's code is only read.
+
+
+def test_d12_mizan_evidence_job_is_read_only() -> None:
+    """The engine job must hold no write capability and receive no secrets."""
+    data = _load_workflow("mizan-scan.yml")
+    job = data["jobs"]["mizan-evidence"]
+    assert job["permissions"] == {"contents": "read"}
+    steps = job["steps"]
+    assert not any("secrets." in str(step) for step in steps)
+    assert not any("token:" in str(step).lower() for step in steps)
+    checkout = next(step for step in steps
+                    if step.get("name") == "Checkout exact PR revision")
+    assert checkout["with"]["persist-credentials"] is False
+    runs_text = " ".join(str(step.get("run", "")) for step in steps)
+    assert "git push" not in runs_text
+    assert "git commit" not in runs_text
+
+
+def test_d12_mizan_engine_pin_is_an_immutable_commit() -> None:
+    """The engine install pins a 40-hex upstream commit, never a mutable tag.
+
+    Tags move (that is how the dev cycle works); commits do not. The pin is
+    bumped by a dedicated chore commit, never silently inside a feature PR.
+    """
+    import re
+
+    data = _load_workflow("mizan-scan.yml")
+    steps = data["jobs"]["mizan-evidence"]["steps"]
+    install = next(step for step in steps
+                   if step.get("name") == "Install pinned MIZAN engine")
+    m = re.search(
+        r"git\+https://github\.com/tibatechapp-ship-it/MIZAN\.git@([0-9a-f]{40})",
+        install["run"],
+    )
+    assert m, "MIZAN engine must be installed at a pinned 40-hex commit"
+    assert not re.search(r"MIZAN\.git@v[\w.+-]+", install["run"]), (
+        "a mutable tag ref is not an acceptable engine pin"
+    )
+
+
+def test_d12_evidence_contract_degrades_honestly() -> None:
+    """A missing or failed evidence upload must be named, never faked."""
+    data = _load_workflow("mizan-scan.yml")
+    steps = data["jobs"]["mizan-evidence"]["steps"]
+    upload = next(step for step in steps if step.get("name") == "Upload MIZAN evidence")
+    assert upload["with"]["if-no-files-found"] == "error"
+    summary = next(step for step in steps
+                   if step.get("name") == "Publish report link in workflow summary")
+    assert "not produced or upload failed" in summary["run"]

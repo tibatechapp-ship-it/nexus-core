@@ -7,8 +7,18 @@ on:
 
 # Untrusted pull-request code is analyzed without executing repository scripts,
 # installing project dependencies, receiving secrets, or writing to the repo.
+# Two independent read-only jobs:
+#   1. codeql          — first-party static analysis (actions only, no run steps).
+#   2. mizan-evidence  — the pinned MIZAN engine full scan producing an
+#                        immutable evidence contract (mizan.pr-evidence.v1).
+# The engine itself is first-party code installed at an immutable upstream
+# commit; the PR's code is only ever READ by it, never executed.
 permissions:
   contents: read
+
+concurrency:
+  group: mizan-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   codeql:
@@ -34,3 +44,70 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python"
+
+  mizan-evidence:
+    name: MIZAN evidence / full-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned MIZAN engine
+        run: |
+          python -m pip install --upgrade pip
+          # Immutable upstream engine pin — resolves to the v0.17.0-dev wave-2
+          # tag at the time of recording. Tags are mutable; commits are not.
+          # Bump via a dedicated chore commit, never in a feature PR.
+          python -m pip install "git+https://github.com/tibatechapp-ship-it/MIZAN.git@f68053c6b43a0481bd077a121eedb163d00b4073"
+
+      - name: Run full scan and build evidence contract
+        id: scan
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python scripts/mizan/build_pr_evidence.py --output reports/mizan/pr-evidence.json
+
+      - name: Upload MIZAN evidence
+        id: upload
+        if: always() && hashFiles('reports/mizan/pr-evidence.json') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: mizan-evidence-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: reports/mizan/pr-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish report link in workflow summary
+        if: always()
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          {
+            echo "## MIZAN PR Evidence"
+            echo
+            echo "- Pull request: #${PR_NUMBER}"
+            echo "- Scanned revision: ${HEAD_SHA}"
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo "- Evidence report: [Download JSON report]($ARTIFACT_URL)"
+            else
+              echo "- Evidence report: not produced or upload failed"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
