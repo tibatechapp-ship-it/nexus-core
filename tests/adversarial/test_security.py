@@ -398,19 +398,23 @@ def test_patched_dependency_floors_cannot_be_silently_downgraded() -> None:
 def test_ci_action_majors_stay_at_bumped_floor() -> None:
     """The bumped action majors stay pinned; a downgrade re-opens old windows.
 
-    Scenario: the merge wave (#86..#88) moved actions/checkout, setup-node and
+    Scenario: the merge wave (#86..#88) moved actions/checkout and
     setup-python to v7 across every workflow. A regression that reverts one
     reference to an older major (or deletes the step to dodge the gate)
     silently re-opens the tag-takeover windows those bumps closed. DEFENCE:
     every ``uses:`` reference in every workflow is asserted at-least at the
     bumped major, and a fully-vanished action fails too.
+
+    v1.62.0 (#94): ``actions/setup-node`` was consciously retired from the
+    floors — the last usage (``npm install eslint`` in the MIZAN PR-scan
+    pipeline) was removed when the pipeline became read-only analysis. A
+    future node-based tool must re-add the floor at major >= 7 here.
     """
     workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
     assert workflows, ".github/workflows vanished from the tree"
 
     floors = {
         "actions/checkout": 7,
-        "actions/setup-node": 7,
         "actions/setup-python": 7,
     }
     seen: dict[str, int] = dict.fromkeys(floors, 0)
