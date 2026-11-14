@@ -1,127 +1,79 @@
-name: MIZAN Automated Scan
-# ض10 (v1.58.0): `pull_request_target` ran this workflow with WRITE tokens and
-# repo secrets while checking out and EXECUTING the PR's own code
-# (run_mizan.py / secret_remover.py / ai_fixer.py) — any PR could have
-# exfiltrated the token by editing those scripts. `pull_request` keeps the same
-# behavior for same-repo branches while GitHub strips write tokens and secrets
-# from fork PRs automatically (their push step degrades to a no-op, which the
-# step already tolerates).
+name: MIZAN PR Evidence Scan
+
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# The scan executes no code from the PR and has no write-capable token.
 permissions:
-  contents: write
-  pull-requests: write
-  security-events: write
+  contents: read
+
+concurrency:
+  group: mizan-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  mizan-security-scan:
+  mizan-evidence:
+    name: MIZAN evidence / full-scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - name: Checkout Code
+      - name: Checkout exact PR revision
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: "3.12"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - name: Install pinned MIZAN engine
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "git+https://github.com/tibatechapp-ship-it/MIZAN.git@693850d603cbe091560b531bd4165347f8a890bf"
+
+      - name: Run full scan and build evidence contract
+        id: scan
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python scripts/mizan/build_pr_evidence.py --output reports/mizan/pr-evidence.json
+
+      - name: Upload MIZAN evidence
+        id: upload
+        if: always() && hashFiles('reports/mizan/pr-evidence.json') != ''
+        uses: actions/upload-artifact@v7
         with:
-          node-version: '22'
+          name: mizan-evidence-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: reports/mizan/pr-evidence.json
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Install Dependencies
-        run: |
-          pip install bandit semgrep ggshield
-          npm install eslint
-
-      # إنشاء الملفات أولاً لضمان وجودها
-      - name: Ensure SARIF files exist
-        run: |
-          echo '{"version": "2.1.0", "runs": []}' > bandit.sarif
-          echo '{"version": "2.1.0", "runs": []}' > semgrep.sarif
-
-      - name: Run MIZAN Scan (SAST)
-        id: mizan_scan
-        continue-on-error: true
-        run: python scripts/mizan/run_mizan.py
-
-      - name: GitGuardian Secret Scan
-        id: ggshield_scan
-        continue-on-error: true
-        env:
-          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-        run: |
-          ggshield secret scan commit-range ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} --json --output ggshield-results.json || true
-
-      - name: Remove Detected Secrets
-        if: always()
-        run: |
-          # ض11 (v1.58.0): optional integrations degrade gracefully — the
-          # scripts may not be installed in this repo yet; a missing helper
-          # must skip, not red-bar the whole check.
-          if [ -f src/mizan/secret_remover.py ]; then python src/mizan/secret_remover.py; else echo "secret_remover not installed — skipped"; fi
-
-      - name: AI Auto-Fix
-        if: always()
-        run: |
-          if [ -f src/mizan/ai_fixer.py ]; then python src/mizan/ai_fixer.py; else echo "ai_fixer not installed — skipped"; fi
-
-      - name: Commit and Push Fixes
-        if: always()
-        run: |
-          git config --global user.name "MIZAN AI Bot"
-          git config --global user.email "mizan-ai@users.noreply.github.com"
-          # ض10 (v1.58.0): the old blanket add-everything committed the
-          # scanner's own working tree — node_modules/ (1200+ files),
-          # package.json,
-          # package-lock.json and SARIF/report artifacts all landed in git.
-          # Only source repairs may be committed; the artifacts are
-          # gitignored and excluded here as a second belt.
-          git add -A -- ':/' \
-            ':(exclude)node_modules' ':(exclude)package.json' \
-            ':(exclude)package-lock.json' ':(exclude)bandit.sarif' \
-            ':(exclude)semgrep.sarif' ':(exclude)ggshield-results.json' \
-            ':(exclude)mizan_report.md' ':(exclude)test_mizan.txt' \
-            || echo "nothing to add — the tree only has gitignored scanner artifacts"
-          git commit -m "Security Fix: MIZAN repaired vulnerabilities or redacted secrets [skip ci]" || echo "No changes to commit"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }} || echo "Nothing to push"
-
-      - name: Upload SARIF to GitHub Security
-        if: always()
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          # ض11 (v1.58.0): upload-sarif v4 no longer accepts a newline list of
-          # files — the old two-file form made every upload fail with
-          # "Path does not exist" (masked by continue-on-error). The real scan
-          # output is bandit.sarif; the semgrep stub is empty anyway.
-          sarif_file: bandit.sarif
-
-      - name: Send Email Report
+      - name: Publish report link in workflow summary
         if: always()
         env:
-          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ -f src/mizan/email_reporter.py ]; then python src/mizan/email_reporter.py; else echo "email_reporter not installed — skipped"; fi
-
-      - name: Comment on PR
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -f mizan_report.md ]; then
-            gh pr comment ${{ github.event.pull_request.number }} --body-file mizan_report.md
-          else
-            echo "mizan_report.md not produced — comment skipped"
-          fi
-
-      - name: Fail if MIZAN found issues
-        if: steps.mizan_scan.outcome == 'failure'
-        run: exit 1
+          {
+            echo "## MIZAN PR Evidence"
+            echo
+            echo "- Pull request: #${PR_NUMBER}"
+            echo "- Scanned revision: `${HEAD_SHA}`"
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo "- Evidence report: [Download JSON report]($ARTIFACT_URL)"
+            else
+              echo "- Evidence report: not produced or upload failed"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
