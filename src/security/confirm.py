@@ -1,17 +1,13 @@
-"""تأكيد الثغرة في العزل — لا إبلاغ بثغرة لم تُثبت نفسها.
+"""Fail-closed vulnerability confirmation.
 
-المبدأ المعلن: الماسح يُشتبه، والعزل يُثبت. كل ملاحظة أمنية تحمل «برُوب»
-صغيراً حتمياً يُشغَّل داخل صندوق العزل (``novamind.sandbox.Sandbox``) فيحكم:
+A generic payload assembled from a source line cannot prove that the target
+application is vulnerable. Until a target-aware verifier with an explicit,
+reviewed contract is supplied, findings remain inconclusive.
 
-* ``confirmed`` — البروب أثبت الأثر فعلاً (العلامة المعلنة ظهرت).
-* ``refuted`` — تشغيل نظيف بلا علامة: الاشتباه لم يثبت نفسه.
-* ``inconclusive`` — بلا عزل، أو بروب تالف، أو خطأ غير متوقع: نعلن الجهل
-  لا نادّعيه. **بلا عزل لا يُشغَّل أي بروب** — الآمن افتراضياً.
-
-البروبات هنا محاكاة أثر لا استغلال شبكي: تُبنى من السطر المصاب نفسه وتجري
-كله في العزل بلا شبكة إطلاقاً (تحترم ADR-0001 وADR-0004).
+This module deliberately does not execute generated probes. The legacy
+probe_for API is retained only to fail loudly for callers that still rely on
+the old self-confirming payloads.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,7 +18,8 @@ __all__ = [
     "probe_for", "confirm", "patch_hint", "Verdict",
 ]
 
-#: علامة كل نوع — ظهورها في مخرجات البروب هو الدليل المعلن.
+# Retained for compatibility with report consumers. These markers are NOT
+# evidence and are never emitted by this module.
 CONFIRM_MARKERS: dict[str, str] = {
     "sql_injection": "SQLI-PROOF",
     "xss": "XSS-PROOF",
@@ -30,20 +27,18 @@ CONFIRM_MARKERS: dict[str, str] = {
     "path_traversal": "PATH-PROOF",
     "null_deref": "NPE-PROOF",
 }
-
-#: الأحكام الثلاثة المعلنة — لا رابع.
 VERDICTS: tuple[str, ...] = ("confirmed", "refuted", "inconclusive")
 
 
 class ProbeSandbox(Protocol):
-    """أدنى عقد صندوق يُقبَل: ``run_python(code)`` يعيد قاموساً فيه ok/stdout."""
+    """Legacy sandbox interface; generic generated probes are no longer run."""
 
     def run_python(self, code: str, stdin: str = "") -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
 class Finding:
-    """ملاحظة أمنية واحدة كما تخرج من الماسح أو الطبقة الخصمية."""
+    """One security observation emitted by a scanner."""
 
     rule: str
     path: str
@@ -55,12 +50,13 @@ class Finding:
     def __post_init__(self) -> None:
         if self.kind not in CONFIRM_MARKERS:
             raise ValueError(
-                f"نوع غير معروف: {self.kind} (المعروف: {sorted(CONFIRM_MARKERS)})")
+                f"نوع غير معروف: {self.kind} (المعروف: {sorted(CONFIRM_MARKERS)})"
+            )
 
 
 @dataclass(frozen=True)
 class Verdict:
-    """حكم معلن: حالته وشرحه ودليله (مقصوص دائماً)."""
+    """A bounded verdict with an explicit explanation and supporting evidence."""
 
     status: str
     detail: str
@@ -71,53 +67,11 @@ class Verdict:
             raise ValueError(f"حكم غير معروف: {self.status} (المعروف: {VERDICTS})")
 
 
-def _quoted(code: str) -> str:
-    """السطر المصاب داخل بروب — بلا مراوغة اقتباس."""
-    return code.replace("\\", "\\\\").replace('"""', "'''").strip()
-
-
 def probe_for(finding: Finding) -> str:
-    """بروب حتمي لنوع الملاحظة — يحاكي الأثر من السطر المصاب نفسه."""
-    src = _quoted(finding.code)
-    if finding.kind == "sql_injection":
-        return f'''VULN = """{src}"""
-payload = "' OR '1'='1"
-built = VULN.replace("{{}}", payload)
-if "OR" in built.upper():
-    print("{CONFIRM_MARKERS['sql_injection']}", built[:120])
-'''
-    if finding.kind == "xss":
-        return f'''VULN = """{src}"""
-payload = "<script>alert(1)</script>"
-rendered = VULN + payload
-if "<script>" in rendered:
-    print("{CONFIRM_MARKERS['xss']}", rendered[:120])
-'''
-    if finding.kind == "cmd_injection":
-        return f'''import shlex
-VULN = """{src}"""
-payload = "; rm -rf /"
-built = VULN + payload
-parts = shlex.split(built)
-if any(p in ("rm", "sh", "bash") for p in parts):
-    print("{CONFIRM_MARKERS['cmd_injection']}", built[:120])
-'''
-    if finding.kind == "path_traversal":
-        return f'''from pathlib import Path
-VULN = """{src}"""
-payload = "../../etc/passwd"
-joined = str(Path(VULN) / payload)
-if ".." in Path(joined).parts:
-    print("{CONFIRM_MARKERS['path_traversal']}", joined[:120])
-'''
-    # null_deref — الوحيد الذي يرمي فعلاً: الأثر هو الاستثناء نفسه.
-    return f'''VULN = """{src}"""
-try:
-    value = None
-    _ = value.strip()
-except AttributeError as exc:
-    print("{CONFIRM_MARKERS['null_deref']}", str(exc)[:120])
-'''
+    """Reject legacy synthetic probes: they cannot establish target behavior."""
+    raise NotImplementedError(
+        "تم تعطيل البروبات الاصطناعية: لا يمكنها إثبات سلوك التطبيق المستهدف"
+    )
 
 
 def confirm(
@@ -125,44 +79,24 @@ def confirm(
     sandbox: ProbeSandbox | None,
     timeout_hint: int | None = None,
 ) -> Verdict:
-    """أحكم على الملاحظة — **بلا عزل لا يُشغَّل بروب** (آمن افتراضياً)."""
+    """Fail closed until a target-aware, independently validated verifier exists.
+
+    The sandbox is intentionally not invoked. Running a payload constructed
+    from a finding's source snippet can only demonstrate the payload itself,
+    not that the application reaches or mishandles the vulnerable operation.
+    """
     if sandbox is None:
         return Verdict(
             "inconclusive",
-            "بلا صندوق عزل لا يُشغَّل بروب — الاشتباه يبقى اشتباهاً",
-        )
-    probe = probe_for(finding)
-    try:
-        result = sandbox.run_python(probe)
-    except Exception as exc:  # noqa: BLE001 — العطل يُعلن لا يُخفى
-        return Verdict(
-            "inconclusive",
-            f"صندوق العزل رفع {type(exc).__name__} — الحكم معلن لا مُصطنع",
-            f"{type(exc).__name__}",
-        )
-    marker = CONFIRM_MARKERS[finding.kind]
-    stdout = str(result.get("stdout", ""))
-    stderr = str(result.get("stderr", ""))
-    if marker in stdout:
-        return Verdict(
-            "confirmed",
-            f"البروب أثبت الأثر: العلامة {marker} ظهرت في العزل",
-            stdout[:300].strip(),
-        )
-    if not result.get("ok", False) and "Traceback" in stderr and marker not in stderr:
-        return Verdict(
-            "inconclusive",
-            "البروب نفسه رفع خطأ غير متوقع — لا حكم يُصطنع",
-            stderr[:300].strip(),
+            "لا يوجد صندوق عزل؛ لم يُشغّل أي اختبار",
         )
     return Verdict(
-        "refuted",
-        "تشغيل نظيف بلا علامة — الاشتباه لم يثبت نفسه",
-        stdout[:200].strip(),
+        "inconclusive",
+        "لا يوجد مدقّق واعٍ بسياق الهدف؛ لم يُشغّل أي بروب اصطناعي، "
+        "ولا يمكن إصدار confirmed أو refuted",
     )
 
 
-#: اقتراح الترقيع الحتمي لكل نوع — نص معلن يقبل الاختبار لا نص إلهام.
 PATCH_HINTS: dict[str, str] = {
     "sql_injection": "مرّر القيم مُعامَلات لا بتنسيق نصي: cursor.execute(SQL, (value,))",
     "xss": "اسكِب المخرجات عند البناء (html.escape) أو استخدم قوالب تُسكّب تلقائياً",
@@ -173,7 +107,7 @@ PATCH_HINTS: dict[str, str] = {
 
 
 def patch_hint(finding: Finding) -> str:
-    """اقتراح ترقيع حتمي لنوع الملاحظة — خطأ النوع يُعلن."""
+    """Return the declared remediation hint for a supported finding kind."""
     hint = PATCH_HINTS.get(finding.kind)
     if hint is None:
         raise ValueError(f"لا ترقيع معلن للنوع: {finding.kind}")
