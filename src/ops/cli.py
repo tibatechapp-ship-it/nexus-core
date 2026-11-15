@@ -150,6 +150,13 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_org(args: argparse.Namespace) -> int:
+    """تفويض لأوامر التنظيم — org.cli يحلل وسائطه بنفس عقود الخروج."""
+    from src.org import cli as org_cli
+    rest = list(args._unrecognized) if hasattr(args, "_unrecognized") else []
+    return org_cli.main(rest)
+
+
 _HANDLERS = {
     "radar": _cmd_radar,
     "index-ingest": _cmd_index_ingest,
@@ -158,6 +165,7 @@ _HANDLERS = {
     "tickets": _cmd_tickets,
     "webqa": _cmd_webqa,
     "dashboard": _cmd_dashboard,
+    "org": _cmd_org,
 }
 
 
@@ -169,10 +177,16 @@ def run_ops_command(argv: Sequence[str]) -> int:
     """
     parser = _build_parser()
     try:
-        args = parser.parse_args(list(argv))
+        args, unrecognized = parser.parse_known_args(list(argv))
+        args._unrecognized = unrecognized  # noqa: SLF001 — تمرير لتفويض org
     except SystemExit as exc:  # خطأ استخدام argparse — عقد خروج موحّد
         print("استخدام غير صحيح — راجع nexus ops --help", file=sys.stderr)
         return 1 if exc.code else 0
+    if unrecognized and args.ops_command != "org":
+        # وسائط غير معلومة مرفوضة لكل الأوامر إلا التفويض org — لا صمت
+        print(f"وسائط غير معلومة: {unrecognized} — راجع nexus ops --help",
+              file=sys.stderr)
+        return 1
     if not args.ops_command:
         parser.print_help()
         return 1
@@ -229,4 +243,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("dashboard", help="اللوحة الواحدة")
     p.add_argument("--db", default=DEFAULT_DB_PATH)
     p.add_argument("--outdir", default=DEFAULT_REPORT_DIR)
+
+    p = sub.add_parser("org", help="التنظيم الهندسي الذاتي — أوامره مع org --help")
+    # بقية وسائط org تُحلَّل في src/org/cli.py — التفويض هنا سطر واحد
     return parser

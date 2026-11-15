@@ -1,0 +1,16 @@
+--- a/calc/mathops.py
++++ b/calc/mathops.py
+@@ -1,6 +1,8 @@
+-"""عمليات حسابية أساسية — divide بلا حارس (الهدف: إضافة الحارس)."""
++def divide(value, divisor):
++    """divide: تنفيذ مُحدَّث وفق متطلبات المهمة.
+ 
+-
+-def divide(a, b):
+-    """قسمة مباشرة — القسمة على صفر تعطي ZeroDivisionError الخام."""
+-    return a / b
++    يرفض القسمة على صفر برسالة صريحة قبل أي حساب.
++    """
++    if divisor == 0:
++        raise ValueError("القاسم صفر غير مسموح")
++    return value / divisor

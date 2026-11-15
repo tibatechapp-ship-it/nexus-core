@@ -1,0 +1,115 @@
+{
+  "acceptance_criteria": [
+    "قسمة بصفر تُرفض برسالة صريحة"
+  ],
+  "claims": [
+    {
+      "statement": "تقرير ورقعة جاهزان عند /tmp/org-release-demo وتذكرة T-2026-001 بانتظار موافقة بشرية",
+      "status": "unverified"
+    },
+    {
+      "statement": "اختبارات الرقعة خضراء",
+      "status": "verified"
+    },
+    {
+      "statement": "طُبِّقت رقعة على 1 ملفًا مع حارس «القسمة على صفر»",
+      "status": "verified"
+    },
+    {
+      "statement": "خريطة المستودع: 3 وحدة، 1 حافة استيراد",
+      "status": "verified"
+    },
+    {
+      "statement": "المسح الأمني: {'secrets': 0, 'vulnerable_dependencies': 0, 'injections': 0, 'threat_hits': 0}",
+      "status": "verified"
+    },
+    {
+      "statement": "المعايير المستخرجة تغطي الهدف: 1 معيارًا",
+      "status": "verified"
+    }
+  ],
+  "metrics": {
+    "agent_runs": 11,
+    "completion_rate": 1.0,
+    "tokens_in": 849,
+    "verified_fix_rate": 1.0
+  },
+  "mission_id": "org-m-cce7a7101eba",
+  "phase": "G_RELEASE",
+  "reviews": [
+    {
+      "lens": "architecture",
+      "score": 89,
+      "verdict": "approve"
+    },
+    {
+      "lens": "logic",
+      "score": 99,
+      "verdict": "approve"
+    },
+    {
+      "lens": "regression",
+      "score": 92,
+      "verdict": "approve"
+    },
+    {
+      "lens": "maintainability",
+      "score": 76,
+      "verdict": "request_changes"
+    },
+    {
+      "lens": "performance",
+      "score": 99,
+      "verdict": "approve"
+    },
+    {
+      "lens": "security",
+      "score": 97,
+      "verdict": "approve"
+    }
+  ],
+  "status": "done",
+  "tasks": [
+    {
+      "dept": "development",
+      "state": "done"
+    },
+    {
+      "dept": "security",
+      "state": "done"
+    },
+    {
+      "dept": "qa",
+      "state": "done"
+    },
+    {
+      "dept": "code_review",
+      "state": "done"
+    },
+    {
+      "dept": "verification",
+      "state": "done"
+    },
+    {
+      "dept": "repo_intel",
+      "state": "done"
+    },
+    {
+      "dept": "executive",
+      "state": "done"
+    },
+    {
+      "dept": "release",
+      "state": "done"
+    }
+  ],
+  "ticket_id": "T-2026-001",
+  "ticket_publish_allowed": false,
+  "ticket_report": {
+    "risk": "low: رقعة عرض حتمية — تُراجع مستقلًا",
+    "rollback": "استرجاع الرقعة بعكس الفرق — لا تغييرات خارج نسخة العمل",
+    "tests": "baseline_tests: rc=0; patched_tests: rc=0",
+    "what": "رقعة حارس قسمة على صفر لدالة divide على calc/mathops.py",
+    "why": "أضف حارس قسمة على صفر إلى دالة divide في وحدة calc.mathops مع اختبارات للحدية"
+  }
+}

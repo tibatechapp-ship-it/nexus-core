@@ -1,0 +1,33 @@
+{
+  "agent_runs": 11,
+  "approvals": 1,
+  "claims": 6,
+  "evidence": 9,
+  "findings": 0,
+  "lessons": 2,
+  "metrics_rates": {
+    "agent_failure_rate": 0.0,
+    "completion_rate": 1.0,
+    "false_positive_rate": 0.0,
+    "regression_rate": 0.0,
+    "verified_fix_rate": 1.0
+  },
+  "missions_by_phase": {
+    "G_RELEASE": 1
+  },
+  "missions_by_status": {
+    "done": 1
+  },
+  "missions_total": 1,
+  "recurring_patterns": [],
+  "reviews": 6,
+  "tasks": 8,
+  "usage": {
+    "agent_runs": 11,
+    "avg_latency_ms": 0.11,
+    "cost_per_task_usd": 0.0,
+    "cost_usd": 0.0,
+    "tokens_in": 849,
+    "tokens_out": 205
+  }
+}

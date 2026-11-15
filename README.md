@@ -154,7 +154,7 @@ hyper_agent.py  Hyper-Agent 2.0 — وكيل برمجة ذاتي (BUG-1..9 مص�
 connectors/     مهايئات LLM BYOK (openai/anthropic/groq/ollama/deepseek/gemini)
 scripts/mizan/  ست أدوات CLI أمنية بأكواد خروج موثقة
 tests/          4,572 حالة + tests/adversarial (100 متجه هجوم) + tests/formal + tests/novamind/
-docs/           MIZAN_ROADMAP · V2_ROADMAP · SECURITY_HARDENING · benchmarks
+docs/           ORGANIZATION (التنظيم الهندسي الذاتي) · MIZAN_ROADMAP · V2_ROADMAP · SECURITY_HARDENING · benchmarks
 main.py         خادم مجلس العمل (FastAPI) + console/index.html
 ```
 
