@@ -457,3 +457,35 @@ def test_flow_latest_on_fresh_flow_is_none(tmp_path: Path) -> None:
 def test_flow_digest_of_zero_is_none(tmp_path: Path) -> None:
     flow = DurableFlow("d0", store_dir=tmp_path)
     assert flow._digest_of(0) is None  # noqa: SLF001 — عقد الربط الأولي
+
+
+
+def test_flow_resume_rejects_duplicate_checkpoint_sequence(tmp_path: Path) -> None:
+    flow = DurableFlow("duplicate-sequence", store_dir=tmp_path)
+    flow.checkpoint("first", {"n": 1})
+    duplicate = sign_snapshot({"n": 999}, stage="shadow", parent_sha=None)
+    (flow.store / "0001-shadow.json").write_text(
+        json.dumps(duplicate, ensure_ascii=False), encoding="utf-8"
+    )
+
+    with pytest.raises(SnapshotError, match="مكرر"):
+        flow.resume()
+
+
+def test_flow_resume_rejects_checkpoint_sequence_gap(tmp_path: Path) -> None:
+    flow = DurableFlow("sequence-gap", store_dir=tmp_path)
+    flow.checkpoint("first", {"n": 1})
+    flow.checkpoint("second", {"n": 2})
+    (flow.store / "0001-first.json").unlink()
+
+    with pytest.raises(SnapshotError, match="مفقودة"):
+        flow.resume()
+
+
+def test_flow_resume_rejects_malformed_numbered_checkpoint(tmp_path: Path) -> None:
+    flow = DurableFlow("malformed-sequence", store_dir=tmp_path)
+    flow.checkpoint("first", {"n": 1})
+    (flow.store / "0002-.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(SnapshotError, match="اسم نقطة تفتيش غير صالح"):
+        flow.resume()
