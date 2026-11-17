@@ -50,53 +50,34 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════
 
 def stats() -> dict:
-    """إحصائيات الوكلاء."""
-    if _CORE_AVAILABLE and _core_stats:
-        try:
-            return _core_stats()
-        except Exception:
-            pass
-    s = REGISTRY.stats()
-    return {
-        "agents_total": s.get("total", len(REGISTRY)),
-        "categories": [c.value for c in Category],
-        "criticalities": [c.value for c in Criticality],
-    }
+    """إحصائيات المصدر المعتمد؛ لا تُستبدل بسجل توافق قديم."""
+    if not (_CORE_AVAILABLE and _core_stats):
+        raise RuntimeError("canonical NovaMind registry is unavailable")
+    return _core_stats()
 
 
 def validate() -> list:
-    """فحص السجل."""
-    if _CORE_AVAILABLE and _core_validate:
-        try:
-            return _core_validate()
-        except Exception as e:
-            return [f"core.validate() failed: {e}"]
-    return []
+    """فحص المصدر المعتمد؛ غيابه خطأ وليس نجاحاً فارغاً."""
+    if not (_CORE_AVAILABLE and _core_validate):
+        return ["canonical NovaMind registry is unavailable"]
+    try:
+        return _core_validate()
+    except Exception as e:
+        return [f"canonical registry validation failed: {e}"]
 
 
 def all_agent_names() -> list:
-    """كل أسماء الوكلاء (79)."""
-    if _CORE_AVAILABLE and _core_list_agents:
-        try:
-            return _core_list_agents()
-        except Exception:
-            pass
-    return [spec.name for spec in REGISTRY.list_all()]
+    """أسماء الوكلاء من nova.yaml حصراً."""
+    if not (_CORE_AVAILABLE and _core_list_agents):
+        raise RuntimeError("canonical NovaMind registry is unavailable")
+    return _core_list_agents()
 
 
 def get_agent(name: str) -> dict:
-    """تفاصيل وكيل واحد."""
-    if _CORE_AVAILABLE and _core_get_agent:
-        try:
-            return _core_get_agent(name)
-        except KeyError:
-            raise
-        except Exception:
-            pass
-    spec = REGISTRY.get(name)
-    if spec and hasattr(spec, "to_dict"):
-        return spec.to_dict()
-    raise KeyError(f"Agent '{name}' not found")
+    """تفاصيل وكيل واحد من المصدر المعتمد حصراً."""
+    if not (_CORE_AVAILABLE and _core_get_agent):
+        raise RuntimeError("canonical NovaMind registry is unavailable")
+    return _core_get_agent(name)
 
 
 # ═══════════════════════════════════════════════════════════════
