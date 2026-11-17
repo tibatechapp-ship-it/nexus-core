@@ -128,7 +128,7 @@ def build_code_context(
             truncated = True
         if not source:
             continue
-        rendered.append(f"### {rel}\n\n\`\`\`{target.suffix.lstrip('.') or 'text'}\n{source}\n\`\`\`")
+        rendered.append(f"FILE: {rel}\n{source}")
         included.append(rel)
         total += len(source)
         if total >= max_total_chars:
