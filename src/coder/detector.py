@@ -33,16 +33,16 @@ SENSITIVE_DIRS = {
 # Descriptions remain stable for downstream reports and historical tests.
 # Findings never contain matched source snippets or credential values.
 _LINE_RULES = (
-    (re.compile(r"except\\s+Exception\\s*:\\s*pass"), "silent exception swallowing", "low", "silent-exception"),
-    (re.compile(r"\\bTODO\\b"), "unresolved TODO marker", "low", "todo"),
-    (re.compile(r"\\bFIXME\\b"), "unresolved FIXME marker", "low", "fixme"),
-    (re.compile(r"\\bXXX\\b"), "unresolved XXX marker", "low", "xxx"),
+    (re.compile(r"except\s+Exception\s*:\s*pass"), "silent exception swallowing", "low", "silent-exception"),
+    (re.compile(r"\bTODO\b"), "unresolved TODO marker", "low", "todo"),
+    (re.compile(r"\bFIXME\b"), "unresolved FIXME marker", "low", "fixme"),
+    (re.compile(r"\bXXX\b"), "unresolved XXX marker", "low", "xxx"),
     (
         re.compile(
-            r"(?:\\bverify\\s*=\\s*False\\b|"
-            r"\\brejectUnauthorized\\s*:\\s*False\\b|"
-            r"\\bInsecureSkipVerify\\s*:\\s*true\\b|"
-            r"CURLOPT_SSL_VERIFYPEER\\s*,\\s*0)",
+            r"(?:\bverify\s*=\s*False\b|"
+            r"\brejectUnauthorized\s*:\s*False\b|"
+            r"\bInsecureSkipVerify\s*:\s*true\b|"
+            r"CURLOPT_SSL_VERIFYPEER\s*,\s*0)",
             re.IGNORECASE,
         ),
         "TLS certificate verification disabled",
@@ -50,21 +50,21 @@ _LINE_RULES = (
         "tls-verification-disabled",
     ),
     (
-        re.compile(r"(?:\\beval\\s*\\(|\\bnew\\s+Function\\s*\\()"),
+        re.compile(r"(?:\beval\s*\(|\bnew\s+Function\s*\()"),
         "dynamic code evaluation",
         "medium",
         "dynamic-evaluation",
     ),
     (
-        re.compile(r"\\b(?:shell\\s*=\\s*True|child_process\\s*\\.\\s*exec\\s*\\()"),
+        re.compile(r"\b(?:shell\s*=\s*True|child_process\s*\.\s*exec\s*\()"),
         "shell command execution requires input validation",
         "medium",
         "shell-execution",
     ),
     (
         re.compile(
-            r"""\\b(?:api[_-]?key|secret|password|access[_-]?token)\\b"""
-            r"""\\s*[:=]\\s*["'][^"']{8,}["']""",
+            r"""\b(?:api[_-]?key|secret|password|access[_-]?token)\b"""
+            r"""\s*[:=]\s*["'][^"']{8,}["']""",
             re.IGNORECASE,
         ),
         "possible hardcoded credential (value redacted)",
@@ -74,12 +74,12 @@ _LINE_RULES = (
 )
 
 _PROMPT_TEMPLATE = (
-    "You are the defect-discovery stage of a coding agent.\\n"
-    "Goal: {goal}\\n"
-    "Repo context: {summary}\\n"
-    "Static findings: {static}\\n"
+    "You are the defect-discovery stage of a coding agent.\n"
+    "Goal: {goal}\n"
+    "Repo context: {summary}\n"
+    "Static findings: {static}\n"
     "Reply with ONLY a JSON array of objects "
-    '{{"file": str, "description": str, "severity": "high"|"medium"|"low"}}.\\n'
+    '{{"file": str, "description": str, "severity": "high"|"medium"|"low"}}.\n'
 )
 
 
@@ -157,7 +157,7 @@ def static_scan(root: Path, *, limit: int = 200) -> list:
 
 def _extract_json_array(text: str) -> list:
     """Pull the first JSON array out of a model reply; [] when unparseable."""
-    match = re.search(r"\\[.*\\]", text, re.DOTALL)
+    match = re.search(r"\[.*\]", text, re.DOTALL)
     if not match:
         return []
     try:
