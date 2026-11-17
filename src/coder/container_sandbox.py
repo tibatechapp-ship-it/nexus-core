@@ -29,7 +29,7 @@ def run_in_container(command: list[str], workspace: str | Path, *, image: str,
         raise ContainerSandboxError("command must be a non-empty argv list")
     if not re.fullmatch(r"[1-9][0-9]*(?:m|g)", memory):
         raise ContainerSandboxError("invalid memory limit")
-    if not re.fullmatch(r"(?:[1-9][0-9]*|[0-9]+\\.[0-9]+)", cpus):
+    if not re.fullmatch(r"(?:[1-9][0-9]*|[0-9]+\.[0-9]+)", cpus):
         raise ContainerSandboxError("invalid CPU limit")
     if not 1 <= pids_limit <= 256:
         raise ContainerSandboxError("pids_limit must be between 1 and 256")
