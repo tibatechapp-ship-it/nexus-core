@@ -6,7 +6,13 @@ from src.coder.context import build_code_context
 
 
 def test_context_includes_defect_file_and_direct_python_imports(tmp_path: Path) -> None:
-    (tmp_path / "app.py").write_text("from helpers import normalize\n\ndef run():\n    return normalize(' X ')\n")
+    app_source = "\n".join([
+        "from helpers import normalize",
+        "",
+        "def run():",
+        "    return normalize(' X ')",
+    ])
+    (tmp_path / "app.py").write_text(app_source)
     (tmp_path / "helpers.py").write_text("def normalize(value):\n    return value.strip().lower()\n")
     repo = {
         "modules": [
