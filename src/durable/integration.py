@@ -28,6 +28,13 @@ class CouncilLike(Protocol):
         """Return a result with a verdict attribute."""
 
 
+class ApprovalAuthorizer(Protocol):
+    """Adapter to the application's authenticated identity/permission system."""
+
+    def authorize(self, *, auditor: str, flow_id: str, task: str, decision: str) -> bool:
+        """Return true only for an authenticated principal allowed to decide."""
+
+
 @dataclass(frozen=True, slots=True)
 class DurableExecutionStatus:
     """A read-only view of a durable execution."""
@@ -55,10 +62,12 @@ class DurableExecution:
         supervisor: SupervisorLike,
         *,
         council: CouncilLike | None = None,
+        approval_authorizer: ApprovalAuthorizer | None = None,
     ) -> None:
         self.flow = flow
         self.supervisor = supervisor
         self.council = council
+        self.approval_authorizer = approval_authorizer
 
     def prepare(self, task: str) -> DurableExecutionStatus:
         """Persist a request, consult the council when indicated, and pause."""
@@ -122,6 +131,7 @@ class DurableExecution:
             raise ValueError("flow is not waiting at the prepared stage")
 
         task = str(latest["payload"]["task"])
+        self._authorize(auditor=auditor, task=task, decision="approve")
         council_verdict = latest["payload"].get("council_verdict")
         if self.flow.is_interrupted:
             # Idempotent for a crash after the decision marker was written.
@@ -162,10 +172,24 @@ class DurableExecution:
         latest = self.flow.latest()
         if latest is None or latest["stage"] != "prepared" or not self.flow.is_interrupted:
             raise ValueError("flow is not waiting at the prepared stage")
+        task = str(latest["payload"]["task"])
+        self._authorize(auditor=auditor, task=task, decision="reject")
         try:
             self.flow.resume_after_approval("reject", auditor=auditor)
         except FlowRejected:
             return
+
+    def _authorize(self, *, auditor: str, task: str, decision: str) -> None:
+        """Fail closed unless a trusted application auth adapter verifies the actor."""
+        if self.approval_authorizer is None:
+            raise PermissionError("an authenticated approval_authorizer is required")
+        if not self.approval_authorizer.authorize(
+            auditor=auditor,
+            flow_id=self.flow.flow_id,
+            task=task,
+            decision=decision,
+        ):
+            raise PermissionError("human decision is not authorized")
 
     def status(self) -> DurableExecutionStatus:
         """Return persisted status without executing or mutating anything."""
@@ -181,4 +205,4 @@ class DurableExecution:
         )
 
 
-__all__ = ["DurableExecution", "DurableExecutionStatus", "SupervisorLike", "CouncilLike"]
+__all__ = ["DurableExecution", "DurableExecutionStatus", "SupervisorLike", "CouncilLike", "ApprovalAuthorizer"]
