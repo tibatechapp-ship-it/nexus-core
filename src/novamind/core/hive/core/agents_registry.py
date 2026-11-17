@@ -1,44 +1,41 @@
-"""Mock agents registry for hive.factory.executor."""
+"""Compatibility adapter backed by NovaMind's canonical agent registry.
+
+This module intentionally contains no independent agent registry and no
+permissive mock identities. Unknown agents and unavailable metadata fail closed.
+"""
+from __future__ import annotations
+
+from typing import Any
 
 
-class _MockAgent(dict):
-    def __init__(self, name):
-        super().__init__()
-        self["name"] = name
-        self["specialty"] = "generic"
-        self["tools"] = []
-        self["permissions"] = ["*"]
-        self["system_prompt"] = "You are a helpful agent."
-        self["role"] = "agent"
+def get_agent(name: str) -> dict[str, Any]:
+    """Resolve a real registered agent into the legacy executor shape."""
+    from novamind.registry import get_agent as get_metadata
+    from novamind.security.permissions import get_permissions, get_role_for_agent
 
-    @property
-    def name(self):
-        return self["name"]
-
-    @property
-    def specialty(self):
-        return self["specialty"]
-
-    def get_specialty(self):
-        return self["specialty"]
+    metadata = get_metadata(name)
+    return {
+        "name": name,
+        "specialty": metadata.get("category", "general"),
+        "capabilities": list(metadata.get("capabilities", [])),
+        "tools": list(metadata.get("tools", [])),
+        "permissions": get_permissions(name),
+        "system_prompt": metadata.get("description", ""),
+        "role": get_role_for_agent(name),
+    }
 
 
-_MOCK_AGENTS = {}
+def can_use_tool(agent: str, tool: str) -> bool:
+    """Check access against the canonical RBAC policy."""
+    from novamind.security.permissions import has_permission
+    return bool(has_permission(agent, tool))
 
 
-def get_agent(name):
-    if name not in _MOCK_AGENTS:
-        _MOCK_AGENTS[name] = _MockAgent(name)
-    return _MOCK_AGENTS[name]
+def has_permission(agent: str, action: str) -> bool:
+    """Compatibility alias for canonical RBAC."""
+    return can_use_tool(agent, action)
 
 
-def can_use_tool(agent, tool):
-    return True
-
-
-def has_permission(agent, action):
-    return True
-
-
-def record_tool_call(*args, **kwargs):
-    pass
+def record_tool_call(*args: Any, **kwargs: Any) -> None:
+    """Compatibility hook; durable tool auditing is owned by the executor."""
+    return None
