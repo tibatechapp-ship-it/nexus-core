@@ -93,6 +93,9 @@ class DurableFlow:
         """احفظ حالة مرحلة — يرفض التقدّم إن كان السير موقوفًا بانتظار قرار."""
         if self._paused_path().exists():
             raise InterruptPending(f"السير موقوف: اقرأ {self._paused_path().name} وقرر أولًا")
+        # Never append to a history whose earlier links have not been verified.
+        # Otherwise a new valid snapshot could extend an already-corrupted chain.
+        self.resume()
         seq = self._next_seq()
         parent = self._digest_of(seq - 1) if seq > 1 else None
         snap = sign_snapshot(state, stage=stage, parent_sha=parent)
