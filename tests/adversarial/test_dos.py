@@ -165,7 +165,7 @@ def test_zip_bomb_bytes_are_treated_as_inert_data() -> None:
     readers: list[Path] = []
     for path in (ROOT / "src").rglob("*.py"):
         source_text = path.read_text(encoding="utf-8")
-        if not re.search(r"^\\s*import zipfile\\b", source_text, re.MULTILINE):
+        if not re.search(r"^\s*import zipfile\b", source_text, re.MULTILINE):
             continue
         tree = ast.parse(source_text, filename=str(path))
         for node in ast.walk(tree):
