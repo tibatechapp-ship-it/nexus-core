@@ -26,6 +26,11 @@ class _Council:
         return _CouncilResult(self.verdict)
 
 
+class _AllowApproval:
+    def authorize(self, *, auditor: str, flow_id: str, task: str, decision: str) -> bool:
+        return bool(auditor and flow_id and task and decision in {"approve", "reject"})
+
+
 class _Supervisor:
     def __init__(self, result: dict[str, Any] | None = None) -> None:
         self.result = result or {"ok": True, "results": [{"agent": "coder", "ok": True}]}
@@ -42,7 +47,7 @@ def _flow(tmp_path: Path, flow_id: str = "task-1") -> DurableFlow:
 
 def test_low_risk_request_waits_for_explicit_human_approval(tmp_path: Path) -> None:
     supervisor = _Supervisor()
-    execution = DurableExecution(_flow(tmp_path), supervisor)
+    execution = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=_AllowApproval())
     status = execution.prepare("summarize the README")
 
     assert status.stage == "prepared"
@@ -57,7 +62,7 @@ def test_low_risk_request_waits_for_explicit_human_approval(tmp_path: Path) -> N
 
 def test_high_risk_request_requires_council_and_human_approval(tmp_path: Path) -> None:
     council, supervisor = _Council("approve"), _Supervisor()
-    execution = DurableExecution(_flow(tmp_path), supervisor, council=council)
+    execution = DurableExecution(_flow(tmp_path), supervisor, council=council, approval_authorizer=_AllowApproval())
 
     status = execution.prepare("deploy security changes to production")
     assert council.calls == 1
@@ -71,7 +76,7 @@ def test_high_risk_request_requires_council_and_human_approval(tmp_path: Path) -
 
 def test_council_rejection_never_executes(tmp_path: Path) -> None:
     council, supervisor = _Council("reject"), _Supervisor()
-    execution = DurableExecution(_flow(tmp_path), supervisor, council=council)
+    execution = DurableExecution(_flow(tmp_path), supervisor, council=council, approval_authorizer=_AllowApproval())
 
     status = execution.prepare("deploy security changes to production")
     assert status.stage == "council_rejected"
@@ -82,7 +87,7 @@ def test_council_rejection_never_executes(tmp_path: Path) -> None:
 
 
 def test_council_unavailable_fails_closed_for_high_risk(tmp_path: Path) -> None:
-    execution = DurableExecution(_flow(tmp_path), _Supervisor())
+    execution = DurableExecution(_flow(tmp_path), _Supervisor(), approval_authorizer=_AllowApproval())
     status = execution.prepare("deploy security changes to production")
     assert status.stage == "council_unavailable"
     assert not status.waiting_for_human
@@ -93,16 +98,16 @@ def test_council_exception_fails_closed(tmp_path: Path) -> None:
         def deliberate(self, question: str, context: str = "") -> Any:
             raise RuntimeError("offline")
 
-    execution = DurableExecution(_flow(tmp_path), _Supervisor(), council=BrokenCouncil())
+    execution = DurableExecution(_flow(tmp_path), _Supervisor(), council=BrokenCouncil(), approval_authorizer=_AllowApproval())
     assert execution.prepare("deploy security changes to production").stage == "council_error"
 
 
 def test_restart_does_not_repeat_council_or_lose_pending_approval(tmp_path: Path) -> None:
     council, supervisor = _Council(), _Supervisor()
-    first = DurableExecution(_flow(tmp_path), supervisor, council=council)
+    first = DurableExecution(_flow(tmp_path), supervisor, council=council, approval_authorizer=_AllowApproval())
     first.prepare("deploy security changes to production")
 
-    restarted = DurableExecution(_flow(tmp_path), supervisor, council=council)
+    restarted = DurableExecution(_flow(tmp_path), supervisor, council=council, approval_authorizer=_AllowApproval())
     status = restarted.prepare("deploy security changes to production")
     assert status.waiting_for_human is True
     assert council.calls == 1
@@ -111,7 +116,7 @@ def test_restart_does_not_repeat_council_or_lose_pending_approval(tmp_path: Path
 
 def test_human_rejection_is_audited_and_never_executes(tmp_path: Path) -> None:
     supervisor = _Supervisor()
-    execution = DurableExecution(_flow(tmp_path), supervisor)
+    execution = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=_AllowApproval())
     execution.prepare("summarize the README")
 
     execution.reject(auditor="human-reviewer")
@@ -132,7 +137,7 @@ def test_execution_failure_is_persisted_and_not_replayed(tmp_path: Path) -> None
             raise RuntimeError("worker crashed")
 
     supervisor = BrokenSupervisor()
-    execution = DurableExecution(_flow(tmp_path), supervisor)
+    execution = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=_AllowApproval())
     execution.prepare("summarize the README")
     result = execution.approve_and_execute(auditor="operator")
     assert result["ok"] is False
@@ -147,12 +152,12 @@ def test_crash_after_write_ahead_checkpoint_requires_manual_recovery(tmp_path: P
         def execute(self, prompt: str, force_strategy: str | None = None) -> dict[str, Any]:
             raise KeyboardInterrupt()
 
-    execution = DurableExecution(_flow(tmp_path), CrashSupervisor())
+    execution = DurableExecution(_flow(tmp_path), CrashSupervisor(), approval_authorizer=_AllowApproval())
     execution.prepare("summarize the README")
     with pytest.raises(KeyboardInterrupt):
         execution.approve_and_execute(auditor="operator")
 
-    restarted = DurableExecution(_flow(tmp_path), _Supervisor())
+    restarted = DurableExecution(_flow(tmp_path), _Supervisor(), approval_authorizer=_AllowApproval())
     assert restarted.status().stage == "execution_started"
     with pytest.raises(ValueError, match="prepared"):
         restarted.approve_and_execute(auditor="operator")
@@ -161,7 +166,7 @@ def test_crash_after_write_ahead_checkpoint_requires_manual_recovery(tmp_path: P
 
 def test_crash_after_approval_marker_removal_recovers_from_audit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     supervisor = _Supervisor()
-    execution = DurableExecution(_flow(tmp_path), supervisor)
+    execution = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=_AllowApproval())
     execution.prepare("summarize the README")
 
     original_unlink = Path.unlink
@@ -176,7 +181,7 @@ def test_crash_after_approval_marker_removal_recovers_from_audit(tmp_path: Path,
         with pytest.raises(OSError, match="simulated process interruption"):
             execution.approve_and_execute(auditor="operator")
 
-    restarted = DurableExecution(_flow(tmp_path), supervisor)
+    restarted = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=_AllowApproval())
     result = restarted.approve_and_execute(auditor="operator")
     assert result["ok"] is True
     assert supervisor.calls == ["summarize the README"]
@@ -206,8 +211,17 @@ def test_approval_marker_write_is_idempotent_for_same_auditor(tmp_path: Path, mo
     assert sum(row.get("event") == "human_decision" for row in events) == 1
     assert sum(row.get("event") == "resume" for row in events) == 1
 
+def test_missing_authorizer_fails_closed(tmp_path: Path) -> None:
+    supervisor = _Supervisor()
+    execution = DurableExecution(_flow(tmp_path), supervisor)
+    execution.prepare("summarize the README")
+    with pytest.raises(PermissionError, match="authenticated approval_authorizer"):
+        execution.approve_and_execute(auditor="forged-operator")
+    assert supervisor.calls == []
+
+
 def test_invalid_task_is_rejected_without_writing_state(tmp_path: Path) -> None:
-    execution = DurableExecution(_flow(tmp_path), _Supervisor())
+    execution = DurableExecution(_flow(tmp_path), _Supervisor(), approval_authorizer=_AllowApproval())
     with pytest.raises(ValueError, match="non-empty"):
         execution.prepare("   ")
     assert execution.status().stage is None
