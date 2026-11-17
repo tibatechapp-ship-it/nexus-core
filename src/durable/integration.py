@@ -130,7 +130,8 @@ class DurableExecution:
 
     def approve_and_execute(self, *, auditor: str) -> dict[str, Any]:
         """Record human approval, then execute exactly once on the happy path."""
-        latest = self.flow.latest()
+        # Verify the complete signed checkpoint chain before trusting approval state.
+        latest = self.flow.resume()
         if latest is None or latest["stage"] != "prepared":
             raise ValueError("flow is not waiting at the prepared stage")
 
@@ -178,7 +179,7 @@ class DurableExecution:
 
     def reject(self, *, auditor: str) -> None:
         """Record a human rejection; the flow remains closed (fail-closed)."""
-        latest = self.flow.latest()
+        latest = self.flow.resume()
         if latest is None or latest["stage"] != "prepared" or not self.flow.is_interrupted:
             raise ValueError("flow is not waiting at the prepared stage")
         task = str(latest["payload"]["task"])
@@ -226,7 +227,9 @@ class DurableExecution:
 
     def status(self) -> DurableExecutionStatus:
         """Return persisted status without executing or mutating anything."""
-        latest = self.flow.latest()
+        # Status is an operator trust boundary: never report state from a chain
+        # whose earlier signed checkpoints have not been verified.
+        latest = self.flow.resume()
         payload = latest["payload"] if latest is not None else {}
         result = payload.get("result") if latest and latest["stage"] == "completed" else None
         return DurableExecutionStatus(
