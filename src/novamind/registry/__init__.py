@@ -124,14 +124,14 @@ def has_permission(agent_name: str, permission: str) -> bool:
     """فحص RBAC."""
     if _CORE_AVAILABLE and _core_has_permission:
         return _core_has_permission(agent_name, permission)
-    return True
+    return False
 
 
 def can_use_tool(agent_name: str, tool: str) -> bool:
     """فحص استخدام أداة."""
     if _CORE_AVAILABLE and _core_can_use_tool:
         return _core_can_use_tool(agent_name, tool)
-    return True
+    return False
 
 
 def all_pipeline_ids() -> list:
