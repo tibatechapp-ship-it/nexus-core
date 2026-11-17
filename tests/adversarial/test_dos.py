@@ -186,13 +186,19 @@ def test_zip_bomb_bytes_are_treated_as_inert_data() -> None:
                 readers.append(path)
                 break
     readers.sort()
-    assert [path.relative_to(ROOT / "src").as_posix() for path in readers] == [
-        "security/orchestrator.py"
-    ]
+    # The security scanner reads untrusted ZIP/APK inputs. The digital-work
+    # pipeline also opens ZIP containers, but only to validate DOCX/XLSX files
+    # that it generated itself; those reads are not an untrusted-input surface.
+    reader_paths = [path.relative_to(ROOT / "src").as_posix() for path in readers]
+    assert reader_paths == ["digital_work/pipeline.py", "security/orchestrator.py"]
 
-    # The security scanner MUST check the declared (uncompressed) size before
-    # reading the entry, so a bomb is skipped without being decompressed.
-    source = readers[0].read_text(encoding="utf-8")
+    # The untrusted-archive reader MUST check the declared (uncompressed) size
+    # before reading the entry, so a bomb is skipped without decompression.
+    security_reader = next(
+        path for path in readers
+        if path.relative_to(ROOT / "src").as_posix() == "security/orchestrator.py"
+    )
+    source = security_reader.read_text(encoding="utf-8")
     guard = source.index("info.file_size > self._MAX_ENTRY_BYTES")
     read = source.index("archive.read(info)")
     assert guard < read, "the size guard must run BEFORE archive.read (bomb risk)"
