@@ -44,6 +44,7 @@ class DurableExecutionStatus:
     waiting_for_human: bool
     council_verdict: str | None
     result: dict[str, Any] | None
+    rejected: bool = False
 
 
 class DurableExecution:
@@ -199,9 +200,10 @@ class DurableExecution:
         return DurableExecutionStatus(
             flow_id=self.flow.flow_id,
             stage=latest["stage"] if latest else None,
-            waiting_for_human=self.flow.is_interrupted,
+            waiting_for_human=self.flow.is_interrupted and not self.flow.is_rejected,
             council_verdict=payload.get("council_verdict"),
             result=result if isinstance(result, dict) else None,
+            rejected=self.flow.is_rejected,
         )
 
 
