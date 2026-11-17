@@ -263,7 +263,7 @@ class DurableFlow:
         for path in self.store.iterdir():
             if path.suffix != ".json" or not path.name[:1].isdigit():
                 continue
-            match = re.fullmatch(r"(\\d+)-(.+)\\.json", path.name)
+            match = re.fullmatch(r"(\d+)-(.+)\.json", path.name)
             if match is None:
                 raise SnapshotError(f"اسم نقطة تفتيش غير صالح: {path.name}")
             if path.is_symlink() or not path.is_file():
