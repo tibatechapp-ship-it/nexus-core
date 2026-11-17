@@ -64,3 +64,31 @@ def test_context_enforces_file_and_total_budgets(tmp_path: Path) -> None:
     assert len(result["files"]) <= 2
     assert result["characters"] <= 100
     assert result["truncated"] is True
+
+
+
+def test_lexical_retrieval_finds_related_typescript_without_defect_path(tmp_path: Path) -> None:
+    (tmp_path / "payments.ts").write_text(
+        "export function reconcileInvoice(idempotencyKey: string): boolean { "
+        "return Boolean(idempotencyKey); }"
+    )
+    (tmp_path / "profile.ts").write_text(
+        "export function updateProfile(displayName: string): string { "
+        "return displayName.trim(); }"
+    )
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets" / "invoice.ts").write_text(
+        "export const invoiceIdempotencyKey = 'private';"
+    )
+
+    result = build_code_context(
+        tmp_path,
+        {},
+        [],
+        goal="repair invoice idempotency reconciliation",
+    )
+
+    assert result["files"] == ["payments.ts"]
+    assert "reconcileInvoice" in result["rendered"]
+    assert "secrets/invoice.ts" not in result["rendered"]
+    assert result["retrieval"] == "bm25_lexical"
