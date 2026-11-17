@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from src.council.router_integration import should_use_council
-from src.durable.flow import DurableFlow
+from src.durable.flow import DurableFlow, FlowRejected
 
 
 class SupervisorLike(Protocol):
@@ -141,7 +141,7 @@ class DurableExecution:
             self.flow.checkpoint("execution_failed", failure)
             return failure
 
-        payload = {"task": task, "approved_by": auditor, "result": result}
+        payload = {"task": task, "approved_by": auditor, "council_verdict": council_verdict, "result": result}
         self.flow.checkpoint("completed" if result.get("ok") is True else "execution_failed", payload)
         return result
 
@@ -150,7 +150,10 @@ class DurableExecution:
         latest = self.flow.latest()
         if latest is None or latest["stage"] != "prepared" or not self.flow.is_interrupted:
             raise ValueError("flow is not waiting at the prepared stage")
-        self.flow.resume_after_approval("reject", auditor=auditor)
+        try:
+            self.flow.resume_after_approval("reject", auditor=auditor)
+        except FlowRejected:
+            return
 
     def status(self) -> DurableExecutionStatus:
         """Return persisted status without executing or mutating anything."""
