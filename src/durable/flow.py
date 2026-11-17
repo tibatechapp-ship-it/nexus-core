@@ -120,29 +120,65 @@ class DurableFlow:
         return {"flow_id": self.flow_id, "reason": reason, "audit_seq": record["seq"]}
 
     def resume_after_approval(self, decision: str, auditor: str) -> None:
-        """قرار بشري معلن: ``approve`` يطلق الاستئناف، ``reject`` يغلق السير."""
+        """Apply an idempotent human decision, recovering interrupted writes."""
         if not auditor:
             raise ValueError("اسم المدقّق مطلوب")
         if decision not in ("approve", "reject"):
             raise ValueError("decision يجب أن تكون approve أو reject")
         if not self.is_interrupted:
             raise ValueError("لا يوجد قرار بشري معلّق")
-        marker = json.loads(self._paused_path().read_text(encoding="utf-8"))
-        if marker.get("decision") is not None:
-            raise ValueError("تم تسجيل قرار لهذا الإيقاف مسبقًا")
-        marker["decision"] = decision
-        marker["auditor"] = auditor
-        self._paused_path().write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
-        self.audit.append(
-            "human_decision",
-            decision=decision,
-            detail={"auditor": auditor, "reason": marker.get("reason", "")},
-        )
+
+        marker_path = self._paused_path()
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        recorded = marker.get("decision")
+        recorded_auditor = marker.get("auditor")
+        if recorded is not None and (recorded != decision or recorded_auditor != auditor):
+            raise ValueError("تم تسجيل قرار مختلف لهذا الإيقاف مسبقًا")
+
+        # Persist the decision atomically before any state transition. A retry
+        # with the same actor/decision completes the transition after a crash.
+        if recorded is None:
+            marker["decision"] = decision
+            marker["auditor"] = auditor
+            temporary = marker_path.with_suffix(marker_path.suffix + ".tmp")
+            temporary.write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
+            temporary.replace(marker_path)
+
+        events = self.audit.read()
+        matching = [
+            event for event in events
+            if event.get("event") == "human_decision"
+            and event.get("decision") == decision
+            and event.get("detail", {}).get("auditor") == auditor
+            and event.get("detail", {}).get("reason") == marker.get("reason", "")
+        ]
+        if not matching:
+            self.audit.append(
+                "human_decision",
+                decision=decision,
+                detail={"auditor": auditor, "reason": marker.get("reason", "")},
+            )
+
         if decision == "reject":
-            self.audit.append("flow_closed", decision="reject", detail={"auditor": auditor})
+            closed = [
+                event for event in self.audit.read()
+                if event.get("event") == "flow_closed"
+                and event.get("decision") == "reject"
+                and event.get("detail", {}).get("auditor") == auditor
+            ]
+            if not closed:
+                self.audit.append("flow_closed", decision="reject", detail={"auditor": auditor})
             raise FlowRejected(self.flow_id)
-        self._paused_path().unlink()
-        self.audit.append("resume", decision="approve", detail={"auditor": auditor})
+
+        marker_path.unlink()
+        resumed = [
+            event for event in self.audit.read()
+            if event.get("event") == "resume"
+            and event.get("decision") == "approve"
+            and event.get("detail", {}).get("auditor") == auditor
+        ]
+        if not resumed:
+            self.audit.append("resume", decision="approve", detail={"auditor": auditor})
 
     # -- internals ---------------------------------------------------------------
     def _paused_path(self) -> Path:
