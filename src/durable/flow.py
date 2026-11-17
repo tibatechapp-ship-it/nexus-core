@@ -101,6 +101,18 @@ class DurableFlow:
         """Whether this flow is paused for an explicit human decision."""
         return self._paused_path().exists()
 
+    @property
+    def is_rejected(self) -> bool:
+        """Whether a terminal human rejection has been durably recorded."""
+        marker_path = self._paused_path()
+        if not marker_path.exists():
+            return False
+        try:
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return marker.get("decision") == "reject"
+
     def interrupt(self, reason: str) -> dict[str, Any]:
         """أوقف السير بانتظار قرار بشري — بلا سبب لا إيقاف.
 
