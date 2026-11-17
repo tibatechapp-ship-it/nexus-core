@@ -109,6 +109,7 @@ AGENT_ROLE_OVERRIDES: Dict[str, str] = {
 
     # ─── Quality ───
     "code_review_agent": "quality",
+    "code_review": "quality",
     "test_runner": "quality",
     "test_generator": "quality",
     "tester": "quality",
@@ -123,6 +124,7 @@ AGENT_ROLE_OVERRIDES: Dict[str, str] = {
 
     # ─── Engineer (default for most) ───
     "coder": "engineer",
+    "builder": "engineer",
     "fixer": "engineer",
     "multi_fixer": "engineer",
     "senior_engineer": "engineer",
@@ -168,9 +170,35 @@ ALL_PERMISSIONS: Set[str] = {
 }
 
 
-def get_role_for_agent(agent_name: str, default: str = "engineer") -> str:
-    """يُعيد الدور المُعيَّن لوكيل (أو الافتراضي)."""
-    return AGENT_ROLE_OVERRIDES.get(agent_name, default)
+def get_role_for_agent(agent_name: str, default: str = "unknown") -> str:
+    """Resolve a registered agent to an explicit RBAC role.
+
+    Explicit overrides win. Otherwise use the canonical registry category.
+    Unknown names or an unavailable registry receive no role (and therefore
+    no permissions); they never inherit engineering privileges.
+    """
+    override = AGENT_ROLE_OVERRIDES.get(agent_name)
+    if override:
+        return override
+
+    try:
+        from novamind.registry.core import get_agent
+
+        category = str(get_agent(agent_name).get("category", "")).lower()
+    except Exception:
+        return default
+
+    category_roles = {
+        "code": "engineer",
+        "data": "researcher",
+        "infra": "engineer",
+        "meta": "automation",
+        "quality": "quality",
+        "research": "researcher",
+        "security": "quality",
+        "ui": "engineer",
+    }
+    return category_roles.get(category, default)
 
 
 def get_permissions(agent_name: str) -> List[str]:
