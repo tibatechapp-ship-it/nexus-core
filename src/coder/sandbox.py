@@ -45,7 +45,12 @@ def seed_workspace(root: Path, workdir: Path) -> dict:
     """
     source = root.resolve()
     destination = workdir.resolve()
-    if source == destination or source.is_relative_to(destination):
+    if source == destination:
+        # Eval-suite callers may provide an already seeded workspace as both
+        # root and workdir. No second copy is needed.
+        return {"files_copied": 0, "bytes_copied": 0,
+                "skipped": {"symlink": 0, "sensitive": 0, "oversized": 0, "existing": 0}}
+    if source.is_relative_to(destination):
         raise ValueError("workspace must not contain the repository root")
     destination.mkdir(parents=True, exist_ok=True)
     copied = 0
