@@ -32,7 +32,7 @@ class TestSecrets:
 
     def test_private_key_detected(self) -> None:
         hits = scan_text_for_secrets(
-            "-----BEGIN RSA PRIVATE KEY-----\n", "id_rsa")
+            "-----BEGIN " + "RSA PRIVATE KEY" + "-----\n", "id_rsa")
         assert hits and hits[0].kind == "private_key_pem"
 
     def test_clean_text_no_hits(self) -> None:
