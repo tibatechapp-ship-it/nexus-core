@@ -11,7 +11,8 @@ by sha256 digest and preloaded locally; image pulls are disabled.
 
 Enforced options: network=none, read-only container root, one writable task
 workspace, all Linux capabilities dropped, no-new-privileges, non-root UID,
-PID/memory/CPU/time/output bounds, and a bounded noexec/nosuid/nodev /tmp.
+PID (1–256), memory (128 MiB–16 GiB), CPU (0.1–8 cores), time (1–300 s),
+argument-count/size and output bounds, and a bounded noexec/nosuid/nodev /tmp.
 No host environment variables or credentials are forwarded.
 
 Operational requirements:
