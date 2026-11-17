@@ -142,7 +142,7 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
     context = analyze_repo(root)
     trace_event("coder", "analyze", extra={"summary": context["summary"]})
     defects = await detect(connector, goal, {**context, "root": str(root)})
-    source_context = build_code_context(root, context, defects)
+    source_context = build_code_context(root, context, defects, goal=goal)
     context["source_context"] = source_context["rendered"]
     trace_event("coder", "context", outcome="ok", extra={
         "files": str(len(source_context["files"])),
