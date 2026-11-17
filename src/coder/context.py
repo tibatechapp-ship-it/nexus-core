@@ -35,7 +35,13 @@ TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{1,}")
 
 def _tokens(value: str) -> list[str]:
     """Normalize identifiers and prose into deterministic lexical terms."""
-    return [token.lower() for token in TOKEN_RE.findall(value)]
+    normalized: list[str] = []
+    for token in TOKEN_RE.findall(value):
+        camel_split = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
+        normalized.extend(
+            part.lower() for part in re.split(r"[_\s]+", camel_split) if len(part) > 2
+        )
+    return normalized
 
 
 def _safe_relative(root: Path, value: str) -> Path | None:
