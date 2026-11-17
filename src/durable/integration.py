@@ -120,12 +120,24 @@ class DurableExecution:
         latest = self.flow.latest()
         if latest is None or latest["stage"] != "prepared":
             raise ValueError("flow is not waiting at the prepared stage")
-        if not self.flow.is_interrupted:
-            raise ValueError("no pending human approval")
 
         task = str(latest["payload"]["task"])
         council_verdict = latest["payload"].get("council_verdict")
-        self.flow.resume_after_approval("approve", auditor=auditor)
+        if self.flow.is_interrupted:
+            # Idempotent for a crash after the decision marker was written.
+            self.flow.resume_after_approval("approve", auditor=auditor)
+        else:
+            # Recover the narrow crash window after the approved pause marker
+            # was removed but before execution_started was checkpointed.
+            decisions = [
+                event for event in self.flow.audit.read()
+                if event.get("event") == "human_decision"
+                and event.get("decision") == "approve"
+                and event.get("detail", {}).get("auditor") == auditor
+                and event.get("detail", {}).get("reason") == "تنفيذ المهمة يتطلب موافقة بشرية صريحة"
+            ]
+            if not decisions:
+                raise ValueError("no matching persisted human approval")
 
         # Write-ahead marker: after this checkpoint, an automatic retry is unsafe.
         self.flow.checkpoint(
