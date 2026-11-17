@@ -158,6 +158,39 @@ def test_crash_after_write_ahead_checkpoint_requires_manual_recovery(tmp_path: P
         restarted.approve_and_execute(auditor="operator")
 
 
+
+def test_crash_after_approval_marker_removal_recovers_from_audit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    supervisor = _Supervisor()
+    execution = DurableExecution(_flow(tmp_path), supervisor)
+    execution.prepare("summarize the README")
+
+    original_unlink = Path.unlink
+
+    def unlink_then_crash(path: Path, *args: Any, **kwargs: Any) -> None:
+        original_unlink(path, *args, **kwargs)
+        if path.name == "_paused.json":
+            raise OSError("simulated process interruption after approval persistence")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", unlink_then_crash)
+        with pytest.raises(OSError, match="simulated process interruption"):
+            execution.approve_and_execute(auditor="operator")
+
+    restarted = DurableExecution(_flow(tmp_path), supervisor)
+    result = restarted.approve_and_execute(auditor="operator")
+    assert result["ok"] is True
+    assert supervisor.calls == ["summarize the README"]
+    assert restarted.status().stage == "completed"
+
+
+def test_approval_marker_write_is_idempotent_for_same_auditor(tmp_path: Path) -> None:
+    flow = _flow(tmp_path)
+    flow.checkpoint("prepared", {"task": "summarize the README"})
+    flow.interrupt("human approval required")
+    flow.resume_after_approval("approve", auditor="operator")
+    assert flow.is_interrupted is False
+    assert any(row.get("event") == "resume" for row in flow.audit.read())
+
 def test_invalid_task_is_rejected_without_writing_state(tmp_path: Path) -> None:
     execution = DurableExecution(_flow(tmp_path), _Supervisor())
     with pytest.raises(ValueError, match="non-empty"):
