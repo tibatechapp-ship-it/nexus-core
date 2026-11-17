@@ -1,7 +1,9 @@
 """Integration tests for durable supervisor/council/human orchestration."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from threading import Barrier
 from pathlib import Path
 from typing import Any
 
@@ -270,4 +272,63 @@ def test_council_abstention_fails_closed(tmp_path: Path) -> None:
     status = execution.prepare("deploy security changes to production")
     assert status.stage == "council_abstained"
     assert not status.waiting_for_human
+    assert supervisor.calls == []
+
+
+
+def test_concurrent_approvals_claim_supervisor_execution_exactly_once(tmp_path: Path) -> None:
+    barrier = Barrier(2)
+
+    class ConcurrentAuthorizer:
+        def authorize(self, *, auditor: str, flow_id: str, task: str, decision: str) -> bool:
+            barrier.wait(timeout=5)
+            return True
+
+    supervisor = _Supervisor()
+    flow = _flow(tmp_path)
+    execution = DurableExecution(
+        flow,
+        supervisor,
+        approval_authorizer=ConcurrentAuthorizer(),
+    )
+    execution.prepare("summarize the README")
+
+    def approve() -> str:
+        try:
+            execution.approve_and_execute(auditor="release-manager")
+            return "executed"
+        except (ValueError, FileNotFoundError):
+            return "blocked"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: approve(), range(2)))
+
+    assert outcomes.count("executed") == 1
+    assert supervisor.calls == ["summarize the README"]
+    assert execution.status().execution_claimed is True
+
+
+def test_crash_after_execution_claim_is_never_replayed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    supervisor = _Supervisor()
+    flow = _flow(tmp_path)
+    execution = DurableExecution(flow, supervisor, approval_authorizer=_AllowApproval())
+    execution.prepare("summarize the README")
+
+    original_checkpoint = flow.checkpoint
+
+    def crash_before_execution_started(stage: str, state: dict[str, Any]) -> Path:
+        if stage == "execution_started":
+            raise OSError("simulated crash after exclusive execution claim")
+        return original_checkpoint(stage, state)
+
+    monkeypatch.setattr(flow, "checkpoint", crash_before_execution_started)
+    with pytest.raises(OSError, match="exclusive execution claim"):
+        execution.approve_and_execute(auditor="operator")
+
+    restarted = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=_AllowApproval())
+    assert restarted.status().stage == "prepared"
+    assert restarted.status().execution_claimed is True
+    assert supervisor.calls == []
+    with pytest.raises(ValueError, match="already been claimed"):
+        restarted.approve_and_execute(auditor="operator")
     assert supervisor.calls == []

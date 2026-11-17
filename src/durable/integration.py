@@ -8,6 +8,8 @@ is never replayed automatically.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import os
 from typing import Any, Protocol
 
 from src.council.router_integration import should_use_council
@@ -45,6 +47,7 @@ class DurableExecutionStatus:
     council_verdict: str | None
     result: dict[str, Any] | None
     rejected: bool = False
+    execution_claimed: bool = False
 
 
 class DurableExecution:
@@ -150,6 +153,11 @@ class DurableExecution:
             if not decisions:
                 raise ValueError("no matching persisted human approval")
 
+        # A filesystem-exclusive claim closes the race between concurrent
+        # approvers. It is deliberately permanent: a crash after claiming but
+        # before completion requires inspection, never an automatic replay.
+        self._claim_execution(task=task, auditor=auditor)
+
         # Write-ahead marker: after this checkpoint, an automatic retry is unsafe.
         self.flow.checkpoint(
             "execution_started",
@@ -180,6 +188,30 @@ class DurableExecution:
         except FlowRejected:
             return
 
+    def _claim_execution(self, *, auditor: str, task: str) -> None:
+        """Atomically claim the one permitted supervisor invocation for this flow."""
+        claim_path = self.flow.store / "_execution_claim.json"
+        payload = json.dumps(
+            {"flow_id": self.flow.flow_id, "task": task, "approved_by": auditor},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        try:
+            descriptor = os.open(
+                claim_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+        except FileExistsError as exc:
+            raise ValueError(
+                "execution has already been claimed; manual recovery is required"
+            ) from exc
+
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+
     def _authorize(self, *, auditor: str, task: str, decision: str) -> None:
         """Fail closed unless a trusted application auth adapter verifies the actor."""
         if self.approval_authorizer is None:
@@ -204,6 +236,7 @@ class DurableExecution:
             council_verdict=payload.get("council_verdict"),
             result=result if isinstance(result, dict) else None,
             rejected=self.flow.is_rejected,
+            execution_claimed=(self.flow.store / "_execution_claim.json").exists(),
         )
 
 

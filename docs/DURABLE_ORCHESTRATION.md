@@ -14,6 +14,10 @@ contract, the CouncilEngine.deliberate contract, and DurableFlow.
 4. A write-ahead execution_started checkpoint is persisted before calling
    the supervisor. If the process dies during that call, the run is not replayed
    automatically because the external side effect may already have happened.
+   An exclusive, fsynced per-flow execution claim is created immediately before
+   that checkpoint. Concurrent approval requests cannot both acquire it. If a
+   crash occurs after claiming but before completion, the claim remains and
+   requires manual inspection; it is never silently cleared or replayed.
 5. Human decisions and state transitions are retained in the append-only audit
    log and signed checkpoint chain.
 6. Interrupt creation uses write-ahead audit: the uniquely identified interrupt
@@ -78,3 +82,19 @@ approval and rejection are denied. The durable layer records the verified
 principal identifier supplied by the adapter; it does not authenticate users
 or grant permissions itself. The `my_application.auth` import above is an
 application-owned integration point, not a module shipped by this repository.
+
+
+## Single-execution claim and recovery
+
+The durable adapter creates `_execution_claim.json` with exclusive file creation
+(`O_CREAT | O_EXCL`) and fsyncs the claim before writing the
+`execution_started` checkpoint or invoking the supervisor. This is the
+per-flow concurrency gate: only one caller can win, even when two authenticated
+approvals arrive concurrently.
+
+The claim is intentionally permanent. If the process stops after the claim is
+written but before the execution checkpoint, inspect the audit log, claim file,
+and external systems before deciding how to proceed. The library does not
+provide a force-clear or automatic retry path because it cannot prove that an
+external side effect did not occur. `DurableExecutionStatus.execution_claimed`
+exposes this state to operators.
