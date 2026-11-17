@@ -61,8 +61,11 @@ def run_gate(
             if container_image is not None:
                 from src.coder.container_sandbox import run_in_container
 
+                container_cmd = list(cmd)
+                if container_cmd and container_cmd[0] == sys.executable:
+                    container_cmd[0] = "python"
                 result = run_in_container(
-                    cmd, workdir, image=container_image,
+                    container_cmd, workdir, image=container_image,
                     enabled=container_enabled, approved=container_approved,
                     timeout=timeout,
                 )
