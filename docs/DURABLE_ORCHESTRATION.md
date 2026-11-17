@@ -26,10 +26,15 @@ contract, the CouncilEngine.deliberate contract, and DurableFlow.
     from src.orchestrator.supervisor import Supervisor
 
     flow = DurableFlow("change-2026-001", store_dir=Path(".nexus/runs"))
+    # يوفّر التطبيق هذا المحوّل ويربطه بجلسة المستخدم وصلاحياته الفعلية.
+    # لا تقبل قيمة auditor وحدها كإثبات هوية.
+    from my_application.auth import approval_authorizer
+
     runner = DurableExecution(
         flow,
         Supervisor(use_rag=False, verbose=False),
         council=CouncilEngine(),
+        approval_authorizer=approval_authorizer,
     )
 
     status = runner.prepare("Review and deploy the production security patch")
@@ -57,5 +62,5 @@ The adapter requires an `ApprovalAuthorizer` backed by the application's
 authenticated identity/session and permission policy. Without this adapter,
 approval and rejection are denied. The durable layer records the verified
 principal identifier supplied by the adapter; it does not authenticate users
-or grant permissions itself. The example's `authenticated_session_allows`
-is an application integration point, not a function provided by this module.
+or grant permissions itself. The `my_application.auth` import above is an
+application-owned integration point, not a module shipped by this repository.
