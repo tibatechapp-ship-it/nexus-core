@@ -121,6 +121,9 @@ def test_human_rejection_is_audited_and_never_executes(tmp_path: Path) -> None:
 
     execution.reject(auditor="human-reviewer")
     assert supervisor.calls == []
+    rejected_status = execution.status()
+    assert rejected_status.rejected is True
+    assert rejected_status.waiting_for_human is False
     audit = _flow(tmp_path).audit.read()
     assert any(row.get("decision") == "reject" for row in audit)
     with pytest.raises(ValueError, match="مسبقًا"):
