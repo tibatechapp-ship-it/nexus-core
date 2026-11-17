@@ -190,9 +190,9 @@ async def test_trace_records_every_stage(tmp_path: Path) -> None:
     events = [json.loads(line) for line in trace_file.read_text().splitlines()
               if line.strip()]
     stages = [(e["agent"], e["tool"], e["outcome"]) for e in events]
-    assert stages == [("coder", "analyze", "ok"), ("coder", "detect", "ok"),
-                      ("coder", "plan", "ok"), ("quality-gate", "run", "ok"),
-                      ("coder", "gate", "ok")]
+    assert stages == [("coder", "analyze", "ok"), ("coder", "context", "ok"),
+                      ("coder", "detect", "ok"), ("coder", "plan", "ok"),
+                      ("quality-gate", "run", "ok"), ("coder", "gate", "ok")]
     required = {"ts", "agent", "tool", "duration_ms", "outcome"}
     assert all(required <= set(e) for e in events)
 
