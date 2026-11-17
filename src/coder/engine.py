@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -18,8 +20,10 @@ from typing import Any, Awaitable, Callable
 from src.coder import sandbox
 from src.coder.analyzer import analyze_repo
 from src.coder.context import build_code_context
+from src.coder.container_sandbox import run_in_container
 from src.coder.detector import detect
 from src.coder.plan import RepairPlan, plan_from_json, validate
+from src.coder.reviewer import review_patch
 from src.coder.policy import ESCALATE_AFTER_FAILURES, RiskPolicy
 from src.observability.trace import trace_event
 from src.quality_gate.runner import run_gate
@@ -134,11 +138,60 @@ def _summarize(results: list) -> str:
     return "; ".join(f"{r['cmd']}: {r.get('tail', '')[-120:]}" for r in failed[:2])
 
 
+def _workspace_patch(root: Path, workdir: Path, limit: int = 80_000) -> str:
+    """Build a bounded text diff between the original repository and workdir."""
+    ignored = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist",
+               "build", ".next", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+    sensitive = {".env", ".env.local", ".env.production", "credentials", "secrets",
+                 "id_rsa", "id_ed25519"}
+    def collect(base: Path) -> dict[str, Path]:
+        found: dict[str, Path] = {}
+        for current, dirs, files in os.walk(base, topdown=True, followlinks=False):
+            dirs[:] = [name for name in dirs if name not in ignored and not name.startswith(".")]
+            for name in files:
+                path = Path(current) / name
+                if path.is_symlink() or name.lower() in sensitive or name.lower().startswith(".env"):
+                    continue
+                try:
+                    if path.stat().st_size <= 64 * 1024:
+                        found[path.relative_to(base).as_posix()] = path
+                except OSError:
+                    continue
+        return found
+
+    original, candidate = collect(root), collect(workdir)
+    chunks: list[str] = []
+    used = 0
+    for name in sorted(set(original) | set(candidate)):
+        try:
+            old = original[name].read_text(encoding="utf-8") if name in original else ""
+            new = candidate[name].read_text(encoding="utf-8") if name in candidate else ""
+        except (OSError, UnicodeError):
+            continue
+        if old == new:
+            continue
+        diff = "".join(difflib.unified_diff(
+            old.splitlines(keepends=True), new.splitlines(keepends=True),
+            fromfile=f"a/{name}", tofile=f"b/{name}",
+        ))
+        if diff:
+            remaining = limit - used
+            if remaining <= 0:
+                break
+            chunks.append(diff[:remaining])
+            used += min(len(diff), remaining)
+    return "".join(chunks)
+
+
 async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
                       max_iterations: int, council: Callable | None,
                       council_mode: str, council_timeout: float,
                       policy: RiskPolicy,
-                      gates: list | None, test_timeout: int) -> JsonDict:
+                      gates: list | None, test_timeout: int,
+                      execution_mode: str, container_image: str | None,
+                      container_enabled: bool, container_approved: bool,
+                      reviewer: Callable | None, author_provider_id: str,
+                      reviewer_provider_id: str) -> JsonDict:
     context = analyze_repo(root)
     trace_event("coder", "analyze", extra={"summary": context["summary"]})
     defects = await detect(connector, goal, {**context, "root": str(root)})
@@ -227,14 +280,62 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
             trace_event("coder", "execute", outcome="fail")
             continue
 
-        tests = sandbox.run_tests(plan.tests_to_run, workdir, timeout=test_timeout)
-        gate_ok, gate_results = run_gate(workdir, gates=gates)
+        if execution_mode == "container":
+            tests = run_in_container(
+                ["python", "-m", "pytest", "-q", "--no-header", *plan.tests_to_run],
+                workdir, image=container_image or "", enabled=container_enabled,
+                approved=container_approved, timeout=test_timeout,
+            )
+            gate_ok, gate_results = run_gate(
+                workdir, gates=gates, container_image=container_image,
+                container_enabled=container_enabled, container_approved=container_approved,
+            )
+        else:
+            tests = sandbox.run_tests(plan.tests_to_run, workdir, timeout=test_timeout)
+            gate_ok, gate_results = run_gate(workdir, gates=gates)
         attempts.append({
             "iteration": iteration, "stage": "gate", "tests_ok": tests["ok"],
             "gate_ok": gate_ok, "gate": gate_results,
         })
         _append_record(workdir, plan, {"tests": tests, "gate": gate_results})
         if tests["ok"] and gate_ok:
+            review_result = None
+            if reviewer is not None:
+                try:
+                    patch_text = _workspace_patch(root, workdir)
+                    review_result = await review_patch(
+                        patch_text,
+                        json.dumps({
+                            "goal": goal, "plan": plan.to_json(),
+                            "tests": tests, "quality_gates": gate_results,
+                        }, ensure_ascii=False)[:40000],
+                        reviewer,
+                        author_provider_id=author_provider_id,
+                        reviewer_provider_id=reviewer_provider_id,
+                    )
+                    attempts.append({
+                        "iteration": iteration, "stage": "independent_review",
+                        "decision": review_result["decision"],
+                        "findings": len(review_result["findings"]),
+                    })
+                    trace_event("coder", "independent_review",
+                                outcome=review_result["decision"])
+                except Exception as exc:  # noqa: BLE001 — invalid review blocks promotion
+                    failures += 1
+                    feedback = f"independent review failed: {type(exc).__name__}: {exc}"[:MAX_FEEDBACK]
+                    attempts.append({"iteration": iteration, "stage": "independent_review",
+                                     "error": feedback})
+                    trace_event("coder", "independent_review", outcome="fail")
+                    continue
+                if review_result["decision"] == "reject":
+                    return {"ok": False, "error": "independent_review_rejected",
+                            "review": review_result, "iterations": iteration,
+                            "attempts": attempts, "workdir": str(workdir),
+                            "escalation": escalation}
+                if review_result["decision"] != "approve":
+                    failures += 1
+                    feedback = "independent reviewer requested changes: " + review_result["summary"][:MAX_FEEDBACK]
+                    continue
             if high_risk:
                 if council_mode == "off":
                     promotion = "pending"
@@ -267,7 +368,7 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
             return {"ok": True, "iterations": iteration, "plan": plan.to_json(),
                     "gate": gate_results, "promotion": promotion,
                     "workdir": str(workdir), "attempts": attempts,
-                    "escalation": escalation}
+                    "review": review_result, "escalation": escalation}
         failures += 1
         feedback = "gate failed: " + _summarize(gate_results) + f" | tests: {tests['stderr'][-120:]}"
         trace_event("coder", "gate", outcome="fail")
@@ -303,10 +404,18 @@ async def run_engine(
     policy: RiskPolicy | None = None,
     gates: list | None = None,
     test_timeout: int = 60,
+    execution_mode: str = "process",
+    container_image: str | None = None,
+    container_enabled: bool = False,
+    container_approved: bool = False,
+    reviewer: Callable | None = None,
+    author_provider_id: str = "",
+    reviewer_provider_id: str = "",
+    require_independent_review: bool = False,
 ) -> JsonDict:
     """Run the five-stage loop; mutations land only inside ``workdir``.
 
-    ``connector`` is any BYOK object exposing ``async generate()``. ``council``
+    ``execution_mode="container"`` runs tests and quality gates only through\n    the rootless Docker sandbox; it requires explicit feature opt-in, human\n    approval and an immutable image digest. The legacy process mode remains\n    available for trusted local development only.\n\n    ``connector`` is any BYOK object exposing ``async generate()``. ``council``
     is an optional callable (sync or async). ``council_mode`` chooses how the
     council is involved: ``"escalate"`` (default — no preemption: work never
     waits, high-risk green results stay ``pending`` for explicit sign-off,
@@ -322,6 +431,14 @@ async def run_engine(
     ``escalation`` records whether the impasse escalation fired, at which
     iteration, and its verdict.
     """
+    if require_independent_review and reviewer is None:
+        raise ValueError("independent reviewer is required but not configured")
+    if reviewer is not None and (not author_provider_id or not reviewer_provider_id):
+        raise ValueError("author_provider_id and reviewer_provider_id are required with reviewer")
+    if execution_mode not in {"process", "container"}:
+        raise ValueError("execution_mode must be process or container")
+    if execution_mode == "container" and not container_image:
+        raise ValueError("container_image pinned by sha256 digest is required")
     if council_mode not in COUNCIL_MODES:
         raise ValueError(f"council_mode must be one of {COUNCIL_MODES}, "
                          f"got {council_mode!r}")
@@ -333,7 +450,9 @@ async def run_engine(
         workspace_report = sandbox.seed_workspace(root, wd)
         result = await _run_engine(goal, connector, root, wd, max_iterations,
                                    council, council_mode, council_timeout,
-                                   active_policy, gates, test_timeout)
+                                   active_policy, gates, test_timeout, execution_mode,
+                                   container_image, container_enabled, container_approved,
+                                   reviewer, author_provider_id, reviewer_provider_id)
         result["workspace"] = workspace_report
         return result
     except Exception as exc:  # noqa: BLE001 — the engine reports, never crashes the caller

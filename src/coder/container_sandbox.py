@@ -1,6 +1,7 @@
 """Opt-in Docker isolation for untrusted coding-agent commands."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -40,6 +41,7 @@ def run_in_container(
     cpus: str = "2",
     pids_limit: int = 64,
     docker_binary: str = "docker",
+    require_rootless: bool = True,
 ) -> dict[str, Any]:
     """Run argv in a networkless container; only workspace is writable."""
     _approved(enabled=enabled, approved=approved, image=image)
@@ -74,6 +76,28 @@ def run_in_container(
     docker = shutil.which(docker_binary)
     if docker is None:
         raise ContainerSandboxError("Docker CLI not found")
+    if require_rootless:
+        try:
+            daemon = subprocess.run(
+                [docker, "info", "--format", "{{json .SecurityOptions}}"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, timeout=10, check=False,
+                env={"PATH": os.path.dirname(docker)},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ContainerSandboxError(f"rootless Docker preflight failed: {exc}") from exc
+        try:
+            security_options = json.loads(daemon.stdout) if daemon.returncode == 0 else []
+        except json.JSONDecodeError:
+            security_options = []
+        rootless_enabled = isinstance(security_options, list) and any(
+            isinstance(option, str) and option.casefold() == "name=rootless"
+            for option in security_options
+        )
+        if not rootless_enabled:
+            raise ContainerSandboxError(
+                "rootless Docker daemon is required; refusing non-rootless execution"
+            )
 
     argv = [
         docker,

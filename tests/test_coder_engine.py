@@ -465,3 +465,53 @@ async def test_existing_repository_file_is_repaired_in_seeded_workspace(
     )
     assert source.read_text().endswith('return "hello"\n')
     assert result["workspace"]["files_copied"] >= 1
+
+
+
+async def test_independent_reviewer_is_called_before_engine_success(tmp_path: Path) -> None:
+    source = tmp_path / "app.py"
+    source.write_text('def greet() -> str:\n    return "hello"\n')
+    steps = [
+        {"file": "app.py", "action": "edit", "reason": "change greeting",
+         "find": 'return "hello"', "patch_hint": 'return "hello nexus"',
+         "risk": "low"},
+        {"file": "test_app.py", "action": "create", "reason": "verify change",
+         "patch_hint": (
+             "from app import greet\n\n"
+             "def test_greet() -> None:\n"
+             '    assert greet() == "hello nexus"\n'
+         ), "risk": "low"},
+    ]
+    conn = Scripted([{"ok": True, "reply": "[]"},
+                     _plan_reply(steps, ["test_app.py"])])
+    prompts: list[str] = []
+
+    def independent_reviewer(prompt: str) -> dict:
+        prompts.append(prompt)
+        return {
+            "decision": "approve",
+            "summary": "The patch is consistent with the supplied evidence.",
+            "findings": [],
+            "tests_required": [],
+            "confidence": 0.91,
+        }
+
+    result = await run_engine(
+        "update greeting", conn, root=tmp_path, max_iterations=1,
+        gates=PASS_GATE, reviewer=independent_reviewer,
+        author_provider_id="author/provider-model",
+        reviewer_provider_id="reviewer/independent-model",
+    )
+    assert result["ok"] is True, result
+    assert result["review"]["decision"] == "approve"
+    assert result["review"]["independent"] is True
+    assert len(prompts) == 1 and "return \"hello nexus\"" in prompts[0]
+
+
+def test_engine_can_require_reviewer_fail_closed(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="independent reviewer is required"):
+        import asyncio
+        asyncio.run(run_engine(
+            "change code", Scripted([]), root=tmp_path,
+            require_independent_review=True,
+        ))
