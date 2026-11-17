@@ -11,6 +11,7 @@ import pytest
 
 from src.durable import ApprovalAuthorizer, DurableExecution as PublicDurableExecution, DurableFlow
 from src.durable.integration import DurableExecution
+from src.durable.snapshots import SnapshotError
 
 
 @dataclass
@@ -331,4 +332,33 @@ def test_crash_after_execution_claim_is_never_replayed(tmp_path: Path, monkeypat
     assert supervisor.calls == []
     with pytest.raises(ValueError, match="already been claimed"):
         restarted.approve_and_execute(auditor="operator")
+    assert supervisor.calls == []
+
+
+def _tampered_prepared_execution(tmp_path: Path) -> tuple[DurableFlow, _Supervisor, DurableExecution]:
+    flow = _flow(tmp_path, "tampered-chain")
+    flow.checkpoint("history", {"safe": True})
+    flow.checkpoint("prepared", {"task": "summarize the README", "council_verdict": None})
+    flow.interrupt("human approval required")
+    first = next(flow.store.glob("0001-*.json"))
+    import json
+
+    snapshot = json.loads(first.read_text(encoding="utf-8"))
+    snapshot["snapshot"]["payload"]["safe"] = False
+    first.write_text(json.dumps(snapshot), encoding="utf-8")
+    supervisor = _Supervisor()
+    execution = DurableExecution(flow, supervisor, approval_authorizer=_AllowApproval())
+    return flow, supervisor, execution
+
+
+def test_status_rejects_tampered_earlier_checkpoint(tmp_path: Path) -> None:
+    _, _, execution = _tampered_prepared_execution(tmp_path)
+    with pytest.raises(SnapshotError):
+        execution.status()
+
+
+def test_approval_rejects_tampered_earlier_checkpoint_before_execution(tmp_path: Path) -> None:
+    _, supervisor, execution = _tampered_prepared_execution(tmp_path)
+    with pytest.raises(SnapshotError):
+        execution.approve_and_execute(auditor="release-manager")
     assert supervisor.calls == []
