@@ -143,7 +143,7 @@ def build_code_context(
 
     return {
         "files": included,
-        "rendered": "\n\n".join(rendered) if rendered else "(No eligible source files were selected.)",
+        "rendered": ("\n\n".join(rendered) if rendered else "(No eligible source files were selected.)"),
         "truncated": truncated,
         "characters": total,
     }
