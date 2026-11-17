@@ -227,6 +227,36 @@ def test_flow_interrupt_blocks_then_approve_releases(tmp_path: Path) -> None:
     assert flow.latest() is not None and flow.latest()["stage"] == "step2"  # type: ignore[union-attr]
 
 
+def test_interrupt_write_ahead_audit_recovers_missing_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    flow = DurableFlow("interrupt-recovery", store_dir=tmp_path)
+    original_replace = Path.replace
+
+    def fail_marker_replace(self: Path, target: Path) -> Path:
+        if self.name == "_paused.json.tmp":
+            raise OSError("simulated crash before pause marker publication")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_marker_replace)
+    with pytest.raises(OSError, match="simulated crash"):
+        flow.interrupt("recovery required")
+    monkeypatch.setattr(Path, "replace", original_replace)
+
+    recovered = DurableFlow("interrupt-recovery", store_dir=tmp_path)
+    assert recovered.is_interrupted is True
+    marker = json.loads((recovered.store / "_paused.json").read_text(encoding="utf-8"))
+    assert marker["reason"] == "recovery required"
+    assert marker["interruption_id"]
+    assert len(recovered.audit.events("interrupt")) == 1
+
+    recovered.resume_after_approval("approve", auditor="recovery-reviewer")
+    events = recovered.audit.read()
+    interrupt = next(event for event in events if event["event"] == "interrupt")
+    decision = next(event for event in events if event["event"] == "human_decision")
+    assert decision["detail"]["interruption_id"] == interrupt["detail"]["interruption_id"]
+
+
 def test_flow_reject_closes_fail_closed(tmp_path: Path) -> None:
     flow = DurableFlow("f5", store_dir=tmp_path)
     flow.checkpoint("step1", {"n": 1})
@@ -240,15 +270,22 @@ def test_flow_reject_closes_fail_closed(tmp_path: Path) -> None:
 
 
 def test_flow_gate_validations(tmp_path: Path) -> None:
-    flow = DurableFlow("f6", store_dir=tmp_path)
+    empty_reason = DurableFlow("f6-empty-reason", store_dir=tmp_path)
     with pytest.raises(ValueError, match="سبب"):
-        flow.interrupt("")
+        empty_reason.interrupt("")
+
+    invalid_decision = DurableFlow("f6-invalid-decision", store_dir=tmp_path)
+    invalid_decision.interrupt("سبب")
     with pytest.raises(ValueError, match="decision"):
-        flow.interrupt("سبب")
-        flow.resume_after_approval("maybe", auditor="x")
+        invalid_decision.resume_after_approval("maybe", auditor="x")
+
+    empty_auditor = DurableFlow("f6-empty-auditor", store_dir=tmp_path)
+    empty_auditor.interrupt("سبب2")
     with pytest.raises(ValueError, match="مدقّق"):
-        flow.interrupt("سبب2")
-        flow.resume_after_approval("approve", auditor="")
+        empty_auditor.resume_after_approval("approve", auditor="")
+
+    with pytest.raises(InterruptPending, match="متوقف بالفعل"):
+        empty_auditor.interrupt("سبب مكرر")
 
 
 def test_flow_audit_records_every_gate_event(tmp_path: Path) -> None:

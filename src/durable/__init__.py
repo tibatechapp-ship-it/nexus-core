@@ -13,11 +13,15 @@ from __future__ import annotations
 
 from src.durable.audit import AuditIntegrityError, AuditLog
 from src.durable.flow import DurableFlow, FlowRejected, InterruptPending
+from src.durable.integration import ApprovalAuthorizer, DurableExecution, DurableExecutionStatus
 from src.durable.snapshots import SnapshotError, canonical_json, sign_snapshot, verify_snapshot
 
 __all__ = [
+    "ApprovalAuthorizer",
     "AuditIntegrityError",
     "AuditLog",
+    "DurableExecution",
+    "DurableExecutionStatus",
     "DurableFlow",
     "FlowRejected",
     "InterruptPending",
