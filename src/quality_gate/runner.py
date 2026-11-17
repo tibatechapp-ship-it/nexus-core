@@ -61,6 +61,7 @@ def run_gate(workdir: Path, gates: list | None = None,
             passed, tail = False, f"gate crashed: {exc}"[:MAX_TAIL]
         ok = ok and passed
         results.append({"cmd": " ".join(cmd), "ok": passed, "tail": tail.strip()})
+    duration_ms = round((time.monotonic() - started) * 1000, 2)
     report = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "gate": "quality",
@@ -68,7 +69,6 @@ def run_gate(workdir: Path, gates: list | None = None,
         "duration_ms": duration_ms,
         "results": results,
     }
-    duration_ms = round((time.monotonic() - started) * 1000, 2)
     log = _log_path(workdir)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
