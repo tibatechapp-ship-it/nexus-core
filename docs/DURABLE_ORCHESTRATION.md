@@ -49,3 +49,13 @@ systems before taking any action. The integration deliberately does not retry
 that call; the existing supervisor has no idempotency-key contract, so automatic
 replay could duplicate side effects. A future version may add idempotency keys
 end-to-end before enabling safe retry.
+
+
+## Authentication boundary
+
+The adapter requires an `ApprovalAuthorizer` backed by the application's
+authenticated identity/session and permission policy. Without this adapter,
+approval and rejection are denied. The durable layer records the verified
+principal identifier supplied by the adapter; it does not authenticate users
+or grant permissions itself. The example's `authenticated_session_allows`
+is an application integration point, not a function provided by this module.
