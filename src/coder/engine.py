@@ -148,6 +148,7 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
         "files": str(len(source_context["files"])),
         "characters": str(source_context["characters"]),
         "truncated": str(source_context["truncated"]),
+        "retrieval": str(source_context.get("retrieval", "deterministic")),
     })
     trace_event("coder", "detect", outcome="ok", extra={"defects": str(len(defects))})
     feedback = ""
