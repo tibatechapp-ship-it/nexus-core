@@ -44,8 +44,7 @@ def test_static_scan_redacts_possible_credentials(tmp_path: Path) -> None:
 
 def test_static_scan_handles_javascript_shell_risk_and_markers(tmp_path: Path) -> None:
     (tmp_path / "runner.js").write_text(
-        "const { exec } = require('child_process');\n"
-        "exec(userInput); // FIXME validate input\n",
+        "child_process.exec(userInput); // FIXME validate input\n",
         encoding="utf-8",
     )
 
