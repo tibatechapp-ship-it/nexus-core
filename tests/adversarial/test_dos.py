@@ -8,6 +8,7 @@ when those bounds hold; it BREAKS when a resource can be exhausted.
 
 from __future__ import annotations
 
+import ast
 import base64
 import re
 import tracemalloc
@@ -158,17 +159,46 @@ def test_zip_bomb_bytes_are_treated_as_inert_data() -> None:
     streaming_modules = {"tarfile", "lzma", "bz2", "gzip"}
     assert not (imported_modules(ROOT / "src") & streaming_modules)
 
-    # Exactly one module may read ZIP archives — the bounded security scanner.
-    importers = sorted(
-        path
-        for path in (ROOT / "src").rglob("*.py")
-        if re.search(r"^\s*import zipfile\b", path.read_text(encoding="utf-8"), re.MULTILINE)
-    )
-    assert [path.name for path in importers] == ["orchestrator.py"]
+    # ZIP creation for Office reports is safe; only ZIP readers must be
+    # restricted to the bounded security scanner. Inspect calls rather than
+    # imports so write-only uses (mode="w") do not look like archive readers.
+    readers: list[Path] = []
+    for path in (ROOT / "src").rglob("*.py"):
+        source_text = path.read_text(encoding="utf-8")
+        if not re.search(r"^\s*import zipfile\b", source_text, re.MULTILINE):
+            continue
+        tree = ast.parse(source_text, filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if not (
+                isinstance(function, ast.Attribute)
+                and function.attr == "ZipFile"
+                and isinstance(function.value, ast.Name)
+                and function.value.id == "zipfile"
+            ):
+                continue
+            mode = node.args[1] if len(node.args) > 1 else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "mode"), None
+            )
+            if mode is None or (isinstance(mode, ast.Constant) and mode.value == "r"):
+                readers.append(path)
+                break
+    readers.sort()
+    # The security scanner reads untrusted ZIP/APK inputs. The digital-work
+    # pipeline also opens ZIP containers, but only to validate DOCX/XLSX files
+    # that it generated itself; those reads are not an untrusted-input surface.
+    reader_paths = [path.relative_to(ROOT / "src").as_posix() for path in readers]
+    assert reader_paths == ["digital_work/pipeline.py", "security/orchestrator.py"]
 
-    # And it MUST check the declared (uncompressed) size before reading the entry,
-    # so a bomb is skipped without ever being decompressed into memory.
-    source = importers[0].read_text(encoding="utf-8")
+    # The untrusted-archive reader MUST check the declared (uncompressed) size
+    # before reading the entry, so a bomb is skipped without decompression.
+    security_reader = next(
+        path for path in readers
+        if path.relative_to(ROOT / "src").as_posix() == "security/orchestrator.py"
+    )
+    source = security_reader.read_text(encoding="utf-8")
     guard = source.index("info.file_size > self._MAX_ENTRY_BYTES")
     read = source.index("archive.read(info)")
     assert guard < read, "the size guard must run BEFORE archive.read (bomb risk)"
