@@ -45,6 +45,37 @@ def test_bounds_are_checked_before_docker(
         )
 
 
+@pytest.mark.parametrize("memory", ["64m", "32g", "0m", "invalid"])
+def test_memory_limits_are_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memory: str
+) -> None:
+    monkeypatch.setenv("NEXUS_ENABLE_CONTAINER_SANDBOX", "1")
+    with pytest.raises(ContainerSandboxError):
+        run_in_container(
+            ["python", "-V"],
+            tmp_path,
+            image=IMAGE,
+            enabled=True,
+            approved=True,
+            memory=memory,
+        )
+
+
+@pytest.mark.parametrize("cpus", ["0.01", "9", "invalid"])
+def test_cpu_limits_are_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cpus: str
+) -> None:
+    monkeypatch.setenv("NEXUS_ENABLE_CONTAINER_SANDBOX", "1")
+    with pytest.raises(ContainerSandboxError):
+        run_in_container(
+            ["python", "-V"],
+            tmp_path,
+            image=IMAGE,
+            enabled=True,
+            approved=True,
+            cpus=cpus,
+        )
+
 def test_workspace_must_exist(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
