@@ -114,13 +114,19 @@ class DurableFlow:
         """استأنف من آخر نقطة بعد التحقق من المخزون والسلسلة كاملة."""
         inventory = self._checkpoint_inventory()
         parent: str | None = None
+        latest: dict[str, Any] | None = None
         for i in sorted(inventory):
             snap = load_snapshot(inventory[i])
             body = snap["snapshot"]
             if body.get("parent_sha") != parent:
                 raise SnapshotError(f"سلسلة مكسورة عند نقطة {i}: الربط لا يطابق")
             parent = str(snap["integrity"]["digest"])
-        return self.latest()
+            latest = {
+                "stage": str(body["stage"]),
+                "seq": i,
+                "payload": body["payload"],
+            }
+        return latest
 
     # -- human gate --------------------------------------------------------------
     @property
