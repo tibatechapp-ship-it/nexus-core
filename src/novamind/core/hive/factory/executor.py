@@ -295,27 +295,35 @@ async def execute_agent(
             "duration_ms": int((time.time() - started) * 1000),
         }
 
-    # ─── RBAC: فحص صلاحية تنفيذ LLM ───
+    # ─── RBAC: fail closed before any model/tool execution ───
     try:
-        if (
-            not can_agent_use_tool(agent_id, "read_all")
-            and not can_agent_use_tool(agent_id, "run_tests")
-            and not can_agent_use_tool(agent_id, "monitor")
-            and not can_agent_use_tool(agent_id, "plan")
-        ):
-            return {
-                "success": False,
-                "status": "permission_denied",
-                "agent": agent_id,
-                "error": f"Agent '{agent_id}' lacks execution permission",
-                "permissions": getattr(
-                    __import__("hive.factory.guards", fromlist=["get_agent_permissions"]),
-                    "get_agent_permissions",
-                )(agent_id),
-                "duration_ms": int((time.time() - started) * 1000),
-            }
+        from novamind.factory.guards import (
+            can_agent_use_tool as _can_use,
+            get_agent_permissions as _get_permissions,
+        )
+        authorized = any(
+            _can_use(agent_id, permission)
+            for permission in ("read_all", "run_tests", "monitor", "plan")
+        )
+        permissions = _get_permissions(agent_id)
     except Exception as _rbac_err:
-        logger.debug("RBAC check skipped: %s", _rbac_err)
+        return {
+            "success": False,
+            "status": "authorization_unavailable",
+            "agent": agent_id,
+            "error": f"RBAC check failed closed: {type(_rbac_err).__name__}",
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+
+    if not authorized:
+        return {
+            "success": False,
+            "status": "permission_denied",
+            "agent": agent_id,
+            "error": f"Agent '{agent_id}' lacks execution permission",
+            "permissions": permissions,
+            "duration_ms": int((time.time() - started) * 1000),
+        }
 
     # 2. prompt
     prompt = build_prompt(agent, task, ctx)
