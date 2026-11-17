@@ -18,6 +18,7 @@ from typing import Any, Awaitable, Callable
 from src.coder import sandbox
 from src.coder.analyzer import analyze_repo
 from src.coder.context import build_code_context
+from src.coder.container_sandbox import run_in_container
 from src.coder.detector import detect
 from src.coder.plan import RepairPlan, plan_from_json, validate
 from src.coder.policy import ESCALATE_AFTER_FAILURES, RiskPolicy
@@ -227,8 +228,8 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
             trace_event("coder", "execute", outcome="fail")
             continue
 
-        tests = sandbox.run_tests(plan.tests_to_run, workdir, timeout=test_timeout)
-        gate_ok, gate_results = run_gate(workdir, gates=gates)
+        if execution_mode == "container":
+            tests = run_in_container(\n                ["python", "-m", "pytest", "-q", "--no-header", *plan.tests_to_run],\n                workdir, image=container_image or "", enabled=container_enabled,\n                approved=container_approved, timeout=test_timeout,\n            )\n            gate_ok, gate_results = run_gate(\n                workdir, gates=gates, container_image=container_image,\n                container_enabled=container_enabled, container_approved=container_approved,\n            )\n        else:\n            tests = sandbox.run_tests(plan.tests_to_run, workdir, timeout=test_timeout)\n            gate_ok, gate_results = run_gate(workdir, gates=gates)
         attempts.append({
             "iteration": iteration, "stage": "gate", "tests_ok": tests["ok"],
             "gate_ok": gate_ok, "gate": gate_results,
@@ -303,10 +304,14 @@ async def run_engine(
     policy: RiskPolicy | None = None,
     gates: list | None = None,
     test_timeout: int = 60,
+    execution_mode: str = "process",
+    container_image: str | None = None,
+    container_enabled: bool = False,
+    container_approved: bool = False,
 ) -> JsonDict:
     """Run the five-stage loop; mutations land only inside ``workdir``.
 
-    ``connector`` is any BYOK object exposing ``async generate()``. ``council``
+    ``execution_mode="container"`` runs tests and quality gates only through\n    the rootless Docker sandbox; it requires explicit feature opt-in, human\n    approval and an immutable image digest. The legacy process mode remains\n    available for trusted local development only.\n\n    ``connector`` is any BYOK object exposing ``async generate()``. ``council``
     is an optional callable (sync or async). ``council_mode`` chooses how the
     council is involved: ``"escalate"`` (default — no preemption: work never
     waits, high-risk green results stay ``pending`` for explicit sign-off,
@@ -322,6 +327,10 @@ async def run_engine(
     ``escalation`` records whether the impasse escalation fired, at which
     iteration, and its verdict.
     """
+    if execution_mode not in {"process", "container"}:
+        raise ValueError("execution_mode must be process or container")
+    if execution_mode == "container" and not container_image:
+        raise ValueError("container_image pinned by sha256 digest is required")
     if council_mode not in COUNCIL_MODES:
         raise ValueError(f"council_mode must be one of {COUNCIL_MODES}, "
                          f"got {council_mode!r}")
@@ -333,7 +342,7 @@ async def run_engine(
         workspace_report = sandbox.seed_workspace(root, wd)
         result = await _run_engine(goal, connector, root, wd, max_iterations,
                                    council, council_mode, council_timeout,
-                                   active_policy, gates, test_timeout)
+                                   active_policy, gates, test_timeout, execution_mode,\n                                   container_image, container_enabled, container_approved)
         result["workspace"] = workspace_report
         return result
     except Exception as exc:  # noqa: BLE001 — the engine reports, never crashes the caller
