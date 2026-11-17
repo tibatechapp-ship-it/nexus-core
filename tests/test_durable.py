@@ -240,15 +240,22 @@ def test_flow_reject_closes_fail_closed(tmp_path: Path) -> None:
 
 
 def test_flow_gate_validations(tmp_path: Path) -> None:
-    flow = DurableFlow("f6", store_dir=tmp_path)
+    empty_reason = DurableFlow("f6-empty-reason", store_dir=tmp_path)
     with pytest.raises(ValueError, match="سبب"):
-        flow.interrupt("")
+        empty_reason.interrupt("")
+
+    invalid_decision = DurableFlow("f6-invalid-decision", store_dir=tmp_path)
+    invalid_decision.interrupt("سبب")
     with pytest.raises(ValueError, match="decision"):
-        flow.interrupt("سبب")
-        flow.resume_after_approval("maybe", auditor="x")
+        invalid_decision.resume_after_approval("maybe", auditor="x")
+
+    empty_auditor = DurableFlow("f6-empty-auditor", store_dir=tmp_path)
+    empty_auditor.interrupt("سبب2")
     with pytest.raises(ValueError, match="مدقّق"):
-        flow.interrupt("سبب2")
-        flow.resume_after_approval("approve", auditor="")
+        empty_auditor.resume_after_approval("approve", auditor="")
+
+    with pytest.raises(InterruptPending, match="متوقف بالفعل"):
+        empty_auditor.interrupt("سبب مكرر")
 
 
 def test_flow_audit_records_every_gate_event(tmp_path: Path) -> None:
