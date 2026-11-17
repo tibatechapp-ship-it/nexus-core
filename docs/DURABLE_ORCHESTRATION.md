@@ -98,3 +98,13 @@ and external systems before deciding how to proceed. The library does not
 provide a force-clear or automatic retry path because it cannot prove that an
 external side effect did not occur. `DurableExecutionStatus.execution_claimed`
 exposes this state to operators.
+
+
+## Checkpoint-chain verification at operator boundaries
+
+Before approval, rejection, or status reporting, the integration validates the
+entire signed checkpoint chain via `DurableFlow.resume()`. Loading only the
+latest snapshot is insufficient: an earlier checkpoint could have been altered
+while the latest snapshot remains individually valid. A broken or tampered
+history therefore blocks the action and is surfaced as a snapshot integrity
+error; no supervisor call is made from unverified history.
