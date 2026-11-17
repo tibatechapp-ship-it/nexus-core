@@ -419,3 +419,49 @@ def test_promotion_helper_direct() -> None:
     assert _promotion("approve", high_risk=True) == "approved"
     assert _promotion("DENY", high_risk=True) == "rejected"
     assert _promotion("maybe", high_risk=True) == "pending"
+
+
+
+async def test_existing_repository_file_is_repaired_in_seeded_workspace(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text('def greet() -> str:\n    return "hello"\n')
+    steps = [
+        {
+            "file": "app.py",
+            "action": "edit",
+            "reason": "update greeting",
+            "find": 'return "hello"',
+            "patch_hint": 'return "hello from nexus"',
+            "risk": "low",
+        },
+        {
+            "file": "test_app.py",
+            "action": "create",
+            "reason": "verify greeting",
+            "patch_hint": (
+                "from app import greet\n\n"
+                "def test_greet() -> None:\n"
+                '    assert greet() == "hello from nexus"\n'
+            ),
+            "risk": "low",
+        },
+    ]
+    conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(steps, ["test_app.py"])])
+
+    result = await run_engine(
+        "update greet to return hello from nexus",
+        conn,
+        root=tmp_path,
+        max_iterations=1,
+        gates=PASS_GATE,
+        test_timeout=90,
+    )
+
+    assert result["ok"] is True, result
+    assert (Path(result["workdir"]) / "app.py").read_text().endswith(
+        'return "hello from nexus"\n'
+    )
+    assert source.read_text().endswith('return "hello"\n')
+    assert result["workspace"]["files_copied"] >= 1
