@@ -183,13 +183,28 @@ def test_crash_after_approval_marker_removal_recovers_from_audit(tmp_path: Path,
     assert restarted.status().stage == "completed"
 
 
-def test_approval_marker_write_is_idempotent_for_same_auditor(tmp_path: Path) -> None:
+def test_approval_marker_write_is_idempotent_for_same_auditor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow = _flow(tmp_path)
     flow.checkpoint("prepared", {"task": "summarize the README"})
     flow.interrupt("human approval required")
+
+    original_append = flow.audit.append
+
+    def append_then_crash(event: str, **kwargs: Any) -> dict[str, Any]:
+        if event == "human_decision":
+            raise OSError("simulated interruption after decision marker persistence")
+        return original_append(event, **kwargs)
+
+    monkeypatch.setattr(flow.audit, "append", append_then_crash)
+    with pytest.raises(OSError, match="decision marker persistence"):
+        flow.resume_after_approval("approve", auditor="operator")
+
+    monkeypatch.setattr(flow.audit, "append", original_append)
     flow.resume_after_approval("approve", auditor="operator")
     assert flow.is_interrupted is False
-    assert any(row.get("event") == "resume" for row in flow.audit.read())
+    events = flow.audit.read()
+    assert sum(row.get("event") == "human_decision" for row in events) == 1
+    assert sum(row.get("event") == "resume" for row in events) == 1
 
 def test_invalid_task_is_rejected_without_writing_state(tmp_path: Path) -> None:
     execution = DurableExecution(_flow(tmp_path), _Supervisor())
