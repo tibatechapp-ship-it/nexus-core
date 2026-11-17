@@ -96,6 +96,11 @@ class DurableFlow:
         return self.latest()
 
     # -- human gate --------------------------------------------------------------
+    @property
+    def is_interrupted(self) -> bool:
+        """Whether this flow is paused for an explicit human decision."""
+        return self._paused_path().exists()
+
     def interrupt(self, reason: str) -> dict[str, Any]:
         """أوقف السير بانتظار قرار بشري — بلا سبب لا إيقاف.
 
@@ -104,8 +109,13 @@ class DurableFlow:
         """
         if not reason:
             raise ValueError("سبب الإيقاف مطلوب")
+        if self.is_interrupted:
+            raise InterruptPending("السير متوقف بالفعل بانتظار قرار بشري")
         marker = {"reason": reason, "decision": None}
-        self._paused_path().write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
+        marker_path = self._paused_path()
+        temporary = marker_path.with_suffix(marker_path.suffix + ".tmp")
+        temporary.write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(marker_path)
         record = self.audit.append("interrupt", detail={"reason": reason})
         return {"flow_id": self.flow_id, "reason": reason, "audit_seq": record["seq"]}
 
@@ -115,7 +125,11 @@ class DurableFlow:
             raise ValueError("اسم المدقّق مطلوب")
         if decision not in ("approve", "reject"):
             raise ValueError("decision يجب أن تكون approve أو reject")
+        if not self.is_interrupted:
+            raise ValueError("لا يوجد قرار بشري معلّق")
         marker = json.loads(self._paused_path().read_text(encoding="utf-8"))
+        if marker.get("decision") is not None:
+            raise ValueError("تم تسجيل قرار لهذا الإيقاف مسبقًا")
         marker["decision"] = decision
         marker["auditor"] = auditor
         self._paused_path().write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
