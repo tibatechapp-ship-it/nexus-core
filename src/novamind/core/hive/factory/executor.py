@@ -284,14 +284,23 @@ async def execute_agent(
     ctx = ctx or {}
     task_id = task_id or f"exec-{int(started)}"
 
-    # 1. الوكيل
-    agent = get_agent(agent_id)
-    if not agent:
+    # 1. Resolve only registered agents; registry failures never create mocks.
+    try:
+        agent = get_agent(agent_id)
+    except KeyError:
         return {
             "success": False,
-            "status": "error",
+            "status": "agent_not_registered",
             "agent": agent_id,
             "error": f"agent not found: {agent_id}",
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "status": "registry_unavailable",
+            "agent": agent_id,
+            "error": f"canonical registry lookup failed: {type(exc).__name__}",
             "duration_ms": int((time.time() - started) * 1000),
         }
 
