@@ -108,3 +108,15 @@ latest snapshot is insufficient: an earlier checkpoint could have been altered
 while the latest snapshot remains individually valid. A broken or tampered
 history therefore blocks the action and is surfaced as a snapshot integrity
 error; no supervisor call is made from unverified history.
+
+
+
+## Strict checkpoint inventory
+
+Before reading or resuming a flow, the store is checked for a single regular
+checkpoint file per sequence number and a contiguous sequence beginning at 1.
+Duplicate sequence numbers, missing links, malformed numbered JSON files, and
+symlinked checkpoint files are rejected as integrity errors. This prevents a
+valid-looking file from hiding a competing checkpoint at the same sequence and
+prevents directory contents from silently changing the history selected by
+filename ordering.

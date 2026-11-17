@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -102,28 +103,30 @@ class DurableFlow:
 
     def latest(self) -> dict[str, Any] | None:
         """آخر نقطة تفتيش {stage, seq, payload} أو None إن لم يوجد شيء."""
-        seq = self._next_seq() - 1
-        if seq < 1:
+        inventory = self._checkpoint_inventory()
+        if not inventory:
             return None
-        path = self._path_of(seq)
-        snap = load_snapshot(path)
+        seq = max(inventory)
+        snap = load_snapshot(inventory[seq])
         return {"stage": str(snap["snapshot"]["stage"]), "seq": seq, "payload": snap["snapshot"]["payload"]}
 
     def resume(self) -> dict[str, Any] | None:
-        """استأنف من آخر نقطة: يتحقق من السلسلة كاملة أولًا.
-
-        يعيد نفس شكل ``latest()``؛ سلسلة مكسورة ترفع SnapshotError قبل أي
-        استخدام للحالة — الفساد يُكتشف لا يُورَّث.
-        """
-        seq = self._next_seq() - 1
+        """استأنف من آخر نقطة بعد التحقق من المخزون والسلسلة كاملة."""
+        inventory = self._checkpoint_inventory()
         parent: str | None = None
-        for i in range(1, seq + 1):
-            snap = load_snapshot(self._path_of(i))
+        latest: dict[str, Any] | None = None
+        for i in sorted(inventory):
+            snap = load_snapshot(inventory[i])
             body = snap["snapshot"]
             if body.get("parent_sha") != parent:
                 raise SnapshotError(f"سلسلة مكسورة عند نقطة {i}: الربط لا يطابق")
             parent = str(snap["integrity"]["digest"])
-        return self.latest()
+            latest = {
+                "stage": str(body["stage"]),
+                "seq": i,
+                "payload": body["payload"],
+            }
+        return latest
 
     # -- human gate --------------------------------------------------------------
     @property
@@ -255,14 +258,47 @@ class DurableFlow:
     def _paused_path(self) -> Path:
         return self.store / _PAUSE_MARKER
 
+    def _checkpoint_inventory(self) -> dict[int, Path]:
+        """Return a strict, contiguous checkpoint inventory or fail closed.
+
+        Duplicate sequence numbers, gaps, malformed numbered JSON files, and
+        symlinked checkpoint files are ambiguous history and must never be
+        silently ignored or selected by filename sort order.
+        """
+        inventory: dict[int, Path] = {}
+        for path in self.store.iterdir():
+            if path.suffix != ".json" or not path.name[:1].isdigit():
+                continue
+            match = re.fullmatch(r"(\d+)-(.+)\.json", path.name)
+            if match is None:
+                raise SnapshotError(f"اسم نقطة تفتيش غير صالح: {path.name}")
+            if path.is_symlink() or not path.is_file():
+                raise SnapshotError(f"ملف نقطة التفتيش ليس ملفًا عاديًا: {path.name}")
+            seq = int(match.group(1))
+            if seq < 1:
+                raise SnapshotError(f"رقم نقطة تفتيش غير صالح: {path.name}")
+            if seq in inventory:
+                raise SnapshotError(f"رقم نقطة تفتيش مكرر: {seq}")
+            inventory[seq] = path
+
+        if inventory:
+            expected = set(range(1, max(inventory) + 1))
+            actual = set(inventory)
+            if actual != expected:
+                missing = min(expected - actual)
+                raise SnapshotError(f"نقطة التفتيش {missing} مفقودة من السلسلة")
+        return inventory
+
     def _path_of(self, seq: int) -> Path:
-        matches = sorted(self.store.glob(f"{seq:04d}-*.json"))
-        if not matches:
-            raise SnapshotError(f"نقطة التفتيش {seq} مفقودة")
-        return matches[0]
+        inventory = self._checkpoint_inventory()
+        try:
+            return inventory[seq]
+        except KeyError as exc:
+            raise SnapshotError(f"نقطة التفتيش {seq} مفقودة") from exc
 
     def _next_seq(self) -> int:
-        return len(list(self.store.glob("[0-9]" * 4 + "-*.json"))) + 1
+        inventory = self._checkpoint_inventory()
+        return max(inventory, default=0) + 1
 
     def _digest_of(self, seq: int) -> str | None:
         if seq < 1:
