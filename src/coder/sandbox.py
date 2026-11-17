@@ -24,6 +24,83 @@ from src.coder.plan import RepairPlan
 MAX_TIMEOUT_S = 120
 MAX_OUTPUT_BYTES = 64 * 1024
 MAX_FILE_BYTES = 256 * 1024
+MAX_WORKSPACE_BYTES = 512 * 1024 * 1024
+MAX_SEED_FILE_BYTES = 16 * 1024 * 1024
+SEED_SKIP_DIRS = {
+    ".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build",
+    ".next", ".pytest_cache", ".mypy_cache", ".ruff_cache", "coverage",
+}
+SEED_SECRET_NAMES = {
+    ".env", ".env.local", ".env.production", "credentials", "secrets",
+    "id_rsa", "id_ed25519",
+}
+
+
+def seed_workspace(root: Path, workdir: Path) -> dict:
+    """Copy a safe, bounded repository snapshot into the isolated workdir.
+
+    The source tree is never modified. Symlinks, VCS metadata, virtual
+    environments, dependency caches and obvious secret files are not copied.
+    Existing workdir files are preserved; the returned report records skips.
+    """
+    source = root.resolve()
+    destination = workdir.resolve()
+    if source == destination:
+        # Some callers (the eval suite) pre-seed a task workspace and pass it
+        # as both root and workdir. It is already the execution snapshot.
+        return {"files_copied": 0, "bytes_copied": 0,
+                "skipped": {"symlink": 0, "sensitive": 0, "oversized": 0, "existing": 0}}
+    if source.is_relative_to(destination):
+        raise ValueError("workspace must not contain the repository root")
+    destination.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    copied_bytes = 0
+    skipped = {"symlink": 0, "sensitive": 0, "oversized": 0, "existing": 0}
+    for current, dirs, files in os.walk(source, topdown=True, followlinks=False):
+        current_path = Path(current)
+        kept_dirs: list[str] = []
+        for name in dirs:
+            candidate = current_path / name
+            if name in SEED_SKIP_DIRS or name.startswith(".") or candidate.is_symlink():
+                continue
+            resolved = candidate.resolve()
+            if resolved == destination or resolved.is_relative_to(destination):
+                continue
+            kept_dirs.append(name)
+        dirs[:] = kept_dirs
+        for name in files:
+            candidate = current_path / name
+            if candidate.is_symlink():
+                skipped["symlink"] += 1
+                continue
+            lowered = name.lower()
+            if (lowered in SEED_SECRET_NAMES or lowered.startswith(".env")
+                    or lowered.endswith((".pem", ".key", ".p12", ".pfx"))):
+                skipped["sensitive"] += 1
+                continue
+            try:
+                size = candidate.stat().st_size
+            except OSError:
+                continue
+            if size > MAX_SEED_FILE_BYTES:
+                skipped["oversized"] += 1
+                continue
+            if copied_bytes + size > MAX_WORKSPACE_BYTES:
+                raise ValueError("repository snapshot exceeds 512 MiB workspace limit")
+            relative = candidate.relative_to(source)
+            target = destination / relative
+            if target.exists():
+                skipped["existing"] += 1
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(candidate, target)
+            except OSError:
+                target.unlink(missing_ok=True)
+                continue
+            copied += 1
+            copied_bytes += size
+    return {"files_copied": copied, "bytes_copied": copied_bytes, "skipped": skipped}
 
 
 def _make_limits() -> None:
