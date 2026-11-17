@@ -489,3 +489,24 @@ def test_flow_resume_rejects_malformed_numbered_checkpoint(tmp_path: Path) -> No
 
     with pytest.raises(SnapshotError, match="اسم نقطة تفتيش غير صالح"):
         flow.resume()
+
+
+
+def test_checkpoint_refuses_to_extend_a_broken_existing_chain(tmp_path: Path) -> None:
+    flow = DurableFlow("append-to-corrupt-chain", store_dir=tmp_path)
+    flow.checkpoint("first", {"n": 1})
+    flow.checkpoint("second", {"n": 2})
+
+    first_path = sorted(flow.store.glob("0001-*.json"))[0]
+    original = json.loads(first_path.read_text(encoding="utf-8"))
+    forged = sign_snapshot(
+        {"n": 111},
+        stage=original["snapshot"]["stage"],
+        parent_sha=original["snapshot"]["parent_sha"],
+    )
+    first_path.write_text(json.dumps(forged, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(SnapshotError, match="سلسلة مكسورة"):
+        flow.checkpoint("third", {"n": 3})
+
+    assert not list(flow.store.glob("0003-*.json"))
