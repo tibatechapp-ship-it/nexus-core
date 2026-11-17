@@ -9,6 +9,11 @@ from novamind.core.hive.factory.guards import (
     check as legacy_guard_check,
     has_permission as legacy_guard_permission,
 )
+from novamind.factory.guards import (
+    can_agent_use_tool as package_can_use_tool,
+    require_permission,
+    PermissionDenied,
+)
 from novamind.registry import can_use_tool, get_agent, has_permission
 from novamind.security.permissions import get_permissions, get_role_for_agent
 
@@ -82,3 +87,24 @@ def test_missing_canonical_registry_never_falls_back_to_v2(monkeypatch) -> None:
 def test_legacy_guard_helpers_do_not_authorize_missing_arguments() -> None:
     assert legacy_guard_check() is False
     assert legacy_guard_permission() is False
+
+
+def test_all_guard_import_paths_share_canonical_rbac() -> None:
+    assert package_can_use_tool("coder", "write_code")
+    assert not package_can_use_tool("not-a-registered-agent", "write_code")
+    with pytest.raises(PermissionDenied):
+        require_permission("not-a-registered-agent", "write_code")
+
+
+def test_both_executor_entrypoints_report_unknown_agents_without_fabrication() -> None:
+    import asyncio
+    from novamind.factory.executor import execute_agent as execute_primary
+    from novamind.core.hive.factory.executor import execute_agent as execute_legacy
+
+    primary = asyncio.run(execute_primary("not-a-registered-agent", "do work"))
+    legacy = asyncio.run(execute_legacy("not-a-registered-agent", "do work"))
+
+    assert primary["success"] is False
+    assert primary["status"] == "agent_not_registered"
+    assert legacy["success"] is False
+    assert legacy["status"] == "agent_not_registered"
