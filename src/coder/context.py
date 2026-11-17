@@ -75,6 +75,12 @@ def build_code_context(
     for defect in defects:
         if isinstance(defect, dict) and defect.get("file"):
             ordered.append(str(defect["file"]))
+    if not ordered and isinstance(modules, list):
+        ranked = sorted(
+            (m for m in modules if isinstance(m, dict) and m.get("path")),
+            key=lambda item: (-int(item.get("loc", 0)), str(item["path"])),
+        )
+        ordered.extend(str(item["path"]) for item in ranked[:max_files])
 
     # Add one-hop Python import neighbours for files already selected.
     for rel in list(ordered):
