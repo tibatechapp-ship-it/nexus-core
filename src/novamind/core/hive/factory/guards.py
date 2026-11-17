@@ -60,8 +60,8 @@ def can_agent_use_tool(agent_name: str, tool: str) -> bool:
     try:
         from novamind.security.permissions import has_permission
         allowed = has_permission(agent_name, tool)
-    except ImportError:
-        allowed = True  # fail-open
+    except Exception:
+        allowed = False  # fail-closed
 
     # Audit
     try:
