@@ -45,10 +45,22 @@ def run_in_container(
     _approved(enabled=enabled, approved=approved, image=image)
     if not command or any(not isinstance(part, str) or not part for part in command):
         raise ContainerSandboxError("command must be a non-empty argv list")
-    if not re.fullmatch(r"[1-9][0-9]*(?:m|g)", memory):
-        raise ContainerSandboxError("invalid memory limit")
+    memory_match = re.fullmatch(r"([1-9][0-9]*)(m|g)", memory)
+    if memory_match is None:
+        raise ContainerSandboxError("memory must be an integer followed by m or g")
+    memory_value = int(memory_match.group(1))
+    memory_bytes = memory_value * (
+        1024**2 if memory_match.group(2) == "m" else 1024**3
+    )
+    if not 128 * 1024**2 <= memory_bytes <= 16 * 1024**3:
+        raise ContainerSandboxError("memory must be between 128m and 16g")
+
     if not re.fullmatch(r"(?:[1-9][0-9]*|[0-9]+\.[0-9]+)", cpus):
         raise ContainerSandboxError("invalid CPU limit")
+    if not 0.1 <= float(cpus) <= 8.0:
+        raise ContainerSandboxError("cpus must be between 0.1 and 8")
+    if len(command) > 128 or any(len(part) > 4096 for part in command):
+        raise ContainerSandboxError("command exceeds argument limits")
     if not 1 <= pids_limit <= 256:
         raise ContainerSandboxError("pids_limit must be between 1 and 256")
 
