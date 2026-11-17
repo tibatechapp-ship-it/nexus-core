@@ -139,7 +139,9 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
                       max_iterations: int, council: Callable | None,
                       council_mode: str, council_timeout: float,
                       policy: RiskPolicy,
-                      gates: list | None, test_timeout: int) -> JsonDict:
+                      gates: list | None, test_timeout: int,
+                      execution_mode: str, container_image: str | None,
+                      container_enabled: bool, container_approved: bool) -> JsonDict:
     context = analyze_repo(root)
     trace_event("coder", "analyze", extra={"summary": context["summary"]})
     defects = await detect(connector, goal, {**context, "root": str(root)})
@@ -229,7 +231,18 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
             continue
 
         if execution_mode == "container":
-            tests = run_in_container(\n                ["python", "-m", "pytest", "-q", "--no-header", *plan.tests_to_run],\n                workdir, image=container_image or "", enabled=container_enabled,\n                approved=container_approved, timeout=test_timeout,\n            )\n            gate_ok, gate_results = run_gate(\n                workdir, gates=gates, container_image=container_image,\n                container_enabled=container_enabled, container_approved=container_approved,\n            )\n        else:\n            tests = sandbox.run_tests(plan.tests_to_run, workdir, timeout=test_timeout)\n            gate_ok, gate_results = run_gate(workdir, gates=gates)
+            tests = run_in_container(
+                ["python", "-m", "pytest", "-q", "--no-header", *plan.tests_to_run],
+                workdir, image=container_image or "", enabled=container_enabled,
+                approved=container_approved, timeout=test_timeout,
+            )
+            gate_ok, gate_results = run_gate(
+                workdir, gates=gates, container_image=container_image,
+                container_enabled=container_enabled, container_approved=container_approved,
+            )
+        else:
+            tests = sandbox.run_tests(plan.tests_to_run, workdir, timeout=test_timeout)
+            gate_ok, gate_results = run_gate(workdir, gates=gates)
         attempts.append({
             "iteration": iteration, "stage": "gate", "tests_ok": tests["ok"],
             "gate_ok": gate_ok, "gate": gate_results,
@@ -342,7 +355,8 @@ async def run_engine(
         workspace_report = sandbox.seed_workspace(root, wd)
         result = await _run_engine(goal, connector, root, wd, max_iterations,
                                    council, council_mode, council_timeout,
-                                   active_policy, gates, test_timeout, execution_mode,\n                                   container_image, container_enabled, container_approved)
+                                   active_policy, gates, test_timeout, execution_mode,
+                                   container_image, container_enabled, container_approved)
         result["workspace"] = workspace_report
         return result
     except Exception as exc:  # noqa: BLE001 — the engine reports, never crashes the caller
