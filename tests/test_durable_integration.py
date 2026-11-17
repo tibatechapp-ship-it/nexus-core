@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from src.durable import DurableFlow, FlowRejected
+from src.durable import DurableFlow
 from src.durable.integration import DurableExecution
 
 
@@ -118,7 +118,7 @@ def test_human_rejection_is_audited_and_never_executes(tmp_path: Path) -> None:
     assert supervisor.calls == []
     audit = _flow(tmp_path).audit.read()
     assert any(row.get("decision") == "reject" for row in audit)
-    with pytest.raises(FlowRejected):
+    with pytest.raises(ValueError, match="مسبقًا"):
         _flow(tmp_path).resume_after_approval("approve", auditor="another-reviewer")
 
 
