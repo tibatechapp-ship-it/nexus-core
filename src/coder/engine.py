@@ -330,9 +330,12 @@ async def run_engine(
     wd.mkdir(parents=True, exist_ok=True)
     active_policy = policy if policy is not None else RiskPolicy()
     try:
-        return await _run_engine(goal, connector, root, wd, max_iterations,
-                                 council, council_mode, council_timeout,
-                                 active_policy, gates, test_timeout)
+        workspace_report = sandbox.seed_workspace(root, wd)
+        result = await _run_engine(goal, connector, root, wd, max_iterations,
+                                   council, council_mode, council_timeout,
+                                   active_policy, gates, test_timeout)
+        result["workspace"] = workspace_report
+        return result
     except Exception as exc:  # noqa: BLE001 — the engine reports, never crashes the caller
         trace_event("coder", "engine", outcome="fail", extra={"error": str(exc)[:200]})
         return {"ok": False, "error": f"engine crashed: {exc}"[:MAX_FEEDBACK]}
