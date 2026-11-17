@@ -40,6 +40,7 @@ def run_in_container(
     cpus: str = "2",
     pids_limit: int = 64,
     docker_binary: str = "docker",
+    require_rootless: bool = True,
 ) -> dict[str, Any]:
     """Run argv in a networkless container; only workspace is writable."""
     _approved(enabled=enabled, approved=approved, image=image)
@@ -74,6 +75,20 @@ def run_in_container(
     docker = shutil.which(docker_binary)
     if docker is None:
         raise ContainerSandboxError("Docker CLI not found")
+    if require_rootless:
+        try:
+            daemon = subprocess.run(
+                [docker, "info", "--format", "{{json .SecurityOptions}}"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, timeout=10, check=False,
+                env={"PATH": os.path.dirname(docker)},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ContainerSandboxError(f"rootless Docker preflight failed: {exc}") from exc
+        if daemon.returncode != 0 or "rootless" not in daemon.stdout.casefold():
+            raise ContainerSandboxError(
+                "rootless Docker daemon is required; refusing non-rootless execution"
+            )
 
     argv = [
         docker,
