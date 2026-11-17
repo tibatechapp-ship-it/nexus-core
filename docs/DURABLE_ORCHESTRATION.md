@@ -16,6 +16,11 @@ contract, the CouncilEngine.deliberate contract, and DurableFlow.
    automatically because the external side effect may already have happened.
 5. Human decisions and state transitions are retained in the append-only audit
    log and signed checkpoint chain.
+6. Interrupt creation uses write-ahead audit: the uniquely identified interrupt
+   event is fsynced before the pause marker is published. If the process dies
+   between those writes, reconstructing DurableFlow restores the missing marker
+   from the unresolved audit event. Human decisions reference the same
+   interruption_id so recovery cannot confuse separate pauses with equal reasons.
 
 ## Usage
 
@@ -46,6 +51,15 @@ contract, the CouncilEngine.deliberate contract, and DurableFlow.
 After a process restart, reconstruct the same DurableFlow and
 DurableExecution with the same flow_id. Calling prepare with the same task
 returns the persisted state and does not call the council again.
+
+## Interrupt recovery
+
+The audit event is the durable source of truth for a newly requested pause. On
+flow reconstruction, an unresolved interrupt event without a pause marker is
+replayed into an atomic marker write. This closes the crash window between audit
+append and marker publication. Decision, resume, and closure events carry the
+same interruption_id, preventing an older decision from resolving a newer pause.
+
 
 ## Recovery boundary
 
