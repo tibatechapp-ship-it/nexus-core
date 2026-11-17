@@ -4,7 +4,11 @@ from __future__ import annotations
 import pytest
 
 from novamind.core.hive.core import agents_registry as hive_registry
-from novamind.core.hive.factory.guards import can_agent_use_tool
+from novamind.core.hive.factory.guards import (
+    can_agent_use_tool,
+    check as legacy_guard_check,
+    has_permission as legacy_guard_permission,
+)
 from novamind.registry import can_use_tool, get_agent, has_permission
 from novamind.security.permissions import get_permissions, get_role_for_agent
 
@@ -73,3 +77,8 @@ def test_missing_canonical_registry_never_falls_back_to_v2(monkeypatch) -> None:
         registry_api.all_agent_names()
     with pytest.raises(RuntimeError, match="canonical NovaMind registry"):
         registry_api.stats()
+
+
+def test_legacy_guard_helpers_do_not_authorize_missing_arguments() -> None:
+    assert legacy_guard_check() is False
+    assert legacy_guard_permission() is False
