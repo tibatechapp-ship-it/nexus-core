@@ -55,3 +55,21 @@ def test_all_authorization_entrypoints_share_the_same_decision() -> None:
         expected = has_permission(agent, permission)
         assert can_use_tool(agent, permission) is expected
         assert can_agent_use_tool(agent, permission) is expected
+
+
+def test_missing_canonical_registry_never_falls_back_to_v2(monkeypatch) -> None:
+    import novamind.registry as registry_api
+
+    monkeypatch.setattr(registry_api, "_CORE_AVAILABLE", False)
+
+    assert registry_api.validate() == [
+        "canonical NovaMind registry is unavailable"
+    ]
+    assert not registry_api.has_permission("coder", "write_code")
+    assert not registry_api.can_use_tool("coder", "write_code")
+    with pytest.raises(RuntimeError, match="canonical NovaMind registry"):
+        registry_api.get_agent("coder")
+    with pytest.raises(RuntimeError, match="canonical NovaMind registry"):
+        registry_api.all_agent_names()
+    with pytest.raises(RuntimeError, match="canonical NovaMind registry"):
+        registry_api.stats()
