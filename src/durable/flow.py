@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,35 @@ class DurableFlow:
         )
         if not (self.store / "audit.jsonl").exists():
             self.audit.append("flow_created", detail={"flow_id": flow_id})
+        self._recover_pending_interrupt()
+
+    def _recover_pending_interrupt(self) -> None:
+        """Rebuild a pause marker if a crash followed the durable interrupt audit."""
+        events = self.audit.read()
+        pending: dict[str, Any] | None = None
+        resolved: set[str] = set()
+        for event in events:
+            detail = event.get("detail", {})
+            interruption_id = detail.get("interruption_id")
+            if event.get("event") == "interrupt" and interruption_id:
+                pending = event
+            elif event.get("event") in {"human_decision", "resume", "flow_closed"} and interruption_id:
+                resolved.add(str(interruption_id))
+        if pending is None:
+            return
+        detail = pending.get("detail", {})
+        interruption_id = str(detail.get("interruption_id", ""))
+        if interruption_id in resolved or self._paused_path().exists():
+            return
+        marker = {
+            "reason": str(detail.get("reason", "")),
+            "decision": None,
+            "interruption_id": interruption_id,
+        }
+        marker_path = self._paused_path()
+        temporary = marker_path.with_suffix(marker_path.suffix + ".tmp")
+        temporary.write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(marker_path)
 
     # -- checkpoints -----------------------------------------------------------
     def checkpoint(self, stage: str, state: dict[str, Any]) -> Path:
@@ -123,13 +153,27 @@ class DurableFlow:
             raise ValueError("سبب الإيقاف مطلوب")
         if self.is_interrupted:
             raise InterruptPending("السير متوقف بالفعل بانتظار قرار بشري")
-        marker = {"reason": reason, "decision": None}
+        interruption_id = uuid.uuid4().hex
+        # Write-ahead audit: if marker creation crashes, __init__ reconstructs it.
+        record = self.audit.append(
+            "interrupt",
+            detail={"reason": reason, "interruption_id": interruption_id},
+        )
+        marker = {
+            "reason": reason,
+            "decision": None,
+            "interruption_id": interruption_id,
+        }
         marker_path = self._paused_path()
         temporary = marker_path.with_suffix(marker_path.suffix + ".tmp")
         temporary.write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
         temporary.replace(marker_path)
-        record = self.audit.append("interrupt", detail={"reason": reason})
-        return {"flow_id": self.flow_id, "reason": reason, "audit_seq": record["seq"]}
+        return {
+            "flow_id": self.flow_id,
+            "reason": reason,
+            "audit_seq": record["seq"],
+            "interruption_id": interruption_id,
+        }
 
     def resume_after_approval(self, decision: str, auditor: str) -> None:
         """Apply an idempotent human decision, recovering interrupted writes."""
@@ -163,12 +207,17 @@ class DurableFlow:
             and event.get("decision") == decision
             and event.get("detail", {}).get("auditor") == auditor
             and event.get("detail", {}).get("reason") == marker.get("reason", "")
+            and event.get("detail", {}).get("interruption_id") == marker.get("interruption_id")
         ]
         if not matching:
             self.audit.append(
                 "human_decision",
                 decision=decision,
-                detail={"auditor": auditor, "reason": marker.get("reason", "")},
+                detail={
+                    "auditor": auditor,
+                    "reason": marker.get("reason", ""),
+                    "interruption_id": marker.get("interruption_id"),
+                },
             )
 
         if decision == "reject":
@@ -177,9 +226,14 @@ class DurableFlow:
                 if event.get("event") == "flow_closed"
                 and event.get("decision") == "reject"
                 and event.get("detail", {}).get("auditor") == auditor
+                and event.get("detail", {}).get("interruption_id") == marker.get("interruption_id")
             ]
             if not closed:
-                self.audit.append("flow_closed", decision="reject", detail={"auditor": auditor})
+                self.audit.append(
+                    "flow_closed",
+                    decision="reject",
+                    detail={"auditor": auditor, "interruption_id": marker.get("interruption_id")},
+                )
             raise FlowRejected(self.flow_id)
 
         marker_path.unlink()
@@ -188,9 +242,14 @@ class DurableFlow:
             if event.get("event") == "resume"
             and event.get("decision") == "approve"
             and event.get("detail", {}).get("auditor") == auditor
+            and event.get("detail", {}).get("interruption_id") == marker.get("interruption_id")
         ]
         if not resumed:
-            self.audit.append("resume", decision="approve", detail={"auditor": auditor})
+            self.audit.append(
+                "resume",
+                decision="approve",
+                detail={"auditor": auditor, "interruption_id": marker.get("interruption_id")},
+            )
 
     # -- internals ---------------------------------------------------------------
     def _paused_path(self) -> Path:
