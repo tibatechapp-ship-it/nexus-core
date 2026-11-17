@@ -17,6 +17,7 @@ from typing import Any, Awaitable, Callable
 
 from src.coder import sandbox
 from src.coder.analyzer import analyze_repo
+from src.coder.context import build_code_context
 from src.coder.detector import detect
 from src.coder.plan import RepairPlan, plan_from_json, validate
 from src.coder.policy import ESCALATE_AFTER_FAILURES, RiskPolicy
@@ -54,6 +55,10 @@ async def _ask_plan(connector: Any, goal: str, defects: list, context: dict,
         PLAN_PROMPT
         + f"Goal: {goal}\n"
         + f"Repo map: {context.get('summary', '')}\n"
+        + "Relevant source files (read-only evidence):\n"
+        + str(context.get("source_context", "(not available)"))[:24000]
+        + "\nUse the actual code above; do not invent files, APIs, or dependencies. "
+        + "For edits, make the find block exact and unique, and preserve surrounding behavior.\n"
         + f"Defects: {json.dumps(defects, ensure_ascii=False)[:1200]}\n"
         + f"Feedback from the previous attempt: {feedback or 'none'}\n"
     )
@@ -137,6 +142,13 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
     context = analyze_repo(root)
     trace_event("coder", "analyze", extra={"summary": context["summary"]})
     defects = await detect(connector, goal, {**context, "root": str(root)})
+    source_context = build_code_context(root, context, defects)
+    context["source_context"] = source_context["rendered"]
+    trace_event("coder", "context", outcome="ok", extra={
+        "files": str(len(source_context["files"])),
+        "characters": str(source_context["characters"]),
+        "truncated": str(source_context["truncated"]),
+    })
     trace_event("coder", "detect", outcome="ok", extra={"defects": str(len(defects))})
     feedback = ""
     attempts: list = []
