@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from src.durable import DurableFlow
+from src.durable import ApprovalAuthorizer, DurableExecution as PublicDurableExecution, DurableFlow
 from src.durable.integration import DurableExecution
 
 
@@ -225,3 +225,46 @@ def test_invalid_task_is_rejected_without_writing_state(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="non-empty"):
         execution.prepare("   ")
     assert execution.status().stage is None
+
+
+def test_public_package_exports_orchestration_contract() -> None:
+    approval: ApprovalAuthorizer = _AllowApproval()
+    assert PublicDurableExecution is DurableExecution
+    assert callable(approval.authorize)
+
+
+def test_denied_authorizer_never_executes(tmp_path: Path) -> None:
+    class DenyApproval:
+        def authorize(self, *, auditor: str, flow_id: str, task: str, decision: str) -> bool:
+            return False
+
+    supervisor = _Supervisor()
+    execution = DurableExecution(_flow(tmp_path), supervisor, approval_authorizer=DenyApproval())
+    execution.prepare("summarize the README")
+    with pytest.raises(PermissionError, match="not authorized"):
+        execution.approve_and_execute(auditor="untrusted-user")
+    assert supervisor.calls == []
+    assert execution.status().stage == "prepared"
+
+
+def test_council_human_review_still_requires_human_approval(tmp_path: Path) -> None:
+    council, supervisor = _Council("human_review"), _Supervisor()
+    execution = DurableExecution(_flow(tmp_path), supervisor, council=council, approval_authorizer=_AllowApproval())
+
+    status = execution.prepare("deploy security changes to production")
+    assert status.stage == "prepared"
+    assert status.council_verdict == "human_review"
+    assert supervisor.calls == []
+
+    execution.approve_and_execute(auditor="security-owner")
+    assert supervisor.calls == ["deploy security changes to production"]
+
+
+def test_council_abstention_fails_closed(tmp_path: Path) -> None:
+    council, supervisor = _Council("abstain"), _Supervisor()
+    execution = DurableExecution(_flow(tmp_path), supervisor, council=council, approval_authorizer=_AllowApproval())
+
+    status = execution.prepare("deploy security changes to production")
+    assert status.stage == "council_abstained"
+    assert not status.waiting_for_human
+    assert supervisor.calls == []
