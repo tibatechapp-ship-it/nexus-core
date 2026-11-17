@@ -36,13 +36,20 @@ def _log_path(workdir: Path) -> Path:
     return workdir / "runs" / "quality_gate.jsonl"
 
 
-def run_gate(workdir: Path, gates: list | None = None,
-             timeout: int = MAX_TIMEOUT_S) -> tuple:
+def run_gate(
+    workdir: Path,
+    gates: list | None = None,
+    timeout: int = MAX_TIMEOUT_S,
+    *,
+    container_image: str | None = None,
+    container_enabled: bool = False,
+    container_approved: bool = False,
+) -> tuple:
     """Run every gate in its own subprocess; return (ok, results) and log it.
 
-    ``gates`` is injectable so tests (and stricter deployments) can swap the
-    command list without touching the independence contract: one process per
-    gate, verdict = all rc == 0, JSONL report always appended.
+    ``gates`` is injectable. With a container image, every gate runs via the
+    rootless Docker sandbox and failures never fall back to host execution.
+    Without it, legacy process mode remains for trusted local development.
     """
     workdir = Path(workdir)
     results, ok = [], True
@@ -51,13 +58,25 @@ def run_gate(workdir: Path, gates: list | None = None,
     for cmd in (gates if gates is not None else default_gates()):
         cmd = [str(c) for c in cmd]
         try:
-            proc = subprocess.run(  # noqa: S603 — argv list, no shell
-                cmd, cwd=str(workdir), capture_output=True, text=True,
-                timeout=min(max(int(timeout), 1), MAX_TIMEOUT_S),
-            )
-            passed = proc.returncode == 0
-            tail = (proc.stdout or "")[-MAX_TAIL:] + (proc.stderr or "")[-MAX_TAIL:]
-        except (subprocess.TimeoutExpired, OSError) as exc:
+            if container_image is not None:
+                from src.coder.container_sandbox import run_in_container
+
+                result = run_in_container(
+                    cmd, workdir, image=container_image,
+                    enabled=container_enabled, approved=container_approved,
+                    timeout=timeout,
+                )
+                passed = result.get("ok") is True
+                tail = (str(result.get("stdout", ""))[-MAX_TAIL:]
+                        + str(result.get("stderr", ""))[-MAX_TAIL:])
+            else:
+                proc = subprocess.run(  # noqa: S603 — argv list, no shell
+                    cmd, cwd=str(workdir), capture_output=True, text=True,
+                    timeout=min(max(int(timeout), 1), MAX_TIMEOUT_S),
+                )
+                passed = proc.returncode == 0
+                tail = (proc.stdout or "")[-MAX_TAIL:] + (proc.stderr or "")[-MAX_TAIL:]
+        except (subprocess.TimeoutExpired, OSError, RuntimeError) as exc:
             passed, tail = False, f"gate crashed: {exc}"[:MAX_TAIL]
         ok = ok and passed
         results.append({"cmd": " ".join(cmd), "ok": passed, "tail": tail.strip()})
@@ -65,10 +84,10 @@ def run_gate(workdir: Path, gates: list | None = None,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "gate": "quality",
         "ok": ok,
-        "duration_ms": duration_ms,
+        "duration_ms": round((time.monotonic() - started) * 1000, 2),
         "results": results,
     }
-    duration_ms = round((time.monotonic() - started) * 1000, 2)
+    duration_ms = report["duration_ms"]
     log = _log_path(workdir)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
