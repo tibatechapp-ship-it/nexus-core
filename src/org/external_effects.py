@@ -225,6 +225,18 @@ class ExternalEffectDispatcher:
         if self._approval_service is not None:
             if not isinstance(approval_token, str) or not approval_token.strip():
                 raise EffectNotAuthorized("durable one-time approval token is required")
+            # Narrow again in this independent branch: mypy cannot carry the
+            # earlier branch's narrowing across the intervening control flow.
+            if not all(
+                isinstance(value, str) and value.strip()
+                for value in (repository, ref_name, commit_sha)
+            ):
+                raise EffectNotAuthorized(
+                    "durable approval repository, ref, and commit are required"
+                )
+            assert isinstance(repository, str)
+            assert isinstance(ref_name, str)
+            assert isinstance(commit_sha, str)
             try:
                 claim = self._approval_service.consume_and_claim(
                     approval_token,
