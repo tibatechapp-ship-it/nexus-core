@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 8
+ORG_SCHEMA_VERSION = 9
 
 # Reconciliation evidence is persisted twice (operation result + audit); keep it bounded.
 MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES = 16 * 1024
@@ -139,6 +139,9 @@ class OrgStore:
             if current < 8:
                 self._migrate_v8()
                 current = 8
+            if current < 9:
+                self._migrate_v9()
+                current = 9
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -524,6 +527,15 @@ class OrgStore:
             """
         )
 
+
+    def _migrate_v9(self) -> None:
+        """Persist the immutable optional output-token cap on each mission."""
+        columns = {row["name"] for row in self._conn.execute(
+            "PRAGMA table_info(missions)").fetchall()}
+        if "output_token_limit" not in columns:
+            self._conn.execute(
+                "ALTER TABLE missions ADD COLUMN output_token_limit INTEGER "
+                "CHECK(output_token_limit IS NULL OR output_token_limit > 0)")
 
     def _migrate_v8(self) -> None:
         """ميزانية خرج توكنات موحدة وحجوزات ذرية لكل مهمة."""
@@ -1213,8 +1225,8 @@ class OrgStore:
                 "INSERT OR IGNORE INTO missions (id, title, objective, repo_path, "
                 "phase, status, acceptance_criteria, constraints, ambiguities, "
                 "branch, patch_path, report_path, ticket_ids, revision_loops, "
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "?, ?, ?, ?, ?, ?)",
+                "output_token_limit, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     mission.id, mission.title, mission.objective, mission.repo_path,
                     mission.phase, mission.status,
@@ -1223,9 +1235,35 @@ class OrgStore:
                     json.dumps(mission.ambiguities, ensure_ascii=False),
                     mission.branch, mission.patch_path, mission.report_path,
                     json.dumps(mission.ticket_ids, ensure_ascii=False),
-                    mission.revision_loops, mission.created_at, mission.updated_at,
+                    mission.revision_loops, mission.output_token_limit,
+                    mission.created_at, mission.updated_at,
                 ),
             )
+            persisted = self._conn.execute(
+                "SELECT output_token_limit FROM missions WHERE id=?", (mission.id,)
+            ).fetchone()
+            if persisted is None or persisted["output_token_limit"] != mission.output_token_limit:
+                raise OrgError("المهمة موجودة بإعداد ميزانية مختلف؛ لا يمكن تغيير سقفها")
+            if mission.output_token_limit is not None:
+                now = self._now()
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO mission_token_budgets "
+                    "(mission_id, output_token_limit, status, created_at, updated_at) "
+                    "VALUES (?, ?, 'active', ?, ?)",
+                    (mission.id, mission.output_token_limit, now, now),
+                )
+                budget = self._conn.execute(
+                    "SELECT output_token_limit FROM mission_token_budgets WHERE mission_id=?",
+                    (mission.id,),
+                ).fetchone()
+                if budget is None or int(budget["output_token_limit"]) != mission.output_token_limit:
+                    raise OrgError("ميزانية المهمة المخزنة لا تطابق عقد المهمة")
+                self._conn.execute(
+                    "INSERT INTO audit (ts, actor, action, ref, details) "
+                    "VALUES (?, 'system', 'mission.token_budget_configured', ?, ?)",
+                    (now, mission.id, json.dumps(
+                        {"output_token_limit": mission.output_token_limit}, sort_keys=True)),
+                )
         stored = self.mission_get(mission.id)
         assert stored is not None
         self.audit("mission.created", mission.id, {"phase": stored.phase})
@@ -1242,6 +1280,8 @@ class OrgStore:
             patch_path=r["patch_path"] or "", report_path=r["report_path"] or "",
             ticket_ids=json.loads(r["ticket_ids"] or "[]"),
             revision_loops=int(r["revision_loops"] or 0),
+            output_token_limit=(int(r["output_token_limit"])
+                                if r["output_token_limit"] is not None else None),
             id=r["id"], created_at=r["created_at"], updated_at=r["updated_at"],
         )
 
