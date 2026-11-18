@@ -32,7 +32,7 @@ class FakeAdapter:
     def __init__(self, result: Mapping[str, Any] | None = None) -> None:
         self.result = dict(result or {"remote_id": "effect-1"})
         self.calls: list[tuple[str, dict[str, Any], str | None]] = []
-        self.error: Exception | None = None
+        self.error: BaseException | None = None
 
     def dispatch(
         self,
@@ -187,3 +187,23 @@ def test_capability_rejects_undocumented_or_invalid_provider_guarantees() -> Non
         EffectCapability("comment", "provider_key", "repo", 0)
     with pytest.raises(ValueError, match="metadata is invalid"):
         EffectCapability("comment", "none", "repo")
+
+
+def test_process_crash_after_claim_leaves_in_flight_and_blocks_replay(setup) -> None:
+    store, mission, task, adapter, dispatcher = setup
+    adapter.error = SystemExit("simulated process termination")
+    args = (mission.id, task.id, "comment", "crash-window-1", {"body": "sent?"})
+
+    with pytest.raises(SystemExit):
+        dispatcher.execute(*args, actor="operator")
+
+    row = next(
+        item for item in store.tail_audit(20)
+        if item["action"] == "external_operation.prepared"
+    )
+    operation = store.external_operation_get(row["ref"])
+    assert operation["state"] == "in_flight"
+    with pytest.raises(EffectUncertain, match="in_flight"):
+        dispatcher.execute(*args, actor="operator")
+    assert len(adapter.calls) == 1
+    assert len(store.external_operation_attempts_for(row["ref"])) == 1
