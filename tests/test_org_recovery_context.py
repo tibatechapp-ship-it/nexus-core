@@ -133,3 +133,21 @@ def test_restore_rejects_task_ledger_newer_than_context_checkpoint(
 
     with pytest.raises(OrgError, match="سجل المهام تغيّر بعد آخر checkpoint"):
         restore_mission_context(store, ctx.mission.id, state_root)
+
+
+def test_context_checkpoints_are_append_only(tmp_path: Path) -> None:
+    store, ctx, _, state_root = _context(tmp_path)
+    saved = save_mission_context_snapshot(store, ctx, state_root)
+
+    with pytest.raises(Exception, match="mission context snapshots are immutable"):
+        with store._conn:
+            store._conn.execute(
+                "UPDATE mission_context_snapshots SET payload = '{}' WHERE id = ?",
+                (saved["id"],),
+            )
+    with pytest.raises(Exception, match="mission context snapshots are immutable"):
+        with store._conn:
+            store._conn.execute(
+                "DELETE FROM mission_context_snapshots WHERE id = ?",
+                (saved["id"],),
+            )
