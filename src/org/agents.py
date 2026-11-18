@@ -70,6 +70,8 @@ class AgentSpec:
             raise ValueError("سقف المحاولات لا يقل عن صفر")
         if self.timeout_s <= 0:
             raise ValueError("مهلة الوكيل يجب أن تكون موجبة")
+        if type(self.max_tokens) is not int or self.max_tokens <= 0:
+            raise ValueError("max_tokens يجب أن يكون عددًا صحيحًا موجبًا")
 
     def system_prompt(self) -> str:
         """مطالبة نظام حتمية من العقد — الدور والأدوات والحدود."""
@@ -188,7 +190,10 @@ class AgentRuntime:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
-                self._settle_output_budget(reservation, resp.usage.out_tokens)
+                # Failed fallback dispatches are charged at their full output ceiling.
+            fallback_charge = len(self.pool.last_errors) * spec.max_tokens
+            self._settle_output_budget(
+                reservation, fallback_charge + resp.usage.out_tokens)
                 latency = (time.time() - t0) * 1000.0
                 self._record(spec, resp, attempt, latency, "ok")
                 return resp
@@ -218,8 +223,11 @@ class AgentRuntime:
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
             except ProviderError as exc:
-                # Conservatively charge the reserved maximum: dispatch may have occurred.
-                self._settle_output_budget(reservation, spec.max_tokens)
+                # Every provider fallback may have dispatched before failing.
+                failed_attempts = max(1, len(self.pool.last_errors))
+                self._settle_output_budget(
+                    reservation, min(spec.max_tokens * failed_attempts,
+                                     spec.max_tokens * self.pool.max_fallback_attempts))
                 last_error = str(exc)
                 self._record(spec, None, attempt,
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
@@ -266,7 +274,8 @@ class AgentRuntime:
         if budget is None:
             return None
         reservation = self.store.reserve_mission_output_tokens(
-            spec.mission_id, spec.role, spec.max_tokens)
+            spec.mission_id, spec.role,
+            spec.max_tokens * self.pool.max_fallback_attempts)
         return str(reservation["id"])
 
     def _settle_output_budget(self, reservation_id: str | None,
