@@ -87,7 +87,8 @@ def fingerprint_directory(root: str | Path, *, include_git: bool = True) -> dict
             with path.open("rb") as stream:
                 for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                     file_hash.update(chunk)
-            entry = f"{rel}\0file\0{file_hash.hexdigest()}".encode("utf-8")
+            mode = stat.S_IMODE(path.stat().st_mode)
+            entry = f"{rel}\0file\0{mode:o}\0{file_hash.hexdigest()}".encode("utf-8")
             digest.update(len(entry).to_bytes(8, "big"))
             digest.update(entry)
             count += 1
