@@ -793,3 +793,80 @@ store.close()
             assert runs[0]["status"] == "completed"
         finally:
             recovered_store.close()
+
+
+class TestCheckpointLedgerDrift:
+    def test_task_commit_without_matching_context_checkpoint_fails_closed(
+            self, tmp_path: object) -> None:
+        """A task commit newer than its snapshot must never dispatch on resume."""
+        from pathlib import Path
+
+        root = Path(tmp_path)  # type: ignore[arg-type]
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        database = root / "org.sqlite3"
+        state_root = root / "mission-state"
+
+        first_store = OrgStore(database)
+        first = ExecutiveOrchestrator(
+            first_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "first-run"), state_root=state_root,
+        )
+        mission = first_store.create_mission(Mission(
+            title="checkpoint boundary",
+            objective="detect a committed task newer than its context snapshot",
+            repo_path=str(repo), phase="A_REQUIREMENTS", status="running",
+        ))
+        plan = first.plan(mission)
+        save_mission_context_snapshot(
+            first_store,
+            MissionContext(mission=mission, execution_policy={
+                "schema_version": 1, "max_revision_loops": 2,
+            }),
+            state_root,
+        )
+
+        # Simulate a crash after the task result commits but before the
+        # subsequent context snapshot can bind to this new ledger revision.
+        requirements = next(task for task in plan.tasks
+                            if task.dept == "executive")
+        claim = first_store.claim_task(
+            requirements.id, worker_id="interrupted-after-task-commit")
+        assert claim is not None
+        first_store.finish_claimed_task(
+            requirements.id, str(claim["lease_token"]),
+            {"summary": "requirements committed"},
+        )
+        first_store.close()
+
+        second_store = OrgStore(database)
+        second = ExecutiveOrchestrator(
+            second_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "second-run"), state_root=state_root,
+        )
+        before = second_store.tasks_for_mission(mission.id)
+        with pytest.raises(OrgError, match="سجل المهام تغيّر بعد آخر checkpoint"):
+            second.resume_mission(
+                mission.id, actor="operator",
+                reason="inspect task-commit/context-checkpoint crash boundary",
+                expected_repo_root=repo,
+            )
+
+        after = second_store.tasks_for_mission(mission.id)
+        assert {row["id"]: row["state"] for row in after} == {
+            row["id"]: row["state"] for row in before
+        }
+        assert all(
+            len(second_store.task_attempts_for(row["id"])) ==
+            (1 if row["id"] == requirements.id else 0)
+            for row in after
+        )
+        resume_runs = second_store.mission_resume_runs_for(mission.id)
+        assert len(resume_runs) == 1
+        assert resume_runs[0]["status"] == "failed"
+        assert not any(
+            event["action"] == "mission.resume_started"
+            for event in second_store.tail_audit(100)
+        )
+        second_store.close()
