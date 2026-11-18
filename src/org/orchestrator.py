@@ -134,6 +134,10 @@ class ExecutiveOrchestrator:
                                  ops_store, outdir)
         self.verification = VerificationEngine(
             self.depts.runtime, org_store, self.depts.runner)
+        if not isinstance(max_revision_loops, int) or max_revision_loops < 0:
+            raise ValueError("max_revision_loops يجب أن يكون عددًا صحيحًا غير سالب")
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError("max_workers يجب أن يكون عددًا صحيحًا موجبًا")
         self.max_workers = max_workers
         self.max_revision_loops = max_revision_loops
         self.state_root = Path(state_root or Path.home() / ".nexus-core" / "missions")
@@ -182,9 +186,17 @@ class ExecutiveOrchestrator:
                     repo_path=mission.repo_path,
                     acceptance_criteria=mission.acceptance_criteria,
                     status="running", id=mission.id))
-        ctx = MissionContext(mission=mission)
+        ctx = MissionContext(
+            mission=mission,
+            execution_policy={
+                "schema_version": 1,
+                "max_revision_loops": self.max_revision_loops,
+            },
+        )
         plan = self.plan(mission)
         try:
+            # First durable checkpoint: plan and policy exist before any agent runs.
+            self._checkpoint_context(ctx)
             self._run_wave(plan, ctx, phase="A_REQUIREMENTS",
                            dept="executive")
             self._advance_phase(mission, "A_REQUIREMENTS", "B_INTEL")
@@ -211,7 +223,7 @@ class ExecutiveOrchestrator:
                     break
                 loops += 1
                 self._bump_revision_loops(mission)
-                if loops > self.max_revision_loops:
+                if loops > int(ctx.execution_policy["max_revision_loops"]):
                     self._fail(mission,
                                "تجاوز سقف دورات المراجعة — مخاطر موثّقة")
                     return self._final(mission, ctx, failed=True)
@@ -525,7 +537,10 @@ class ExecutiveOrchestrator:
                 raise OrgError("المهمة اختفت بعد رفض المراجعة")
             next_revision = stored.revision_loops + 1
             self._bump_revision_loops(ctx.mission)
-            if next_revision > self.max_revision_loops:
+            revision_limit = ctx.execution_policy.get("max_revision_loops")
+            if type(revision_limit) is not int or revision_limit < 0:
+                raise OrgError("سياسة max_revision_loops المحفوظة غير صالحة")
+            if next_revision > revision_limit:
                 self._fail(ctx.mission, "تجاوز سقف دورات المراجعة أثناء الاستئناف")
                 return False
 
@@ -579,6 +594,13 @@ class ExecutiveOrchestrator:
             raise OrgError("سبب الاستئناف مطلوب للتدقيق")
         ctx = self.restore_context_for_resume(
             mission_id, expected_repo_root=expected_repo_root)
+        policy = ctx.execution_policy
+        if (not isinstance(policy, dict)
+                or policy.get("schema_version") != 1
+                or type(policy.get("max_revision_loops")) is not int
+                or policy["max_revision_loops"] < 0):
+            raise OrgError(
+                "سياسة التنفيذ الأصلية غير موجودة أو تالفة؛ الاستئناف مرفوض")
         plan = self._load_persisted_plan(mission_id)
         mission = self.org_store.mission_get(mission_id)
         if mission is None:
