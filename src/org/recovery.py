@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from src.org.contracts import FINAL_PHASES, MISSION_STATUSES
+from src.org.contracts import MISSION_STATUSES
 from src.org.store import OrgError, OrgStore
 
 __all__ = ["MissionRecoveryReport", "inspect_mission_recovery"]
@@ -68,9 +68,7 @@ def inspect_mission_recovery(
             raise OrgError(f"حالة مهمة فرعية غير معروفة في السجل: {state!r}")
         states[state].append(task_id)
 
-    terminal = mission.status in {"done", "failed", "cancelled"} or (
-        mission.phase in FINAL_PHASES
-    )
+    terminal = mission.status in {"done", "failed", "cancelled"}
     if terminal:
         disposition = "terminal"
     elif states["running"]:
