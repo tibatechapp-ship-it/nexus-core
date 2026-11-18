@@ -397,7 +397,9 @@ class ExecutiveOrchestrator:
             return
         repo_root = Path(ctx.mission.repo_path)
         if not repo_root.is_dir():
-            raise OrgError("لا يمكن حفظ سياق المهمة: مسار المستودع غير موجود")
+            # Let the responsible repository-intelligence task fail and record its
+            # durable failed attempt; there is no trustworthy source to fingerprint.
+            return
         latest = self.org_store.mission_get(ctx.mission.id)
         if latest is None:
             raise OrgError("المهمة اختفت قبل حفظ سياقها")
