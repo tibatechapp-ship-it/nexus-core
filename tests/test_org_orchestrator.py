@@ -98,7 +98,8 @@ class TestPhaseGates:
         assert mission.phase == "G_RELEASE"
         assert mission.status == "done"
         claimed_depts = {"executive", "repo_intel", "development",
-                         "security", "qa", "release"}
+                         "security", "qa", "release", "code_review",
+                         "verification"}
         rows = [
             row for row in orchestrator.org_store.tasks_for_mission(mission.id)
             if row["dept"] in claimed_depts
@@ -108,6 +109,9 @@ class TestPhaseGates:
             attempts = orchestrator.org_store.task_attempts_for(row["id"])
             assert len(attempts) == 1
             assert attempts[0]["status"] == "done"
+            assert row["state"] == "done"
+            assert orchestrator.org_store.claim_task(
+                row["id"], worker_id="duplicate-gate-check") is None
 
     def test_illegal_phase_jump_via_store(
             self, orchestrator: ExecutiveOrchestrator) -> None:
@@ -116,6 +120,29 @@ class TestPhaseGates:
         with pytest.raises(OrgError):
             orchestrator.org_store.mission_update(
                 m.with_phase("G_RELEASE"))
+
+    def test_verification_exception_records_failed_claim(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        def fail_verification(*args: object, **kwargs: object) -> object:
+            raise OrgError("verification backend unavailable")
+
+        monkeypatch.setattr(
+            orchestrator.verification, "verify_mission", fail_verification)
+        mission = orchestrator.execute(Mission(
+            title="تعطل بوابة التحقق",
+            objective="تحقق من إصلاح تجريبي",
+            repo_path="examples/org_demo/fixture_repo"))
+        assert mission.status == "failed"
+        verify_tasks = [
+            row for row in orchestrator.org_store.tasks_for_mission(mission.id)
+            if row["dept"] == "verification"
+        ]
+        assert len(verify_tasks) == 1
+        assert verify_tasks[0]["state"] == "failed"
+        attempts = orchestrator.org_store.task_attempts_for(verify_tasks[0]["id"])
+        assert len(attempts) == 1
+        assert attempts[0]["status"] == "failed"
 
     def test_missing_repo_fails_loudly(
             self, orchestrator: ExecutiveOrchestrator) -> None:
@@ -195,3 +222,22 @@ class TestRevisionLoop:
         ]
         assert len(queued) == 1
         assert queued[0]["details"]["supersedes_task_id"] == revisions[0]["id"]
+
+        # Each development revision receives an independent durable review.
+        review_tasks = [
+            row for row in org_store.tasks_for_mission(mission.id)
+            if row["dept"] == "code_review"
+        ]
+        assert len(review_tasks) == 2
+        for review_task in review_tasks:
+            assert review_task["state"] == "done"
+            attempts = org_store.task_attempts_for(review_task["id"])
+            assert len(attempts) == 1
+            assert attempts[0]["status"] == "done"
+        review_rounds = [
+            event for event in org_store.tail_audit(200)
+            if event["action"] == "task.review_round_queued"
+        ]
+        assert len(review_rounds) == 1
+        assert review_rounds[0]["details"]["round"] == 2
+        assert review_rounds[0]["details"]["reviews_development_task_id"] == revisions[1]["id"]
