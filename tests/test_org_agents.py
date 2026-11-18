@@ -22,7 +22,7 @@ from src.org.providers import (
     ProviderError,
     ProviderPool,
 )
-from src.org.store import OrgStore
+from src.org.store import OrgError, OrgStore
 
 
 @pytest.fixture()
@@ -118,6 +118,26 @@ class TestAskJson:
         rows = store.agent_runs_for(m.id)
         assert rows and rows[0]["role"] == "dev:backend"
         assert rows[0]["tokens_in"] > 0
+
+    def test_mission_budget_blocks_call_before_provider_dispatch(
+            self, store: OrgStore) -> None:
+        from src.org.contracts import Mission
+
+        mission = store.create_mission(Mission(title="budget", objective="block"))
+        store.configure_mission_output_token_budget(mission.id, 100)
+        class MustNotRunPool(ProviderPool):
+            def complete_with_fallback(self, messages, **kwargs):  # type: ignore[override]
+                raise AssertionError("provider must not be called after budget gate")
+
+        guarded = AgentRuntime(MustNotRunPool(), ToolRegistry(), store)
+        spec = _spec(mission_id=mission.id, max_tokens=101)
+        with pytest.raises(OrgError, match="مستنفدة"):
+            guarded.ask_json(spec, "never dispatch")
+        assert store.agent_runs_for(mission.id) == []
+        budget = store.mission_output_token_budget(mission.id)
+        assert budget is not None
+        assert budget["reserved_tokens"] == 0
+        assert budget["consumed_tokens"] == 0
 
     def test_outcome_carries_usage(self, runtime: AgentRuntime) -> None:
         out = runtime.ask_json(_spec(), "أجب JSON")
