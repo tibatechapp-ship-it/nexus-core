@@ -197,6 +197,11 @@ class ExecutiveOrchestrator:
                                "تجاوز سقف دورات المراجعة — مخاطر موثّقة")
                     return self._final(mission, ctx, failed=True)
                 self._advance_phase(mission, "D_REVIEW", "C_DEVELOP")
+                previous_dev = max(
+                    (task for task in plan.tasks if task.dept == "development"),
+                    key=lambda task: int(task.params.get("revision", 0)),
+                )
+                self._queue_development_revision(plan, previous_dev, loops)
                 self._run_wave(plan, ctx, phase="C_DEVELOP", dept="development")
             self._advance_phase(mission, "D_REVIEW", "E_TESTING")
             self._run_wave(plan, ctx, phase="E_TESTING", dept="qa")
@@ -223,22 +228,53 @@ class ExecutiveOrchestrator:
 
     def _run_wave(self, plan: ExecutionPlan, ctx: MissionContext,
                   phase: str, dept: str) -> None:
-        """تنفيذ مهام طور واحد — موازٍ داخل الموجة، فشل قسم = رفع."""
-        wave = [t for t in plan.tasks if t.dept == dept]
+        """تنفيذ المهام المعلّقة فقط؛ المطالبة الذرية تحسم التنافس."""
+        wave = [
+            task for task in plan.tasks
+            if task.dept == dept
+            and (self.org_store.task_get(task.id) or {}).get("state") == "pending"
+        ]
         if not wave:
             return
         if len(wave) == 1:
             self._execute_task(wave[0], ctx)
             return
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            futures = {pool.submit(self._execute_task, t, ctx): t
-                       for t in wave}
+            futures = {pool.submit(self._execute_task, task, ctx): task
+                       for task in wave}
             for future in as_completed(futures):
                 future.result()
 
+    def _queue_development_revision(
+            self, plan: ExecutionPlan, previous: TaskSpec,
+            revision: int) -> TaskSpec:
+        """إنشاء مهمة تطوير جديدة مرتبطة بسابقتها بدل إعادة فتح سجل منتهٍ."""
+        if revision < 1:
+            raise OrgError("رقم مراجعة التطوير يجب أن يكون موجبًا")
+        spec = plan.add(
+            "development", "implement",
+            f"إعادة تطوير بعد رفض المراجعة — revision {revision}",
+            deps=[previous.id],
+            params={
+                **previous.params,
+                "revision": revision,
+                "supersedes_task_id": previous.id,
+            },
+        )
+        self.org_store.add_task(spec)
+        self.org_store.audit(
+            "task.revision_queued", spec.id,
+            {"revision": revision, "supersedes_task_id": previous.id},
+        )
+        return spec
+
     def _execute_task(self, spec: TaskSpec, ctx: MissionContext) -> TaskResult:
-        """تنفيذ مهمة قسم واحدة — تسجيل حالة ونتيجة واستهلاك في المتجر."""
-        self.org_store.task_set_state(spec.id, "running")
+        """تنفيذ مطالبة دائمة؛ لا يبدأ التنفيذ دون lease مسجلة."""
+        claim = self.org_store.claim_task(
+            spec.id, worker_id=f"nexus-orchestrator:{spec.dept}")
+        if claim is None:
+            raise OrgError(f"المهمة غير معلّقة أو مملوكة لعامل آخر: {spec.id}")
+        lease_token = str(claim["lease_token"])
         t0 = time.time()
         try:
             if spec.dept == "executive":
@@ -263,16 +299,16 @@ class ExecutiveOrchestrator:
             summary = self._summarize(out)
             result = TaskResult(
                 task_id=spec.id, dept=spec.dept, status="done",
-                output={"summary": summary}, attempts=1,
+                output={"summary": summary},
+                attempts=int(claim.get("attempts", 1)),
                 duration_ms=round((time.time() - t0) * 1000, 2))
-            self.org_store.task_set_state(spec.id, "done",
-                                          result=result.output, attempts=1)
-            return result
         except Exception as exc:  # noqa: BLE001 — الفشل يُسجَّل ثم يُرفع
-            self.org_store.task_set_state(
-                spec.id, "failed", error=f"{type(exc).__name__}: {exc}",
-                attempts=1)
+            self.org_store.fail_claimed_task(
+                spec.id, lease_token, f"{type(exc).__name__}: {exc}")
             raise
+        self.org_store.finish_claimed_task(
+            spec.id, lease_token, result.output)
+        return result
 
     def _persist_claims(self, ctx: MissionContext) -> None:
         """تخزين ادعاءات جديدة فقط — لا تكرار للادعاء المخزن."""

@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from src.org.contracts import Mission
@@ -95,6 +97,17 @@ class TestPhaseGates:
             repo_path="examples/org_demo/fixture_repo"))
         assert mission.phase == "G_RELEASE"
         assert mission.status == "done"
+        claimed_depts = {"executive", "repo_intel", "development",
+                         "security", "qa", "release"}
+        rows = [
+            row for row in orchestrator.org_store.tasks_for_mission(mission.id)
+            if row["dept"] in claimed_depts
+        ]
+        assert {row["dept"] for row in rows} == claimed_depts
+        for row in rows:
+            attempts = orchestrator.org_store.task_attempts_for(row["id"])
+            assert len(attempts) == 1
+            assert attempts[0]["status"] == "done"
 
     def test_illegal_phase_jump_via_store(
             self, orchestrator: ExecutiveOrchestrator) -> None:
@@ -112,6 +125,16 @@ class TestPhaseGates:
         rows = [r for r in orchestrator.org_store.tail_audit(20)
                 if r["action"] == "mission.failed"]
         assert rows and rows[0]["details"]["reason"]
+        failed_tasks = [
+            row for row in orchestrator.org_store.tasks_for_mission(mission.id)
+            if row["state"] == "failed"
+        ]
+        assert failed_tasks
+        assert any(
+            attempt["status"] == "failed"
+            for row in failed_tasks
+            for attempt in orchestrator.org_store.task_attempts_for(row["id"])
+        )
 
 
 class TestRevisionLoop:
@@ -149,3 +172,26 @@ class TestRevisionLoop:
             repo_path="examples/org_demo/fixture_repo"))
         assert mission.status == "failed"
         assert mission.revision_loops >= 1
+
+        # كل دورة تطوير لها سجل مستقل؛ لا نعيد فتح المهمة المنتهية.
+        development_tasks = [
+            row for row in org_store.tasks_for_mission(mission.id)
+            if row["dept"] == "development"
+        ]
+        assert len(development_tasks) == 2
+        revisions = sorted(
+            (row for row in development_tasks),
+            key=lambda row: int(json.loads(row["params"]).get("revision", 0)),
+        )
+        assert revisions[0]["state"] == "done"
+        assert revisions[1]["state"] == "done"
+        for row in revisions:
+            attempts = org_store.task_attempts_for(row["id"])
+            assert len(attempts) == 1
+            assert attempts[0]["status"] == "done"
+        queued = [
+            event for event in org_store.tail_audit(100)
+            if event["action"] == "task.revision_queued"
+        ]
+        assert len(queued) == 1
+        assert queued[0]["details"]["supersedes_task_id"] == revisions[0]["id"]
