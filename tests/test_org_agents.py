@@ -65,6 +65,11 @@ class TestSpecContract:
         assert "[AGENT:dev:backend]" in prompt
         assert "read_repo" in prompt
 
+    @pytest.mark.parametrize("value", [True, 0, -1, "100", 2**63])
+    def test_invalid_max_tokens_rejected(self, value: object) -> None:
+        with pytest.raises(ValueError, match="max_tokens"):
+            _spec(max_tokens=value)  # type: ignore[arg-type]
+
 
 class TestToolPermissions:
     def test_unregistered_tool_denied(self, runtime: AgentRuntime) -> None:
