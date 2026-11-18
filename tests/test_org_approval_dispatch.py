@@ -145,3 +145,137 @@ def test_scope_mismatch_keeps_approval_available(scenario):
     assert store.effect_approval_get(approval.approval_id)["status"] == "issued"
     assert adapter.calls == []
     assert execute(dispatcher, scope, approval.token).state == "succeeded"
+
+
+def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winner(
+    tmp_path: Path,
+):
+    """Two independent SQLite connections racing one token must yield one claim."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    import hashlib
+    import json
+
+    db_path = tmp_path / "approval-race.sqlite3"
+    store_a = OrgStore(db_path)
+    store_b = OrgStore(db_path)
+    mission = store_a.create_mission(
+        Mission(title="race", objective="single-use approval under contention")
+    )
+    task = store_a.add_task(TaskSpec(
+        mission_id=mission.id, dept="release", kind="comment",
+        description="race one approved effect",
+    ))
+
+    def verifier(principal: str) -> bool:
+        return principal in {"approver", "executor"}
+
+    def policy(issuer: str, scope: Mapping[str, str]) -> bool:
+        return issuer == "approver"
+
+    service_a = EffectApprovalService(
+        store_a, principal_verifier=verifier, approval_policy=policy,
+    )
+    service_b = EffectApprovalService(
+        store_b, principal_verifier=verifier, approval_policy=policy,
+    )
+    request = {"repository": "owner/race-repo", "body": "one dispatch"}
+    scope = {
+        "mission_id": mission.id, "task_id": task.id,
+        "repository": "owner/race-repo", "ref_name": "refs/heads/main",
+        "commit_sha": "c" * 40, "provider_id": "scm-race",
+        "operation_name": "comment", "request": request,
+    }
+    approval = service_a.issue(
+        issuer_principal_id="approver", executor_principal_id="executor",
+        **scope,
+    )
+    target = json.dumps(
+        [scope["repository"], scope["ref_name"], scope["commit_sha"]],
+        ensure_ascii=False, separators=(",", ":"),
+    )
+    target_fingerprint = hashlib.sha256(target.encode("utf-8")).hexdigest()
+    operation = store_a.prepare_external_operation(
+        mission.id, task.id, "scm-race:comment",
+        "race-revision:" + target_fingerprint, request,
+    )
+    start = Barrier(2)
+
+    def consume(service, worker_id):
+        start.wait(timeout=5)
+        return service.consume_and_claim(
+            approval.token, executor_principal_id="executor",
+            mission_id=mission.id, task_id=task.id,
+            repository=scope["repository"], ref_name=scope["ref_name"],
+            commit_sha=scope["commit_sha"], provider_id="scm-race",
+            operation_name="comment", request=request,
+            operation_key=operation["operation_key"], worker_id=worker_id,
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(consume, service_a, "race-worker-a"),
+                pool.submit(consume, service_b, "race-worker-b"),
+            ]
+            outcomes = []
+            failures = []
+            for future in futures:
+                try:
+                    outcomes.append(future.result(timeout=10))
+                except EffectApprovalError as exc:
+                    failures.append(exc)
+            assert len(outcomes) == 1
+            assert len(failures) == 1
+            assert outcomes[0]["state"] == "in_flight"
+            assert outcomes[0]["reused"] is False
+        persisted = store_a.external_operation_get(operation["operation_key"])
+        assert persisted["state"] == "in_flight"
+        assert persisted["attempt_count"] == 1
+        assert store_a.effect_approval_get(approval.approval_id)["status"] == "consumed"
+        consumed_events = [
+            row for row in store_a.tail_audit(50)
+            if row["action"] == "effect_approval.consumed"
+            and row["ref"] == approval.approval_id
+        ]
+        assert len(consumed_events) == 1
+    finally:
+        store_b.close()
+        store_a.close()
+
+
+def test_failed_attempt_insert_rolls_back_approval_consumption(scenario):
+    """A failure after token UPDATE must roll back the entire SQLite unit."""
+    store, service, adapter, dispatcher, scope = scenario
+    approval = issue(service, scope)
+    operation = store.prepare_external_operation(
+        scope["mission_id"], scope["task_id"], "scm-test:comment",
+        "revision-1:" + __import__("hashlib").sha256(
+            __import__("json").dumps(
+                [scope["repository"], scope["ref_name"], scope["commit_sha"]],
+                ensure_ascii=False, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest(),
+        scope["request"],
+    )
+    store._conn.execute(
+        """CREATE TRIGGER reject_external_attempt
+           BEFORE INSERT ON external_operation_attempts
+           BEGIN SELECT RAISE(ABORT, 'injected attempt insert failure'); END"""
+    )
+
+    with pytest.raises(EffectNotAuthorized):
+        execute(dispatcher, scope, approval.token)
+
+    assert store.effect_approval_get(approval.approval_id)["status"] == "issued"
+    assert store.external_operation_get(operation["operation_key"])["state"] == "prepared"
+    assert not any(
+        row["action"] == "effect_approval.consumed"
+        and row["ref"] == approval.approval_id
+        for row in store.tail_audit(50)
+    )
+
+    store._conn.execute("DROP TRIGGER reject_external_attempt")
+    result = execute(dispatcher, scope, approval.token)
+    assert result.state == "succeeded"
+    assert len(adapter.calls) == 1
