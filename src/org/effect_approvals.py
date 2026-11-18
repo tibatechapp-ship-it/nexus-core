@@ -59,8 +59,9 @@ class EffectApprovalService:
             "repository": repository, "ref_name": ref_name,
             "commit_sha": commit_sha, "provider_id": provider_id,
             "operation_name": operation_name,
-            "executor_principal_id": executor_principal_id,
         }
+        if not isinstance(executor_principal_id, str) or not executor_principal_id.strip():
+            raise EffectApprovalError("executor principal is required")
         if not all(isinstance(v, str) and v.strip() for v in fields.values()):
             raise EffectApprovalError("all approval identity and target fields are required")
         payload = cls._canonical(request)
