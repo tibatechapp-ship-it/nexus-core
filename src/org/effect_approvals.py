@@ -144,6 +144,35 @@ class EffectApprovalService:
         except OrgError as exc:
             raise EffectApprovalError(str(exc)) from exc
 
+    def consume_and_claim(self, token: str, *, executor_principal_id: str,
+                          mission_id: str, task_id: str, repository: str,
+                          ref_name: str, commit_sha: str, provider_id: str,
+                          operation_name: str, request: Mapping[str, Any],
+                          operation_key: str, worker_id: str) -> dict[str, Any]:
+        """Atomically consume this approval while claiming its durable operation.
+
+        The store returns a persisted success without consuming a fresh token.
+        For a prepared operation, token consumption and claim share one
+        SQLite transaction; this method must be used by the dispatcher rather
+        than calling consume() followed by claim_external_operation().
+        """
+        executor = self._principal(executor_principal_id)
+        if not isinstance(token, str) or not token:
+            raise EffectApprovalError("one-time approval token is required")
+        scope_hash, _ = self._scope(
+            mission_id=mission_id, task_id=task_id, repository=repository,
+            ref_name=ref_name, commit_sha=commit_sha, provider_id=provider_id,
+            operation_name=operation_name, request=request,
+            executor_principal_id=executor)
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        try:
+            return self._store.claim_external_operation_with_approval(
+                operation_key, worker_id, token_digest=digest,
+                scope_fingerprint=scope_hash, principal_id=executor, now=now)
+        except OrgError as exc:
+            raise EffectApprovalError(str(exc)) from exc
+
     def revoke(self, approval_id: str, *, issuer_principal_id: str,
                reason: str) -> None:
         issuer = self._principal(issuer_principal_id)
