@@ -42,7 +42,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 2
+ORG_SCHEMA_VERSION = 3
 
 
 class OrgError(RuntimeError):
@@ -117,6 +117,9 @@ class OrgStore:
             if current < 2:
                 self._migrate_v2()
                 current = 2
+            if current < 3:
+                self._migrate_v3()
+                current = 3
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -231,6 +234,28 @@ class OrgStore:
                 "CREATE INDEX IF NOT EXISTS idx_task_attempts_task "
                 "ON task_attempts(task_id, attempt_no)"
             )
+
+    def _migrate_v3(self) -> None:
+        """سجل قرارات المصالحة البشرية — منفصل عن الفحص والتنفيذ."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS task_reconciliations (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                mission_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                evidence_refs TEXT NOT NULL DEFAULT '[]',
+                decision_key TEXT NOT NULL,
+                replacement_task_id TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(task_id, decision_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_reconciliations_mission
+                ON task_reconciliations(mission_id, created_at);
+            """
+        )
 
     # ── التدقيق ───────────────────────────────────────────────────────────
 
@@ -522,6 +547,130 @@ class OrgStore:
         rows = self._conn.execute(
             "SELECT * FROM task_attempts WHERE task_id=? ORDER BY attempt_no",
             (task_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reconcile_task(
+        self, task_id: str, action: str, actor: str, reason: str,
+        decision_key: str, evidence_refs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """تطبيق قرار مشغّل صريح؛ لا يشغّل المهمة ولا يستولي على lease."""
+        allowed = {"manual_hold", "mark_failed", "mark_completed_with_evidence",
+                   "retry_authorized"}
+        if action not in allowed:
+            raise OrgError(f"قرار مصالحة غير معروف: {action}")
+        if not all(isinstance(v, str) and v.strip()
+                   for v in (actor, reason, decision_key)):
+            raise OrgError("actor وreason وdecision_key مطلوبة")
+        refs = list(evidence_refs or [])
+        now = self._now()
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if row is None:
+                raise OrgError(f"مهمة فرعية غير موجودة: {task_id}")
+            existing = self._conn.execute(
+                "SELECT * FROM task_reconciliations WHERE task_id=? AND decision_key=?",
+                (task_id, decision_key),
+            ).fetchone()
+            if existing:
+                if existing["action"] != action or existing["actor"] != actor:
+                    raise OrgError("decision_key مستخدم لقرار مختلف")
+                return dict(existing)
+            state = str(row["state"])
+            if state not in {"running", "failed"}:
+                raise OrgError(f"لا يمكن مصالحة مهمة بحالة {state}")
+            if action in {"mark_failed", "mark_completed_with_evidence",
+                          "retry_authorized"} and state == "running":
+                expiry = str(row["lease_expires_at"] or "")
+                try:
+                    expired = bool(expiry) and datetime.fromisoformat(expiry) <= datetime.now(timezone.utc)
+                except ValueError:
+                    expired = False
+                if not expired:
+                    raise OrgError("لا يمكن حسم مطالبة running قبل انتهاء lease")
+            if action == "mark_completed_with_evidence":
+                if not refs:
+                    raise OrgError("إكمال المهمة يتطلب مراجع أدلة")
+                placeholders = ",".join("?" for _ in refs)
+                evidence_rows = self._conn.execute(
+                    f"SELECT id FROM evidence WHERE mission_id=? AND ok=1 AND id IN ({placeholders})",
+                    (row["mission_id"], *refs),
+                ).fetchall()
+                if len({r["id"] for r in evidence_rows}) != len(set(refs)):
+                    raise OrgError("كل مراجع الأدلة يجب أن تشير إلى أدلة ناجحة للمهمة نفسها")
+            decision_id = new_id("org-reconcile", task_id, decision_key)
+            replacement_id = ""
+            if action == "retry_authorized":
+                params = json.loads(row["params"] or "{}")
+                params["operator_retry_of"] = task_id
+                params["operator_decision_id"] = decision_id
+                deps = json.loads(row["deps"] or "[]")
+                replacement_id = new_id(
+                    "org-t", row["mission_id"], row["dept"], row["kind"],
+                    f"{row['description']} [operator retry {decision_id}]")
+                params["retry_sequence"] = int(params.get("retry_sequence", 0)) + 1
+                self._conn.execute(
+                    """INSERT INTO tasks
+                    (id, mission_id, dept, kind, description, deps, params,
+                     state, attempts, result, error, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?)""",
+                    (replacement_id, row["mission_id"], row["dept"], row["kind"],
+                     f"{row['description']} [operator-authorized retry]",
+                     json.dumps(deps, ensure_ascii=False),
+                     json.dumps(params, sort_keys=True, ensure_ascii=False), now),
+                )
+            if action in {"mark_failed", "mark_completed_with_evidence",
+                          "retry_authorized"}:
+                target = "done" if action == "mark_completed_with_evidence" else "failed"
+                result = (json.dumps({"operator_reconciled": True,
+                                      "evidence_refs": refs},
+                                     sort_keys=True, ensure_ascii=False)
+                          if target == "done" else row["result"])
+                self._conn.execute(
+                    """UPDATE tasks SET state=?, result=?, error=?,
+                       lease_owner='', lease_token='', lease_expires_at=?,
+                       updated_at=? WHERE id=? AND state=?""",
+                    (target, result,
+                     "" if target == "done" else (row["error"] or "operator marked failed"),
+                     "", now, task_id, state),
+                )
+                if state == "running":
+                    self._conn.execute(
+                        """UPDATE task_attempts SET status=?, finished_at=?, error=?
+                           WHERE task_id=? AND status='running'""",
+                        ("done" if target == "done" else "failed", now,
+                         "" if target == "done" else "operator reconciliation",
+                         task_id),
+                    )
+            self._conn.execute(
+                """INSERT INTO task_reconciliations
+                   (id, task_id, mission_id, action, actor, reason,
+                    evidence_refs, decision_key, replacement_task_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (decision_id, task_id, row["mission_id"], action, actor.strip(),
+                 reason.strip(), json.dumps(refs, ensure_ascii=False),
+                 decision_key, replacement_id, now),
+            )
+            self._conn.execute(
+                """INSERT INTO audit (ts, actor, action, ref, details)
+                   VALUES (?, ?, 'task.reconciled', ?, ?)""",
+                (now, actor.strip(), task_id, json.dumps({
+                    "action": action, "reason": reason.strip(),
+                    "decision_id": decision_id, "evidence_refs": refs,
+                    "replacement_task_id": replacement_id,
+                }, sort_keys=True, ensure_ascii=False)),
+            )
+            decision = self._conn.execute(
+                "SELECT * FROM task_reconciliations WHERE id=?", (decision_id,)
+            ).fetchone()
+        return dict(decision) if decision else {}
+
+    def task_reconciliations_for(self, mission_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM task_reconciliations WHERE mission_id=? ORDER BY created_at, id",
+            (mission_id,),
         ).fetchall()
         return [dict(row) for row in rows]
 
