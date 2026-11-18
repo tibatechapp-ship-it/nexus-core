@@ -209,6 +209,41 @@ class TestTokenReservationCrashReconciliation:
         assert budget is not None and budget["reserved_output_tokens"] == 1200
         store.close()
 
+    def test_reconciliation_rejects_oversized_evidence(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        with pytest.raises(OrgError, match="حجم أدلة المصالحة"):
+            store.reconcile_mission_output_tokens(
+                reservation_id, 0, actor="operator", reason="evidence too large",
+                evidence_refs=["x" * 512 for _ in range(32)],
+                confirm_provider_terminal=True,
+            )
+        budget = store.mission_token_budget_get(mission_id)
+        assert budget is not None and budget["reserved_output_tokens"] == 1200
+        store.close()
+
+    def test_reconciliation_rolls_back_on_inconsistent_budget(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        with store._conn:
+            store._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens=0 "
+                "WHERE mission_id=?", (mission_id,))
+        with pytest.raises(OrgError, match="رصيد الحجز غير متسق"):
+            store.reconcile_mission_output_tokens(
+                reservation_id, 100, actor="operator", reason="provider terminal",
+                evidence_refs=["provider-log://req-abc"],
+                confirm_provider_terminal=True,
+            )
+        reservation = store._conn.execute(
+            "SELECT status FROM mission_token_reservations WHERE id=?",
+            (reservation_id,),
+        ).fetchone()
+        reconciliation_count = store._conn.execute(
+            "SELECT COUNT(*) AS n FROM mission_token_reconciliations"
+        ).fetchone()["n"]
+        assert reservation["status"] == "reserved"
+        assert reconciliation_count == 0
+        store.close()
+
     def test_schema_v10_migration_is_idempotent(self, tmp_path: Path) -> None:
         db = tmp_path / "token-reconcile.sqlite"
         first = OrgStore(db)
