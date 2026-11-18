@@ -142,7 +142,8 @@ def _persist_worktree(worktree: Worktree | None, mission_id: str,
         raise OrgError("مخزن سياق المهام يجب أن يكون خارج المستودع")
     state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(state_root, 0o700)
-    mission_dir = state_root / mission_id
+    mission_key = hashlib.sha256(mission_id.encode("utf-8")).hexdigest()[:32]
+    mission_dir = state_root / mission_key
     mission_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(mission_dir, 0o700)
     final = mission_dir / f"worktree-{uuid.uuid4().hex}"
