@@ -18,8 +18,12 @@ The issuer and executor are verified separately. The approval record stores both
 4. SQLite consumes it atomically under BEGIN IMMEDIATE. Concurrent attempts have one winner. Replay, wrong principal, scope/payload mismatch, expiry, and revocation are rejected.
 5. Revocation is permitted only through the same injected approval policy. Issued, consumed, expired, and revoked transitions are audited.
 
-## Important integration constraint
+## Dispatcher integration
 
-This PR provides the durable approval store and service only. It does not connect token consumption to ExternalEffectDispatcher yet. The dispatcher currently authorizes before reading its durable operation ledger; blindly consuming a one-time token at that point would break safe replay of an already successful operation. Integration must first establish the operation identity, return a previously persisted success without consuming a new token, and atomically consume a matching approval only for a still-prepared operation before claiming/dispatching it. That integration needs its own concurrency and crash-window tests.
+ExternalEffectDispatcher accepts an injected EffectApprovalService for durable one-time authorization. In this mode, execute() requires the authenticated executor principal plus the approval token and the exact repository, ref, and commit scope.
+
+The dispatcher first persists/loads the immutable operation identity. If the ledger already contains succeeded or reconciled, it returns that stored result without requiring or consuming another token. For a prepared operation, EffectApprovalService.consume_and_claim() delegates to OrgStore.claim_external_operation_with_approval(); the store validates the token digest, scope, executor, expiry, and issued status, then consumes the approval and creates the fenced in-flight attempt inside one SQLite BEGIN IMMEDIATE transaction. A scope mismatch leaves the token available. An abandoned in-flight operation remains blocked and requires explicit reconciliation; its consumed approval is not reusable.
+
+The older injected authorizer remains supported for existing integrations. Production applications should prefer the durable service and must construct its principal verifier from a trusted identity/session provider and its approval policy from enforceable approver roles and separation-of-duties rules. Never pass a caller-controlled display name as authenticated identity.
 
 No real SCM adapter, HTTP request, subprocess, or remote mutation is enabled by this feature. A consumed approval is not proof that a provider effect succeeded.
