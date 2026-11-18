@@ -1,6 +1,7 @@
 """End-to-end offline tests for dry-run effects through the durable dispatcher."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -74,7 +75,8 @@ def test_dispatcher_persists_simulation_marker_and_reuses_without_redispatch(
 
         row = store.external_operation_get(first.operation_key)
         assert row["state"] == "succeeded"
-        assert '"dry_run": true' in row["result_payload"]
+        assert json.loads(row["result_payload"])["dry_run"] is True
+        assert json.loads(row["result_payload"])["simulated"] is True
         attempts = store.external_operation_attempts_for(first.operation_key)
         assert len(attempts) == 1
     finally:
