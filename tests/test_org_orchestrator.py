@@ -427,3 +427,82 @@ class TestExplicitMissionResume:
                 mission.id, expected_repo_root=repo)
         assert calls == []
         assert orchestrator.org_store.task_get(verification.id)["state"] == "running"
+
+
+    def test_resume_after_completed_review_uses_saved_verdict(
+            self, orchestrator: ExecutiveOrchestrator,
+            tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        orchestrator.state_root = Path(tmp_path) / "mission-state"  # type: ignore[arg-type]
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="resume after review",
+            objective="continue after durable review approval",
+            repo_path=str(repo), phase="D_REVIEW", status="running",
+        ))
+        plan = orchestrator.plan(mission)
+        development = next(t for t in plan.tasks if t.dept == "development")
+        review = next(t for t in plan.tasks if t.dept == "code_review")
+
+        for task in plan.tasks:
+            if task.dept in {"qa", "security", "verification", "release"}:
+                continue
+            claim = orchestrator.org_store.claim_task(
+                task.id, worker_id="test-checkpoint-builder")
+            assert claim is not None
+            result = (
+                {"verdict": "approve", "development_task_id": development.id,
+                 "mean": 95, "rounds": 1}
+                if task.dept == "code_review"
+                else {"summary": f"completed:{task.dept}"}
+            )
+            orchestrator.org_store.finish_claimed_task(
+                task.id, str(claim["lease_token"]), result)
+
+        ctx = MissionContext(mission=mission)
+        save_mission_context_snapshot(
+            orchestrator.org_store, ctx, orchestrator.state_root)
+
+        calls: list[str] = []
+
+        def baseline(context: MissionContext) -> dict[str, bool]:
+            calls.append("baseline")
+            context.baseline_tests = {"baseline": True}
+            return context.baseline_tests
+
+        def patched(context: MissionContext) -> dict[str, bool]:
+            calls.append("qa")
+            context.patched_tests = {"patched": True}
+            return context.patched_tests
+
+        def security(context: MissionContext) -> dict[str, bool]:
+            calls.append("security")
+            return {"clean": True}
+
+        def verify(*args: object, **kwargs: object) -> object:
+            calls.append("verification")
+            return SimpleNamespace(
+                verified=1, rejected=0, reproduced_fix=True,
+                to_dict=lambda: {"verified": 1, "rejected": 0},
+            )
+
+        def release(context: MissionContext) -> dict[str, str]:
+            calls.append("release")
+            return {"status": "prepared"}
+
+        monkeypatch.setattr(orchestrator.depts.qa, "baseline", baseline)
+        monkeypatch.setattr(orchestrator.depts.qa, "patched", patched)
+        monkeypatch.setattr(orchestrator.depts.security, "run", security)
+        monkeypatch.setattr(orchestrator.verification, "verify_mission", verify)
+        monkeypatch.setattr(orchestrator.depts.release, "run", release)
+
+        resumed = orchestrator.resume_mission(
+            mission.id, expected_repo_root=repo)
+
+        assert resumed.status == "done"
+        assert resumed.phase == "G_RELEASE"
+        assert calls == ["baseline", "qa", "security", "verification", "release"]
+        assert orchestrator.org_store.task_get(review.id)["state"] == "done"
+        assert len(orchestrator.org_store.task_attempts_for(review.id)) == 1
