@@ -97,6 +97,17 @@ class TestPhaseGates:
             repo_path="examples/org_demo/fixture_repo"))
         assert mission.phase == "G_RELEASE"
         assert mission.status == "done"
+        claimed_depts = {"executive", "repo_intel", "development",
+                         "security", "qa", "release"}
+        rows = [
+            row for row in orchestrator.org_store.tasks_for_mission(mission.id)
+            if row["dept"] in claimed_depts
+        ]
+        assert {row["dept"] for row in rows} == claimed_depts
+        for row in rows:
+            attempts = orchestrator.org_store.task_attempts_for(row["id"])
+            assert len(attempts) == 1
+            assert attempts[0]["status"] == "done"
 
     def test_illegal_phase_jump_via_store(
             self, orchestrator: ExecutiveOrchestrator) -> None:
@@ -114,6 +125,16 @@ class TestPhaseGates:
         rows = [r for r in orchestrator.org_store.tail_audit(20)
                 if r["action"] == "mission.failed"]
         assert rows and rows[0]["details"]["reason"]
+        failed_tasks = [
+            row for row in orchestrator.org_store.tasks_for_mission(mission.id)
+            if row["state"] == "failed"
+        ]
+        assert failed_tasks
+        assert any(
+            attempt["status"] == "failed"
+            for row in failed_tasks
+            for attempt in orchestrator.org_store.task_attempts_for(row["id"])
+        )
 
 
 class TestRevisionLoop:
