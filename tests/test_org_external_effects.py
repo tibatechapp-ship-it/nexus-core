@@ -110,16 +110,17 @@ def test_denied_approval_never_prepares_or_dispatches(setup) -> None:
             mission.id, task.id, "comment", "1", {"body": "no"}, actor="intruder"
         )
     assert adapter.calls == []
-    assert store.tail_audit(20) == [
-        row for row in store.tail_audit(20) if row["action"] != "external_operation.prepared"
-    ]
+    assert not any(
+        row["action"] == "external_operation.prepared"
+        for row in store.tail_audit(20)
+    )
 
 
 def test_undeclared_operation_fails_before_authorization_or_dispatch(setup) -> None:
-    _, mission, task, adapter, _ = setup
+    store, mission, task, adapter, _ = setup
     calls: list[bool] = []
     dispatcher = ExternalEffectDispatcher(
-        _, adapter, worker_id="worker",
+        store, adapter, worker_id="worker",
         authorizer=lambda *args: calls.append(True) or True,
     )
     with pytest.raises(EffectDispatchError, match="does not declare"):
