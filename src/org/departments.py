@@ -75,6 +75,7 @@ class MissionContext:
     claims: list[Claim] = field(default_factory=list)              # كل الأقسام
     pr_text: dict[str, Any] = field(default_factory=dict)          # الإصدار
     usage: dict[str, int | float] = field(default_factory=dict)    # المُنسّق
+    execution_policy: dict[str, Any] = field(default_factory=dict)  # سياسة ثابتة للاستئناف
 
     def add_usage(self, outcome: AgentOutcome) -> None:
         """تجميع استهلاك وكيل واحد في حقيبة المهمة."""
