@@ -11,6 +11,8 @@ import json
 import pytest
 
 from src.org.contracts import Mission
+from src.org.departments import MissionContext
+from src.org.recovery_context import save_mission_context_snapshot
 from src.org.orchestrator import ExecutiveOrchestrator, PlanError
 from src.org.providers import ProviderConfig, ProviderPool
 from src.org.store import OrgError, OrgStore
@@ -326,3 +328,102 @@ class TestAuthorizedRetryDispatch:
             str(decision["replacement_task_id"]))["state"] == "pending"
         assert orchestrator.org_store.task_attempts_for(
             str(decision["replacement_task_id"])) == []
+
+
+class TestExplicitMissionResume:
+    def test_resume_from_verification_skips_completed_work_and_runs_release(
+            self, orchestrator: ExecutiveOrchestrator,
+            tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pathlib import Path
+
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        state_root = Path(tmp_path) / "mission-state"  # type: ignore[arg-type]
+        orchestrator.state_root = state_root
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="resume at verification",
+            objective="continue only the remaining release task",
+            repo_path=str(repo), phase="F_VERIFICATION", status="running",
+        ))
+        plan = orchestrator.plan(mission)
+
+        for task in plan.tasks:
+            if task.dept == "release":
+                continue
+            claim = orchestrator.org_store.claim_task(
+                task.id, worker_id="test-checkpoint-builder")
+            assert claim is not None
+            result = (
+                {"verified": 2, "rejected": 0, "reproduced": True}
+                if task.dept == "verification"
+                else {"summary": f"completed:{task.dept}"}
+            )
+            orchestrator.org_store.finish_claimed_task(
+                task.id, str(claim["lease_token"]), result)
+
+        ctx = MissionContext(mission=mission)
+        save_mission_context_snapshot(
+            orchestrator.org_store, ctx, state_root)
+
+        release_calls: list[str] = []
+
+        def release(ctx: MissionContext) -> dict[str, str]:
+            release_calls.append(ctx.mission.id)
+            return {"status": "prepared"}
+
+        monkeypatch.setattr(orchestrator.depts.release, "run", release)
+        resumed = orchestrator.resume_mission(
+            mission.id, expected_repo_root=repo)
+
+        assert resumed.status == "done"
+        assert resumed.phase == "G_RELEASE"
+        assert release_calls == [mission.id]
+        rows = orchestrator.org_store.tasks_for_mission(mission.id)
+        by_dept = {row["dept"]: row for row in rows}
+        assert by_dept["release"]["state"] == "done"
+        assert len(orchestrator.org_store.task_attempts_for(
+            by_dept["release"]["id"])) == 1
+        for dept in (
+            "executive", "repo_intel", "development", "code_review",
+            "qa", "security", "verification",
+        ):
+            assert by_dept[dept]["state"] == "done"
+            assert len(orchestrator.org_store.task_attempts_for(
+                by_dept[dept]["id"])) == 1
+
+    def test_resume_rejects_running_task_before_dispatch(
+            self, orchestrator: ExecutiveOrchestrator,
+            tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pathlib import Path
+
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        orchestrator.state_root = Path(tmp_path) / "mission-state"  # type: ignore[arg-type]
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="blocked resume", objective="never replay uncertain work",
+            repo_path=str(repo), phase="F_VERIFICATION", status="running",
+        ))
+        plan = orchestrator.plan(mission)
+        for task in plan.tasks:
+            if task.dept in {"release", "verification"}:
+                continue
+            claim = orchestrator.org_store.claim_task(
+                task.id, worker_id="test-checkpoint-builder")
+            assert claim is not None
+            orchestrator.org_store.finish_claimed_task(
+                task.id, str(claim["lease_token"]), {"done": True})
+        verification = next(t for t in plan.tasks if t.dept == "verification")
+        assert orchestrator.org_store.claim_task(
+            verification.id, worker_id="interrupted-worker") is not None
+        save_mission_context_snapshot(
+            orchestrator.org_store, MissionContext(mission=mission),
+            orchestrator.state_root)
+
+        calls: list[str] = []
+        monkeypatch.setattr(
+            orchestrator.depts.release, "run",
+            lambda ctx: calls.append(ctx.mission.id) or {"status": "unexpected"},
+        )
+        with pytest.raises(OrgError, match="غير مؤكدة|running"):
+            orchestrator.resume_mission(
+                mission.id, expected_repo_root=repo)
+        assert calls == []
+        assert orchestrator.org_store.task_get(verification.id)["state"] == "running"
