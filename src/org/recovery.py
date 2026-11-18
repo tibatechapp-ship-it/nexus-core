@@ -168,7 +168,6 @@ def assess_mission_resume(
         reasons.append("mission has no persisted task graph")
 
     by_id = {str(row.get("id", "")): row for row in rows}
-    graph: dict[str, set[str]] = {}
     states = {task_id: str(row.get("state", "")) for task_id, row in by_id.items()}
     current_order = _PHASE_ORDER.get(mission.phase, -1)
 
@@ -183,25 +182,33 @@ def assess_mission_resume(
                 reasons.append(
                     f"prior-phase task {task_id} is {state}, expected done")
             elif stage > current_order and state != "pending":
-                reasons.append(
-                    f"future-phase task {task_id} is {state}, expected pending")
+                # A completed review can legitimately precede a new development
+                # revision: the orchestrator moves back to C_DEVELOP explicitly.
+                completed_prior_review = (
+                    mission.phase == "C_DEVELOP"
+                    and dept == "code_review"
+                    and state == "done"
+                )
+                if not completed_prior_review:
+                    reasons.append(
+                        f"future-phase task {task_id} is {state}, expected pending")
 
         try:
             deps_raw = json.loads(row.get("deps") or "[]")
         except (TypeError, json.JSONDecodeError):
             violations.append(f"task {task_id} has malformed dependency JSON")
-            graph[task_id] = set()
-            continue
-        if not isinstance(deps_raw, list) or any(
-            not isinstance(dep, str) or not dep for dep in deps_raw
-        ):
-            violations.append(f"task {task_id} has invalid dependency entries")
-            graph[task_id] = set()
-            continue
+            graph_deps: set[str] = set()
+        else:
+            if not isinstance(deps_raw, list) or any(
+                not isinstance(dep, str) or not dep for dep in deps_raw
+            ):
+                violations.append(f"task {task_id} has invalid dependency entries")
+                graph_deps = set()
+            else:
+                graph_deps = set(deps_raw)
 
-        deps = set(deps_raw)
-        graph[task_id] = deps
-        for dependency_id in deps:
+        graph[task_id] = graph_deps
+        for dependency_id in graph_deps:
             dependency = by_id.get(dependency_id)
             if dependency is None:
                 violations.append(
