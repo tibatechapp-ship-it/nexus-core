@@ -870,3 +870,87 @@ class TestCheckpointLedgerDrift:
             for event in second_store.tail_audit(100)
         )
         second_store.close()
+
+
+class TestCheckpointBeforePhaseTransition:
+    def test_resume_skips_completed_phase_when_crash_follows_checkpoint(
+            self, tmp_path: object) -> None:
+        """A durable task+context checkpoint survives a crash before phase advance."""
+        from pathlib import Path
+
+        root = Path(tmp_path)  # type: ignore[arg-type]
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        database = root / "org.sqlite3"
+        state_root = root / "mission-state"
+
+        first_store = OrgStore(database)
+        first = ExecutiveOrchestrator(
+            first_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "first-run"), state_root=state_root,
+        )
+        mission = first_store.create_mission(Mission(
+            title="checkpoint before phase transition",
+            objective="resume without replay when phase metadata lags a durable checkpoint",
+            repo_path=str(repo), phase="A_REQUIREMENTS", status="running",
+        ))
+        plan = first.plan(mission)
+
+        # All task outcomes and the matching context snapshot are durable, but
+        # the mission phase intentionally remains A_REQUIREMENTS: this is the
+        # crash window after checkpoint commit and before _advance_phase().
+        for task in plan.tasks:
+            claim = first_store.claim_task(
+                task.id, worker_id="interrupted-before-phase-advance")
+            assert claim is not None
+            if task.dept == "code_review":
+                result = {
+                    "verdict": "approve",
+                    "development_task_id": task.deps[0],
+                }
+            elif task.dept == "verification":
+                result = {"verified": 1, "rejected": 0, "reproduced": True}
+            else:
+                result = {"summary": "durably completed:" + task.dept}
+            first_store.finish_claimed_task(
+                task.id, str(claim["lease_token"]), result)
+
+        save_mission_context_snapshot(
+            first_store,
+            MissionContext(mission=mission, execution_policy={
+                "schema_version": 1, "max_revision_loops": 1,
+            }),
+            state_root,
+        )
+        attempts_before = {
+            task.id: len(first_store.task_attempts_for(task.id))
+            for task in plan.tasks
+        }
+        assert all(count == 1 for count in attempts_before.values())
+        assert first_store.mission_get(mission.id).phase == "A_REQUIREMENTS"
+        first_store.close()
+
+        second_store = OrgStore(database)
+        second = ExecutiveOrchestrator(
+            second_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "second-run"), state_root=state_root,
+        )
+        resumed = second.resume_mission(
+            mission.id, actor="operator",
+            reason="recover after checkpoint commit before phase transition",
+            expected_repo_root=repo,
+        )
+
+        assert resumed.status == "done"
+        assert resumed.phase == "G_RELEASE"
+        rows = second_store.tasks_for_mission(mission.id)
+        assert all(row["state"] == "done" for row in rows)
+        assert {
+            row["id"]: len(second_store.task_attempts_for(row["id"]))
+            for row in rows
+        } == attempts_before
+        runs = second_store.mission_resume_runs_for(mission.id)
+        assert len(runs) == 1
+        assert runs[0]["status"] == "completed"
+        second_store.close()
