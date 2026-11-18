@@ -294,3 +294,41 @@ class TestReviewsAndFindings:
         with pytest.raises(OrgError, match="لا يمكن مصالحة"):
             store.reconcile_task(task.id, "manual_hold", "operator",
                                  "hold", "closed-1")
+
+
+    def test_reconciliation_key_rejects_changed_reason_or_evidence(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="idempotency", objective="strict"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="hold"))
+        store.task_set_state(task.id, "failed", error="interrupted")
+        store.reconcile_task(task.id, "manual_hold", "operator",
+                             "first reason", "same-key")
+        with pytest.raises(OrgError, match="بيانات قرار مختلفة"):
+            store.reconcile_task(task.id, "manual_hold", "operator",
+                                 "changed reason", "same-key")
+
+    def test_only_one_terminal_reconciliation_per_task(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="single decision", objective="no duplicate retries"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="run"))
+        store.task_set_state(task.id, "failed", error="interrupted")
+        store.reconcile_task(task.id, "retry_authorized", "operator",
+                             "first authorization", "retry-one")
+        with pytest.raises(OrgError, match="قرار نهائي"):
+            store.reconcile_task(task.id, "retry_authorized", "operator",
+                                 "second authorization", "retry-two")
+
+    def test_invalid_or_naive_lease_expiry_is_not_treated_as_expired(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="bad lease", objective="fail closed"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="running"))
+        claim = store.claim_task(task.id, "worker", lease_seconds=60)
+        assert claim is not None
+        for invalid_expiry in ("not-a-date", "2000-01-01T00:00:00"):
+            with store._conn:
+                store._conn.execute(
+                    "UPDATE tasks SET lease_expires_at=? WHERE id=?",
+                    (invalid_expiry, task.id))
+            with pytest.raises(OrgError, match="انتهاء lease"):
+                store.reconcile_task(task.id, "mark_failed", "operator",
+                                     "cannot verify lease expiry", f"bad-{invalid_expiry}")
