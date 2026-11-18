@@ -270,6 +270,7 @@ class OrgStore:
                 sequence INTEGER NOT NULL,
                 schema_version INTEGER NOT NULL,
                 payload TEXT NOT NULL,
+                payload_digest TEXT NOT NULL,
                 repo_fingerprint TEXT NOT NULL,
                 worktree_path TEXT NOT NULL DEFAULT '',
                 worktree_fingerprint TEXT NOT NULL DEFAULT '',
@@ -278,6 +279,12 @@ class OrgStore:
             );
             CREATE INDEX IF NOT EXISTS idx_mission_context_snapshots_latest
                 ON mission_context_snapshots(mission_id, sequence DESC);
+            CREATE TRIGGER IF NOT EXISTS trg_mission_context_snapshots_no_update
+                BEFORE UPDATE ON mission_context_snapshots
+                BEGIN SELECT RAISE(ABORT, 'mission context snapshots are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS trg_mission_context_snapshots_no_delete
+                BEFORE DELETE ON mission_context_snapshots
+                BEGIN SELECT RAISE(ABORT, 'mission context snapshots are immutable'); END;
             """
         )
 
@@ -321,6 +328,7 @@ class OrgStore:
             raise OrgError("مسار نسخة العمل وبصمتها يجب أن يظهرا معًا")
         encoded_payload = json.dumps(
             payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        payload_digest = hashlib.sha256(encoded_payload.encode("utf-8")).hexdigest()
         encoded_repo = json.dumps(
             repo_fingerprint, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         now = self._now()
@@ -342,11 +350,11 @@ class OrgStore:
             sequence = int(latest["sequence"]) + 1 if latest else 1
             self._conn.execute(
                 "INSERT INTO mission_context_snapshots "
-                "(id, mission_id, sequence, schema_version, payload, repo_fingerprint, "
-                "worktree_path, worktree_fingerprint, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "(id, mission_id, sequence, schema_version, payload, payload_digest, "
+                "repo_fingerprint, worktree_path, worktree_fingerprint, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (snapshot_id, mission_id, sequence, schema_version, encoded_payload,
-                 encoded_repo, worktree_path, worktree_fingerprint, now),
+                 payload_digest, encoded_repo, worktree_path, worktree_fingerprint, now),
             )
         self.audit("mission.context_checkpoint", mission_id, {
             "snapshot_id": snapshot_id, "sequence": sequence,
@@ -371,6 +379,9 @@ class OrgStore:
         if row is None:
             return None
         result = dict(row)
+        actual_digest = hashlib.sha256(result["payload"].encode("utf-8")).hexdigest()
+        if actual_digest != result["payload_digest"]:
+            raise OrgError("بصمة محتوى checkpoint غير مطابقة؛ اللقطة مرفوضة")
         result["payload"] = json.loads(result["payload"])
         result["repo_fingerprint"] = json.loads(result["repo_fingerprint"])
         return result
@@ -383,6 +394,9 @@ class OrgStore:
         result = []
         for row in rows:
             item = dict(row)
+            actual_digest = hashlib.sha256(item["payload"].encode("utf-8")).hexdigest()
+            if actual_digest != item["payload_digest"]:
+                raise OrgError("بصمة محتوى checkpoint غير مطابقة؛ اللقطة مرفوضة")
             item["payload"] = json.loads(item["payload"])
             item["repo_fingerprint"] = json.loads(item["repo_fingerprint"])
             result.append(item)
