@@ -4,7 +4,7 @@
 
 After each successfully completed ordinary task, and after the review and
 verification gates, the orchestrator appends an immutable SQLite checkpoint.
-The checkpoint contains the current persisted mission record and the
+Each payload is SHA-256 checked on read, and SQLite triggers reject updates or deletions so checkpoints are append-only. Worktree copies are stored under owner-only directories with owner-only file permissions. The checkpoint contains the current persisted mission record and the
 serializable MissionContext fields used by later departments, including the
 repository map, affected-file map, original file contents, diffs, test/security
 reports, review decision, claims, release text, and usage counters.
@@ -21,7 +21,7 @@ The source repository fingerprint includes:
 - a deterministic SHA-256 digest over relative file paths and file contents;
 - symlink entries without following their targets;
 - the resolved repository root;
-- Git HEAD and current branch when Git metadata is available.
+- Git HEAD, current branch, and staged-index diff digest when Git metadata is available; executable mode bits are included in file entries.
 
 Generated/cache directories and .git are excluded from the tree digest.
 The first checkpoint establishes the mission's repository baseline. Later
@@ -50,7 +50,7 @@ collection is intentionally not automatic.
 
 ## Guarantees and limitations
 
-- Checkpoint records are append-only; each references its repository and
+- Checkpoint records are append-only and payload-digest checked; each references its repository and
   worktree fingerprints.
 - The system rejects source, worktree, or task-ledger drift before context restoration.
 - No automatic retry, task claim, or agent execution occurs during restore.
