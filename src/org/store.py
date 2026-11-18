@@ -1874,6 +1874,8 @@ class OrgStore:
         reason = reason.strip() if isinstance(reason, str) else ""
         if not actor or not reason:
             raise OrgError("هوية المصالح وسبب المصالحة مطلوبان")
+        if len(actor) > 128 or len(reason) > 2048:
+            raise OrgError("هوية المصالح أو سبب المصالحة يتجاوز الحد المسموح")
         if confirm_provider_terminal is not True:
             raise OrgError("يلزم تأكيد نهائية طلب المزوّد قبل المصالحة")
         if (not isinstance(evidence_refs, list) or not evidence_refs
@@ -1882,6 +1884,10 @@ class OrgStore:
             raise OrgError("مرجع دليل واحد على الأقل مطلوب للمصالحة")
         if len(evidence_refs) > 32 or any(len(ref) > 512 for ref in evidence_refs):
             raise OrgError("مراجع الأدلة تتجاوز الحدود المسموحة")
+        evidence_json = json.dumps(
+            evidence_refs, ensure_ascii=False, sort_keys=True)
+        if len(evidence_json.encode("utf-8")) > MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES:
+            raise OrgError("حجم أدلة المصالحة يتجاوز الحد المسموح")
         now = self._now()
         reconciliation_id = new_id(
             "org-token-reconcile", reservation_id, actor, now,
@@ -1903,20 +1909,25 @@ class OrgStore:
                 "provider_terminal, actual_tokens, created_at) "
                 "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
                 (reconciliation_id, reservation_id, actor, reason,
-                 json.dumps(evidence_refs, ensure_ascii=False, sort_keys=True),
-                 actual_tokens, now))
-            self._conn.execute(
+                 evidence_json, actual_tokens, now))
+            reservation_update = self._conn.execute(
                 "UPDATE mission_token_reservations SET actual_tokens=?, "
                 "status='settled', finished_at=? "
                 "WHERE id=? AND status='reserved'",
                 (actual_tokens, now, reservation_id))
-            self._conn.execute(
+            if reservation_update.rowcount != 1:
+                raise OrgError("تغيرت حالة الحجز أثناء المصالحة؛ أُلغيت المعاملة")
+            budget_update = self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
                 "reserved_output_tokens-?, consumed_output_tokens="
                 "consumed_output_tokens+?, status=CASE WHEN "
                 "consumed_output_tokens+?+reserved_output_tokens-? >= output_token_limit "
-                "THEN 'exhausted' ELSE 'active' END, updated_at=? WHERE mission_id=?",
-                (reserved, actual_tokens, actual_tokens, reserved, now, mission_id))
+                "THEN 'exhausted' ELSE 'active' END, updated_at=? "
+                "WHERE mission_id=? AND reserved_output_tokens>=?",
+                (reserved, actual_tokens, actual_tokens, reserved, now,
+                 mission_id, reserved))
+            if budget_update.rowcount != 1:
+                raise OrgError("رصيد الحجز غير متسق؛ أُلغيت المصالحة دون تغيير")
             details = {
                 "reconciliation_id": reconciliation_id,
                 "reservation_id": reservation_id,
