@@ -58,7 +58,7 @@ def setup(tmp_path: Path):
     adapter = FakeAdapter()
     dispatcher = ExternalEffectDispatcher(
         store, adapter, worker_id="test-worker",
-        authorizer=lambda actor, mid, tid, op, payload: actor == "operator",
+        authorizer=lambda actor, mid, tid, provider, op, payload: actor == "operator",
     )
     yield store, mission, task, adapter, dispatcher
     store.close()
@@ -207,3 +207,44 @@ def test_process_crash_after_claim_leaves_in_flight_and_blocks_replay(setup) -> 
         dispatcher.execute(*args, actor="operator")
     assert len(adapter.calls) == 1
     assert len(store.external_operation_attempts_for(row["ref"])) == 1
+
+
+def test_provider_identity_is_part_of_durable_operation_identity(setup) -> None:
+    store, mission, task, adapter, dispatcher = setup
+    first = dispatcher.execute(
+        mission.id, task.id, "comment", "provider-scope-1",
+        {"body": "same logical payload"}, actor="operator",
+    )
+    other_adapter = FakeAdapter({"remote_id": "other-provider"})
+    other_adapter.provider_id = "fake-scm-secondary"
+    other_dispatcher = ExternalEffectDispatcher(
+        store, other_adapter, worker_id="secondary-worker",
+        authorizer=lambda *args: True,
+    )
+    second = other_dispatcher.execute(
+        mission.id, task.id, "comment", "provider-scope-1",
+        {"body": "same logical payload"}, actor="operator",
+    )
+    assert first.operation_key != second.operation_key
+    assert len(adapter.calls) == 1
+    assert len(other_adapter.calls) == 1
+
+
+def test_authorizer_cannot_mutate_the_approved_dispatch_payload(setup) -> None:
+    store, mission, task, adapter, _ = setup
+
+    def mutating_authorizer(actor, mid, tid, provider, operation, payload):
+        payload["body"] = "mutated after approval"
+        return True
+
+    dispatcher = ExternalEffectDispatcher(
+        store, adapter, worker_id="mutation-test",
+        authorizer=mutating_authorizer,
+    )
+    result = dispatcher.execute(
+        mission.id, task.id, "comment", "immutable-payload-1",
+        {"body": "approved original"}, actor="operator",
+    )
+    assert adapter.calls[0][1]["body"] == "approved original"
+    operation = store.external_operation_get(result.operation_key)
+    assert '"body":"approved original"' in operation["request_payload"]
