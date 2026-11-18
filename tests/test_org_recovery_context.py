@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.org.contracts import Claim, Mission
+from src.org.contracts import Claim, Mission, TaskSpec
 from src.org.departments import MissionContext
 from src.org.repo_intel import ModuleInfo, RepoMap
 from src.org.review import CouncilDecision
@@ -118,3 +118,18 @@ def test_snapshot_rejects_repository_baseline_change_between_checkpoints(
 
     with pytest.raises(OrgError, match="بصمة المستودع تغيّرت منذ أول checkpoint"):
         save_mission_context_snapshot(store, ctx, state_root)
+
+
+def test_restore_rejects_task_ledger_newer_than_context_checkpoint(
+    tmp_path: Path,
+) -> None:
+    store, ctx, _, state_root = _context(tmp_path)
+    task = store.add_task(TaskSpec(
+        mission_id=ctx.mission.id, dept="executive", kind="requirements",
+        description="record task completion",
+    ))
+    save_mission_context_snapshot(store, ctx, state_root)
+    store.task_set_state(task.id, "done", result={"completed": True}, attempts=1)
+
+    with pytest.raises(OrgError, match="سجل المهام تغيّر بعد آخر checkpoint"):
+        restore_mission_context(store, ctx.mission.id, state_root)
