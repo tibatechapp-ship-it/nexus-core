@@ -110,6 +110,8 @@ class TestPhaseGates:
             assert len(attempts) == 1
             assert attempts[0]["status"] == "done"
             assert row["state"] == "done"
+            assert orchestrator.org_store.claim_task(
+                row["id"], worker_id="duplicate-gate-check") is None
 
     def test_illegal_phase_jump_via_store(
             self, orchestrator: ExecutiveOrchestrator) -> None:
@@ -118,6 +120,29 @@ class TestPhaseGates:
         with pytest.raises(OrgError):
             orchestrator.org_store.mission_update(
                 m.with_phase("G_RELEASE"))
+
+    def test_verification_exception_records_failed_claim(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        def fail_verification(*args: object, **kwargs: object) -> object:
+            raise OrgError("verification backend unavailable")
+
+        monkeypatch.setattr(
+            orchestrator.verification, "verify_mission", fail_verification)
+        mission = orchestrator.execute(Mission(
+            title="تعطل بوابة التحقق",
+            objective="تحقق من إصلاح تجريبي",
+            repo_path="examples/org_demo/fixture_repo"))
+        assert mission.status == "failed"
+        verify_tasks = [
+            row for row in orchestrator.org_store.tasks_for_mission(mission.id)
+            if row["dept"] == "verification"
+        ]
+        assert len(verify_tasks) == 1
+        assert verify_tasks[0]["state"] == "failed"
+        attempts = orchestrator.org_store.task_attempts_for(verify_tasks[0]["id"])
+        assert len(attempts) == 1
+        assert attempts[0]["status"] == "failed"
 
     def test_missing_repo_fails_loudly(
             self, orchestrator: ExecutiveOrchestrator) -> None:
