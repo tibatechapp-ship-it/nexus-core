@@ -183,8 +183,10 @@ def test_same_identity_with_changed_payload_is_rejected(setup) -> None:
 def test_capability_rejects_undocumented_or_invalid_provider_guarantees() -> None:
     with pytest.raises(ValueError, match="documented scope"):
         EffectCapability("comment", "provider_key")
-    with pytest.raises(ValueError, match="positive integer"):
+    with pytest.raises(ValueError, match="documented positive retention"):
         EffectCapability("comment", "provider_key", "repo", 0)
+    with pytest.raises(ValueError, match="documented positive retention"):
+        EffectCapability("comment", "provider_key", "repo")
     with pytest.raises(ValueError, match="metadata is invalid"):
         EffectCapability("comment", "none", "repo")
 
