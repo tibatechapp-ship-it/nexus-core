@@ -59,23 +59,21 @@ def validate() -> list[str]:
 
 # ─── RBAC (from registry_full_v2) ───
 def has_permission(agent: str, permission: str) -> bool:
-    """Check RBAC permission for an agent."""
+    """Check RBAC through the canonical security policy.
+
+    Authorization is denied when the policy cannot be loaded. Registry
+    availability must never grant privileges implicitly.
+    """
     try:
-        from novamind.core.hive.factory.registry_full_v2 import (
-            has_permission as _has_perm
-        )
-        return _has_perm(agent, permission)
-    except ImportError:
-        return True  # Permissive fallback
+        from novamind.security.permissions import has_permission as _has_permission
+        return bool(_has_permission(agent, permission))
+    except Exception:
+        return False
 
 
 def can_use_tool(agent: str, tool: str) -> bool:
-    """Check if agent can use a specific tool."""
-    try:
-        from novamind.core.hive.core.agents_registry import can_use_tool as _cut
-        return _cut(agent, tool)
-    except ImportError:
-        return True
+    """Tool access uses the same canonical RBAC decision as every other path."""
+    return has_permission(agent, tool)
 
 
 def stats() -> dict:

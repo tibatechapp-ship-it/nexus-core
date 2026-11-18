@@ -41,16 +41,16 @@ class AgentSpec:
         """يستنتج الدور والصلاحيات تلقائياً."""
         if not self.role:
             try:
-                from nova.security.permissions import get_role_for_agent
+                from novamind.security.permissions import get_role_for_agent
                 self.role = get_role_for_agent(self.name)
-            except ImportError:
-                self.role = "engineer"
+            except Exception:
+                self.role = "unknown"
         if not self.permissions:
             try:
-                from nova.security.permissions import get_permissions
+                from novamind.security.permissions import get_permissions
                 self.permissions = get_permissions(self.name)
-            except ImportError:
-                self.permissions = ["read_code", "write_code"]
+            except Exception:
+                self.permissions = []
 
     def get_kwargs_mapping(self) -> Dict[str, str]:
         return self.signature_map if self.signature_map else {}

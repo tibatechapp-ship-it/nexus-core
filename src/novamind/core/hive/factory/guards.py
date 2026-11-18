@@ -33,11 +33,11 @@ except ImportError as e:
     class _NoopChain:
         def check(self, *args, **kwargs):
             class _R:
-                passed = True
-                ok = True
-                errors = []
+                passed = False
+                ok = False
+                errors = ["guard chain unavailable; refusing to authorize execution"]
                 warnings = []
-                def __bool__(self): return True
+                def __bool__(self): return False
             return _R()
         def __iter__(self): return iter([])
         def __len__(self): return 0
@@ -60,8 +60,8 @@ def can_agent_use_tool(agent_name: str, tool: str) -> bool:
     try:
         from novamind.security.permissions import has_permission
         allowed = has_permission(agent_name, tool)
-    except ImportError:
-        allowed = True  # fail-open
+    except Exception:
+        allowed = False  # fail-closed
 
     # Audit
     try:
@@ -102,11 +102,17 @@ def get_agent_role(agent_name: str) -> str:
 
 
 # Legacy alias
-def check(*args, **kwargs): return True
+def check(*args, **kwargs):
+    """Legacy permission check; incomplete identity/action is denied."""
+    if len(args) >= 2:
+        return can_agent_use_tool(args[0], args[1])
+    return False
+
+
 def has_permission(*args, **kwargs):
     if len(args) >= 2:
         return can_agent_use_tool(args[0], args[1])
-    return True
+    return False
 
 
 __all__ = [

@@ -31,7 +31,11 @@ from novamind.core.hive.core.agents_registry import (
     has_permission,
     record_tool_call,
 )
-from novamind.factory.guards import build_default_chain
+from novamind.factory.guards import (
+    build_default_chain,
+    can_agent_use_tool,
+    get_agent_permissions,
+)
 from novamind.factory.llm_wrapper import make_llm_call, is_llm_available
 
 try:
@@ -283,13 +287,48 @@ async def execute_agent(
     ctx = ctx or {}
     task_id = task_id or f"exec-{int(started)}"
 
-    # 1. الوكيل
-    agent = get_agent(agent_id)
-    if not agent:
+    # 1. Resolve only registered agents; registry failures never create mocks.
+    try:
+        agent = get_agent(agent_id)
+    except KeyError:
         return {
             "success": False,
+            "status": "agent_not_registered",
             "agent": agent_id,
             "error": f"agent not found: {agent_id}",
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "status": "registry_unavailable",
+            "agent": agent_id,
+            "error": f"canonical registry lookup failed: {type(exc).__name__}",
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+
+    # RBAC: both execution entrypoints use the same canonical policy.
+    try:
+        authorized = any(
+            can_agent_use_tool(agent_id, permission)
+            for permission in ("read_all", "run_tests", "monitor", "plan")
+        )
+        permissions = get_agent_permissions(agent_id)
+    except Exception as exc:
+        return {
+            "success": False,
+            "status": "authorization_unavailable",
+            "agent": agent_id,
+            "error": f"RBAC check failed closed: {type(exc).__name__}",
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+    if not authorized:
+        return {
+            "success": False,
+            "status": "permission_denied",
+            "agent": agent_id,
+            "error": f"Agent '{agent_id}' lacks execution permission",
+            "permissions": permissions,
             "duration_ms": int((time.time() - started) * 1000),
         }
 
