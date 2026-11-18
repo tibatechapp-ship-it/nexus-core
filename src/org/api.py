@@ -27,7 +27,7 @@ __all__ = ["build_org_router", "org_router_available"]
 
 try:  # pragma: no cover — حزمة اختيارية قد تغيب في نواة Termux
     from fastapi import APIRouter, Header, HTTPException
-    from pydantic import BaseModel
+    from pydantic import BaseModel, StrictInt
 
     _FASTAPI_OK = True
 except ImportError:  # pragma: no cover
@@ -47,6 +47,7 @@ if _FASTAPI_OK:
         title: str
         objective: str
         repo_path: str = ""
+        output_token_limit: StrictInt | None = None
 
     class ApprovalIn(BaseModel):
         """مُدخل قرار موافقة — قرار واسم صانع القرار إلزاميًا."""
@@ -97,7 +98,8 @@ if _FASTAPI_OK:
             _require_operator(authorization)
             mission = org_store.create_mission(
                 Mission(title=payload.title, objective=payload.objective,
-                        repo_path=payload.repo_path))
+                        repo_path=payload.repo_path,
+                        output_token_limit=payload.output_token_limit))
             return mission.to_dict()
 
         @router.post("/missions/{mission_id}/run")
@@ -110,7 +112,8 @@ if _FASTAPI_OK:
                 raise HTTPException(status_code=404, detail="مهمة غير موجودة")
             report = pipeline.run(title=mission.title,
                                   objective=mission.objective,
-                                  repo_path=mission.repo_path)
+                                  repo_path=mission.repo_path,
+                                  output_token_limit=mission.output_token_limit)
             return report.to_dict()
 
         @router.post("/approvals/{approval_id}/decide")
