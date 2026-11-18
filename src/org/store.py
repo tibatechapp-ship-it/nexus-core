@@ -756,6 +756,21 @@ class OrgStore:
                 ).fetchone()
                 if approval is None:
                     error = "تفويض الأثر غير موجود"
+                elif (
+                    operation["mission_id"] != approval["mission_id"]
+                    or operation["task_id"] != approval["task_id"]
+                    or operation["operation_name"]
+                    != f"{approval['provider_id']}:{approval['operation_name']}"
+                    or operation["request_fingerprint"] != approval["payload_fingerprint"]
+                    or not operation["revision"].endswith(
+                        ":" + hashlib.sha256(json.dumps(
+                            [approval["repository"], approval["ref_name"],
+                             approval["commit_sha"]],
+                            ensure_ascii=False, separators=(",", ":"),
+                        ).encode("utf-8")).hexdigest()
+                    )
+                ):
+                    error = "تفويض الأثر لا يطابق هوية العملية الدائمة"
                 elif approval["status"] != "issued":
                     error = f"تفويض الأثر غير متاح: {approval['status']}"
                 elif approval["expires_at"] <= now:
