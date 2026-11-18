@@ -413,8 +413,8 @@ class ExecutiveOrchestrator:
             expected_repo_root: str | Path | None = None) -> MissionContext:
         """Restore a context only after the read-only task-graph preflight passes.
 
-        This method does not dispatch work. A separate explicit resume operation
-        must decide which pending phase/gate to run after inspecting the context.
+        This method is a read-only restore/preflight boundary; it never dispatches
+        work. The explicit resume_mission entry point owns continuation.
         """
         assessment = assess_mission_resume(self.org_store, mission_id)
         if not assessment.ready_for_explicit_resume:
