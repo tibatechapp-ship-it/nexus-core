@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 5
+ORG_SCHEMA_VERSION = 6
 
 
 class OrgError(RuntimeError):
@@ -127,6 +127,9 @@ class OrgStore:
             if current < 5:
                 self._migrate_v5()
                 current = 5
+            if current < 6:
+                self._migrate_v6()
+                current = 6
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -422,6 +425,211 @@ class OrgStore:
             "SELECT id, mission_id, actor, reason, status, started_at, "
             "finished_at, finish_reason FROM mission_resume_runs "
             "WHERE mission_id=? ORDER BY started_at, id", (mission_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+    def _migrate_v6(self) -> None:
+        """سجل دائم لآثار الشبكة مع بصمة طلب ورمز محاولة محمي."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS external_operations (
+                operation_key TEXT PRIMARY KEY,
+                mission_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                operation_name TEXT NOT NULL,
+                revision TEXT NOT NULL,
+                request_fingerprint TEXT NOT NULL,
+                request_payload TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN
+                    ('prepared','in_flight','succeeded','failed_definitive',
+                     'uncertain','reconciled')),
+                attempt_token TEXT NOT NULL DEFAULT '',
+                attempt_owner TEXT NOT NULL DEFAULT '',
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                result_payload TEXT NOT NULL DEFAULT '',
+                error TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_external_operations_mission
+                ON external_operations(mission_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_external_operations_task
+                ON external_operations(task_id, created_at);
+            CREATE TABLE IF NOT EXISTS external_operation_attempts (
+                id TEXT PRIMARY KEY,
+                operation_key TEXT NOT NULL,
+                attempt_no INTEGER NOT NULL,
+                attempt_token TEXT NOT NULL UNIQUE,
+                worker_id TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN
+                    ('in_flight','succeeded','failed_definitive','uncertain')),
+                started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL DEFAULT '',
+                error TEXT NOT NULL DEFAULT '',
+                UNIQUE(operation_key, attempt_no),
+                FOREIGN KEY(operation_key) REFERENCES external_operations(operation_key)
+            );
+            CREATE TRIGGER IF NOT EXISTS trg_external_operations_no_delete
+                BEFORE DELETE ON external_operations
+                BEGIN SELECT RAISE(ABORT, 'external operation ledger is append-preserving'); END;
+            """
+        )
+
+
+    # ── سجل الآثار الخارجية ────────────────────────────────────────────────
+
+    @staticmethod
+    def _external_operation_key(
+            mission_id: str, task_id: str, operation_name: str, revision: str) -> str:
+        identity = json.dumps(
+            [mission_id, task_id, operation_name, revision],
+            ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    def prepare_external_operation(
+            self, mission_id: str, task_id: str, operation_name: str,
+            revision: str, request: dict[str, Any]) -> dict[str, Any]:
+        """Persist immutable identity and request before any network dispatch."""
+        values = (mission_id, task_id, operation_name, revision)
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            raise OrgError("هوية المهمة والعملية والمراجعة مطلوبة")
+        if not isinstance(request, dict):
+            raise OrgError("حمولة الطلب يجب أن تكون كائن JSON")
+        try:
+            encoded = json.dumps(
+                request, sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise OrgError(f"حمولة الطلب غير قابلة للتسلسل: {exc}") from exc
+        fingerprint = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        key = self._external_operation_key(*values)
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            if self._conn.execute(
+                    "SELECT 1 FROM missions WHERE id=?", (mission_id,)
+            ).fetchone() is None:
+                raise OrgError(f"مهمة غير موجودة: {mission_id}")
+            if self._conn.execute(
+                    "SELECT 1 FROM tasks WHERE id=? AND mission_id=?",
+                    (task_id, mission_id)).fetchone() is None:
+                raise OrgError("المهمة الفرعية غير موجودة ضمن المهمة العليا")
+            row = self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?", (key,)
+            ).fetchone()
+            if row is not None:
+                if row["request_fingerprint"] != fingerprint:
+                    raise OrgError("مفتاح العملية مستخدم مع بصمة طلب مختلفة")
+                return dict(row)
+            self._conn.execute(
+                """INSERT INTO external_operations
+                   (operation_key, mission_id, task_id, operation_name, revision,
+                    request_fingerprint, request_payload, state, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)""",
+                (key, mission_id, task_id, operation_name, revision,
+                 fingerprint, encoded, now, now))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) VALUES "
+                "(?, 'org', 'external_operation.prepared', ?, ?)",
+                (now, key, json.dumps({"mission_id": mission_id, "task_id": task_id,
+                    "operation_name": operation_name, "fingerprint": fingerprint},
+                    sort_keys=True, ensure_ascii=False)))
+            return dict(self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?", (key,)
+            ).fetchone())
+
+    def claim_external_operation(
+            self, operation_key: str, worker_id: str) -> dict[str, Any]:
+        """Claim one prepared operation; uncertain/in-flight work is never retried here."""
+        worker_id = worker_id.strip() if isinstance(worker_id, str) else ""
+        if not operation_key.strip() or not worker_id:
+            raise OrgError("مفتاح العملية وهوية العامل مطلوبان")
+        token = secrets.token_urlsafe(32)
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?",
+                (operation_key,)).fetchone()
+            if row is None:
+                raise OrgError("العملية الخارجية غير موجودة")
+            if row["state"] != "prepared":
+                raise OrgError(f"العملية غير قابلة للمطالبة من الحالة: {row['state']}")
+            attempt_no = int(row["attempt_count"]) + 1
+            self._conn.execute(
+                """UPDATE external_operations SET state='in_flight',
+                   attempt_token=?, attempt_owner=?, attempt_count=?, updated_at=?
+                   WHERE operation_key=? AND state='prepared'""",
+                (token, worker_id, attempt_no, now, operation_key))
+            self._conn.execute(
+                """INSERT INTO external_operation_attempts
+                   (id, operation_key, attempt_no, attempt_token, worker_id,
+                    state, started_at) VALUES (?, ?, ?, ?, ?, 'in_flight', ?)""",
+                (new_id("external-attempt", operation_key, str(attempt_no)),
+                 operation_key, attempt_no, token, worker_id, now))
+            return {"operation_key": operation_key, "attempt_no": attempt_no,
+                    "attempt_token": token, "worker_id": worker_id, "state": "in_flight"}
+
+    def finish_external_operation(
+            self, operation_key: str, attempt_token: str, *,
+            state: str, result: dict[str, Any] | None = None,
+            error: str = "") -> dict[str, Any]:
+        """Finalize only the currently fenced attempt; uncertain is terminal for auto-retry."""
+        allowed = {"succeeded", "failed_definitive", "uncertain"}
+        if state not in allowed:
+            raise OrgError("حالة نتيجة العملية الخارجية غير صالحة")
+        if not operation_key.strip() or not attempt_token.strip():
+            raise OrgError("مفتاح العملية ورمز المحاولة مطلوبان")
+        if result is not None and not isinstance(result, dict):
+            raise OrgError("نتيجة العملية يجب أن تكون كائن JSON")
+        try:
+            encoded_result = json.dumps(
+                result or {}, sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise OrgError(f"نتيجة العملية غير قابلة للتسلسل: {exc}") from exc
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                """SELECT attempt_no FROM external_operation_attempts
+                   WHERE operation_key=? AND attempt_token=? AND state='in_flight'""",
+                (operation_key, attempt_token)).fetchone()
+            current = self._conn.execute(
+                """SELECT state, attempt_token FROM external_operations
+                   WHERE operation_key=?""", (operation_key,)).fetchone()
+            if row is None or current is None or current["state"] != "in_flight"                     or current["attempt_token"] != attempt_token:
+                raise OrgError("رمز محاولة قديم أو لا يملك العملية الخارجية")
+            self._conn.execute(
+                """UPDATE external_operation_attempts SET state=?, finished_at=?, error=?
+                   WHERE operation_key=? AND attempt_token=? AND state='in_flight'""",
+                (state, now, error, operation_key, attempt_token))
+            self._conn.execute(
+                """UPDATE external_operations SET state=?, result_payload=?, error=?,
+                   updated_at=? WHERE operation_key=? AND attempt_token=? AND state='in_flight'""",
+                (state, encoded_result, error, now, operation_key, attempt_token))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) VALUES "
+                "(?, 'org', 'external_operation.finalized', ?, ?)",
+                (now, operation_key, json.dumps(
+                    {"state": state, "attempt_no": row["attempt_no"], "error": error},
+                    sort_keys=True, ensure_ascii=False)))
+            return dict(self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?",
+                (operation_key,)).fetchone())
+
+    def external_operation_get(self, operation_key: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM external_operations WHERE operation_key=?",
+            (operation_key,)).fetchone()
+        return dict(row) if row is not None else None
+
+    def external_operation_attempts_for(
+            self, operation_key: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """SELECT * FROM external_operation_attempts
+               WHERE operation_key=? ORDER BY attempt_no""", (operation_key,)
         ).fetchall()
         return [dict(row) for row in rows]
 
