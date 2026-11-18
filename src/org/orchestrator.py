@@ -418,6 +418,10 @@ class ExecutiveOrchestrator:
                 "المهمة غير جاهزة للاستئناف: " + "; ".join(reasons))
         context = restore_mission_context(
             self.org_store, mission_id, self.state_root)
+        current_mission = self.org_store.mission_get(mission_id)
+        if current_mission is None:
+            raise OrgError("المهمة اختفت أثناء استعادة السياق")
+        context.mission = current_mission
         self.org_store.audit(
             "mission.context_restored", mission_id,
             {"snapshot_id": (self.org_store.mission_context_snapshot_get(
