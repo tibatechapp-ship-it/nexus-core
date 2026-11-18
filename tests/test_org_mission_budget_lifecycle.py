@@ -15,7 +15,10 @@ class TestMissionBudgetContract:
     @pytest.mark.parametrize("value", [True, False, 0, -1, "100", 2**63])
     def test_invalid_output_token_limits_are_rejected(self, value: object) -> None:
         with pytest.raises(ValueError, match="output_token_limit"):
-            Mission(title="bounded", objective="test", output_token_limit=value)  # type: ignore[arg-type]
+            Mission(
+                title="bounded", objective="test",
+                output_token_limit=value,  # type: ignore[arg-type]
+            )
 
     def test_limit_round_trips_through_dict(self) -> None:
         mission = Mission(title="bounded", objective="test",
