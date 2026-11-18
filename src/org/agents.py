@@ -183,14 +183,18 @@ class AgentRuntime:
         last_error = ""
         for attempt in range(1, spec.max_retries + 2):
             t0 = time.time()
+            reservation = self._reserve_output_budget(spec)
             try:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
+                self._settle_output_budget(reservation, resp.usage.out_tokens)
                 latency = (time.time() - t0) * 1000.0
                 self._record(spec, resp, attempt, latency, "ok")
                 return resp
             except ProviderError as exc:
+                # Provider errors can happen after dispatch; charge the full reservation.
+                self._settle_output_budget(reservation, spec.max_tokens)
                 last_error = str(exc)
                 latency = (time.time() - t0) * 1000.0
                 self._record(spec, None, attempt, latency, f"error: {last_error}")
@@ -208,16 +212,20 @@ class AgentRuntime:
         last_error = ""
         for attempt in range(1, spec.max_retries + 2):
             t0 = time.time()
+            reservation = self._reserve_output_budget(spec)
             try:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
             except ProviderError as exc:
+                # Conservatively charge the reserved maximum: dispatch may have occurred.
+                self._settle_output_budget(reservation, spec.max_tokens)
                 last_error = str(exc)
                 self._record(spec, None, attempt,
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
                 continue
+            self._settle_output_budget(reservation, resp.usage.out_tokens)
             data, parse_error = self._parse_json(resp.text)
             if data is None:
                 last_error = parse_error
@@ -251,6 +259,21 @@ class AgentRuntime:
         if not isinstance(data, dict):
             return None, "الرد ليس كائنًا"
         return data, ""
+
+    def _reserve_output_budget(self, spec: AgentSpec) -> str | None:
+        """Reserve the response-token ceiling when this mission has a budget."""
+        budget = self.store.mission_token_budget_get(spec.mission_id)
+        if budget is None:
+            return None
+        reservation = self.store.reserve_mission_output_tokens(
+            spec.mission_id, spec.role, spec.max_tokens)
+        return str(reservation["id"])
+
+    def _settle_output_budget(self, reservation_id: str | None,
+                              actual_tokens: int) -> None:
+        """Settle a reservation; an absent budget keeps legacy missions unchanged."""
+        if reservation_id is not None:
+            self.store.settle_mission_output_tokens(reservation_id, actual_tokens)
 
     def _record(self, spec: AgentSpec, resp: ModelResponse | None,
                 attempt: int, latency_ms: float, status: str) -> None:
