@@ -166,8 +166,11 @@ def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winn
         mission_id=mission.id, dept="release", kind="comment",
         description="race one approved effect",
     ))
-    verifier = lambda principal: principal in {"approver", "executor"}
-    policy = lambda issuer, scope: issuer == "approver"
+    def verifier(principal: str) -> bool:
+        return principal in {"approver", "executor"}
+
+    def policy(issuer: str, scope: Mapping[str, str]) -> bool:
+        return issuer == "approver"
     service_a = EffectApprovalService(
         store_a, principal_verifier=verifier, approval_policy=policy,
     )
