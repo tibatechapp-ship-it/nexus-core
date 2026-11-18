@@ -1,0 +1,97 @@
+"""Mission-level output-token budget contract, persistence and orchestration tests."""
+
+from __future__ import annotations
+
+import pytest
+
+from src.org.contracts import Mission
+from src.org.pipeline import MissionPipeline
+from src.org.store import OrgError, OrgStore
+from src.ops.store import OpsStore
+
+
+class TestMissionBudgetContract:
+    @pytest.mark.parametrize("value", [True, False, 0, -1, "100", 2**63])
+    def test_invalid_output_token_limits_are_rejected(self, value: object) -> None:
+        with pytest.raises(ValueError, match="output_token_limit"):
+            Mission(title="bounded", objective="test", output_token_limit=value)  # type: ignore[arg-type]
+
+    def test_limit_round_trips_through_dict(self) -> None:
+        mission = Mission(title="bounded", objective="test",
+                          output_token_limit=25000)
+        restored = Mission.from_dict(mission.to_dict())
+        assert restored.output_token_limit == 25000
+
+
+class TestMissionBudgetPersistence:
+    def test_create_mission_persists_cap_and_budget_atomically(self) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(
+            title="bounded", objective="persist cap", output_token_limit=12000))
+
+        restored = store.mission_get(mission.id)
+        budget = store.mission_token_budget_get(mission.id)
+        assert restored is not None
+        assert restored.output_token_limit == 12000
+        assert budget is not None
+        assert budget["output_token_limit"] == 12000
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] == 0
+
+    def test_existing_mission_cannot_be_recreated_with_different_cap(self) -> None:
+        store = OrgStore(":memory:")
+        store.create_mission(Mission(
+            title="same identity", objective="immutable", output_token_limit=1000))
+        with pytest.raises(OrgError, match="مختلف"):
+            store.create_mission(Mission(
+                title="same identity", objective="immutable",
+                output_token_limit=2000))
+
+    def test_direct_configuration_updates_mission_contract_and_is_immutable(self) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(title="legacy", objective="configure later"))
+        store.configure_mission_token_budget(mission.id, 4000)
+        restored = store.mission_get(mission.id)
+        assert restored is not None
+        assert restored.output_token_limit == 4000
+        with pytest.raises(OrgError, match="لا يمكن تغييره"):
+            store.configure_mission_token_budget(mission.id, 5000)
+
+    def test_mission_updates_do_not_clear_budget_policy(self) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(
+            title="running", objective="retain cap", output_token_limit=9000))
+        updated = store.mission_update(Mission(
+            title=mission.title, objective=mission.objective,
+            status="running", id=mission.id))
+        assert updated.output_token_limit == 9000
+
+    def test_legacy_mission_remains_unbudgeted(self) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(title="legacy", objective="no cap"))
+        assert mission.output_token_limit is None
+        assert store.mission_token_budget_get(mission.id) is None
+
+
+class TestPipelineBudgetLifecycle:
+    def test_pipeline_configures_budget_before_agent_work_and_settles_it(
+            self, tmp_path) -> None:
+        store = OrgStore(":memory:")
+        pipeline = MissionPipeline(
+            store, OpsStore(":memory:"), outdir=tmp_path / "reports")
+        report = pipeline.run(
+            title="ميزانية مهمة اختبارية",
+            objective=("أضف حارس قسمة على صفر إلى دالة divide في وحدة "
+                       "calc.mathops مع اختبارات للحدية"),
+            repo_path="examples/org_demo/fixture_repo",
+            output_token_limit=200000,
+        )
+
+        assert report.mission.status == "done"
+        mission = store.mission_get(report.mission.id)
+        budget = store.mission_token_budget_get(report.mission.id)
+        assert mission is not None and mission.output_token_limit == 200000
+        assert budget is not None
+        assert budget["consumed_output_tokens"] > 0
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] <= 200000
