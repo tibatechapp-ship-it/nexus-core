@@ -702,7 +702,7 @@ class OrgStore:
                  now, operation_key, attempt_token))
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) VALUES "
-                "(?, 'org', 'external_operation.reconciled', ?, ?)",
+                "(?, ?, 'external_operation.reconciled', ?, ?)",
                 (now, reconciled_by, operation_key, json.dumps(
                     {"outcome": outcome, "attempt_no": attempt["attempt_no"],
                      "evidence": evidence}, sort_keys=True, ensure_ascii=False)))
