@@ -934,11 +934,14 @@ class TestCheckpointBeforePhaseTransition:
             expected_repo_root=repo,
         )
 
-        failure = next((
+        diagnostic = [
             event for event in second_store.tail_audit(100)
-            if event.get("action") == "mission.failed"
-        ), None)
-        assert resumed.status == "done", failure
+            if event.get("action") in {
+                "mission.failed", "gate.verification",
+                "verification.completed",
+            }
+        ]
+        assert resumed.status == "done", diagnostic
         assert resumed.phase == "G_RELEASE"
         rows = second_store.tasks_for_mission(mission.id)
         assert all(row["state"] == "done" for row in rows)
