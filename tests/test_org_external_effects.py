@@ -15,7 +15,7 @@ from src.org.external_effects import (
     EffectUncertain,
     ExternalEffectDispatcher,
 )
-from src.org.store import OrgStore
+from src.org.store import OrgError, OrgStore
 
 
 class FakeAdapter:
@@ -171,7 +171,7 @@ def test_same_identity_with_changed_payload_is_rejected(setup) -> None:
         mission.id, task.id, "comment", "same-revision",
         {"body": "original"}, actor="operator",
     )
-    with pytest.raises(Exception, match="بصمة طلب مختلفة"):
+    with pytest.raises(OrgError, match="بصمة طلب مختلفة"):
         dispatcher.execute(
             mission.id, task.id, "comment", "same-revision",
             {"body": "changed"}, actor="operator",
