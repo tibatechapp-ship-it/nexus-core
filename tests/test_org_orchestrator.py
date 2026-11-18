@@ -360,9 +360,17 @@ class TestExplicitMissionResume:
             orchestrator.org_store.finish_claimed_task(
                 task.id, str(claim["lease_token"]), result)
 
-        ctx = MissionContext(mission=mission)
+        ctx = MissionContext(
+            mission=mission,
+            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+        )
         save_mission_context_snapshot(
             orchestrator.org_store, ctx, state_root)
+        saved = orchestrator.org_store.mission_context_snapshot_get(mission.id)
+        assert saved is not None
+        assert saved["payload"]["context"]["execution_policy"] == {
+            "schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+        }
 
         release_calls: list[str] = []
 
@@ -415,8 +423,10 @@ class TestExplicitMissionResume:
         assert orchestrator.org_store.claim_task(
             verification.id, worker_id="interrupted-worker") is not None
         save_mission_context_snapshot(
-            orchestrator.org_store, MissionContext(mission=mission),
-            orchestrator.state_root)
+            orchestrator.org_store, MissionContext(
+                mission=mission,
+                execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+            ), orchestrator.state_root)
 
         calls: list[str] = []
         monkeypatch.setattr(
@@ -463,7 +473,10 @@ class TestExplicitMissionResume:
             orchestrator.org_store.finish_claimed_task(
                 task.id, str(claim["lease_token"]), result)
 
-        ctx = MissionContext(mission=mission)
+        ctx = MissionContext(
+            mission=mission,
+            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+        )
         save_mission_context_snapshot(
             orchestrator.org_store, ctx, orchestrator.state_root)
 
