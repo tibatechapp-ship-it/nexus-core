@@ -1,0 +1,99 @@
+"""Durable mission-context snapshot and restore tests."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from src.org.contracts import Mission
+from src.org.departments import MissionContext
+from src.org.recovery_context import (
+    fingerprint_directory,
+    restore_mission_context,
+    save_mission_context_snapshot,
+)
+from src.org.sandbox import Worktree
+from src.org.store import OrgError, OrgStore
+
+
+def _context(tmp_path: Path) -> tuple[OrgStore, MissionContext, Path, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    state_root = tmp_path / "persistent-state"
+    store = OrgStore(tmp_path / "org.sqlite3")
+    mission = store.create_mission(Mission(
+        title="resume context", objective="preserve state",
+        repo_path=str(repo), status="running",
+    ))
+    ctx = MissionContext(mission=mission)
+    ctx.worktree = Worktree.from_source(repo, files=["src/app.py"])
+    ctx.originals = {"src/app.py": "VALUE = 1\n"}
+    ctx.affected = {"direct": ["src/app.py"], "test_files": []}
+    ctx.diff_text = "diff --git a/src/app.py b/src/app.py"
+    ctx.changed_files = ["src/app.py"]
+    ctx.dev_notes = "checkpointed"
+    return store, ctx, repo, state_root
+
+
+def test_context_checkpoint_restores_after_store_reopen(tmp_path: Path) -> None:
+    store, ctx, repo, state_root = _context(tmp_path)
+    ctx.worktree.write("src/app.py", "VALUE = 2\n")
+    saved = save_mission_context_snapshot(store, ctx, state_root)
+    snapshot_id = saved["id"]
+    store_path = tmp_path / "org.sqlite3"
+    reopened = OrgStore(store_path)
+
+    restored = restore_mission_context(
+        reopened, ctx.mission.id, state_root, expected_repo_root=repo
+    )
+    assert restored.mission.id == ctx.mission.id
+    assert restored.originals == ctx.originals
+    assert restored.affected == ctx.affected
+    assert restored.diff_text == ctx.diff_text
+    assert restored.changed_files == ctx.changed_files
+    assert restored.dev_notes == "checkpointed"
+    assert restored.worktree is not None
+    assert restored.worktree.read("src/app.py") == "VALUE = 2\n"
+    assert reopened.mission_context_snapshot_get(ctx.mission.id, snapshot_id)
+
+
+def test_restore_rejects_source_repository_drift(tmp_path: Path) -> None:
+    store, ctx, repo, state_root = _context(tmp_path)
+    save_mission_context_snapshot(store, ctx, state_root)
+    (repo / "src" / "app.py").write_text("VALUE = 99\n", encoding="utf-8")
+
+    with pytest.raises(OrgError, match="بصمة المستودع تغيّرت"):
+        restore_mission_context(store, ctx.mission.id, state_root)
+
+
+def test_restore_rejects_worktree_drift(tmp_path: Path) -> None:
+    store, ctx, _, state_root = _context(tmp_path)
+    saved = save_mission_context_snapshot(store, ctx, state_root)
+    Path(saved["worktree_path"], "src", "app.py").write_text(
+        "tampered\n", encoding="utf-8"
+    )
+
+    with pytest.raises(OrgError, match="بصمة نسخة العمل تغيّرت"):
+        restore_mission_context(store, ctx.mission.id, state_root)
+
+
+def test_repository_fingerprint_is_deterministic(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.txt").write_text("alpha", encoding="utf-8")
+    first = fingerprint_directory(repo)
+    second = fingerprint_directory(repo)
+    assert first == second
+
+
+def test_snapshot_rejects_repository_baseline_change_between_checkpoints(
+    tmp_path: Path,
+) -> None:
+    store, ctx, repo, state_root = _context(tmp_path)
+    save_mission_context_snapshot(store, ctx, state_root)
+    (repo / "src" / "app.py").write_text("changed by operator\n", encoding="utf-8")
+
+    with pytest.raises(OrgError, match="بصمة المستودع تغيّرت منذ أول checkpoint"):
+        save_mission_context_snapshot(store, ctx, state_root)
