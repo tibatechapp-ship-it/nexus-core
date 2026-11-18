@@ -28,6 +28,17 @@ from src.ops.store import OpsStore
 __all__ = ["build_parser", "main"]
 
 
+def _positive_output_tokens(value: str) -> int:
+    """Parse a positive SQLite-safe output-token ceiling."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("يجب إدخال عدد صحيح موجب") from exc
+    if parsed <= 0 or parsed > 2**63 - 1:
+        raise argparse.ArgumentTypeError("السقف يجب أن يكون موجبًا وضمن حد SQLite")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     """مُحلّل الأوامر — كل أمر بوصف معلن."""
     p = argparse.ArgumentParser(
@@ -43,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--title", required=True)
     m.add_argument("--objective", required=True)
     m.add_argument("--repo", default="")
+    m.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None,
+                   help="سقف توكنات الخرج للمهمة (اختياري، موجب)")
 
     s = sub.add_parser("show", help="عرض مهمة مخزنة")
     s.add_argument("mission_id")
@@ -74,7 +87,8 @@ def _cmd_mission(args: argparse.Namespace) -> int:
     org, ops = _stores(args)
     pipeline = MissionPipeline(org, ops, outdir=args.outdir)
     report = pipeline.run(title=args.title, objective=args.objective,
-                          repo_path=args.repo)
+                          repo_path=args.repo,
+                          output_token_limit=args.max_output_tokens)
     _emit(report.to_dict())
     return 0 if report.mission.status == "done" else 1
 

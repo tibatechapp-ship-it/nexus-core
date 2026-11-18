@@ -185,6 +185,7 @@ class Mission:
     id: str = ""
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
+    output_token_limit: int | None = None
 
     def __post_init__(self) -> None:
         _require_str(self.title, "title")
@@ -197,6 +198,11 @@ class Mission:
         _require_list(self.ticket_ids, "ticket_ids")
         if not isinstance(self.revision_loops, int) or self.revision_loops < 0:
             raise ValueError(f"revision_loops غير صالح: {self.revision_loops!r}")
+        if self.output_token_limit is not None and (
+                type(self.output_token_limit) is not int
+                or self.output_token_limit <= 0
+                or self.output_token_limit > 2**63 - 1):
+            raise ValueError("output_token_limit يجب أن يكون عدد توكنات موجبًا ضمن حد SQLite")
 
     def with_phase(self, phase: str) -> "Mission":
         """نسخة بطور جديد — الانتقال نفسه يُفرض في المتجر لا هنا."""
@@ -211,6 +217,7 @@ class Mission:
             "phase": self.phase, "status": self.status, "branch": self.branch,
             "patch_path": self.patch_path, "report_path": self.report_path,
             "ticket_ids": self.ticket_ids, "revision_loops": self.revision_loops,
+            "output_token_limit": self.output_token_limit,
             "created_at": self.created_at, "updated_at": self.updated_at,
         }
 
@@ -228,6 +235,7 @@ class Mission:
             report_path=data.get("report_path", ""),
             ticket_ids=list(data.get("ticket_ids", [])),
             revision_loops=int(data.get("revision_loops", 0)),
+            output_token_limit=data.get("output_token_limit"),
             id=data.get("id", ""),
             created_at=data.get("created_at", now_iso()),
             updated_at=data.get("updated_at", now_iso()),

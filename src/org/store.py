@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 8
+ORG_SCHEMA_VERSION = 9
 
 # Reconciliation evidence is persisted twice (operation result + audit); keep it bounded.
 MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES = 16 * 1024
@@ -139,6 +139,9 @@ class OrgStore:
             if current < 8:
                 self._migrate_v8()
                 current = 8
+            if current < 9:
+                self._migrate_v9()
+                current = 9
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -524,6 +527,24 @@ class OrgStore:
             """
         )
 
+
+    def _migrate_v9(self) -> None:
+        """Persist the immutable optional output-token cap on each mission."""
+        columns = {row["name"] for row in self._conn.execute(
+            "PRAGMA table_info(missions)").fetchall()}
+        if "output_token_limit" not in columns:
+            self._conn.execute(
+                "ALTER TABLE missions ADD COLUMN output_token_limit INTEGER "
+                "CHECK(output_token_limit IS NULL OR output_token_limit > 0)")
+        # Budgets created by schema v8 are authoritative; backfill their cap
+        # into the mission contract before new lifecycle checks are enabled.
+        self._conn.execute(
+            "UPDATE missions SET output_token_limit=("
+            "SELECT output_token_limit FROM mission_token_budgets "
+            "WHERE mission_token_budgets.mission_id=missions.id) "
+            "WHERE output_token_limit IS NULL AND EXISTS ("
+            "SELECT 1 FROM mission_token_budgets "
+            "WHERE mission_token_budgets.mission_id=missions.id)")
 
     def _migrate_v8(self) -> None:
         """ميزانية خرج توكنات موحدة وحجوزات ذرية لكل مهمة."""
@@ -1206,6 +1227,7 @@ class OrgStore:
                 acceptance_criteria=mission.acceptance_criteria,
                 constraints=mission.constraints, ambiguities=mission.ambiguities,
                 phase=mission.phase, status=mission.status,
+                output_token_limit=mission.output_token_limit,
                 id=new_id("org-m", mission.title.strip(), mission.objective.strip()),
             )
         with self._conn:
@@ -1213,8 +1235,8 @@ class OrgStore:
                 "INSERT OR IGNORE INTO missions (id, title, objective, repo_path, "
                 "phase, status, acceptance_criteria, constraints, ambiguities, "
                 "branch, patch_path, report_path, ticket_ids, revision_loops, "
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "?, ?, ?, ?, ?, ?)",
+                "output_token_limit, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     mission.id, mission.title, mission.objective, mission.repo_path,
                     mission.phase, mission.status,
@@ -1223,9 +1245,37 @@ class OrgStore:
                     json.dumps(mission.ambiguities, ensure_ascii=False),
                     mission.branch, mission.patch_path, mission.report_path,
                     json.dumps(mission.ticket_ids, ensure_ascii=False),
-                    mission.revision_loops, mission.created_at, mission.updated_at,
+                    mission.revision_loops, mission.output_token_limit,
+                    mission.created_at, mission.updated_at,
                 ),
             )
+            persisted = self._conn.execute(
+                "SELECT output_token_limit FROM missions WHERE id=?", (mission.id,)
+            ).fetchone()
+            if persisted is None or persisted["output_token_limit"] != mission.output_token_limit:
+                raise OrgError("المهمة موجودة بإعداد ميزانية مختلف؛ لا يمكن تغيير سقفها")
+            if mission.output_token_limit is not None:
+                now = self._now()
+                inserted_budget = self._conn.execute(
+                    "INSERT OR IGNORE INTO mission_token_budgets "
+                    "(mission_id, output_token_limit, status, created_at, updated_at) "
+                    "VALUES (?, ?, 'active', ?, ?)",
+                    (mission.id, mission.output_token_limit, now, now),
+                ).rowcount
+                budget = self._conn.execute(
+                    "SELECT output_token_limit FROM mission_token_budgets WHERE mission_id=?",
+                    (mission.id,),
+                ).fetchone()
+                if (budget is None
+                        or int(budget["output_token_limit"]) != mission.output_token_limit):
+                    raise OrgError("ميزانية المهمة المخزنة لا تطابق عقد المهمة")
+                if inserted_budget == 1:
+                    self._conn.execute(
+                        "INSERT INTO audit (ts, actor, action, ref, details) "
+                        "VALUES (?, 'system', 'mission.token_budget_configured', ?, ?)",
+                        (now, mission.id, json.dumps(
+                            {"output_token_limit": mission.output_token_limit}, sort_keys=True)),
+                    )
         stored = self.mission_get(mission.id)
         assert stored is not None
         self.audit("mission.created", mission.id, {"phase": stored.phase})
@@ -1242,6 +1292,8 @@ class OrgStore:
             patch_path=r["patch_path"] or "", report_path=r["report_path"] or "",
             ticket_ids=json.loads(r["ticket_ids"] or "[]"),
             revision_loops=int(r["revision_loops"] or 0),
+            output_token_limit=(int(r["output_token_limit"])
+                                if r["output_token_limit"] is not None else None),
             id=r["id"], created_at=r["created_at"], updated_at=r["updated_at"],
         )
 
@@ -1265,6 +1317,9 @@ class OrgStore:
         old = self.mission_get(mission.id)
         if old is None:
             raise OrgError(f"مهمة غير موجودة: {mission.id}")
+        if (mission.output_token_limit is not None
+                and mission.output_token_limit != old.output_token_limit):
+            raise OrgError("سقف توكنات المهمة غير قابل للتغيير عبر تحديث المهمة")
         if mission.phase != old.phase:
             allowed = ALLOWED_PHASE_TRANSITIONS.get(old.phase, frozenset())
             if mission.phase not in allowed:
@@ -1617,14 +1672,28 @@ class OrgStore:
     def configure_mission_token_budget(self, mission_id: str,
                                        output_token_limit: int) -> dict[str, Any]:
         """إنشاء ميزانية خرج ثابتة؛ لا يسمح بتغيير سقف سبق اعتماده."""
-        if not isinstance(output_token_limit, int) or isinstance(output_token_limit, bool) or output_token_limit <= 0:
-            raise OrgError("حد توكنات الخرج يجب أن يكون عددًا صحيحًا موجبًا")
+        if (not isinstance(output_token_limit, int)
+                or isinstance(output_token_limit, bool)
+                or output_token_limit <= 0
+                or output_token_limit > 2**63 - 1):
+            raise OrgError("حد توكنات الخرج يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
         now = self._now()
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
-            if self._conn.execute("SELECT 1 FROM missions WHERE id=?",
-                                  (mission_id,)).fetchone() is None:
+            mission_row = self._conn.execute(
+                "SELECT output_token_limit FROM missions WHERE id=?",
+                (mission_id,),
+            ).fetchone()
+            if mission_row is None:
                 raise OrgError("المهمة غير موجودة")
+            persisted_limit = mission_row["output_token_limit"]
+            if persisted_limit is not None and int(persisted_limit) != output_token_limit:
+                raise OrgError("سقف المهمة محفوظ مسبقًا ولا يمكن تغييره")
+            self._conn.execute(
+                "UPDATE missions SET output_token_limit=? WHERE id=? "
+                "AND output_token_limit IS NULL",
+                (output_token_limit, mission_id),
+            )
             row = self._conn.execute(
                 "SELECT * FROM mission_token_budgets WHERE mission_id=?",
                 (mission_id,)).fetchone()
@@ -1649,8 +1718,9 @@ class OrgStore:
     def reserve_mission_output_tokens(self, mission_id: str, agent_role: str,
                                       amount: int) -> dict[str, Any]:
         """حجز ذري قبل استدعاء المزوّد؛ يحسب المحجوز والمتأكد معًا."""
-        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
-            raise OrgError("حجم حجز التوكنات يجب أن يكون عددًا صحيحًا موجبًا")
+        if (not isinstance(amount, int) or isinstance(amount, bool)
+                or amount <= 0 or amount > 2**63 - 1):
+            raise OrgError("حجم حجز التوكنات يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
         if not isinstance(agent_role, str) or not agent_role.strip():
             raise OrgError("هوية الوكيل مطلوبة لحجز التوكنات")
         reservation_id = new_id("org-token-res", mission_id, agent_role,
@@ -1696,8 +1766,9 @@ class OrgStore:
     def settle_mission_output_tokens(self, reservation_id: str,
                                      actual_tokens: int) -> dict[str, Any]:
         """تسوية الحجز بالاستهلاك الفعلي؛ لا يقبل تجاوز الحجز أو التكرار."""
-        if not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool) or actual_tokens < 0:
-            raise OrgError("الاستهلاك الفعلي يجب أن يكون عددًا صحيحًا غير سالب")
+        if (not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool)
+                or actual_tokens < 0 or actual_tokens > 2**63 - 1):
+            raise OrgError("الاستهلاك الفعلي يجب أن يكون عددًا صحيحًا غير سالب ضمن حد SQLite")
         now = self._now()
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")

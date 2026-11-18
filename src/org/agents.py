@@ -70,6 +70,9 @@ class AgentSpec:
             raise ValueError("سقف المحاولات لا يقل عن صفر")
         if self.timeout_s <= 0:
             raise ValueError("مهلة الوكيل يجب أن تكون موجبة")
+        if (type(self.max_tokens) is not int or self.max_tokens <= 0
+                or self.max_tokens > 2**63 - 1):
+            raise ValueError("max_tokens يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
 
     def system_prompt(self) -> str:
         """مطالبة نظام حتمية من العقد — الدور والأدوات والحدود."""
@@ -188,17 +191,22 @@ class AgentRuntime:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
-                self._settle_output_budget(reservation, resp.usage.out_tokens)
-                latency = (time.time() - t0) * 1000.0
-                self._record(spec, resp, attempt, latency, "ok")
-                return resp
             except ProviderError as exc:
-                # Provider errors can happen after dispatch; charge the full reservation.
-                self._settle_output_budget(reservation, spec.max_tokens)
+                # A failed provider may have dispatched; charge every fallback ceiling.
+                self._settle_output_budget(
+                    reservation,
+                    spec.max_tokens * self.pool.max_fallback_attempts)
                 last_error = str(exc)
                 latency = (time.time() - t0) * 1000.0
                 self._record(spec, None, attempt, latency, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
+                continue
+            fallback_charge = len(self.pool.last_errors) * spec.max_tokens
+            self._settle_output_budget(
+                reservation, fallback_charge + resp.usage.out_tokens)
+            latency = (time.time() - t0) * 1000.0
+            self._record(spec, resp, attempt, latency, "ok")
+            return resp
         raise ProviderError(
             f"الوكيل {spec.role} استنفد محاولاته ({spec.max_retries + 1}): "
             f"{last_error}")
@@ -218,14 +226,18 @@ class AgentRuntime:
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
             except ProviderError as exc:
-                # Conservatively charge the reserved maximum: dispatch may have occurred.
-                self._settle_output_budget(reservation, spec.max_tokens)
+                # A failed provider may have dispatched; charge every fallback ceiling.
+                self._settle_output_budget(
+                    reservation,
+                    spec.max_tokens * self.pool.max_fallback_attempts)
                 last_error = str(exc)
                 self._record(spec, None, attempt,
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
                 continue
-            self._settle_output_budget(reservation, resp.usage.out_tokens)
+            fallback_charge = len(self.pool.last_errors) * spec.max_tokens
+            self._settle_output_budget(
+                reservation, fallback_charge + resp.usage.out_tokens)
             data, parse_error = self._parse_json(resp.text)
             if data is None:
                 last_error = parse_error
@@ -266,7 +278,8 @@ class AgentRuntime:
         if budget is None:
             return None
         reservation = self.store.reserve_mission_output_tokens(
-            spec.mission_id, spec.role, spec.max_tokens)
+            spec.mission_id, spec.role,
+            spec.max_tokens * self.pool.max_fallback_attempts)
         return str(reservation["id"])
 
     def _settle_output_budget(self, reservation_id: str | None,
