@@ -219,6 +219,7 @@ def save_mission_context_snapshot(
             "claims": [_json_value(claim) for claim in ctx.claims],
             "pr_text": _json_value(ctx.pr_text),
             "usage": _json_value(ctx.usage),
+            "execution_policy": _json_value(ctx.execution_policy),
         },
     }
     try:
@@ -273,7 +274,7 @@ def restore_mission_context(
     for name in (
         "intel_summary", "affected", "originals", "diff_text", "changed_files",
         "dev_notes", "dev_risks", "security_report", "baseline_tests",
-        "patched_tests", "pr_text", "usage",
+        "patched_tests", "pr_text", "usage", "execution_policy",
     ):
         if name in context_data:
             setattr(ctx, name, context_data[name])
