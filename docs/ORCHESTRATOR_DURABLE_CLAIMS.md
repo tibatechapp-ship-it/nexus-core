@@ -1,45 +1,110 @@
-# Mission recovery and resume preflight
+# Orchestrator durable-claim integration
 
-## Read-only recovery inventory
+## Scope
 
-`inspect_mission_recovery(store, mission_id)` classifies persisted task and
-mission state without changing the audit log, task state, or mission phase.
-Running work is uncertain because a process may have stopped after an external
-side effect. Failed and skipped work also requires explicit operator handling.
+The executive orchestrator now acquires a durable task claim before invoking a
+department executor. A task that is not pending cannot be started by this path.
+Successful execution is finalized with the claim's lease token; exceptions are
+recorded as failed attempts using that same token.
 
-## Structural resume preflight
+The wave runner only dispatches tasks whose persisted state is `pending`.
+This prevents an already completed task from being invoked again when a wave is
+visited more than once.
 
-`assess_mission_resume(store, mission_id)` performs a read-only check before a
-future continuation workflow is allowed to reconstruct runtime context. It
-checks:
+## Review-driven development revisions
+
+A rejected code review no longer requires changing a completed development
+task back to `pending`. The orchestrator creates a new deterministic task row
+for the next development pass. Its parameters include the revision number and
+the `supersedes_task_id` of the previous development task. The new task is
+linked by a dependency on the previous task and receives its own durable claim
+and attempt history.
+
+This preserves the original execution record and makes each review-driven
+development pass independently inspectable.
+
+## Recovery and delivery guarantees
+
+- An expired lease does not authorize automatic reclamation of a `running`
+  task. Recovery remains an explicit operator decision.
+- Failed tasks are not automatically retried. A deliberate new revision is a
+  new task record, not a reset of the failed task.
+- The idempotency key is persisted by the claim store, but this integration does
+  not yet pass it to external side-effecting providers. Therefore it does not
+  claim exactly-once execution for external systems.
+- Every code-review round is a separate task record with its own durable
+  claim and attempt history. A later review task depends on the development
+  revision it evaluates; rejected review tasks remain completed records with a
+  `request_changes` verdict and are never reopened.
+- Verification is claimed and finalized with its lease token. A rejected
+  verification report is a completed gate execution whose result records the
+  rejection; an exception is recorded as a failed attempt.
+- A running gate with an expired lease is not reclaimed automatically. An
+  operator must inspect and reconcile the uncertain execution before creating
+  any deliberate follow-up task.
+- The idempotency key is persisted by the claim store, but this integration does
+  not yet pass it to external side-effecting providers. Therefore it does not
+  claim exactly-once execution for external systems.
+- Human approval remains mandatory for release/merge; durable gate claims do
+  not authorize a release or merge on their own.
+
+## Validation
+
+The orchestrator revision-loop test checks that a rejected review creates a
+second development task, both tasks retain their own completed attempt record,
+and the audit trail links the new task to the task it supersedes.
+
+## Review and verification gate validation
+
+The orchestrator tests assert that a successful mission leaves both the review
+and verification task with one completed durable attempt. The revision-loop
+test forces repeated review rejection and verifies that each development
+revision has a distinct review task, with the second review linked to the
+second development task. No completed review task is reset or reused.
+
+## Explicit dispatch of operator-authorized retries
+
+An operator-authorized retry creates a distinct pending task, but creation alone
+never schedules or executes it. The orchestrator now exposes
+`execute_authorized_retry(replacement_task_id, context)` as an explicit
+dispatch boundary. It requires the caller to supply the mission context and
+checks that:
+
+- the replacement belongs to that mission and is still pending;
+- exactly one persisted `retry_authorized` decision links it to its source task;
+- every declared dependency is present and completed successfully;
+- the task department has a supported direct executor.
+
+The replacement is then executed through the ordinary durable claim and lease
+path. The original task remains unchanged. Repeated dispatch is rejected by
+the pending-state check and atomic claim. Review and verification gates are
+intentionally excluded from this generic dispatcher because they require
+specialized gate context and must not be replayed as ordinary department work.
+This API does not reconstruct a lost worktree or resume an entire mission; the
+caller must provide a valid context and handle mission-level continuation
+separately.
+
+## Mission resume preflight
+
+`assess_mission_resume(store, mission_id)` is a read-only structural check
+before a future continuation workflow reconstructs runtime context. It checks:
 
 - the mission is still `running` and its phase is supported;
 - no task is left `running`, `failed`, or `skipped`;
 - tasks from earlier phases are complete and tasks from later phases remain
-  pending;
+  pending (a completed review from an earlier revision is allowed when the
+  mission has explicitly returned to development);
 - every dependency exists inside the same mission and does not depend on
   blocked work;
 - the persisted dependency graph is acyclic.
 
-The result is a structural preflight only. A positive result is **not** an
-execution authorization and does not mean that the original worktree or
-in-memory `MissionContext` has been restored. A continuation caller must
-reconstruct and validate those artifacts against the current repository
-snapshot before explicitly dispatching any work.
+A positive result is **not** an execution authorization and does not mean that
+the original worktree or in-memory `MissionContext` has been restored. A
+continuation caller must reconstruct and validate those artifacts against the
+current repository snapshot before explicitly dispatching any work.
 
-## Safety boundaries
-
-- This module never claims tasks, changes mission status, updates phases, or
-  writes audit events.
-- Running tasks remain blocked for operator investigation; expired leases are
-  not reclaimed.
-- Failed and skipped tasks remain blocked until a separate explicit operator
-  decision creates a safe continuation path.
-- No task is automatically retried or dispatched by resume preflight.
-- External side effects are not claimed to be exactly-once.
-- Release/merge still requires human approval.
-
-## Validation
-
-Tests cover read-only behavior, a valid pending DAG, uncertain running work,
-dependency cycles, and phase/task-state mismatch.
+The preflight does not claim tasks, change mission status, update phases, or
+write audit events. Running, failed, and skipped tasks remain blocked pending
+operator review. No task is automatically retried or dispatched. External
+side effects are not claimed to be exactly-once, and human approval remains
+mandatory for release/merge.
