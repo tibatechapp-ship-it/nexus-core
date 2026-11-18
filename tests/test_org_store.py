@@ -53,6 +53,65 @@ class TestMissions:
         assert phase_rows and phase_rows[0]["details"]["to"] == "B_INTEL"
 
 
+    def test_mission_resume_lock_is_exclusive_and_token_bound(
+            self, tmp_path) -> None:
+        db = tmp_path / "resume-lock.sqlite"
+        first = OrgStore(db)
+        mission = first.create_mission(Mission(title="resume", objective="exclusive"))
+        second = OrgStore(db)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [
+                    pool.submit(first.claim_mission_resume, mission.id,
+                                actor="operator-a", reason="resume"),
+                    pool.submit(second.claim_mission_resume, mission.id,
+                                actor="operator-b", reason="resume"),
+                ]
+                outcomes = []
+                for future in futures:
+                    try:
+                        outcomes.append(future.result())
+                    except OrgError:
+                        outcomes.append(None)
+            winners = [item for item in outcomes if item is not None]
+            assert len(winners) == 1
+            run = winners[0]
+            with pytest.raises(OrgError, match="محجوب"):
+                second.claim_mission_resume(
+                    mission.id, actor="operator-c", reason="concurrent")
+            with pytest.raises(OrgError, match="قديم|لا يملك"):
+                second.finish_mission_resume(
+                    mission.id, "wrong-token", status="completed")
+            first.finish_mission_resume(
+                mission.id, run["token"], status="completed")
+            assert first.mission_resume_runs_for(mission.id)[0]["status"] == "completed"
+            second.claim_mission_resume(
+                mission.id, actor="operator-c", reason="after completion")
+        finally:
+            second.close()
+            first.close()
+
+    def test_orphaned_resume_lock_requires_human_reconciliation(
+            self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="orphan", objective="manual"))
+        store.claim_mission_resume(
+            mission.id, actor="operator", reason="process interrupted")
+        with pytest.raises(OrgError, match="تأكيد توقف"):
+            store.abandon_mission_resume(
+                mission.id, actor="operator", reason="cleanup",
+                confirm_process_stopped=False)
+        with pytest.raises(OrgError, match="محجوب"):
+            store.claim_mission_resume(
+                mission.id, actor="operator-2", reason="retry")
+        store.abandon_mission_resume(
+            mission.id, actor="operator", reason="verified process stopped",
+            confirm_process_stopped=True)
+        assert store.mission_resume_runs_for(mission.id)[0]["status"] == "abandoned"
+        replacement = store.claim_mission_resume(
+            mission.id, actor="operator-2", reason="explicitly authorized")
+        assert replacement["status"] == "running"
+
+
 class TestTasks:
     def test_task_state_machine(self, store: OrgStore) -> None:
         m = store.create_mission(Mission(title="t", objective="o"))
