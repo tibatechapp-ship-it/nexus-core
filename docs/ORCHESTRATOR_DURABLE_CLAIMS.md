@@ -62,7 +62,6 @@ test forces repeated review rejection and verifies that each development
 revision has a distinct review task, with the second review linked to the
 second development task. No completed review task is reset or reused.
 
-
 ## Explicit dispatch of operator-authorized retries
 
 An operator-authorized retry creates a distinct pending task, but creation alone
@@ -84,3 +83,28 @@ specialized gate context and must not be replayed as ordinary department work.
 This API does not reconstruct a lost worktree or resume an entire mission; the
 caller must provide a valid context and handle mission-level continuation
 separately.
+
+## Mission resume preflight
+
+`assess_mission_resume(store, mission_id)` is a read-only structural check
+before a future continuation workflow reconstructs runtime context. It checks:
+
+- the mission is still `running` and its phase is supported;
+- no task is left `running`, `failed`, or `skipped`;
+- tasks from earlier phases are complete and tasks from later phases remain
+  pending (a completed review from an earlier revision is allowed when the
+  mission has explicitly returned to development);
+- every dependency exists inside the same mission and does not depend on
+  blocked work;
+- the persisted dependency graph is acyclic.
+
+A positive result is **not** an execution authorization and does not mean that
+the original worktree or in-memory `MissionContext` has been restored. A
+continuation caller must reconstruct and validate those artifacts against the
+current repository snapshot before explicitly dispatching any work.
+
+The preflight does not claim tasks, change mission status, update phases, or
+write audit events. Running, failed, and skipped tasks remain blocked pending
+operator review. No task is automatically retried or dispatched. External
+side effects are not claimed to be exactly-once, and human approval remains
+mandatory for release/merge.
