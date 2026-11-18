@@ -9,7 +9,9 @@ serializable MissionContext fields used by later departments, including the
 repository map, affected-file map, original file contents, diffs, test/security
 reports, review decision, claims, release text, and usage counters.
 
-Each checkpoint also records a digest of the durable task ledger (task identity, inputs, states, attempts, results, and update timestamps). Restore rejects a checkpoint if task state advanced after that context was captured, closing the crash window between task completion and checkpoint persistence.\n\nWhen a worktree exists, its files are copied to a mission-scoped persistent
+Each checkpoint also records a digest of the durable task ledger (task identity, inputs, states, attempts, results, and update timestamps). Restore rejects a checkpoint if task state advanced after that context was captured, closing the crash window between task completion and checkpoint persistence.
+
+When a worktree exists, its files are copied to a mission-scoped persistent
 state directory outside the source repository. Each checkpoint receives its
 own immutable worktree copy and SHA-256 tree fingerprint. The live temporary
 worktree remains owned by the active execution and may still be cleaned up
@@ -61,3 +63,15 @@ collection is intentionally not automatic.
   digest remains required.
 - This feature does not provide exactly-once external side effects.
 - Human approval remains mandatory for release/merge.
+
+## Explicit continuation
+
+Call `resume_mission(mission_id, actor=..., reason=..., expected_repo_root=...)` only after an
+operator or supervising caller has decided to continue the mission. The actor and non-empty reason are required and recorded in the audit log. The method
+performs the read-only task-graph preflight and checkpoint restoration first.
+It then rebuilds task specifications from persisted rows, preserving every
+task ID and dependency, and dispatches pending work from the recorded phase.
+Completed tasks are not replayed. Review decisions are read from their durable
+gate result; verification uses its dedicated gate and persisted result. A
+running, failed, skipped, malformed, or dependency-inconsistent task blocks
+continuation. This is not a lease takeover or an automatic retry mechanism.
