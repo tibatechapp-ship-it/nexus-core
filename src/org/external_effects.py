@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import json
 from typing import Any, Callable, Literal, Mapping, Protocol
 
+from src.org.effect_approvals import EffectApprovalService
 from src.org.store import OrgError, OrgStore
 
 __all__ = [
@@ -114,18 +115,20 @@ class ExternalEffectDispatcher:
         adapter: ExternalEffectAdapter,
         *,
         worker_id: str,
-        authorizer: Authorizer,
+        authorizer: Authorizer | None = None,
+        approval_service: EffectApprovalService | None = None,
     ) -> None:
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("worker_id is required")
         if not isinstance(getattr(adapter, "provider_id", None), str) or not adapter.provider_id.strip():
             raise ValueError("adapter.provider_id is required")
-        if not callable(authorizer):
-            raise ValueError("an application approval authorizer is required")
+        if not callable(authorizer) and approval_service is None:
+            raise ValueError("an application approval authorizer or durable approval service is required")
         self._store = store
         self._adapter = adapter
         self._worker_id = worker_id.strip()
         self._authorizer = authorizer
+        self._approval_service = approval_service
 
     def execute(
         self,
@@ -136,6 +139,10 @@ class ExternalEffectDispatcher:
         request: Mapping[str, Any],
         *,
         actor: str,
+        approval_token: str | None = None,
+        repository: str | None = None,
+        ref_name: str | None = None,
+        commit_sha: str | None = None,
     ) -> EffectResult:
         """Authorize, persist, claim, dispatch once, and durably record outcome."""
         if not isinstance(actor, str) or not actor.strip():
@@ -156,17 +163,21 @@ class ExternalEffectDispatcher:
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise EffectDispatchError("request must contain finite JSON values") from exc
         ledger_operation_name = f"{self._adapter.provider_id}:{operation_name}"
-        try:
-            allowed = self._authorizer(
-                actor.strip(), mission_id, task_id, self._adapter.provider_id,
-                operation_name, json.loads(encoded_request),
-            )
-        except Exception as exc:
-            raise EffectNotAuthorized(
-                f"approval authorization failed: {type(exc).__name__}"
-            ) from exc
-        if allowed is not True:
-            raise EffectNotAuthorized("human approval was not verified")
+        # Legacy integrations retain their injected authorizer. Durable
+        # one-time approvals are consumed only after operation identity is
+        # persisted and only when the ledger still says "prepared".
+        if self._approval_service is None:
+            try:
+                allowed = self._authorizer(
+                    actor.strip(), mission_id, task_id, self._adapter.provider_id,
+                    operation_name, json.loads(encoded_request),
+                )
+            except Exception as exc:
+                raise EffectNotAuthorized(
+                    f"approval authorization failed: {type(exc).__name__}"
+                ) from exc
+            if allowed is not True:
+                raise EffectNotAuthorized("human approval was not verified")
 
         prepared = self._store.prepare_external_operation(
             mission_id, task_id, ledger_operation_name, revision, payload
@@ -188,7 +199,37 @@ class ExternalEffectDispatcher:
                 f"operation is {state}; inspect or reconcile it before any new dispatch"
             )
 
-        claim = self._store.claim_external_operation(operation_key, self._worker_id)
+        if self._approval_service is not None:
+            scope_values = (approval_token, repository, ref_name, commit_sha)
+            if not all(isinstance(value, str) and value.strip() for value in scope_values):
+                raise EffectNotAuthorized(
+                    "durable approval token, repository, ref, and commit are required"
+                )
+            try:
+                claim = self._approval_service.consume_and_claim(
+                    approval_token,
+                    executor_principal_id=actor.strip(),
+                    mission_id=mission_id, task_id=task_id,
+                    repository=repository, ref_name=ref_name,
+                    commit_sha=commit_sha, provider_id=self._adapter.provider_id,
+                    operation_name=operation_name, request=payload,
+                    operation_key=operation_key, worker_id=self._worker_id,
+                )
+            except Exception as exc:
+                raise EffectNotAuthorized(
+                    f"durable effect approval rejected: {type(exc).__name__}"
+                ) from exc
+            if claim.get("reused") is True:
+                operation = claim["operation"]
+                return EffectResult(
+                    operation_key=operation_key,
+                    state=str(operation["state"]),
+                    result=self._decode_result(operation.get("result_payload")),
+                    reused=True,
+                    provider_id=self._adapter.provider_id,
+                )
+        else:
+            claim = self._store.claim_external_operation(operation_key, self._worker_id)
         idempotency_key = (
             operation_key if capability.idempotency_mode == "provider_key" else None
         )
