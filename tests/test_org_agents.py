@@ -144,6 +144,29 @@ class TestAskJson:
         assert out.tokens_in > 0 and out.attempts == 1
 
 
+    def test_unexpected_provider_exception_keeps_budget_reservation_uncertain(
+            self, store: OrgStore) -> None:
+        from src.org.contracts import Mission
+
+        mission = store.create_mission(
+            Mission(title="uncertain call", objective="do not refund"))
+        store.configure_mission_output_token_budget(mission.id, 2_000)
+
+        class UncertainPool(ProviderPool):
+            def complete_with_fallback(self, messages, **kwargs):  # type: ignore[override]
+                raise RuntimeError("transport outcome is unknown")
+
+        runtime = AgentRuntime(UncertainPool(), ToolRegistry(), store)
+        with pytest.raises(RuntimeError, match="unknown"):
+            runtime.ask_json(_spec(mission_id=mission.id), "call")
+        budget = store.mission_output_token_budget(mission.id)
+        assert budget is not None
+        assert budget["reserved_tokens"] == 2_000
+        assert budget["consumed_tokens"] == 0
+        reservations = store.mission_output_token_reservations(mission.id)
+        assert len(reservations) == 1
+        assert reservations[0]["state"] == "reserved"
+
 class TestProviderFailure:
     def test_all_retries_exhausted(self, store: OrgStore) -> None:
         class BoomPool(ProviderPool):
