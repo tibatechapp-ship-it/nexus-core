@@ -182,10 +182,10 @@ class Mission:
     report_path: str = ""
     ticket_ids: list[str] = field(default_factory=list)
     revision_loops: int = 0
-    output_token_limit: int | None = None
     id: str = ""
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
+    output_token_limit: int | None = None
 
     def __post_init__(self) -> None:
         _require_str(self.title, "title")
