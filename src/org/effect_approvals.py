@@ -82,6 +82,10 @@ class EffectApprovalService:
             raise EffectApprovalError("principal is not authenticated")
         return principal
 
+    def verify_executor(self, principal_id: str) -> str:
+        """Validate an executor identity even when replay needs no new token."""
+        return self._principal(principal_id)
+
     def issue(self, *, issuer_principal_id: str, executor_principal_id: str,
               mission_id: str, task_id: str, repository: str, ref_name: str,
               commit_sha: str, provider_id: str, operation_name: str,
