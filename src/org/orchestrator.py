@@ -481,12 +481,15 @@ class ExecutiveOrchestrator:
                 (task for task in plan.tasks if task.dept == "development"),
                 key=lambda task: int(task.params.get("revision", 0)),
             )
-            review_task = next(
-                (task for task in reversed(plan.tasks)
-                 if task.dept == "code_review"
-                 and development_task.id in task.deps),
-                None,
-            )
+            matching_reviews = [
+                task for task in plan.tasks
+                if task.dept == "code_review"
+                and development_task.id in task.deps
+            ]
+            if len(matching_reviews) > 1:
+                raise OrgError(
+                    "أكثر من مهمة مراجعة مرتبطة بنسخة التطوير الحالية؛ الاستئناف مرفوض")
+            review_task = matching_reviews[0] if matching_reviews else None
             if review_task is None:
                 existing_rounds = [
                     int(task.params.get("round", 1))
@@ -505,8 +508,10 @@ class ExecutiveOrchestrator:
             elif row.get("state") == "done":
                 result = self._task_result_payload(row)
                 verdict = result.get("verdict")
-                if verdict not in {"approve", "request_changes"}:
-                    raise OrgError("نتيجة المراجعة المكتملة لا تحمل قرارًا صالحًا")
+                if (verdict not in {"approve", "request_changes"}
+                        or result.get("development_task_id") != development_task.id):
+                    raise OrgError(
+                        "نتيجة المراجعة المكتملة لا تطابق نسخة التطوير الحالية")
                 approved = verdict == "approve"
             else:
                 raise OrgError(
@@ -594,6 +599,7 @@ class ExecutiveOrchestrator:
                         verified = (
                             isinstance(result.get("verified"), int)
                             and isinstance(result.get("rejected"), int)
+                            and isinstance(result.get("reproduced"), bool)
                             and result["rejected"] == 0
                         )
                     else:
