@@ -1,0 +1,63 @@
+# Durable mission context and repository identity
+
+## What is checkpointed
+
+After each successfully completed ordinary task, and after the review and
+verification gates, the orchestrator appends an immutable SQLite checkpoint.
+The checkpoint contains the current persisted mission record and the
+serializable MissionContext fields used by later departments, including the
+repository map, affected-file map, original file contents, diffs, test/security
+reports, review decision, claims, release text, and usage counters.
+
+When a worktree exists, its files are copied to a mission-scoped persistent
+state directory outside the source repository. Each checkpoint receives its
+own immutable worktree copy and SHA-256 tree fingerprint. The live temporary
+worktree remains owned by the active execution and may still be cleaned up
+after terminal completion.
+
+## Repository identity
+
+The source repository fingerprint includes:
+- a deterministic SHA-256 digest over relative file paths and file contents;
+- symlink entries without following their targets;
+- the resolved repository root;
+- Git HEAD and current branch when Git metadata is available.
+
+Generated/cache directories and .git are excluded from the tree digest.
+The first checkpoint establishes the mission's repository baseline. Later
+checkpoints reject any baseline drift instead of silently accepting a changed
+source tree.
+
+## Restore boundary
+
+`restore_mission_context` reconstructs the typed mission context and a
+non-owning `Worktree` only after checking the source repository fingerprint,
+the expected repository path, the persisted worktree location, and its
+fingerprint. A mismatch fails closed.
+
+`ExecutiveOrchestrator.restore_context_for_resume` additionally requires the
+read-only mission task-graph preflight to pass. It records a restore audit
+event, but does not claim tasks, dispatch agents, advance phases, or authorize
+release/merge. A separate explicit continuation state machine is still needed
+before any resumed execution is allowed.
+
+## Storage and retention
+
+The default state root is `~/.nexus-core/missions`; callers can inject another
+persistent path. The root must be outside the source repository. Checkpoints
+and their worktree copies are append-only at this stage. Retention/garbage
+collection is intentionally not automatic.
+
+## Guarantees and limitations
+
+- Checkpoint records are append-only; each references its repository and
+  worktree fingerprints.
+- The system rejects source or worktree drift before context restoration.
+- No automatic retry, task claim, or agent execution occurs during restore.
+- A tree fingerprint proves byte-level identity for the included files; it
+  does not prove that external services, databases, credentials, or remote
+  systems are unchanged.
+- Git metadata may be absent for non-Git source directories; the content tree
+  digest remains required.
+- This feature does not provide exactly-once external side effects.
+- Human approval remains mandatory for release/merge.
