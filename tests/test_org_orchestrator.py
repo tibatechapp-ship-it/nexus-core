@@ -149,3 +149,27 @@ class TestRevisionLoop:
             repo_path="examples/org_demo/fixture_repo"))
         assert mission.status == "failed"
         assert mission.revision_loops >= 1
+
+        # كل دورة تطوير لها سجل مستقل؛ لا نعيد فتح المهمة المنتهية.
+        development_tasks = [
+            row for row in org_store.tasks_for_mission(mission.id)
+            if row["dept"] == "development"
+        ]
+        assert len(development_tasks) == 2
+        revisions = sorted(
+            (row for row in development_tasks),
+            key=lambda row: int(__import__("json").loads(row["params"]).get(
+                "revision", 0)),
+        )
+        assert revisions[0]["state"] == "done"
+        assert revisions[1]["state"] == "done"
+        for row in revisions:
+            attempts = org_store.task_attempts_for(row["id"])
+            assert len(attempts) == 1
+            assert attempts[0]["status"] == "done"
+        queued = [
+            event for event in org_store.tail_audit(100)
+            if event["action"] == "task.revision_queued"
+        ]
+        assert len(queued) == 1
+        assert queued[0]["details"]["supersedes_task_id"] == revisions[0]["id"]
