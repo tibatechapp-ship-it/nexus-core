@@ -45,6 +45,9 @@ __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
 ORG_SCHEMA_VERSION = 7
 
+# Reconciliation evidence is persisted twice (operation result + audit); keep it bounded.
+MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES = 16 * 1024
+
 
 class OrgError(RuntimeError):
     """خطأ صريح في قواعد التنظيم — انتقال غير قانوني أو غياب سجل."""
@@ -967,8 +970,12 @@ class OrgStore:
             encoded = json.dumps(
                 evidence, sort_keys=True, ensure_ascii=False,
                 separators=(",", ":"), allow_nan=False)
-        except (TypeError, ValueError) as exc:
-            raise OrgError(f"أدلة المصالحة غير قابلة للتسلسل: {exc}") from exc
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise OrgError(f"أدلة المصالحة غير قابلة للتسلسل: {type(exc).__name__}") from exc
+        if len(encoded.encode("utf-8")) > MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES:
+            raise OrgError(
+                "أدلة المصالحة تتجاوز الحد الأقصى البالغ "
+                f"{MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES} بايت")
         now = self._now()
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
