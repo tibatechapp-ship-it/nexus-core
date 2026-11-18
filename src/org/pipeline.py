@@ -70,10 +70,12 @@ class MissionPipeline:
         self.lessons = LessonsEngine(org_store)
         self.outdir = Path(outdir)
 
-    def run(self, title: str, objective: str, repo_path: str = "") -> PipelineReport:
-        """تشغيل مهمة كاملة — A→G ثم مقاييس ودروس وتقرير لقطة."""
+    def run(self, title: str, objective: str, repo_path: str = "", *,
+            output_token_budget: int | None = None) -> PipelineReport:
+        """تشغيل A→G مع سقف إخراج اختياري للمهمة ثم تجميع التقرير."""
         mission = Mission(title=title, objective=objective, repo_path=repo_path)
-        mission = self.orchestrator.execute(mission)
+        mission = self.orchestrator.execute(
+            mission, output_token_budget=output_token_budget)
         snap = self.metrics.snapshot()
         new_lessons = self.lessons.record_from_mission(mission.id)
         report_path = ""
