@@ -203,6 +203,7 @@ class ExecutiveOrchestrator:
                         key=lambda task: int(task.params.get("revision", 0)),
                     )
                     self._queue_review_round(plan, previous_dev, review_round)
+                    self._checkpoint_context(ctx)
                 self._advance_phase(mission, self._current_phase(mission),
                                     "D_REVIEW")
                 review_ok = self._run_review_gate(plan, ctx)
@@ -220,6 +221,7 @@ class ExecutiveOrchestrator:
                     key=lambda task: int(task.params.get("revision", 0)),
                 )
                 self._queue_development_revision(plan, previous_dev, loops)
+                self._checkpoint_context(ctx)
                 self._run_wave(plan, ctx, phase="C_DEVELOP", dept="development")
             self._advance_phase(mission, "D_REVIEW", "E_TESTING")
             self._run_wave(plan, ctx, phase="E_TESTING", dept="qa")
@@ -492,6 +494,7 @@ class ExecutiveOrchestrator:
                 ]
                 self._queue_review_round(
                     plan, development_task, max(existing_rounds, default=1) + 1)
+                self._checkpoint_context(ctx)
                 review_task = plan.tasks[-1]
 
             row = self.org_store.task_get(review_task.id)
@@ -524,6 +527,7 @@ class ExecutiveOrchestrator:
             self._advance_phase(ctx.mission, "D_REVIEW", "C_DEVELOP")
             self._queue_development_revision(
                 plan, development_task, next_revision)
+            self._checkpoint_context(ctx)
             self._run_wave(plan, ctx, phase="C_DEVELOP", dept="development")
             self._advance_phase(ctx.mission, "C_DEVELOP", "D_REVIEW")
 
