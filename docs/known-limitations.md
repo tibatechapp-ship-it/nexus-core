@@ -30,7 +30,7 @@ core/llm_router) **نُفِّذا في v1.49.1** (ب2.2/ب2.3) — ما تبقى
 | 14 | `src/novamind/tools/isolated_agents_report.py` | 97 | `"TODO" in line or ...` | Detection code (meta) | لا إجراء |
 | 15 | `src/novamind/tools/isolated_agents_report.py` | 122 | TODO detection code | Detection code (meta) | لا إجراء |
 | 16 | `src/novamind/agents/documentation_agent.py` | 84 | `TODO: add description` | Generated docstring placeholder | Auto-generated — لا إجراء |
-| 17 | `src/novamind/factory/executor.py` | 52 | `- لا تستخدم placeholders (TODO…)` | Instruction text (not code) | لا إجراء |
+| 17 | `src/novamind/factory/executor.py` | 56 | `- لا تستخدم placeholders (TODO…)` | Instruction text (not code) | لا إجراء |
 | 18 | `src/novamind/core/hive/factory/executor.py` | 53 | Instruction text | Instruction text (not code) | لا إجراء |
 | 19 | `src/novamind/factory/guards/output_guard.py` | 22 | `"TODO: implement"` | Test fixture string | Intentional — لا إجراء |
 
