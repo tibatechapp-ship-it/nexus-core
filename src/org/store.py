@@ -1218,6 +1218,7 @@ class OrgStore:
                 acceptance_criteria=mission.acceptance_criteria,
                 constraints=mission.constraints, ambiguities=mission.ambiguities,
                 phase=mission.phase, status=mission.status,
+                output_token_limit=mission.output_token_limit,
                 id=new_id("org-m", mission.title.strip(), mission.objective.strip()),
             )
         with self._conn:
