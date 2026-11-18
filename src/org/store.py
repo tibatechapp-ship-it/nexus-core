@@ -717,6 +717,105 @@ class OrgStore:
                 "SELECT * FROM external_operations WHERE operation_key=?", (key,)
             ).fetchone())
 
+    def claim_external_operation_with_approval(
+            self, operation_key: str, worker_id: str, *,
+            token_digest: str, scope_fingerprint: str,
+            principal_id: str, now: str) -> dict[str, Any]:
+        """Consume a scoped approval and claim its prepared operation atomically.
+
+        A persisted success is returned without consuming another token. For a
+        prepared operation, approval consumption and the fenced claim commit in
+        one SQLite transaction, so neither can survive without the other.
+        """
+        values = (operation_key, worker_id, token_digest,
+                  scope_fingerprint, principal_id, now)
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            raise OrgError("بيانات التفويض والمطالبة مطلوبة")
+        token = secrets.token_urlsafe(32)
+        error = ""
+        outcome: dict[str, Any] | None = None
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            operation = self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?",
+                (operation_key,),
+            ).fetchone()
+            if operation is None:
+                error = "العملية الخارجية غير موجودة"
+            elif operation["state"] in {"succeeded", "reconciled"}:
+                outcome = {
+                    "state": operation["state"], "reused": True,
+                    "operation": dict(operation),
+                }
+            elif operation["state"] != "prepared":
+                error = f"العملية غير قابلة للمطالبة من الحالة: {operation['state']}"
+            else:
+                approval = self._conn.execute(
+                    "SELECT * FROM effect_approvals WHERE token_digest=?",
+                    (token_digest,),
+                ).fetchone()
+                if approval is None:
+                    error = "تفويض الأثر غير موجود"
+                elif approval["status"] != "issued":
+                    error = f"تفويض الأثر غير متاح: {approval['status']}"
+                elif approval["expires_at"] <= now:
+                    self._conn.execute(
+                        "UPDATE effect_approvals SET status='expired' "
+                        "WHERE id=? AND status='issued'", (approval["id"],),
+                    )
+                    self._conn.execute(
+                        "INSERT INTO audit (ts, actor, action, ref, details) "
+                        "VALUES (?, ?, 'effect_approval.expired', ?, '{}')",
+                        (now, principal_id, approval["id"]),
+                    )
+                    error = "انتهت صلاحية تفويض الأثر"
+                elif approval["scope_fingerprint"] != scope_fingerprint:
+                    error = "نطاق التفويض لا يطابق الطلب"
+                elif approval["principal_id"] != principal_id:
+                    error = "هوية المنفذ لا تطابق صاحب التفويض"
+                else:
+                    consumed = self._conn.execute(
+                        "UPDATE effect_approvals SET status='consumed', "
+                        "consumed_at=?, consumed_by=? WHERE id=? AND status='issued'",
+                        (now, principal_id, approval["id"]),
+                    ).rowcount
+                    if consumed != 1:
+                        error = "تم استهلاك التفويض بالتزامن"
+                    else:
+                        attempt_no = int(operation["attempt_count"]) + 1
+                        changed = self._conn.execute(
+                            "UPDATE external_operations SET state='in_flight', "
+                            "attempt_token=?, attempt_owner=?, attempt_count=?, updated_at=? "
+                            "WHERE operation_key=? AND state='prepared'",
+                            (token, worker_id, attempt_no, now, operation_key),
+                        ).rowcount
+                        if changed != 1:
+                            error = "تعذر حجز العملية الخارجية بالتزامن"
+                        else:
+                            self._conn.execute(
+                                "INSERT INTO external_operation_attempts "
+                                "(id, operation_key, attempt_no, attempt_token, worker_id, "
+                                "state, started_at) VALUES (?, ?, ?, ?, ?, 'in_flight', ?)",
+                                (new_id("external-attempt", operation_key, str(attempt_no)),
+                                 operation_key, attempt_no, token, worker_id, now),
+                            )
+                            self._conn.execute(
+                                "INSERT INTO audit (ts, actor, action, ref, details) "
+                                "VALUES (?, ?, 'effect_approval.consumed', ?, '{}')",
+                                (now, principal_id, approval["id"]),
+                            )
+                            outcome = {
+                                "state": "in_flight", "reused": False,
+                                "operation_key": operation_key,
+                                "attempt_no": attempt_no, "attempt_token": token,
+                                "worker_id": worker_id,
+                            }
+        if error:
+            raise OrgError(error)
+        if outcome is None:
+            raise OrgError("تعذر استهلاك التفويض وحجز العملية")
+        return outcome
+
     def claim_external_operation(
             self, operation_key: str, worker_id: str) -> dict[str, Any]:
         """Claim one prepared operation; uncertain/in-flight work is never retried here."""
