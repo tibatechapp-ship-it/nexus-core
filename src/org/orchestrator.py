@@ -406,7 +406,9 @@ class ExecutiveOrchestrator:
         ctx.mission = latest
         save_mission_context_snapshot(self.org_store, ctx, self.state_root)
 
-    def restore_context_for_resume(self, mission_id: str) -> MissionContext:
+    def restore_context_for_resume(
+            self, mission_id: str,
+            expected_repo_root: str | Path | None = None) -> MissionContext:
         """Restore a context only after the read-only task-graph preflight passes.
 
         This method does not dispatch work. A separate explicit resume operation
@@ -419,7 +421,8 @@ class ExecutiveOrchestrator:
             raise OrgError(
                 "المهمة غير جاهزة للاستئناف: " + "; ".join(reasons))
         context = restore_mission_context(
-            self.org_store, mission_id, self.state_root)
+            self.org_store, mission_id, self.state_root,
+            expected_repo_root=expected_repo_root)
         current_mission = self.org_store.mission_get(mission_id)
         if current_mission is None:
             raise OrgError("المهمة اختفت أثناء استعادة السياق")
