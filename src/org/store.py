@@ -42,7 +42,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 3
+ORG_SCHEMA_VERSION = 4
 
 
 class OrgError(RuntimeError):
@@ -120,6 +120,9 @@ class OrgStore:
             if current < 3:
                 self._migrate_v3()
                 current = 3
+            if current < 4:
+                self._migrate_v4()
+                current = 4
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -257,6 +260,27 @@ class OrgStore:
             """
         )
 
+    def _migrate_v4(self) -> None:
+        """سجل لقطات سياق المهمة وبصمات المصدر ونسخة العمل."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS mission_context_snapshots (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                schema_version INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                repo_fingerprint TEXT NOT NULL,
+                worktree_path TEXT NOT NULL DEFAULT '',
+                worktree_fingerprint TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(mission_id, sequence)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mission_context_snapshots_latest
+                ON mission_context_snapshots(mission_id, sequence DESC);
+            """
+        )
+
     # ── التدقيق ───────────────────────────────────────────────────────────
 
     def audit(self, action: str, ref: str = "",
@@ -283,6 +307,86 @@ class OrgStore:
                 "ref": r["ref"] or "", "details": json.loads(r["details"] or "{}"),
             })
         return out
+
+    def save_mission_context_snapshot(
+            self, mission_id: str, payload: dict[str, Any],
+            repo_fingerprint: dict[str, Any], worktree_path: str = "",
+            worktree_fingerprint: str = "", schema_version: int = 1) -> dict[str, Any]:
+        """Append an immutable context checkpoint; source baseline cannot drift."""
+        if not mission_id.strip() or not isinstance(payload, dict):
+            raise OrgError("mission_id وpayload صالحان مطلوبان")
+        if not isinstance(repo_fingerprint, dict) or not repo_fingerprint.get("digest"):
+            raise OrgError("بصمة المستودع غير صالحة")
+        if bool(worktree_path) != bool(worktree_fingerprint):
+            raise OrgError("مسار نسخة العمل وبصمتها يجب أن يظهرا معًا")
+        encoded_payload = json.dumps(
+            payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        encoded_repo = json.dumps(
+            repo_fingerprint, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        now = self._now()
+        snapshot_id = new_id("org-ctx", mission_id, now, encoded_payload)
+        with self._conn:
+            mission = self._conn.execute(
+                "SELECT id FROM missions WHERE id = ?", (mission_id,)
+            ).fetchone()
+            if mission is None:
+                raise OrgError(f"مهمة غير موجودة: {mission_id}")
+            latest = self._conn.execute(
+                "SELECT sequence, repo_fingerprint FROM mission_context_snapshots "
+                "WHERE mission_id = ? ORDER BY sequence DESC LIMIT 1",
+                (mission_id,),
+            ).fetchone()
+            if latest is not None and latest["repo_fingerprint"] != encoded_repo:
+                raise OrgError(
+                    "بصمة المستودع تغيّرت منذ أول checkpoint؛ الاستئناف يتطلب مراجعة بشرية")
+            sequence = int(latest["sequence"]) + 1 if latest else 1
+            self._conn.execute(
+                "INSERT INTO mission_context_snapshots "
+                "(id, mission_id, sequence, schema_version, payload, repo_fingerprint, "
+                "worktree_path, worktree_fingerprint, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (snapshot_id, mission_id, sequence, schema_version, encoded_payload,
+                 encoded_repo, worktree_path, worktree_fingerprint, now),
+            )
+        self.audit("mission.context_checkpoint", mission_id, {
+            "snapshot_id": snapshot_id, "sequence": sequence,
+            "repo_digest": repo_fingerprint["digest"],
+            "worktree_fingerprint": worktree_fingerprint,
+        })
+        return self.mission_context_snapshot_get(mission_id) or {}
+
+    def mission_context_snapshot_get(
+            self, mission_id: str, snapshot_id: str = "") -> dict[str, Any] | None:
+        """Read the latest checkpoint, or one immutable checkpoint by ID."""
+        if snapshot_id:
+            row = self._conn.execute(
+                "SELECT * FROM mission_context_snapshots "
+                "WHERE mission_id = ? AND id = ?", (mission_id, snapshot_id)
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT * FROM mission_context_snapshots WHERE mission_id = ? "
+                "ORDER BY sequence DESC LIMIT 1", (mission_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result["payload"])
+        result["repo_fingerprint"] = json.loads(result["repo_fingerprint"])
+        return result
+
+    def mission_context_snapshots_for(self, mission_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM mission_context_snapshots WHERE mission_id = ? "
+            "ORDER BY sequence", (mission_id,)
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item["payload"])
+            item["repo_fingerprint"] = json.loads(item["repo_fingerprint"])
+            result.append(item)
+        return result
 
     # ── المهام العليا ─────────────────────────────────────────────────────
 
