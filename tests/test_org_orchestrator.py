@@ -88,6 +88,31 @@ class TestPlan:
             plan.validate()
 
 
+class TestMissionOutputTokenBudget:
+    def test_orchestrator_configures_budget_before_first_agent_call(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.execute(
+            Mission(title="budget gate", objective="stop before model call"),
+            output_token_budget=1_999,
+        )
+        assert mission.status == "failed"
+        budget = orchestrator.org_store.mission_output_token_budget(mission.id)
+        assert budget is not None
+        assert budget["limit_tokens"] == 1_999
+        assert budget["consumed_tokens"] == 0
+        assert budget["reserved_tokens"] == 0
+        assert orchestrator.org_store.agent_runs_for(mission.id) == []
+
+    def test_orchestrator_rejects_invalid_budget_before_creating_mission(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        with pytest.raises(ValueError, match="موجب"):
+            orchestrator.execute(
+                Mission(title="invalid budget", objective="reject"),
+                output_token_budget=0,
+            )
+        assert orchestrator.org_store.mission_list() == []
+
+
 class TestPhaseGates:
     def test_execute_walks_phases_in_order(
             self, orchestrator: ExecutiveOrchestrator,
