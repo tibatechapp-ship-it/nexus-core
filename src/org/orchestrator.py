@@ -537,7 +537,7 @@ class ExecutiveOrchestrator:
             self._advance_phase(ctx.mission, "C_DEVELOP", "D_REVIEW")
 
     def resume_mission(
-            self, mission_id: str,
+            self, mission_id: str, *, actor: str, reason: str,
             expected_repo_root: str | Path | None = None) -> Mission:
         """Explicitly continue a preflighted mission from its durable phase.
 
@@ -548,6 +548,10 @@ class ExecutiveOrchestrator:
         gates. A running/failed/skipped task or any drift blocks this method
         before execution.
         """
+        if not isinstance(actor, str) or not actor.strip():
+            raise OrgError("هوية المشغّل مطلوبة للاستئناف الصريح")
+        if not isinstance(reason, str) or not reason.strip():
+            raise OrgError("سبب الاستئناف مطلوب للتدقيق")
         ctx = self.restore_context_for_resume(
             mission_id, expected_repo_root=expected_repo_root)
         plan = self._load_persisted_plan(mission_id)
@@ -555,13 +559,15 @@ class ExecutiveOrchestrator:
         if mission is None:
             raise OrgError(f"مهمة غير موجودة: {mission_id}")
         self.org_store.audit("mission.resume_started", mission_id, {
+            "actor": actor.strip(),
+            "reason": reason.strip(),
             "phase": mission.phase,
             "pending_task_ids": [
                 row["id"] for row in self.org_store.tasks_for_mission(mission_id)
                 if row.get("state") == "pending"
             ],
             "execution_explicit": True,
-        })
+        }, actor=actor.strip())
         try:
             while True:
                 phase = self._current_phase(mission)
