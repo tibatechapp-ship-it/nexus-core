@@ -176,9 +176,18 @@ class ExecutiveOrchestrator:
 
     # ── التنفيذ ───────────────────────────────────────────────────────────
 
-    def execute(self, mission: Mission) -> Mission:
-        """تنفيذ كامل A→G — بوابات الأطوار عبر المتجر، فشل صريح لا صمت."""
+    def execute(self, mission: Mission, *,
+                output_token_budget: int | None = None) -> Mission:
+        """تنفيذ A→G؛ سقف إخراج اختياري مشترك يفرض قبل أول استدعاء."""
+        if output_token_budget is not None and (
+                isinstance(output_token_budget, bool)
+                or not isinstance(output_token_budget, int)
+                or output_token_budget <= 0):
+            raise ValueError("output_token_budget يجب أن يكون عددًا صحيحًا موجبًا")
         mission = self.org_store.create_mission(mission)
+        if output_token_budget is not None:
+            self.org_store.configure_mission_output_token_budget(
+                mission.id, output_token_budget)
         mission = self.org_store.mission_update(
             mission.with_phase("A_REQUIREMENTS"))
         self.org_store.mission_update(
