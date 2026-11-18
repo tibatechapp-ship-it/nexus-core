@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import pytest
+from concurrent.futures import ThreadPoolExecutor
 
 from src.org.contracts import (
     Approval,
@@ -78,6 +79,52 @@ class TestTasks:
         t2 = store.add_task(TaskSpec(mission_id=m.id, dept="qa", kind="test",
                                      description="d"))
         assert t1.id == t2.id
+
+    def test_claim_is_single_owner_and_persists_attempt(self, tmp_path) -> None:
+        db = tmp_path / "claims.sqlite"
+        first = OrgStore(db)
+        mission = first.create_mission(Mission(title="claim", objective="atomic"))
+        task = first.add_task(TaskSpec(
+            mission_id=mission.id, dept="qa", kind="test", description="run"))
+        second = OrgStore(db)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [
+                    pool.submit(first.claim_task, task.id, "worker-a"),
+                    pool.submit(second.claim_task, task.id, "worker-b"),
+                ]
+                claims = [future.result() for future in futures]
+            winners = [claim for claim in claims if claim is not None]
+            assert len(winners) == 1
+            claimed = winners[0]
+            assert claimed["state"] == "running"
+            assert claimed["idempotency_key"]
+            assert claimed["input_snapshot"]
+            assert len(first.task_attempts_for(task.id)) == 1
+            first.finish_claimed_task(
+                task.id, claimed["lease_token"], {"verified": True})
+            assert first.task_get(task.id)["state"] == "done"
+            assert first.task_attempts_for(task.id)[0]["status"] == "done"
+        finally:
+            second.close()
+            first.close()
+
+    def test_claim_rejects_stale_token_and_does_not_reclaim_running(
+        self, store: OrgStore
+    ) -> None:
+        mission = store.create_mission(Mission(title="claim", objective="safe"))
+        task = store.add_task(TaskSpec(
+            mission_id=mission.id, dept="qa", kind="test", description="run"))
+        claim = store.claim_task(task.id, "worker-a", lease_seconds=1)
+        assert claim is not None
+        assert store.claim_task(task.id, "worker-b") is None
+        with pytest.raises(OrgError, match="مطالبة"):
+            store.finish_claimed_task(task.id, "stale-token", {"ok": True})
+        store.fail_claimed_task(task.id, claim["lease_token"], "uncertain")
+        assert store.claim_task(task.id, "worker-b") is None
+        attempts = store.task_attempts_for(task.id)
+        assert len(attempts) == 1
+        assert attempts[0]["status"] == "failed"
 
 
 class TestClaimsAndEvidence:
@@ -156,7 +203,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 1
+        assert ORG_SCHEMA_VERSION == 2
 
 
 class TestReviewsAndFindings:
