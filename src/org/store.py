@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 6
+ORG_SCHEMA_VERSION = 7
 
 
 class OrgError(RuntimeError):
@@ -130,6 +130,9 @@ class OrgStore:
             if current < 6:
                 self._migrate_v6()
                 current = 6
+            if current < 7:
+                self._migrate_v7()
+                current = 7
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -476,6 +479,172 @@ class OrgStore:
             """
         )
 
+
+    def _migrate_v7(self) -> None:
+        """موافقات آثار خارجية محددة النطاق، أحادية الاستهلاك وقابلة للإلغاء."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS effect_approvals (
+                id TEXT PRIMARY KEY,
+                token_digest TEXT NOT NULL UNIQUE,
+                scope_fingerprint TEXT NOT NULL,
+                mission_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                repository TEXT NOT NULL,
+                ref_name TEXT NOT NULL,
+                commit_sha TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                operation_name TEXT NOT NULL,
+                payload_fingerprint TEXT NOT NULL,
+                principal_id TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN
+                    ('issued','consumed','revoked','expired')),
+                created_at TEXT NOT NULL,
+                consumed_at TEXT NOT NULL DEFAULT '',
+                consumed_by TEXT NOT NULL DEFAULT '',
+                revoked_at TEXT NOT NULL DEFAULT '',
+                revoked_by TEXT NOT NULL DEFAULT '',
+                revoke_reason TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_effect_approvals_mission
+                ON effect_approvals(mission_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_effect_approvals_status_expiry
+                ON effect_approvals(status, expires_at);
+            CREATE TRIGGER IF NOT EXISTS trg_effect_approvals_no_delete
+                BEFORE DELETE ON effect_approvals
+                BEGIN SELECT RAISE(ABORT, 'effect approval audit records are immutable'); END;
+            """
+        )
+
+    def create_effect_approval(
+            self, *, approval_id: str, token_digest: str,
+            scope_fingerprint: str, mission_id: str, task_id: str,
+            repository: str, ref_name: str, commit_sha: str,
+            provider_id: str, operation_name: str,
+            payload_fingerprint: str, principal_id: str,
+            expires_at: str) -> dict[str, Any]:
+        """Persist a one-time approval; only a token digest is stored."""
+        values = (
+            approval_id, token_digest, scope_fingerprint, mission_id, task_id,
+            repository, ref_name, commit_sha, provider_id, operation_name,
+            payload_fingerprint, principal_id, expires_at,
+        )
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            raise OrgError("كل حقول تفويض الأثر مطلوبة")
+        now = self._now()
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO effect_approvals "
+                "(id, token_digest, scope_fingerprint, mission_id, task_id, "
+                "repository, ref_name, commit_sha, provider_id, operation_name, "
+                "payload_fingerprint, principal_id, expires_at, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?)",
+                (*values, now),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'effect_approval.issued', ?, ?)",
+                (now, principal_id, approval_id, json.dumps(
+                    {"mission_id": mission_id, "task_id": task_id,
+                     "provider_id": provider_id, "operation_name": operation_name,
+                     "repository": repository, "ref_name": ref_name,
+                     "commit_sha": commit_sha, "expires_at": expires_at},
+                    sort_keys=True, ensure_ascii=False)),
+            )
+        return {"id": approval_id, "status": "issued", "expires_at": expires_at}
+
+    def consume_effect_approval(
+            self, *, token_digest: str, scope_fingerprint: str,
+            principal_id: str, now: str) -> dict[str, Any]:
+        """Atomically consume an exact-scope approval once, under BEGIN IMMEDIATE."""
+        outcome: dict[str, Any] | None = None
+        error = ""
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT * FROM effect_approvals WHERE token_digest=?",
+                (token_digest,),
+            ).fetchone()
+            if row is None:
+                error = "تفويض الأثر غير موجود"
+            elif row["status"] != "issued":
+                error = f"تفويض الأثر غير متاح: {row['status']}"
+            elif row["expires_at"] <= now:
+                self._conn.execute(
+                    "UPDATE effect_approvals SET status='expired' WHERE id=? AND status='issued'",
+                    (row["id"],),
+                )
+                self._conn.execute(
+                    "INSERT INTO audit (ts, actor, action, ref, details) "
+                    "VALUES (?, ?, 'effect_approval.expired', ?, '{}')",
+                    (now, principal_id, row["id"]),
+                )
+                error = "انتهت صلاحية تفويض الأثر"
+            elif row["scope_fingerprint"] != scope_fingerprint:
+                error = "نطاق التفويض لا يطابق الطلب"
+            elif row["principal_id"] != principal_id:
+                error = "هوية المنفذ لا تطابق صاحب التفويض"
+            else:
+                changed = self._conn.execute(
+                    "UPDATE effect_approvals SET status='consumed', consumed_at=?, "
+                    "consumed_by=? WHERE id=? AND status='issued'",
+                    (now, principal_id, row["id"]),
+                ).rowcount
+                if changed != 1:
+                    error = "تم استهلاك التفويض بالتزامن"
+                else:
+                    self._conn.execute(
+                        "INSERT INTO audit (ts, actor, action, ref, details) "
+                        "VALUES (?, ?, 'effect_approval.consumed', ?, '{}')",
+                        (now, principal_id, row["id"]),
+                    )
+                    outcome = dict(row)
+                    outcome.update(status="consumed", consumed_at=now,
+                                   consumed_by=principal_id)
+        if error:
+            raise OrgError(error)
+        if outcome is None:
+            raise OrgError("تعذر استهلاك تفويض الأثر")
+        return outcome
+
+    def revoke_effect_approval(
+            self, approval_id: str, *, principal_id: str, reason: str) -> None:
+        principal_id = principal_id.strip() if isinstance(principal_id, str) else ""
+        reason = reason.strip() if isinstance(reason, str) else ""
+        if not principal_id or not reason:
+            raise OrgError("هوية الملغي وسبب الإلغاء مطلوبان")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT status FROM effect_approvals WHERE id=?", (approval_id,)
+            ).fetchone()
+            if row is None:
+                raise OrgError(f"تفويض غير موجود: {approval_id}")
+            if row["status"] != "issued":
+                raise OrgError(f"لا يمكن إلغاء تفويض حالته {row['status']}")
+            self._conn.execute(
+                "UPDATE effect_approvals SET status='revoked', revoked_at=?, "
+                "revoked_by=?, revoke_reason=? WHERE id=? AND status='issued'",
+                (now, principal_id, reason, approval_id),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'effect_approval.revoked', ?, ?)",
+                (now, principal_id, approval_id,
+                 json.dumps({"reason": reason}, ensure_ascii=False)),
+            )
+
+    def effect_approval_get(self, approval_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT id, scope_fingerprint, mission_id, task_id, repository, "
+            "ref_name, commit_sha, provider_id, operation_name, "
+            "payload_fingerprint, principal_id, expires_at, status, created_at, "
+            "consumed_at, consumed_by, revoked_at, revoked_by, revoke_reason "
+            "FROM effect_approvals WHERE id=?", (approval_id,)
+        ).fetchone()
+        return dict(row) if row is not None else None
 
     # ── سجل الآثار الخارجية ────────────────────────────────────────────────
 
