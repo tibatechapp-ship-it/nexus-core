@@ -188,10 +188,11 @@ class AgentRuntime:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
-            except Exception as exc:
+            except ProviderError as exc:
+                # ProviderError is the adapter's confirmed call-failure contract.
+                # Unexpected exceptions leave the reservation held: remote outcome
+                # may be uncertain, so never refund capacity speculatively.
                 self._release_output_budget(reservation, "provider call failed")
-                if not isinstance(exc, ProviderError):
-                    raise
                 last_error = str(exc)
                 latency = (time.time() - t0) * 1000.0
                 self._record(spec, None, attempt, latency, f"error: {last_error}")
@@ -219,10 +220,11 @@ class AgentRuntime:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
-            except Exception as exc:
+            except ProviderError as exc:
+                # ProviderError is the adapter's confirmed call-failure contract.
+                # Unexpected exceptions leave the reservation held: remote outcome
+                # may be uncertain, so never refund capacity speculatively.
                 self._release_output_budget(reservation, "provider call failed")
-                if not isinstance(exc, ProviderError):
-                    raise
                 last_error = str(exc)
                 self._record(spec, None, attempt,
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
