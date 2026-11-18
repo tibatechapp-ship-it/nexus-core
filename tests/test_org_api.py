@@ -85,6 +85,30 @@ class TestWriteEndpointsAuth:
         assert resp.json()["title"] == "مهمة"
         assert len(org.mission_list()) == 1
 
+    def test_create_mission_persists_output_token_limit(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        resp = http.post("/org/missions", json={
+            "title": "bounded API", "objective": "cap",
+            "output_token_limit": 12000,
+        }, headers=AUTH)
+        assert resp.status_code == 200
+        mission_id = resp.json()["id"]
+        assert resp.json()["output_token_limit"] == 12000
+        budget = org.mission_token_budget_get(mission_id)
+        assert budget is not None and budget["output_token_limit"] == 12000
+
+    @pytest.mark.parametrize("invalid", [True, 0, -1, "12000", 2**63])
+    def test_create_mission_rejects_invalid_output_token_limit(
+            self, client: tuple[TestClient, OrgStore], invalid: object) -> None:
+        http, org = client
+        resp = http.post("/org/missions", json={
+            "title": "invalid API", "objective": "must reject",
+            "output_token_limit": invalid,
+        }, headers=AUTH)
+        assert resp.status_code == 422
+        assert org.mission_list() == []
+
     def test_decide_approval_requires_token(
             self, client: tuple[TestClient, OrgStore]) -> None:
         http, org = client
