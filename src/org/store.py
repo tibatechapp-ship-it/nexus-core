@@ -497,6 +497,7 @@ class OrgStore:
                 operation_name TEXT NOT NULL,
                 payload_fingerprint TEXT NOT NULL,
                 principal_id TEXT NOT NULL,
+                issuer_principal_id TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 status TEXT NOT NULL CHECK(status IN
                     ('issued','consumed','revoked','expired')),
@@ -523,23 +524,31 @@ class OrgStore:
             repository: str, ref_name: str, commit_sha: str,
             provider_id: str, operation_name: str,
             payload_fingerprint: str, principal_id: str,
-            expires_at: str) -> dict[str, Any]:
+            issuer_principal_id: str, expires_at: str) -> dict[str, Any]:
         """Persist a one-time approval; only a token digest is stored."""
         values = (
             approval_id, token_digest, scope_fingerprint, mission_id, task_id,
             repository, ref_name, commit_sha, provider_id, operation_name,
-            payload_fingerprint, principal_id, expires_at,
+            payload_fingerprint, principal_id, issuer_principal_id, expires_at,
         )
         if not all(isinstance(value, str) and value.strip() for value in values):
             raise OrgError("كل حقول تفويض الأثر مطلوبة")
         now = self._now()
         with self._conn:
+            mission = self._conn.execute(
+                "SELECT 1 FROM missions WHERE id=?", (mission_id,)
+            ).fetchone()
+            task = self._conn.execute(
+                "SELECT 1 FROM tasks WHERE id=? AND mission_id=?", (task_id, mission_id)
+            ).fetchone()
+            if mission is None or task is None:
+                raise OrgError("المهمة أو المهمة الفرعية غير موجودة أو غير متطابقة")
             self._conn.execute(
                 "INSERT INTO effect_approvals "
                 "(id, token_digest, scope_fingerprint, mission_id, task_id, "
                 "repository, ref_name, commit_sha, provider_id, operation_name, "
-                "payload_fingerprint, principal_id, expires_at, status, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?)",
+                "payload_fingerprint, principal_id, issuer_principal_id, expires_at, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?)",
                 (*values, now),
             )
             self._conn.execute(
