@@ -522,3 +522,94 @@ class TestExplicitMissionResume:
         assert calls == ["baseline", "qa", "security", "verification", "release"]
         assert orchestrator.org_store.task_get(review.id)["state"] == "done"
         assert len(orchestrator.org_store.task_attempts_for(review.id)) == 1
+
+
+class TestProcessInterruptionRecovery:
+    def test_reconstructs_orchestrator_after_process_interruption(
+            self, tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A fresh store/orchestrator resumes from the last durable checkpoint."""
+        from pathlib import Path
+
+        class SimulatedProcessCrash(BaseException):
+            pass
+
+        root = Path(tmp_path)  # type: ignore[arg-type]
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        database = root / "org.sqlite3"
+        state_root = root / "mission-state"
+        first_store = OrgStore(database)
+        first_ops = OpsStore(":memory:")
+        first = ExecutiveOrchestrator(
+            first_store, first_ops, pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "first-run"), max_revision_loops=1,
+            state_root=state_root,
+        )
+
+        original_run_wave = first._run_wave
+
+        def interrupt_after_first_durable_task(
+                plan: object, ctx: MissionContext, phase: str, dept: str) -> None:
+            original_run_wave(plan, ctx, phase, dept)  # type: ignore[arg-type]
+            if dept == "executive":
+                raise SimulatedProcessCrash("simulated process termination")
+
+        monkeypatch.setattr(first, "_run_wave", interrupt_after_first_durable_task)
+        with pytest.raises(SimulatedProcessCrash):
+            first.execute(Mission(
+                title="process interruption recovery",
+                objective="resume only work not durably completed",
+                repo_path=str(repo),
+            ))
+
+        mission_rows = first_store._conn.execute(
+            "SELECT id, phase, status FROM missions"
+        ).fetchall()
+        assert len(mission_rows) == 1
+        mission_id = str(mission_rows[0]["id"])
+        assert mission_rows[0]["phase"] == "A_REQUIREMENTS"
+        assert mission_rows[0]["status"] == "running"
+        initial_tasks = first_store.tasks_for_mission(mission_id)
+        executive = next(row for row in initial_tasks if row["dept"] == "executive")
+        assert executive["state"] == "done"
+        assert len(first_store.task_attempts_for(executive["id"])) == 1
+        checkpoint = first_store.mission_context_snapshot_get(mission_id)
+        assert checkpoint is not None
+        assert checkpoint["payload"]["context"]["execution_policy"]["schema_version"] == 1
+
+        # Close the old SQLite handle to model a dead process, then reconstruct
+        # every runtime object against the same durable database and state root.
+        first_store._conn._conn.close()
+        second_store = OrgStore(database)
+        second = ExecutiveOrchestrator(
+            second_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "second-run"), max_revision_loops=99,
+            state_root=state_root,
+        )
+
+        resumed = second.resume_mission(
+            mission_id, actor="operator",
+            reason="resume after verifying the prior process stopped",
+            expected_repo_root=repo,
+        )
+
+        assert resumed.status == "done"
+        assert resumed.phase == "G_RELEASE"
+        final_tasks = second_store.tasks_for_mission(mission_id)
+        final_by_id = {row["id"]: row for row in final_tasks}
+        assert set(final_by_id) == {row["id"] for row in initial_tasks}
+        assert final_by_id[executive["id"]]["state"] == "done"
+        assert len(second_store.task_attempts_for(executive["id"])) == 1
+        assert all(row["state"] == "done" for row in final_tasks)
+        assert all(
+            len(second_store.task_attempts_for(row["id"])) == 1
+            for row in final_tasks
+        )
+        runs = second_store.mission_resume_runs_for(mission_id)
+        assert len(runs) == 1
+        assert runs[0]["status"] == "completed"
+        # The persisted policy wins over the new process's different runtime
+        # configuration; the resumed mission retained its original limit.
+        latest = second_store.mission_context_snapshot_get(mission_id)
+        assert latest is not None
+        assert latest["payload"]["context"]["execution_policy"]["max_revision_loops"] == 1
