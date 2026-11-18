@@ -9,7 +9,7 @@ serializable MissionContext fields used by later departments, including the
 repository map, affected-file map, original file contents, diffs, test/security
 reports, review decision, claims, release text, and usage counters.
 
-When a worktree exists, its files are copied to a mission-scoped persistent
+Each checkpoint also records a digest of the durable task ledger (task identity, inputs, states, attempts, results, and update timestamps). Restore rejects a checkpoint if task state advanced after that context was captured, closing the crash window between task completion and checkpoint persistence.\n\nWhen a worktree exists, its files are copied to a mission-scoped persistent
 state directory outside the source repository. Each checkpoint receives its
 own immutable worktree copy and SHA-256 tree fingerprint. The live temporary
 worktree remains owned by the active execution and may still be cleaned up
@@ -52,7 +52,7 @@ collection is intentionally not automatic.
 
 - Checkpoint records are append-only; each references its repository and
   worktree fingerprints.
-- The system rejects source or worktree drift before context restoration.
+- The system rejects source, worktree, or task-ledger drift before context restoration.
 - No automatic retry, task claim, or agent execution occurs during restore.
 - A tree fingerprint proves byte-level identity for the included files; it
   does not prove that external services, databases, credentials, or remote
