@@ -221,12 +221,18 @@ def save_mission_context_snapshot(
             "usage": _json_value(ctx.usage),
         },
     }
-    return store.save_mission_context_snapshot(
-        mission.id, payload, repo_fingerprint,
-        worktree_path=worktree_path,
-        worktree_fingerprint=worktree_fingerprint,
-        schema_version=CONTEXT_SNAPSHOT_SCHEMA,
-    )
+    try:
+        return store.save_mission_context_snapshot(
+            mission.id, payload, repo_fingerprint,
+            worktree_path=worktree_path,
+            worktree_fingerprint=worktree_fingerprint,
+            schema_version=CONTEXT_SNAPSHOT_SCHEMA,
+        )
+    except Exception:
+        # A failed DB commit must not leave an unreferenced persistent worktree.
+        if worktree_path:
+            shutil.rmtree(worktree_path, ignore_errors=True)
+        raise
 
 
 def restore_mission_context(
@@ -250,7 +256,10 @@ def restore_mission_context(
     if not expected_ledger or _task_ledger_digest(store, mission_id) != expected_ledger:
         raise OrgError(
             "سجل المهام تغيّر بعد آخر checkpoint؛ السياق غير متزامن ويتطلب مراجعة")
-    repo_root = Path(mission.repo_path).resolve(strict=True)
+    try:
+        repo_root = Path(mission.repo_path).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise OrgError("المستودع الأصلي غير متاح؛ استعادة السياق مرفوضة") from exc
     if expected_repo_root is not None and repo_root != Path(expected_repo_root).resolve():
         raise OrgError("مسار المستودع الحالي لا يطابق مسار المهمة المحفوظ")
     current_fingerprint = fingerprint_directory(repo_root)
