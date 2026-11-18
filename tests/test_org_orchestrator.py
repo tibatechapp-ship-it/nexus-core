@@ -896,29 +896,23 @@ class TestCheckpointBeforePhaseTransition:
         ))
         plan = first.plan(mission)
 
-        # A_REQUIREMENTS contains only executive tasks. Complete that
-        # phase and leave every later phase pending, exactly as the resume
-        # preflight requires when the phase transition has not yet committed.
+        # Execute the requirements phase normally so its durable result and
+        # the context checkpoint contain the real acceptance criteria/state.
+        # Simulate the crash only after that checkpoint, before phase advance.
+        context = MissionContext(mission=mission, execution_policy={
+            "schema_version": 1, "max_revision_loops": 1,
+        })
         completed_ids = set()
         for task in plan.tasks:
             if task.dept != "executive":
                 continue
-            claim = first_store.claim_task(
-                task.id, worker_id="interrupted-before-phase-advance")
-            assert claim is not None
-            first_store.finish_claimed_task(
-                task.id, str(claim["lease_token"]),
-                {"summary": "requirements durably completed"})
+            first._execute_task(task, context)
             completed_ids.add(task.id)
 
         assert completed_ids
-        save_mission_context_snapshot(
-            first_store,
-            MissionContext(mission=mission, execution_policy={
-                "schema_version": 1, "max_revision_loops": 1,
-            }),
-            state_root,
-        )
+        # Re-save explicitly to make the intended crash boundary unambiguous:
+        # task ledger and matching context snapshot are durable; phase is stale.
+        save_mission_context_snapshot(first_store, context, state_root)
         attempts_before = {
             task.id: len(first_store.task_attempts_for(task.id))
             for task in plan.tasks
@@ -944,10 +938,17 @@ class TestCheckpointBeforePhaseTransition:
         assert resumed.phase == "G_RELEASE"
         rows = second_store.tasks_for_mission(mission.id)
         assert all(row["state"] == "done" for row in rows)
-        assert {
+        attempts_after = {
             row["id"]: len(second_store.task_attempts_for(row["id"]))
             for row in rows
-        } == attempts_before
+        }
+        # The completed requirements task must not be replayed; every task
+        # that was pending at the crash boundary executes exactly once.
+        assert all(attempts_after[task_id] == 1 for task_id in completed_ids)
+        assert all(
+            attempts_after[task_id] == 1
+            for task_id in set(attempts_before) - completed_ids
+        )
         runs = second_store.mission_resume_runs_for(mission.id)
         assert len(runs) == 1
         assert runs[0]["status"] == "completed"
