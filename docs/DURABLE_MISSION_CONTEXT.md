@@ -66,8 +66,8 @@ collection is intentionally not automatic.
 
 ## Explicit continuation
 
-Call `resume_mission(mission_id, expected_repo_root=...)` only after an
-operator or supervising caller has decided to continue the mission. The method
+Call `resume_mission(mission_id, actor=..., reason=..., expected_repo_root=...)` only after an
+operator or supervising caller has decided to continue the mission. The actor and non-empty reason are required and recorded in the audit log. The method
 performs the read-only task-graph preflight and checkpoint restoration first.
 It then rebuilds task specifications from persisted rows, preserving every
 task ID and dependency, and dispatches pending work from the recorded phase.
