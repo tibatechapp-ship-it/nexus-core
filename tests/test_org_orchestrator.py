@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from src.org.contracts import Mission
@@ -158,8 +160,7 @@ class TestRevisionLoop:
         assert len(development_tasks) == 2
         revisions = sorted(
             (row for row in development_tasks),
-            key=lambda row: int(__import__("json").loads(row["params"]).get(
-                "revision", 0)),
+            key=lambda row: int(json.loads(row["params"]).get("revision", 0)),
         )
         assert revisions[0]["state"] == "done"
         assert revisions[1]["state"] == "done"
