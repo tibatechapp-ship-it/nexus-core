@@ -22,7 +22,7 @@ from src.org.providers import (
     ProviderError,
     ProviderPool,
 )
-from src.org.store import OrgStore
+from src.org.store import OrgError, OrgStore
 
 
 @pytest.fixture()
@@ -145,7 +145,7 @@ class TestAskJson:
         mission = store.create_mission(Mission(title="blocked", objective="no dispatch"))
         store.configure_mission_token_budget(mission.id, 100)
         runtime = AgentRuntime(MustNotRunPool(), ToolRegistry(), store)
-        with pytest.raises(Exception, match="ميزانية توكنات الخرج"):
+        with pytest.raises(OrgError, match="ميزانية توكنات الخرج"):
             runtime.ask_json(
                 _spec(mission_id=mission.id, max_tokens=200), "أجب JSON")
         budget = store.mission_token_budget_get(mission.id)
