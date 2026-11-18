@@ -619,6 +619,97 @@ class OrgStore:
                 "SELECT * FROM external_operations WHERE operation_key=?",
                 (operation_key,)).fetchone())
 
+    def mark_external_operation_uncertain(
+            self, operation_key: str, attempt_token: str, reason: str) -> dict[str, Any]:
+        """Recover an abandoned in-flight attempt without making it retryable."""
+        if not all(isinstance(value, str) and value.strip()
+                   for value in (operation_key, attempt_token, reason)):
+            raise OrgError("مفتاح العملية ورمز المحاولة وسبب عدم اليقين مطلوبة")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            attempt = self._conn.execute(
+                """SELECT attempt_no FROM external_operation_attempts
+                   WHERE operation_key=? AND attempt_token=? AND state='in_flight'""",
+                (operation_key, attempt_token)).fetchone()
+            current = self._conn.execute(
+                """SELECT state, attempt_token FROM external_operations
+                   WHERE operation_key=?""", (operation_key,)).fetchone()
+            if (attempt is None or current is None or current["state"] != "in_flight"
+                    or current["attempt_token"] != attempt_token):
+                raise OrgError("لا يمكن استعادة محاولة غير نشطة أو برمز قديم")
+            self._conn.execute(
+                """UPDATE external_operation_attempts
+                   SET state='uncertain', finished_at=?, error=?
+                   WHERE operation_key=? AND attempt_token=? AND state='in_flight'""",
+                (now, reason, operation_key, attempt_token))
+            self._conn.execute(
+                """UPDATE external_operations
+                   SET state='uncertain', error=?, updated_at=?
+                   WHERE operation_key=? AND attempt_token=? AND state='in_flight'""",
+                (reason, now, operation_key, attempt_token))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) VALUES "
+                "(?, 'org', 'external_operation.recovered_uncertain', ?, ?)",
+                (now, operation_key, json.dumps(
+                    {"attempt_no": attempt["attempt_no"], "reason": reason},
+                    sort_keys=True, ensure_ascii=False)))
+            return dict(self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?",
+                (operation_key,)).fetchone())
+
+    def reconcile_external_operation(
+            self, operation_key: str, attempt_token: str, *,
+            outcome: str, evidence: dict[str, Any], reconciled_by: str) -> dict[str, Any]:
+        """Resolve uncertain work only with explicit provider/operator evidence."""
+        if outcome not in {"succeeded", "failed_definitive"}:
+            raise OrgError("نتيجة المصالحة يجب أن تكون succeeded أو failed_definitive")
+        if not all(isinstance(value, str) and value.strip()
+                   for value in (operation_key, attempt_token, reconciled_by)):
+            raise OrgError("هوية العملية والمحاولة والمنفذ مطلوبة")
+        if not isinstance(evidence, dict) or not evidence:
+            raise OrgError("أدلة المصالحة مطلوبة")
+        try:
+            encoded = json.dumps(
+                evidence, sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise OrgError(f"أدلة المصالحة غير قابلة للتسلسل: {exc}") from exc
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            attempt = self._conn.execute(
+                """SELECT attempt_no FROM external_operation_attempts
+                   WHERE operation_key=? AND attempt_token=? AND state='uncertain'""",
+                (operation_key, attempt_token)).fetchone()
+            current = self._conn.execute(
+                """SELECT state, attempt_token FROM external_operations
+                   WHERE operation_key=?""", (operation_key,)).fetchone()
+            if (attempt is None or current is None or current["state"] != "uncertain"
+                    or current["attempt_token"] != attempt_token):
+                raise OrgError("المصالحة تتطلب عملية uncertain ورمز المحاولة الحالي")
+            self._conn.execute(
+                """UPDATE external_operation_attempts
+                   SET state=?, error=?, finished_at=?
+                   WHERE operation_key=? AND attempt_token=? AND state='uncertain'""",
+                (outcome, f"reconciled_by={reconciled_by}", now,
+                 operation_key, attempt_token))
+            self._conn.execute(
+                """UPDATE external_operations
+                   SET state='reconciled', result_payload=?, error=?, updated_at=?
+                   WHERE operation_key=? AND attempt_token=? AND state='uncertain'""",
+                (encoded, f"outcome={outcome}; reconciled_by={reconciled_by}",
+                 now, operation_key, attempt_token))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) VALUES "
+                "(?, 'org', 'external_operation.reconciled', ?, ?)",
+                (now, reconciled_by, operation_key, json.dumps(
+                    {"outcome": outcome, "attempt_no": attempt["attempt_no"],
+                     "evidence": evidence}, sort_keys=True, ensure_ascii=False)))
+            return dict(self._conn.execute(
+                "SELECT * FROM external_operations WHERE operation_key=?",
+                (operation_key,)).fetchone())
+
     def external_operation_get(self, operation_key: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM external_operations WHERE operation_key=?",
