@@ -127,3 +127,19 @@ class TestPipelineBudgetLifecycle:
         assert budget["consumed_output_tokens"] > 0
         assert budget["reserved_output_tokens"] == 0
         assert budget["consumed_output_tokens"] <= 200000
+
+
+def test_cli_exposes_and_validates_mission_output_token_cap() -> None:
+    from src.org.cli import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args([
+        "mission", "--title", "bounded", "--objective", "test",
+        "--max-output-tokens", "15000",
+    ])
+    assert args.max_output_tokens == 15000
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "mission", "--title", "bounded", "--objective", "test",
+            "--max-output-tokens", "0",
+        ])
