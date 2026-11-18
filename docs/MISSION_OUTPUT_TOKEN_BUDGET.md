@@ -4,15 +4,27 @@ NEXUS can enforce an optional, durable output-token budget per mission.
 
 ## Configure a budget
 
-Configure the budget after creating the mission and before dispatching agents:
+Pass the optional limit to the orchestrator or pipeline. The orchestrator persists it immediately after creating the mission and before the first agent dispatch:
 
 ```python
-mission = org_store.create_mission(mission)
-org_store.configure_mission_output_token_budget(
-    mission.id,
-    limit_tokens=20_000,
+mission = orchestrator.execute(
+    mission,
+    output_token_budget=20_000,
 )
 ```
+
+The high-level pipeline exposes the same keyword:
+
+```python
+report = pipeline.run(
+    title="Review service",
+    objective="Find and fix the confirmed defect",
+    repo_path="/workspace/service",
+    output_token_budget=20_000,
+)
+```
+
+For operator-managed workflows, `OrgStore.configure_mission_output_token_budget(mission_id, limit_tokens)` remains available directly.
 
 The shared `AgentRuntime` checks the ledger before every model attempt. It reserves the agent contract's `AgentSpec.max_tokens` in a SQLite `BEGIN IMMEDIATE` transaction. If the remaining budget cannot cover the reservation, it raises `OrgError` before calling the provider.
 
