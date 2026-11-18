@@ -563,8 +563,14 @@ class OrgStore:
                    for v in (actor, reason, decision_key)):
             raise OrgError("actor وreason وdecision_key مطلوبة")
         refs = list(evidence_refs or [])
+        if any(not isinstance(ref, str) or not ref.strip() for ref in refs):
+            raise OrgError("مراجع الأدلة يجب أن تكون نصوصًا غير فارغة")
+        if len(refs) != len(set(refs)):
+            raise OrgError("مراجع الأدلة المكررة مرفوضة")
         now = self._now()
         with self._conn:
+            # Serialize decisions across separate SQLite connections.
+            self._conn.execute("BEGIN IMMEDIATE")
             row = self._conn.execute(
                 "SELECT * FROM tasks WHERE id = ?", (task_id,)
             ).fetchone()
@@ -575,9 +581,22 @@ class OrgStore:
                 (task_id, decision_key),
             ).fetchone()
             if existing:
-                if existing["action"] != action or existing["actor"] != actor:
-                    raise OrgError("decision_key مستخدم لقرار مختلف")
+                stored_refs = json.loads(existing["evidence_refs"] or "[]")
+                if (existing["action"] != action
+                        or existing["actor"] != actor.strip()
+                        or existing["reason"] != reason.strip()
+                        or stored_refs != refs):
+                    raise OrgError("decision_key مستخدم لبيانات قرار مختلفة")
                 return dict(existing)
+            if action != "manual_hold":
+                prior_terminal = self._conn.execute(
+                    """SELECT id FROM task_reconciliations
+                       WHERE task_id=? AND action IN
+                       ('mark_failed','mark_completed_with_evidence','retry_authorized')
+                       LIMIT 1""", (task_id,)
+                ).fetchone()
+                if prior_terminal:
+                    raise OrgError("سبق حسم المهمة بقرار نهائي")
             state = str(row["state"])
             if state not in {"running", "failed"}:
                 raise OrgError(f"لا يمكن مصالحة مهمة بحالة {state}")
@@ -585,8 +604,13 @@ class OrgStore:
                           "retry_authorized"} and state == "running":
                 expiry = str(row["lease_expires_at"] or "")
                 try:
-                    expired = bool(expiry) and datetime.fromisoformat(expiry) <= datetime.now(timezone.utc)
-                except ValueError:
+                    expires_at = datetime.fromisoformat(expiry) if expiry else None
+                    if expires_at is not None and expires_at.tzinfo is None:
+                        raise ValueError("lease expiry must be timezone-aware")
+                    expired = (expires_at is not None
+                               and expires_at.astimezone(timezone.utc)
+                               <= datetime.now(timezone.utc))
+                except (TypeError, ValueError):
                     expired = False
                 if not expired:
                     raise OrgError("لا يمكن حسم مطالبة running قبل انتهاء lease")
