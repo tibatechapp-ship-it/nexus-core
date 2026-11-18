@@ -129,8 +129,6 @@ def test_resume_preflight_rejects_uncertain_running_task() -> None:
 
 
 def test_resume_preflight_rejects_dependency_cycles() -> None:
-    from dataclasses import replace
-
     store = OrgStore(":memory:")
     mission = store.create_mission(Mission(
         title="cycle", objective="reject cycle", status="running"
