@@ -184,7 +184,16 @@ class ExecutiveOrchestrator:
             self._run_wave(plan, ctx, phase="C_DEVELOP", dept="development")
             # بوابة المراجعة مع دورة إصلاح محدودة
             loops = 0
+            review_round = 0
             while True:
+                review_round += 1
+                if review_round > 1:
+                    previous_dev = max(
+                        (task for task in plan.tasks
+                         if task.dept == "development"),
+                        key=lambda task: int(task.params.get("revision", 0)),
+                    )
+                    self._queue_review_round(plan, previous_dev, review_round)
                 self._advance_phase(mission, self._current_phase(mission),
                                     "D_REVIEW")
                 review_ok = self._run_review_gate(plan, ctx)
@@ -329,56 +338,123 @@ class ExecutiveOrchestrator:
 
     # ── البوابات ──────────────────────────────────────────────────────────
 
+    def _queue_review_round(
+            self, plan: ExecutionPlan, development_task: TaskSpec,
+            round_number: int) -> TaskSpec:
+        """إنشاء سجل مراجعة مستقل لكل نسخة تطوير؛ لا إعادة فتح مهمة سابقة."""
+        if round_number < 2:
+            raise OrgError("جولة المراجعة الإضافية يجب أن تبدأ من الجولة الثانية")
+        spec = plan.add(
+            "code_review", "council",
+            f"مراجعة مستقلة — round {round_number} بعد {development_task.id}",
+            deps=[development_task.id],
+            params={
+                "round": round_number,
+                "reviews_development_task_id": development_task.id,
+            },
+        )
+        self.org_store.add_task(spec)
+        self.org_store.audit(
+            "task.review_round_queued", spec.id,
+            {
+                "round": round_number,
+                "reviews_development_task_id": development_task.id,
+            },
+        )
+        return spec
+
     def _run_review_gate(self, plan: ExecutionPlan,
                          ctx: MissionContext) -> bool:
-        """بوابة المراجعة — مجلس مستقل على الرقعة، أسباب موثقة."""
+        """بوابة مراجعة ذات مطالبة دائمة مستقلة مرتبطة بنسخة التطوير الحالية."""
+        development_task = max(
+            (task for task in plan.tasks if task.dept == "development"),
+            key=lambda task: int(task.params.get("revision", 0)),
+        )
         review_task = next(
-            (t for t in plan.tasks if t.dept == "code_review"), None)
-        decision, reviews = self.depts.council.review_with_debate(
-            ctx.mission.id, review_task.id if review_task else "",
-            dev_role="dev:backend", diff_text=ctx.diff_text,
-            notes=ctx.dev_notes)
-        if review_task is not None:
-            self.org_store.task_set_state(review_task.id, "done",
-                                          result={"verdict": decision.verdict,
-                                                  "mean": decision.mean_score})
-        ctx.council = decision
-        for review in reviews:
-            for issue in review.issues:
-                sev = str(issue.get("severity", "low"))
-                if sev not in ("critical", "high", "medium", "low", "info"):
-                    sev = "low"
-                self.org_store.add_finding(
-                    Finding(mission_id=ctx.mission.id, source="review",
+            (
+                task for task in reversed(plan.tasks)
+                if task.dept == "code_review"
+                and development_task.id in task.deps
+                and (self.org_store.task_get(task.id) or {}).get("state")
+                == "pending"
+            ),
+            None,
+        )
+        if review_task is None:
+            raise OrgError(
+                "لا توجد مهمة مراجعة معلّقة مرتبطة بنسخة التطوير الحالية")
+        claim = self.org_store.claim_task(
+            review_task.id, worker_id="nexus-orchestrator:code_review")
+        if claim is None:
+            raise OrgError(f"مهمة المراجعة غير متاحة للمطالبة: {review_task.id}")
+        lease_token = str(claim["lease_token"])
+        try:
+            decision, reviews = self.depts.council.review_with_debate(
+                ctx.mission.id, review_task.id,
+                dev_role="dev:backend", diff_text=ctx.diff_text,
+                notes=ctx.dev_notes)
+            ctx.council = decision
+            for review in reviews:
+                for issue in review.issues:
+                    sev = str(issue.get("severity", "low"))
+                    if sev not in ("critical", "high", "medium", "low", "info"):
+                        sev = "low"
+                    self.org_store.add_finding(
+                        Finding(mission_id=ctx.mission.id, source="review",
                                 category=f"review:{review.lens}",
                                 severity=sev,
                                 description=str(issue.get("message", "")),
                                 file=str(issue.get("file", "")),
                                 line=int(issue.get("line", 0) or 0)))
-        self.org_store.audit("gate.review", ctx.mission.id,
-                             {"verdict": decision.verdict,
-                              "mean": decision.mean_score,
-                              "rounds": decision.rounds})
-        return decision.verdict == "approve"
+            result = {
+                "verdict": decision.verdict,
+                "mean": decision.mean_score,
+                "rounds": decision.rounds,
+                "development_task_id": development_task.id,
+            }
+            self.org_store.audit("gate.review", ctx.mission.id, result)
+            self.org_store.finish_claimed_task(
+                review_task.id, lease_token, result)
+            return decision.verdict == "approve"
+        except Exception as exc:  # noqa: BLE001 — المطالبة تُنهى أو تفشل صراحة
+            self.org_store.fail_claimed_task(
+                review_task.id, lease_token,
+                f"{type(exc).__name__}: {exc}")
+            raise
 
     def _run_verification_gate(self, mission: Mission, plan: ExecutionPlan,
                                ctx: MissionContext) -> bool:
-        """بوابة التحقق — حسم كل ادعاء وإعادة إنتاج الإصلاح."""
-        test_target = (ctx.affected.get("test_files") or [""])[0]
-        report = self.verification.verify_mission(
-            mission, ctx.claims,
-            self.org_store.evidence_for(mission.id),
-            ctx.worktree, test_target=test_target)
+        """بوابة تحقق بمطالبة دائمة؛ الرفض نتيجة مكتملة لا إعادة تشغيل تلقائية."""
         verify_task = next(
-            (t for t in plan.tasks if t.dept == "verification"), None)
-        if verify_task is not None:
-            self.org_store.task_set_state(
-                verify_task.id, "done",
-                result={"verified": report.verified,
-                        "rejected": report.rejected,
-                        "reproduced": report.reproduced_fix})
-        self.org_store.audit("gate.verification", mission.id, report.to_dict())
-        return not report.rejected
+            (task for task in plan.tasks if task.dept == "verification"), None)
+        if verify_task is None:
+            raise OrgError("مهمة التحقق غير موجودة في خطة المهمة")
+        claim = self.org_store.claim_task(
+            verify_task.id, worker_id="nexus-orchestrator:verification")
+        if claim is None:
+            raise OrgError(f"مهمة التحقق غير متاحة للمطالبة: {verify_task.id}")
+        lease_token = str(claim["lease_token"])
+        try:
+            test_target = (ctx.affected.get("test_files") or [""])[0]
+            report = self.verification.verify_mission(
+                mission, ctx.claims,
+                self.org_store.evidence_for(mission.id),
+                ctx.worktree, test_target=test_target)
+            result = {
+                "verified": report.verified,
+                "rejected": report.rejected,
+                "reproduced": report.reproduced_fix,
+            }
+            self.org_store.audit(
+                "gate.verification", mission.id, report.to_dict())
+            self.org_store.finish_claimed_task(
+                verify_task.id, lease_token, result)
+            return not report.rejected
+        except Exception as exc:  # noqa: BLE001 — لا نترك بوابة بلا نتيجة دائمة
+            self.org_store.fail_claimed_task(
+                verify_task.id, lease_token,
+                f"{type(exc).__name__}: {exc}")
+            raise
 
     # ── أدوات الحالة ──────────────────────────────────────────────────────
 
