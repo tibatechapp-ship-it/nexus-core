@@ -616,7 +616,7 @@ class OrgStore:
                     raise OrgError("لا يمكن حسم مطالبة running قبل انتهاء lease")
             if action == "mark_completed_with_evidence":
                 if not refs:
-                    raise OrgError("إكمال المهمة يتطلب مراجع أدلة")
+                    raise OrgError("إكمال المهمة يتطلب مراجع الأدلة")
                 placeholders = ",".join("?" for _ in refs)
                 evidence_rows = self._conn.execute(
                     f"SELECT id FROM evidence WHERE mission_id=? AND ok=1 AND id IN ({placeholders})",
