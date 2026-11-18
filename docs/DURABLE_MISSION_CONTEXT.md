@@ -61,3 +61,15 @@ collection is intentionally not automatic.
   digest remains required.
 - This feature does not provide exactly-once external side effects.
 - Human approval remains mandatory for release/merge.
+
+## Explicit continuation
+
+Call `resume_mission(mission_id, expected_repo_root=...)` only after an
+operator or supervising caller has decided to continue the mission. The method
+performs the read-only task-graph preflight and checkpoint restoration first.
+It then rebuilds task specifications from persisted rows, preserving every
+task ID and dependency, and dispatches pending work from the recorded phase.
+Completed tasks are not replayed. Review decisions are read from their durable
+gate result; verification uses its dedicated gate and persisted result. A
+running, failed, skipped, malformed, or dependency-inconsistent task blocks
+continuation. This is not a lease takeover or an automatic retry mechanism.
