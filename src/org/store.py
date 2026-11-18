@@ -1811,17 +1811,22 @@ class OrgStore:
             if actual_tokens > reserved:
                 raise OrgError("الاستهلاك الفعلي تجاوز الحجز؛ التسوية مرفوضة للمصالحة")
             mission_id = reservation["mission_id"]
-            self._conn.execute(
+            reservation_update = self._conn.execute(
                 "UPDATE mission_token_reservations SET actual_tokens=?, status='settled', "
                 "finished_at=? WHERE id=? AND status='reserved'",
                 (actual_tokens, now, reservation_id))
-            self._conn.execute(
+            if reservation_update.rowcount != 1:
+                raise OrgError("تغيرت حالة الحجز أثناء التسوية؛ أُلغيت المعاملة")
+            budget_update = self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
                 "reserved_output_tokens-?, consumed_output_tokens="
                 "consumed_output_tokens+?, status=CASE WHEN "
                 "consumed_output_tokens+?+reserved_output_tokens-? >= output_token_limit "
-                "THEN 'exhausted' ELSE 'active' END, updated_at=? WHERE mission_id=?",
-                (reserved, actual_tokens, actual_tokens, reserved, now, mission_id))
+                "THEN 'exhausted' ELSE 'active' END, updated_at=? "
+                "WHERE mission_id=? AND reserved_output_tokens>=?",
+                (reserved, actual_tokens, actual_tokens, reserved, now, mission_id, reserved))
+            if budget_update.rowcount != 1:
+                raise OrgError("رصيد الحجز غير متسق؛ أُلغيت التسوية دون تغيير")
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'mission.output_tokens_settled', ?, ?)",
@@ -1845,13 +1850,19 @@ class OrgStore:
                 (reservation_id,)).fetchone()
             if reservation is None or reservation["status"] != "reserved":
                 raise OrgError("حجز التوكنات غير موجود أو تمت معالجته")
-            self._conn.execute(
+            reservation_update = self._conn.execute(
                 "UPDATE mission_token_reservations SET status='released', finished_at=? "
                 "WHERE id=? AND status='reserved'", (now, reservation_id))
-            self._conn.execute(
+            if reservation_update.rowcount != 1:
+                raise OrgError("تغيرت حالة الحجز أثناء التحرير؛ أُلغيت المعاملة")
+            reserved = int(reservation["reserved_tokens"])
+            budget_update = self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
-                "reserved_output_tokens-?, updated_at=? WHERE mission_id=?",
-                (reservation["reserved_tokens"], now, reservation["mission_id"]))
+                "reserved_output_tokens-?, updated_at=? "
+                "WHERE mission_id=? AND reserved_output_tokens>=?",
+                (reserved, now, reservation["mission_id"], reserved))
+            if budget_update.rowcount != 1:
+                raise OrgError("رصيد الحجز غير متسق؛ أُلغيت عملية التحرير دون تغيير")
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'mission.output_tokens_released', ?, ?)",
