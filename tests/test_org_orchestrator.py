@@ -896,25 +896,22 @@ class TestCheckpointBeforePhaseTransition:
         ))
         plan = first.plan(mission)
 
-        # All task outcomes and the matching context snapshot are durable, but
-        # the mission phase intentionally remains A_REQUIREMENTS: this is the
-        # crash window after checkpoint commit and before _advance_phase().
+        # A_REQUIREMENTS contains only executive tasks. Complete that
+        # phase and leave every later phase pending, exactly as the resume
+        # preflight requires when the phase transition has not yet committed.
+        completed_ids = set()
         for task in plan.tasks:
+            if task.dept != "executive":
+                continue
             claim = first_store.claim_task(
                 task.id, worker_id="interrupted-before-phase-advance")
             assert claim is not None
-            if task.dept == "code_review":
-                result = {
-                    "verdict": "approve",
-                    "development_task_id": task.deps[0],
-                }
-            elif task.dept == "verification":
-                result = {"verified": 1, "rejected": 0, "reproduced": True}
-            else:
-                result = {"summary": "durably completed:" + task.dept}
             first_store.finish_claimed_task(
-                task.id, str(claim["lease_token"]), result)
+                task.id, str(claim["lease_token"]),
+                {"summary": "requirements durably completed"})
+            completed_ids.add(task.id)
 
+        assert completed_ids
         save_mission_context_snapshot(
             first_store,
             MissionContext(mission=mission, execution_policy={
