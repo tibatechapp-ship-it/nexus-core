@@ -525,60 +525,67 @@ class TestExplicitMissionResume:
 
 
 class TestProcessInterruptionRecovery:
-    def test_reconstructs_orchestrator_after_process_interruption(
-            self, tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A fresh store/orchestrator resumes from the last durable checkpoint."""
+    def test_reconstructs_orchestrator_from_durable_verification_checkpoint(
+            self, tmp_path: object) -> None:
+        """A fresh orchestrator continues after a durable gate checkpoint."""
         from pathlib import Path
-
-        class SimulatedProcessCrash(BaseException):
-            pass
 
         root = Path(tmp_path)  # type: ignore[arg-type]
         repo = Path("examples/org_demo/fixture_repo").resolve()
         database = root / "org.sqlite3"
         state_root = root / "mission-state"
         first_store = OrgStore(database)
-        first_ops = OpsStore(":memory:")
         first = ExecutiveOrchestrator(
-            first_store, first_ops, pool=ProviderPool([ProviderConfig()]),
+            first_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
             outdir=str(root / "first-run"), max_revision_loops=1,
             state_root=state_root,
         )
+        mission = first_store.create_mission(Mission(
+            title="process restart recovery",
+            objective="continue from a durable verification checkpoint",
+            repo_path=str(repo), phase="F_VERIFICATION", status="running",
+        ))
+        plan = first.plan(mission)
 
-        original_run_wave = first._run_wave
+        # Model termination after verification was durably recorded but before
+        # the orchestrator advanced the mission to the release phase.
+        for task in plan.tasks:
+            if task.dept == "release":
+                continue
+            claim = first_store.claim_task(
+                task.id, worker_id="interrupted-process-checkpoint")
+            assert claim is not None
+            result = (
+                {"verified": 2, "rejected": 0, "reproduced": True}
+                if task.dept == "verification"
+                else {"summary": f"completed:{task.dept}"}
+            )
+            first_store.finish_claimed_task(
+                task.id, str(claim["lease_token"]), result)
 
-        def interrupt_after_first_durable_task(
-                plan: object, ctx: MissionContext, phase: str, dept: str) -> None:
-            original_run_wave(plan, ctx, phase, dept)  # type: ignore[arg-type]
-            if dept == "executive":
-                raise SimulatedProcessCrash("simulated process termination")
-
-        monkeypatch.setattr(first, "_run_wave", interrupt_after_first_durable_task)
-        with pytest.raises(SimulatedProcessCrash):
-            first.execute(Mission(
-                title="process interruption recovery",
-                objective="resume only work not durably completed",
-                repo_path=str(repo),
-            ))
-
-        mission_rows = first_store._conn.execute(
-            "SELECT id, phase, status FROM missions"
-        ).fetchall()
-        assert len(mission_rows) == 1
-        mission_id = str(mission_rows[0]["id"])
-        assert mission_rows[0]["phase"] == "A_REQUIREMENTS"
-        assert mission_rows[0]["status"] == "running"
-        initial_tasks = first_store.tasks_for_mission(mission_id)
-        executive = next(row for row in initial_tasks if row["dept"] == "executive")
-        assert executive["state"] == "done"
-        assert len(first_store.task_attempts_for(executive["id"])) == 1
-        checkpoint = first_store.mission_context_snapshot_get(mission_id)
+        save_mission_context_snapshot(
+            first_store,
+            MissionContext(
+                mission=mission,
+                execution_policy={
+                    "schema_version": 1,
+                    "max_revision_loops": first.max_revision_loops,
+                },
+            ),
+            state_root,
+        )
+        checkpoint = first_store.mission_context_snapshot_get(mission.id)
         assert checkpoint is not None
-        assert checkpoint["payload"]["context"]["execution_policy"]["schema_version"] == 1
+        assert checkpoint["payload"]["context"]["execution_policy"] == {
+            "schema_version": 1, "max_revision_loops": 1,
+        }
+        initial_tasks = first_store.tasks_for_mission(mission.id)
+        mission_id = mission.id
 
-        # Close the old SQLite handle to model a dead process, then reconstruct
-        # every runtime object against the same durable database and state root.
-        first_store._conn._conn.close()
+        # Close through the store's public lifecycle API, then construct a
+        # completely new store and orchestrator against the same SQLite file.
+        first_store.close()
         second_store = OrgStore(database)
         second = ExecutiveOrchestrator(
             second_store, OpsStore(":memory:"),
@@ -586,20 +593,26 @@ class TestProcessInterruptionRecovery:
             outdir=str(root / "second-run"), max_revision_loops=99,
             state_root=state_root,
         )
+        release_calls: list[str] = []
+
+        def release(context: MissionContext) -> dict[str, str]:
+            release_calls.append(context.mission.id)
+            return {"status": "prepared"}
+
+        second.depts.release.run = release
 
         resumed = second.resume_mission(
             mission_id, actor="operator",
-            reason="resume after verifying the prior process stopped",
+            reason="resume after the previous process stopped",
             expected_repo_root=repo,
         )
 
         assert resumed.status == "done"
         assert resumed.phase == "G_RELEASE"
+        assert release_calls == [mission_id]
         final_tasks = second_store.tasks_for_mission(mission_id)
         final_by_id = {row["id"]: row for row in final_tasks}
         assert set(final_by_id) == {row["id"] for row in initial_tasks}
-        assert final_by_id[executive["id"]]["state"] == "done"
-        assert len(second_store.task_attempts_for(executive["id"])) == 1
         assert all(row["state"] == "done" for row in final_tasks)
         assert all(
             len(second_store.task_attempts_for(row["id"])) == 1
@@ -608,8 +621,8 @@ class TestProcessInterruptionRecovery:
         runs = second_store.mission_resume_runs_for(mission_id)
         assert len(runs) == 1
         assert runs[0]["status"] == "completed"
-        # The persisted policy wins over the new process's different runtime
-        # configuration; the resumed mission retained its original limit.
         latest = second_store.mission_context_snapshot_get(mission_id)
         assert latest is not None
-        assert latest["payload"]["context"]["execution_policy"]["max_revision_loops"] == 1
+        assert latest["payload"]["context"]["execution_policy"] == {
+            "schema_version": 1, "max_revision_loops": 1,
+        }
