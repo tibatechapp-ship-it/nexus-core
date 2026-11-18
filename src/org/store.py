@@ -1315,6 +1315,9 @@ class OrgStore:
         old = self.mission_get(mission.id)
         if old is None:
             raise OrgError(f"مهمة غير موجودة: {mission.id}")
+        if (mission.output_token_limit is not None
+                and mission.output_token_limit != old.output_token_limit):
+            raise OrgError("سقف توكنات المهمة غير قابل للتغيير عبر تحديث المهمة")
         if mission.phase != old.phase:
             allowed = ALLOWED_PHASE_TRANSITIONS.get(old.phase, frozenset())
             if mission.phase not in allowed:
