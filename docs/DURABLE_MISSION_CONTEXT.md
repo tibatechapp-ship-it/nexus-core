@@ -4,6 +4,7 @@
 
 After each successfully completed ordinary task, and after the review and
 verification gates, the orchestrator appends an immutable SQLite checkpoint.
+The initial checkpoint is also written immediately after the execution DAG is persisted and before the first agent task starts. The checkpoint stores the immutable execution policy (`max_revision_loops`, policy schema version) so resume never silently adopts a different runtime revision limit.
 Each payload is SHA-256 checked on read, and SQLite triggers reject updates or deletions so checkpoints are append-only. Worktree copies are stored under owner-only directories with owner-only file permissions. Failed checkpoint commits remove their unreferenced worktree copy. The checkpoint contains the current persisted mission record and the
 serializable MissionContext fields used by later departments, including the
 repository map, affected-file map, original file contents, diffs, test/security
@@ -75,6 +76,7 @@ Completed tasks are not replayed. Review decisions are read from their durable
 gate result; verification uses its dedicated gate and persisted result. A
 running, failed, skipped, malformed, or dependency-inconsistent task blocks
 continuation. This is not a lease takeover or an automatic retry mechanism.
+Resume rejects checkpoints without a valid persisted execution policy rather than substituting the current orchestrator configuration.
 
 
 ## Exclusive mission-level resume lock
