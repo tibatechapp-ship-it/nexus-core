@@ -146,9 +146,25 @@ def test_context_checkpoints_are_append_only(tmp_path: Path) -> None:
                 "UPDATE mission_context_snapshots SET payload = '{}' WHERE id = ?",
                 (saved["id"],),
             )
-    with pytest.raises(Exception, match="mission context snapshots are immutable"):
+    with pytest.raises(sqlite3.IntegrityError, match="mission context snapshots are immutable"):
         with store._conn:
             store._conn.execute(
                 "DELETE FROM mission_context_snapshots WHERE id = ?",
                 (saved["id"],),
             )
+
+
+
+def test_failed_checkpoint_commit_cleans_persisted_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, ctx, _, state_root = _context(tmp_path)
+
+    def reject_checkpoint(*args: object, **kwargs: object) -> dict[str, object]:
+        raise OrgError("simulated checkpoint database failure")
+
+    monkeypatch.setattr(store, "save_mission_context_snapshot", reject_checkpoint)
+    with pytest.raises(OrgError, match="simulated checkpoint database failure"):
+        save_mission_context_snapshot(store, ctx, state_root)
+
+    assert list(state_root.rglob("worktree-*")) == []
