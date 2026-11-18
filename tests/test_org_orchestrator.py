@@ -241,3 +241,88 @@ class TestRevisionLoop:
         assert len(review_rounds) == 1
         assert review_rounds[0]["details"]["round"] == 2
         assert review_rounds[0]["details"]["reviews_development_task_id"] == revisions[1]["id"]
+
+
+class TestAuthorizedRetryDispatch:
+    def test_authorized_retry_executes_only_replacement_task(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.org.departments import MissionContext
+        from src.org.contracts import TaskSpec
+
+        mission = orchestrator.org_store.create_mission(
+            Mission(title="retry", objective="recover one failed task"))
+        original = orchestrator.org_store.add_task(TaskSpec(
+            mission_id=mission.id, dept="development", kind="implement",
+            description="original implementation"))
+        orchestrator.org_store.task_set_state(
+            original.id, "failed", error="provider interruption")
+        decision = orchestrator.org_store.reconcile_task(
+            original.id, action="retry_authorized", actor="operator",
+            reason="explicitly approved after inspecting the failure",
+            decision_key="retry-development-1")
+        replacement_id = str(decision["replacement_task_id"])
+        calls: list[str] = []
+
+        def run_development(ctx: MissionContext, dev_kind: str = "backend") -> dict[str, str]:
+            calls.append(dev_kind)
+            return {"status": "ok"}
+
+        monkeypatch.setattr(orchestrator.depts.development, "run", run_development)
+        result = orchestrator.execute_authorized_retry(
+            replacement_id, MissionContext(mission=mission))
+
+        assert result.task_id == replacement_id
+        assert result.status == "done"
+        assert calls == ["backend"]
+        assert orchestrator.org_store.task_get(original.id)["state"] == "failed"
+        assert orchestrator.org_store.task_get(replacement_id)["state"] == "done"
+        assert len(orchestrator.org_store.task_attempts_for(replacement_id)) == 1
+        assert orchestrator.org_store.task_attempts_for(replacement_id)[0]["status"] == "done"
+        with pytest.raises(OrgError, match="ليست معلّقة"):
+            orchestrator.execute_authorized_retry(
+                replacement_id, MissionContext(mission=mission))
+
+    def test_retry_dispatch_rejects_missing_operator_decision(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        from src.org.departments import MissionContext
+        from src.org.contracts import TaskSpec
+
+        mission = orchestrator.org_store.create_mission(
+            Mission(title="retry", objective="must not run without approval"))
+        task = orchestrator.org_store.add_task(TaskSpec(
+            mission_id=mission.id, dept="development", kind="implement",
+            description="unapproved task"))
+        with pytest.raises(OrgError, match="ليست إعادة محاولة مصرحًا بها"):
+            orchestrator.execute_authorized_retry(
+                task.id, MissionContext(mission=mission))
+        assert orchestrator.org_store.task_get(task.id)["state"] == "pending"
+        assert orchestrator.org_store.task_attempts_for(task.id) == []
+
+    def test_retry_dispatch_waits_for_all_dependencies(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        from src.org.departments import MissionContext
+        from src.org.contracts import TaskSpec
+
+        mission = orchestrator.org_store.create_mission(
+            Mission(title="retry", objective="dependency gate"))
+        dependency = orchestrator.org_store.add_task(TaskSpec(
+            mission_id=mission.id, dept="repo_intel", kind="analyze",
+            description="required prerequisite"))
+        original = orchestrator.org_store.add_task(TaskSpec(
+            mission_id=mission.id, dept="development", kind="implement",
+            description="dependent implementation", deps=[dependency.id]))
+        orchestrator.org_store.task_set_state(
+            original.id, "failed", error="interrupted")
+        decision = orchestrator.org_store.reconcile_task(
+            original.id, action="retry_authorized", actor="operator",
+            reason="approved after review", decision_key="retry-with-dep")
+
+        with pytest.raises(OrgError, match="لم تكتمل بنجاح"):
+            orchestrator.execute_authorized_retry(
+                str(decision["replacement_task_id"]),
+                MissionContext(mission=mission))
+        assert orchestrator.org_store.task_get(
+            str(decision["replacement_task_id"]))["state"] == "pending"
+        assert orchestrator.org_store.task_attempts_for(
+            str(decision["replacement_task_id"])) == []
