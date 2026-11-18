@@ -224,12 +224,12 @@ def assess_mission_resume(
     remaining = {task_id: set(deps) & set(by_id) for task_id, deps in graph.items()}
     completed: set[str] = set()
     while remaining:
-        ready = sorted(
+        ready_ids = sorted(
             task_id for task_id, deps in remaining.items() if deps <= completed)
-        if not ready:
+        if not ready_ids:
             violations.append("persisted task graph contains a dependency cycle")
             break
-        for task_id in ready:
+        for task_id in ready_ids:
             remaining.pop(task_id)
             completed.add(task_id)
 
@@ -242,13 +242,13 @@ def assess_mission_resume(
     completed_ids = tuple(sorted(report.completed_task_ids))
     reasons = list(dict.fromkeys(reasons))
     violations = list(dict.fromkeys(violations))
-    ready = not reasons and not violations
+    is_ready = not reasons and not violations
 
     return MissionResumeAssessment(
         mission_id=mission.id,
         mission_status=mission.status,
         phase=mission.phase,
-        ready_for_explicit_resume=ready,
+        ready_for_explicit_resume=is_ready,
         pending_task_ids=pending_ids,
         completed_task_ids=completed_ids,
         blocked_task_ids=blocked_ids,
