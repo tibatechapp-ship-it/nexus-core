@@ -75,3 +75,21 @@ Completed tasks are not replayed. Review decisions are read from their durable
 gate result; verification uses its dedicated gate and persisted result. A
 running, failed, skipped, malformed, or dependency-inconsistent task blocks
 continuation. This is not a lease takeover or an automatic retry mechanism.
+
+
+## Exclusive mission-level resume lock
+
+Every `resume_mission` call first acquires an atomic, durable SQLite lock for
+that mission. A partial unique index permits only one `running` resume record
+per mission, including across independent store connections and processes.
+The lock is finished as `completed` or `failed` with its unguessable token.
+A process crash intentionally leaves the record `running`; no timeout or
+lease expiry silently transfers ownership.
+
+An operator may clear an orphaned lock only through
+`abandon_mission_resume(mission_id, actor=..., reason=...,
+confirm_process_stopped=True)`. This action records an immutable decision
+in the resume history and audit log. The confirmation must only be supplied
+after independently verifying that the previous process is stopped. Abandoning
+a lock does not retry or execute any task; a new explicit resume call is still
+required.

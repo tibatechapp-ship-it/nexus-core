@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 4
+ORG_SCHEMA_VERSION = 5
 
 
 class OrgError(RuntimeError):
@@ -124,6 +124,9 @@ class OrgStore:
             if current < 4:
                 self._migrate_v4()
                 current = 4
+            if current < 5:
+                self._migrate_v5()
+                current = 5
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -288,6 +291,139 @@ class OrgStore:
                 BEGIN SELECT RAISE(ABORT, 'mission context snapshots are immutable'); END;
             """
         )
+
+    def _migrate_v5(self) -> None:
+        """قفل استئناف دائم بمستوى المهمة العليا — لا استيلاء تلقائي."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS mission_resume_runs (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                actor TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN
+                    ('running', 'completed', 'failed', 'abandoned')),
+                started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL DEFAULT '',
+                finish_reason TEXT NOT NULL DEFAULT ''
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mission_resume_one_active
+                ON mission_resume_runs(mission_id) WHERE status = 'running';
+            CREATE INDEX IF NOT EXISTS idx_mission_resume_history
+                ON mission_resume_runs(mission_id, started_at, id);
+            """
+        )
+
+    def claim_mission_resume(
+            self, mission_id: str, *, actor: str, reason: str) -> dict[str, Any]:
+        """امتلاك حصري ذري لاستئناف mission؛ السجل العالق يحجب التنفيذ."""
+        actor = actor.strip() if isinstance(actor, str) else ""
+        reason = reason.strip() if isinstance(reason, str) else ""
+        if not mission_id.strip() or not actor or not reason:
+            raise OrgError("mission_id وهوية المشغّل وسبب الاستئناف مطلوبة")
+        token = secrets.token_urlsafe(32)
+        run_id = new_id("org-resume", mission_id, token)
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            if self._conn.execute(
+                    "SELECT 1 FROM missions WHERE id=?", (mission_id,)
+            ).fetchone() is None:
+                raise OrgError(f"مهمة غير موجودة: {mission_id}")
+            active = self._conn.execute(
+                "SELECT id FROM mission_resume_runs "
+                "WHERE mission_id=? AND status='running'", (mission_id,)
+            ).fetchone()
+            if active is not None:
+                raise OrgError(
+                    "استئناف المهمة محجوب: توجد جلسة استئناف نشطة أو متروكة "
+                    "تتطلب مصالحة بشرية")
+            self._conn.execute(
+                "INSERT INTO mission_resume_runs "
+                "(id, mission_id, token, actor, reason, status, started_at) "
+                "VALUES (?, ?, ?, ?, ?, 'running', ?)",
+                (run_id, mission_id, token, actor, reason, now),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.resume_claimed', ?, ?)",
+                (now, actor, mission_id, json.dumps(
+                    {"run_id": run_id, "reason": reason},
+                    sort_keys=True, ensure_ascii=False)),
+            )
+        return {"id": run_id, "mission_id": mission_id, "token": token,
+                "actor": actor, "reason": reason, "status": "running",
+                "started_at": now}
+
+    def finish_mission_resume(
+            self, mission_id: str, token: str, *,
+            status: str, reason: str = "") -> None:
+        """إنهاء جلسة يملكها الرمز المطابق فقط."""
+        if status not in {"completed", "failed"}:
+            raise OrgError("حالة إنهاء جلسة الاستئناف غير صالحة")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT id, actor FROM mission_resume_runs "
+                "WHERE mission_id=? AND token=? AND status='running'",
+                (mission_id, token),
+            ).fetchone()
+            if row is None:
+                raise OrgError("رمز جلسة الاستئناف قديم أو لا يملك الجلسة")
+            self._conn.execute(
+                "UPDATE mission_resume_runs SET status=?, finished_at=?, "
+                "finish_reason=? WHERE id=? AND token=? AND status='running'",
+                (status, now, reason, row["id"], token),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.resume_finished', ?, ?)",
+                (now, row["actor"], mission_id, json.dumps(
+                    {"run_id": row["id"], "status": status, "reason": reason},
+                    sort_keys=True, ensure_ascii=False)),
+            )
+
+    def abandon_mission_resume(
+            self, mission_id: str, *, actor: str, reason: str,
+            confirm_process_stopped: bool) -> None:
+        """رفع قفل يتيم بقرار بشري صريح بعد تأكيد توقف العملية القديمة."""
+        actor = actor.strip() if isinstance(actor, str) else ""
+        reason = reason.strip() if isinstance(reason, str) else ""
+        if not actor or not reason or confirm_process_stopped is not True:
+            raise OrgError(
+                "يتطلب تحرير القفل هوية وسببًا وتأكيد توقف العملية القديمة")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT id FROM mission_resume_runs "
+                "WHERE mission_id=? AND status='running'", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise OrgError("لا توجد جلسة استئناف نشطة لمصالحتها")
+            self._conn.execute(
+                "UPDATE mission_resume_runs SET status='abandoned', "
+                "finished_at=?, finish_reason=? WHERE id=? AND status='running'",
+                (now, reason, row["id"]),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.resume_abandoned', ?, ?)",
+                (now, actor, mission_id, json.dumps(
+                    {"run_id": row["id"], "reason": reason,
+                     "process_stopped_confirmed": True},
+                    sort_keys=True, ensure_ascii=False)),
+            )
+
+    def mission_resume_runs_for(self, mission_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT id, mission_id, actor, reason, status, started_at, "
+            "finished_at, finish_reason FROM mission_resume_runs "
+            "WHERE mission_id=? ORDER BY started_at, id", (mission_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     # ── التدقيق ───────────────────────────────────────────────────────────
 
