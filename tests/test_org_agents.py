@@ -119,6 +119,39 @@ class TestAskJson:
         assert rows and rows[0]["role"] == "dev:backend"
         assert rows[0]["tokens_in"] > 0
 
+
+    def test_configured_mission_budget_is_enforced_and_settled(
+            self, runtime: AgentRuntime, store: OrgStore) -> None:
+        from src.org.contracts import Mission
+
+        mission = store.create_mission(Mission(title="bounded", objective="agent call"))
+        store.configure_mission_token_budget(mission.id, 2500)
+        outcome = runtime.ask_json(
+            _spec(mission_id=mission.id, max_tokens=2000), "أجب JSON")
+        assert outcome.success
+        budget = store.mission_token_budget_get(mission.id)
+        assert budget is not None
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] == outcome.tokens_out
+
+    def test_insufficient_mission_budget_blocks_provider_dispatch(
+            self, store: OrgStore) -> None:
+        from src.org.contracts import Mission
+
+        class MustNotRunPool(ProviderPool):
+            def complete_with_fallback(self, messages, **kwargs):  # type: ignore[override]
+                raise AssertionError("provider must not be called")
+
+        mission = store.create_mission(Mission(title="blocked", objective="no dispatch"))
+        store.configure_mission_token_budget(mission.id, 100)
+        runtime = AgentRuntime(MustNotRunPool(), ToolRegistry(), store)
+        with pytest.raises(Exception, match="ميزانية توكنات الخرج"):
+            runtime.ask_json(
+                _spec(mission_id=mission.id, max_tokens=200), "أجب JSON")
+        budget = store.mission_token_budget_get(mission.id)
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] == 0
+
     def test_outcome_carries_usage(self, runtime: AgentRuntime) -> None:
         out = runtime.ask_json(_spec(), "أجب JSON")
         assert out.tokens_in > 0 and out.attempts == 1
