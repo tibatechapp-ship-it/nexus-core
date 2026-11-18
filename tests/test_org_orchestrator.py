@@ -891,7 +891,7 @@ class TestCheckpointBeforePhaseTransition:
         )
         mission = first_store.create_mission(Mission(
             title="checkpoint before phase transition",
-            objective="resume without replay when phase metadata lags a durable checkpoint",
+            objective="إضافة حارس للقسمة على صفر إلى دالة divide مع اختبارها؛ resume without replay when phase metadata lags a durable checkpoint",
             repo_path=str(repo), phase="A_REQUIREMENTS", status="running",
         ))
         plan = first.plan(mission)
