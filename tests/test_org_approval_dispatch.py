@@ -279,3 +279,66 @@ def test_failed_attempt_insert_rolls_back_approval_consumption(scenario):
     result = execute(dispatcher, scope, approval.token)
     assert result.state == "succeeded"
     assert len(adapter.calls) == 1
+
+
+def test_crashed_approved_effect_can_be_reconciled_without_redispatch(scenario):
+    """A recovered provider success must replay from the ledger, not the adapter."""
+    store, service, adapter, dispatcher, scope = scenario
+    approval = issue(service, scope)
+    adapter.error = SystemExit("simulated process termination")
+
+    with pytest.raises(SystemExit):
+        execute(dispatcher, scope, approval.token)
+
+    prepared_event = next(
+        row for row in store.tail_audit(30)
+        if row["action"] == "external_operation.prepared"
+    )
+    operation_key = prepared_event["ref"]
+    operation = store.external_operation_get(operation_key)
+    assert operation["state"] == "in_flight"
+    assert store.effect_approval_get(approval.approval_id)["status"] == "consumed"
+
+    attempts = store.external_operation_attempts_for(operation_key)
+    assert len(attempts) == 1
+    attempt_token = attempts[0]["attempt_token"]
+    uncertain = store.mark_external_operation_uncertain(
+        operation_key, attempt_token, "operator confirmed worker termination"
+    )
+    assert uncertain["state"] == "uncertain"
+
+    evidence = {
+        "source": "provider-read-only-lookup",
+        "provider_operation_id": "comment-verified-42",
+        "observed_outcome": "succeeded",
+    }
+    reconciled = store.reconcile_external_operation(
+        operation_key, attempt_token,
+        outcome="succeeded", evidence=evidence, reconciled_by="operator-verified",
+    )
+    assert reconciled["state"] == "reconciled"
+
+    # The one-time approval is already consumed. A ledger replay must not need
+    # another token and must never call the provider adapter again.
+    adapter.error = None
+    replay = dispatcher.execute(
+        scope["mission_id"], scope["task_id"], "comment", "revision-1",
+        scope["request"], actor="executor",
+        repository=scope["repository"], ref_name=scope["ref_name"],
+        commit_sha=scope["commit_sha"],
+    )
+
+    assert replay.state == "reconciled"
+    assert replay.reused is True
+    assert replay.result == evidence
+    assert len(adapter.calls) == 1
+    assert store.effect_approval_get(approval.approval_id)["status"] == "consumed"
+    final_attempts = store.external_operation_attempts_for(operation_key)
+    assert len(final_attempts) == 1
+    assert final_attempts[0]["state"] == "succeeded"
+    assert any(
+        row["action"] == "external_operation.reconciled"
+        and row["ref"] == operation_key
+        for row in store.tail_audit(50)
+    )
+
