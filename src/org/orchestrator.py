@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
@@ -37,6 +38,11 @@ from src.org.departments import (
     MissionContext,
 )
 from src.org.providers import ProviderPool
+from src.org.recovery import assess_mission_resume
+from src.org.recovery_context import (
+    restore_mission_context,
+    save_mission_context_snapshot,
+)
 from src.org.store import OrgError, OrgStore
 from src.org.verification import VerificationEngine
 from src.ops.store import OpsStore
@@ -120,7 +126,8 @@ class ExecutiveOrchestrator:
                  pool: ProviderPool | None = None,
                  outdir: str = "reports/org",
                  max_workers: int = MAX_WORKERS,
-                 max_revision_loops: int = 2) -> None:
+                 max_revision_loops: int = 2,
+                 state_root: str | Path | None = None) -> None:
         self.org_store = org_store
         self.ops_store = ops_store
         self.depts = Departments(pool or ProviderPool(), org_store,
@@ -129,6 +136,7 @@ class ExecutiveOrchestrator:
             self.depts.runtime, org_store, self.depts.runner)
         self.max_workers = max_workers
         self.max_revision_loops = max_revision_loops
+        self.state_root = Path(state_root or Path.home() / ".nexus-core" / "missions")
 
     # ── التخطيط ───────────────────────────────────────────────────────────
 
@@ -318,6 +326,7 @@ class ExecutiveOrchestrator:
             raise
         self.org_store.finish_claimed_task(
             spec.id, lease_token, result.output)
+        self._checkpoint_context(ctx)
         return result
 
     def execute_authorized_retry(
@@ -381,6 +390,47 @@ class ExecutiveOrchestrator:
              "decision_id": decisions[0].get("id", "")},
         )
         return self._execute_task(spec, ctx)
+
+    def _checkpoint_context(self, ctx: MissionContext) -> None:
+        """Persist context after a completed task; never changes execution state."""
+        if not ctx.mission.repo_path:
+            return
+        repo_root = Path(ctx.mission.repo_path)
+        if not repo_root.is_dir():
+            # Let the responsible repository-intelligence task fail and record its
+            # durable failed attempt; there is no trustworthy source to fingerprint.
+            return
+        latest = self.org_store.mission_get(ctx.mission.id)
+        if latest is None:
+            raise OrgError("المهمة اختفت قبل حفظ سياقها")
+        ctx.mission = latest
+        save_mission_context_snapshot(self.org_store, ctx, self.state_root)
+
+    def restore_context_for_resume(self, mission_id: str) -> MissionContext:
+        """Restore a context only after the read-only task-graph preflight passes.
+
+        This method does not dispatch work. A separate explicit resume operation
+        must decide which pending phase/gate to run after inspecting the context.
+        """
+        assessment = assess_mission_resume(self.org_store, mission_id)
+        if not assessment.ready_for_explicit_resume:
+            reasons = list(assessment.blocking_reasons)
+            reasons.extend(assessment.dependency_violations)
+            raise OrgError(
+                "المهمة غير جاهزة للاستئناف: " + "; ".join(reasons))
+        context = restore_mission_context(
+            self.org_store, mission_id, self.state_root)
+        current_mission = self.org_store.mission_get(mission_id)
+        if current_mission is None:
+            raise OrgError("المهمة اختفت أثناء استعادة السياق")
+        context.mission = current_mission
+        self.org_store.audit(
+            "mission.context_restored", mission_id,
+            {"snapshot_id": (self.org_store.mission_context_snapshot_get(
+                mission_id) or {}).get("id", ""),
+             "execution_started": False},
+        )
+        return context
 
     def _persist_claims(self, ctx: MissionContext) -> None:
         """تخزين ادعاءات جديدة فقط — لا تكرار للادعاء المخزن."""
@@ -478,6 +528,7 @@ class ExecutiveOrchestrator:
             self.org_store.audit("gate.review", ctx.mission.id, result)
             self.org_store.finish_claimed_task(
                 review_task.id, lease_token, result)
+            self._checkpoint_context(ctx)
             return decision.verdict == "approve"
         except Exception as exc:  # noqa: BLE001 — المطالبة تُنهى أو تفشل صراحة
             self.org_store.fail_claimed_task(
@@ -512,6 +563,7 @@ class ExecutiveOrchestrator:
                 "gate.verification", mission.id, report.to_dict())
             self.org_store.finish_claimed_task(
                 verify_task.id, lease_token, result)
+            self._checkpoint_context(ctx)
             return not report.rejected
         except Exception as exc:  # noqa: BLE001 — لا نترك بوابة بلا نتيجة دائمة
             self.org_store.fail_claimed_task(
