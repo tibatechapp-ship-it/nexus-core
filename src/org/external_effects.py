@@ -7,6 +7,7 @@ any concrete network mutation by default.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from typing import Any, Callable, Literal, Mapping, Protocol
 
@@ -163,6 +164,23 @@ class ExternalEffectDispatcher:
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise EffectDispatchError("request must contain finite JSON values") from exc
         ledger_operation_name = f"{self._adapter.provider_id}:{operation_name}"
+        ledger_revision = revision
+        if self._approval_service is not None:
+            scope_values = (repository, ref_name, commit_sha)
+            if not all(isinstance(value, str) and value.strip() for value in scope_values):
+                raise EffectNotAuthorized(
+                    "durable approval repository, ref, and commit are required"
+                )
+            try:
+                self._approval_service.verify_executor(actor.strip())
+            except Exception as exc:
+                raise EffectNotAuthorized("executor identity was not verified") from exc
+            target = json.dumps(
+                [repository, ref_name, commit_sha],
+                ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+            )
+            target_fingerprint = hashlib.sha256(target.encode("utf-8")).hexdigest()
+            ledger_revision = f"{revision}:{target_fingerprint}"
         # Legacy integrations retain their injected authorizer. Durable
         # one-time approvals are consumed only after operation identity is
         # persisted and only when the ledger still says "prepared".
@@ -180,7 +198,7 @@ class ExternalEffectDispatcher:
                 raise EffectNotAuthorized("human approval was not verified")
 
         prepared = self._store.prepare_external_operation(
-            mission_id, task_id, ledger_operation_name, revision, payload
+            mission_id, task_id, ledger_operation_name, ledger_revision, payload
         )
         operation_key = str(prepared["operation_key"])
         state = str(prepared["state"])
@@ -200,11 +218,8 @@ class ExternalEffectDispatcher:
             )
 
         if self._approval_service is not None:
-            scope_values = (approval_token, repository, ref_name, commit_sha)
-            if not all(isinstance(value, str) and value.strip() for value in scope_values):
-                raise EffectNotAuthorized(
-                    "durable approval token, repository, ref, and commit are required"
-                )
+            if not isinstance(approval_token, str) or not approval_token.strip():
+                raise EffectNotAuthorized("durable one-time approval token is required")
             try:
                 claim = self._approval_service.consume_and_claim(
                     approval_token,
