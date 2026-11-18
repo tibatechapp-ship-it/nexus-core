@@ -1256,24 +1256,26 @@ class OrgStore:
                 raise OrgError("المهمة موجودة بإعداد ميزانية مختلف؛ لا يمكن تغيير سقفها")
             if mission.output_token_limit is not None:
                 now = self._now()
-                self._conn.execute(
+                inserted_budget = self._conn.execute(
                     "INSERT OR IGNORE INTO mission_token_budgets "
                     "(mission_id, output_token_limit, status, created_at, updated_at) "
                     "VALUES (?, ?, 'active', ?, ?)",
                     (mission.id, mission.output_token_limit, now, now),
-                )
+                ).rowcount
                 budget = self._conn.execute(
                     "SELECT output_token_limit FROM mission_token_budgets WHERE mission_id=?",
                     (mission.id,),
                 ).fetchone()
-                if budget is None or int(budget["output_token_limit"]) != mission.output_token_limit:
+                if (budget is None
+                        or int(budget["output_token_limit"]) != mission.output_token_limit):
                     raise OrgError("ميزانية المهمة المخزنة لا تطابق عقد المهمة")
-                self._conn.execute(
-                    "INSERT INTO audit (ts, actor, action, ref, details) "
-                    "VALUES (?, 'system', 'mission.token_budget_configured', ?, ?)",
-                    (now, mission.id, json.dumps(
-                        {"output_token_limit": mission.output_token_limit}, sort_keys=True)),
-                )
+                if inserted_budget == 1:
+                    self._conn.execute(
+                        "INSERT INTO audit (ts, actor, action, ref, details) "
+                        "VALUES (?, 'system', 'mission.token_budget_configured', ?, ?)",
+                        (now, mission.id, json.dumps(
+                            {"output_token_limit": mission.output_token_limit}, sort_keys=True)),
+                    )
         stored = self.mission_get(mission.id)
         assert stored is not None
         self.audit("mission.created", mission.id, {"phase": stored.phase})
