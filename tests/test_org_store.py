@@ -242,6 +242,87 @@ class TestApprovals:
             store.decide_approval("nope", True, "h")
 
 
+
+class TestMissionTokenBudgets:
+    def test_budget_reservations_settle_and_persist(self, tmp_path) -> None:
+        db = tmp_path / "mission-budget.sqlite"
+        first = OrgStore(db)
+        mission = first.create_mission(Mission(title="budget", objective="bounded"))
+        first.configure_mission_token_budget(mission.id, 100)
+        reservation = first.reserve_mission_output_tokens(
+            mission.id, "development:backend", 60)
+        assert reservation["status"] == "reserved"
+        second = OrgStore(db)
+        try:
+            settled = second.settle_mission_output_tokens(reservation["id"], 25)
+            assert settled["status"] == "settled"
+            budget = first.mission_token_budget_get(mission.id)
+            assert budget["reserved_output_tokens"] == 0
+            assert budget["consumed_output_tokens"] == 25
+            assert budget["status"] == "active"
+            with pytest.raises(OrgError, match="سبق"):
+                first.settle_mission_output_tokens(reservation["id"], 25)
+        finally:
+            second.close()
+            first.close()
+
+    def test_concurrent_reservations_cannot_overcommit_budget(self, tmp_path) -> None:
+        db = tmp_path / "mission-budget-race.sqlite"
+        first = OrgStore(db)
+        mission = first.create_mission(Mission(title="race", objective="atomic"))
+        first.configure_mission_token_budget(mission.id, 100)
+        second = OrgStore(db)
+        try:
+            def reserve(store: OrgStore):
+                try:
+                    return store.reserve_mission_output_tokens(
+                        mission.id, "parallel:worker", 60)
+                except OrgError:
+                    return None
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(reserve, (first, second)))
+            winners = [item for item in results if item is not None]
+            assert len(winners) == 1
+            budget = first.mission_token_budget_get(mission.id)
+            assert budget["reserved_output_tokens"] == 60
+            assert budget["consumed_output_tokens"] == 0
+            first.settle_mission_output_tokens(winners[0]["id"], 40)
+            budget = second.mission_token_budget_get(mission.id)
+            assert budget["reserved_output_tokens"] == 0
+            assert budget["consumed_output_tokens"] == 40
+            assert budget["status"] == "active"
+        finally:
+            second.close()
+            first.close()
+
+    def test_budget_rejects_overspend_and_invalid_values(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="limit", objective="stop"))
+        with pytest.raises(OrgError):
+            store.configure_mission_token_budget(mission.id, 0)
+        store.configure_mission_token_budget(mission.id, 50)
+        with pytest.raises(OrgError, match="غير كافية"):
+            store.reserve_mission_output_tokens(mission.id, "qa:runner", 51)
+        budget = store.mission_token_budget_get(mission.id)
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] == 0
+        assert budget["status"] == "active"
+        with pytest.raises(OrgError, match="لا يمكن تغيير"):
+            store.configure_mission_token_budget(mission.id, 100)
+
+    def test_release_returns_reservation_without_consuming_tokens(
+            self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="release", objective="refund"))
+        store.configure_mission_token_budget(mission.id, 100)
+        reservation = store.reserve_mission_output_tokens(
+            mission.id, "qa:runner", 70)
+        released = store.release_mission_output_tokens(
+            reservation["id"], "provider rejected before dispatch")
+        assert released["status"] == "released"
+        budget = store.mission_token_budget_get(mission.id)
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] == 0
+
+
 class TestLessonsMetrics:
     def test_lessons_active_order(self, store: OrgStore) -> None:
         store.add_lesson(Lesson(text="ثقة منخفضة", scope="qa",
@@ -262,7 +343,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 7
+        assert ORG_SCHEMA_VERSION == 8
 
 
 class TestReviewsAndFindings:
