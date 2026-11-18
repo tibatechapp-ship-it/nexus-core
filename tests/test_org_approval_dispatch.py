@@ -150,7 +150,7 @@ def test_scope_mismatch_keeps_approval_available(scenario):
 def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winner(
     tmp_path: Path,
 ):
-    """Two processes/connections racing one token must never dispatch twice."""
+    """Two independent SQLite connections racing one token must never dispatch twice."""
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier, Event
 
@@ -184,28 +184,29 @@ def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winn
         **scope,
     )
 
-    entered = Event()
-    release = Event()
+    entered_a, entered_b, release = Event(), Event(), Event()
 
     class BlockingAdapter:
         provider_id = "scm-race"
         capabilities = {"comment": EffectCapability("comment", "none")}
 
-        def __init__(self):
+        def __init__(self, entered):
+            self.entered = entered
             self.calls = 0
 
         def dispatch(self, operation_name, payload, *, idempotency_key):
             self.calls += 1
-            entered.set()
+            self.entered.set()
             assert release.wait(5), "test did not release the winning provider call"
             return {"remote_id": "race-1"}
 
-    adapter = BlockingAdapter()
+    adapter_a = BlockingAdapter(entered_a)
+    adapter_b = BlockingAdapter(entered_b)
     dispatcher_a = ExternalEffectDispatcher(
-        store_a, adapter, worker_id="race-worker-a", approval_service=service_a,
+        store_a, adapter_a, worker_id="race-worker-a", approval_service=service_a,
     )
     dispatcher_b = ExternalEffectDispatcher(
-        store_b, adapter, worker_id="race-worker-b", approval_service=service_b,
+        store_b, adapter_b, worker_id="race-worker-b", approval_service=service_b,
     )
     start = Barrier(2)
 
@@ -220,25 +221,25 @@ def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winn
 
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            first = pool.submit(run, dispatcher_a)
-            second = pool.submit(run, dispatcher_b)
-            assert entered.wait(5), "neither contender reached the provider adapter"
-            # Keep the winning attempt in-flight while the other connection
-            # attempts to consume the exact same token.
-            loser_error = None
-            try:
-                second.result(timeout=2)
-            except (EffectNotAuthorized, EffectUncertain) as exc:
-                loser_error = exc
-            except Exception as exc:  # pragma: no cover - diagnostic guard
-                loser_error = exc
-            finally:
-                release.set()
-            winner_result = first.result(timeout=5)
+            future_a = pool.submit(run, dispatcher_a)
+            future_b = pool.submit(run, dispatcher_b)
+            assert entered_a.wait(3) or entered_b.wait(3), (
+                "neither contender reached the provider adapter"
+            )
+            # Identify the winner by the adapter it entered; keep it in-flight
+            # while the other independent connection attempts the same token.
+            if entered_a.is_set():
+                winner, loser, winner_adapter = future_a, future_b, adapter_a
+            else:
+                winner, loser, winner_adapter = future_b, future_a, adapter_b
+            with pytest.raises((EffectNotAuthorized, EffectUncertain)):
+                loser.result(timeout=3)
+            release.set()
+            winner_result = winner.result(timeout=5)
             assert winner_result.state == "succeeded"
             assert not winner_result.reused
-            assert isinstance(loser_error, (EffectNotAuthorized, EffectUncertain))
-        assert adapter.calls == 1
+            assert winner_adapter.calls == 1
+            assert adapter_a.calls + adapter_b.calls == 1
         assert store_a.effect_approval_get(approval.approval_id)["status"] == "consumed"
     finally:
         release.set()
