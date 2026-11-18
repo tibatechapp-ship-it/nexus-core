@@ -7,6 +7,7 @@ any concrete network mutation by default.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any, Callable, Literal, Mapping, Protocol
 
 from src.org.store import OrgError, OrgStore
@@ -97,7 +98,7 @@ class EffectResult:
     provider_id: str
 
 
-Authorizer = Callable[[str, str, str, str, Mapping[str, Any]], bool]
+Authorizer = Callable[[str, str, str, str, str, Mapping[str, Any]], bool]
 
 
 class ExternalEffectDispatcher:
@@ -148,10 +149,19 @@ class ExternalEffectDispatcher:
             raise EffectDispatchError(
                 f"provider {self._adapter.provider_id} does not declare {operation_name}"
             )
-        payload = dict(request)
+        try:
+            encoded_request = json.dumps(
+                dict(request), sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"), allow_nan=False,
+            )
+            payload = json.loads(encoded_request)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise EffectDispatchError("request must contain finite JSON values") from exc
+        ledger_operation_name = f"{self._adapter.provider_id}:{operation_name}"
         try:
             allowed = self._authorizer(
-                actor.strip(), mission_id, task_id, operation_name, payload
+                actor.strip(), mission_id, task_id, self._adapter.provider_id,
+                operation_name, json.loads(encoded_request),
             )
         except Exception as exc:
             raise EffectNotAuthorized(
@@ -161,7 +171,7 @@ class ExternalEffectDispatcher:
             raise EffectNotAuthorized("human approval was not verified")
 
         prepared = self._store.prepare_external_operation(
-            mission_id, task_id, operation_name, revision, payload
+            mission_id, task_id, ledger_operation_name, revision, payload
         )
         operation_key = str(prepared["operation_key"])
         state = str(prepared["state"])
@@ -186,7 +196,7 @@ class ExternalEffectDispatcher:
         )
         try:
             raw_result = self._adapter.dispatch(
-                operation_name, payload, idempotency_key=idempotency_key
+                operation_name, json.loads(encoded_request), idempotency_key=idempotency_key
             )
             if not isinstance(raw_result, Mapping):
                 raise TypeError("provider result must be a mapping")
