@@ -77,6 +77,34 @@ class TestMissionOutputTokenBudget:
         assert budget is not None
         assert budget["reserved_tokens"] == 60
 
+    def test_independent_sqlite_connections_cannot_overspend(
+            self, tmp_path) -> None:
+        database = tmp_path / "shared-budget.sqlite3"
+        first = OrgStore(database)
+        second = OrgStore(database)
+        try:
+            mission = first.create_mission(
+                Mission(title="budget", objective="cross-connection race"))
+            first.configure_mission_output_token_budget(mission.id, 100)
+
+            def reserve(index: int) -> bool:
+                ledger = first if index % 2 == 0 else second
+                try:
+                    ledger.reserve_mission_output_tokens(mission.id, 60)
+                    return True
+                except OrgError:
+                    return False
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                outcomes = list(pool.map(reserve, range(8)))
+            assert sum(outcomes) == 1
+            budget = first.mission_output_token_budget(mission.id)
+            assert budget is not None
+            assert budget["reserved_tokens"] == 60
+        finally:
+            first.close()
+            second.close()
+
     def test_budget_configuration_rejects_lowering_below_reservations(
             self, store: OrgStore) -> None:
         mission = store.create_mission(Mission(title="budget", objective="no downgrade"))
