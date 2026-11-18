@@ -70,8 +70,9 @@ class AgentSpec:
             raise ValueError("سقف المحاولات لا يقل عن صفر")
         if self.timeout_s <= 0:
             raise ValueError("مهلة الوكيل يجب أن تكون موجبة")
-        if type(self.max_tokens) is not int or self.max_tokens <= 0:
-            raise ValueError("max_tokens يجب أن يكون عددًا صحيحًا موجبًا")
+        if (type(self.max_tokens) is not int or self.max_tokens <= 0
+                or self.max_tokens > 2**63 - 1):
+            raise ValueError("max_tokens يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
 
     def system_prompt(self) -> str:
         """مطالبة نظام حتمية من العقد — الدور والأدوات والحدود."""
