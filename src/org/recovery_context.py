@@ -39,10 +39,19 @@ def fingerprint_directory(root: str | Path, *, include_git: bool = True) -> dict
     count = 0
     for current, dirs, files in os.walk(base, topdown=True, followlinks=False):
         current_path = Path(current)
+        symlink_dirs = sorted(
+            name for name in dirs if (current_path / name).is_symlink())
+        for name in symlink_dirs:
+            path = current_path / name
+            rel = path.relative_to(base).as_posix()
+            entry = {"path": rel, "type": "symlink", "target": os.readlink(path)}
+            encoded = json.dumps(entry, sort_keys=True).encode("utf-8")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+            count += 1
         dirs[:] = sorted(
             name for name in dirs
-            if name not in _IGNORED_DIRS
-            and not (current_path / name).is_symlink()
+            if name not in _IGNORED_DIRS and name not in symlink_dirs
         )
         for name in sorted(files):
             path = current_path / name
