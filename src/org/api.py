@@ -27,7 +27,7 @@ __all__ = ["build_org_router", "org_router_available"]
 
 try:  # pragma: no cover — حزمة اختيارية قد تغيب في نواة Termux
     from fastapi import APIRouter, Header, HTTPException
-    from pydantic import BaseModel, StrictInt
+    from pydantic import BaseModel, Field, StrictInt
 
     _FASTAPI_OK = True
 except ImportError:  # pragma: no cover
@@ -47,7 +47,8 @@ if _FASTAPI_OK:
         title: str
         objective: str
         repo_path: str = ""
-        output_token_limit: StrictInt | None = None
+        output_token_limit: StrictInt | None = Field(
+            default=None, gt=0, le=2**63 - 1)
 
     class ApprovalIn(BaseModel):
         """مُدخل قرار موافقة — قرار واسم صانع القرار إلزاميًا."""
