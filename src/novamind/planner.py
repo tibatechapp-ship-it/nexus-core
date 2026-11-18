@@ -5,7 +5,7 @@ NovaMind Planner v3.0
 
 يستخدم:
     - registry_v2 (لتصنيف المهام)
-    - hive.factory.pipeline.PIPELINES (للمصانع المتاحة)
+    - novamind.factory.pipeline.PIPELINES (للمصانع المتاحة)
 
 الاستخدام:
     from novamind.planner import Planner
@@ -240,7 +240,7 @@ class Planner:
     def list_available_pipelines(self) -> List[Dict[str, Any]]:
         """يُعيد قائمة الـ pipelines المتاحة."""
         try:
-            from hive.factory.pipeline import list_pipelines
+            from novamind.factory.pipeline import list_pipelines
             return list_pipelines()
         except ImportError:
             return []
