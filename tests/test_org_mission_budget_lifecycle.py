@@ -66,6 +66,38 @@ class TestMissionBudgetPersistence:
             status="running", id=mission.id))
         assert updated.output_token_limit == 9000
 
+    def test_mission_update_cannot_change_existing_cap(self) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(
+            title="immutable", objective="cap", output_token_limit=9000))
+        with pytest.raises(OrgError, match="غير قابل للتغيير"):
+            store.mission_update(Mission(
+                title=mission.title, objective=mission.objective,
+                output_token_limit=10000, id=mission.id))
+
+    def test_v8_budget_is_backfilled_into_v9_mission_contract(self, tmp_path) -> None:
+        db = tmp_path / "v8-budget.sqlite"
+        first = OrgStore(db)
+        mission = first.create_mission(Mission(
+            title="legacy budget", objective="migration"))
+        first.configure_mission_token_budget(mission.id, 7000)
+        with first._conn:
+            first._conn.execute(
+                "UPDATE missions SET output_token_limit=NULL WHERE id=?",
+                (mission.id,))
+            first._conn.execute(
+                "UPDATE meta SET value='8' WHERE key='org_schema_version'")
+        first.close()
+
+        migrated = OrgStore(db)
+        try:
+            restored = migrated.mission_get(mission.id)
+            assert restored is not None
+            assert restored.output_token_limit == 7000
+            assert migrated.mission_token_budget_get(mission.id)["output_token_limit"] == 7000
+        finally:
+            migrated.close()
+
     def test_legacy_mission_remains_unbudgeted(self) -> None:
         store = OrgStore(":memory:")
         mission = store.create_mission(Mission(title="legacy", objective="no cap"))
