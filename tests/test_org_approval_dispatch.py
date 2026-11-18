@@ -145,3 +145,139 @@ def test_scope_mismatch_keeps_approval_available(scenario):
     assert store.effect_approval_get(approval.approval_id)["status"] == "issued"
     assert adapter.calls == []
     assert execute(dispatcher, scope, approval.token).state == "succeeded"
+
+
+def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winner(
+    tmp_path: Path,
+):
+    """Two processes/connections racing one token must never dispatch twice."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Event
+
+    db_path = tmp_path / "approval-race.sqlite3"
+    store_a = OrgStore(db_path)
+    store_b = OrgStore(db_path)
+    mission = store_a.create_mission(
+        Mission(title="race", objective="single-use approval under contention")
+    )
+    task = store_a.add_task(TaskSpec(
+        mission_id=mission.id, dept="release", kind="comment",
+        description="race one approved effect",
+    ))
+    verifier = lambda principal: principal in {"approver", "executor"}
+    policy = lambda issuer, scope: issuer == "approver"
+    service_a = EffectApprovalService(
+        store_a, principal_verifier=verifier, approval_policy=policy,
+    )
+    service_b = EffectApprovalService(
+        store_b, principal_verifier=verifier, approval_policy=policy,
+    )
+    request = {"repository": "owner/race-repo", "body": "one dispatch"}
+    scope = {
+        "mission_id": mission.id, "task_id": task.id,
+        "repository": "owner/race-repo", "ref_name": "refs/heads/main",
+        "commit_sha": "c" * 40, "provider_id": "scm-race",
+        "operation_name": "comment", "request": request,
+    }
+    approval = service_a.issue(
+        issuer_principal_id="approver", executor_principal_id="executor",
+        **scope,
+    )
+
+    entered = Event()
+    release = Event()
+
+    class BlockingAdapter:
+        provider_id = "scm-race"
+        capabilities = {"comment": EffectCapability("comment", "none")}
+
+        def __init__(self):
+            self.calls = 0
+
+        def dispatch(self, operation_name, payload, *, idempotency_key):
+            self.calls += 1
+            entered.set()
+            assert release.wait(5), "test did not release the winning provider call"
+            return {"remote_id": "race-1"}
+
+    adapter = BlockingAdapter()
+    dispatcher_a = ExternalEffectDispatcher(
+        store_a, adapter, worker_id="race-worker-a", approval_service=service_a,
+    )
+    dispatcher_b = ExternalEffectDispatcher(
+        store_b, adapter, worker_id="race-worker-b", approval_service=service_b,
+    )
+    start = Barrier(2)
+
+    def run(dispatcher):
+        start.wait(timeout=5)
+        return dispatcher.execute(
+            mission.id, task.id, "comment", "race-revision", request,
+            actor="executor", approval_token=approval.token,
+            repository=scope["repository"], ref_name=scope["ref_name"],
+            commit_sha=scope["commit_sha"],
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(run, dispatcher_a)
+            second = pool.submit(run, dispatcher_b)
+            assert entered.wait(5), "neither contender reached the provider adapter"
+            # Keep the winning attempt in-flight while the other connection
+            # attempts to consume the exact same token.
+            loser_error = None
+            try:
+                second.result(timeout=2)
+            except (EffectNotAuthorized, EffectUncertain) as exc:
+                loser_error = exc
+            except Exception as exc:  # pragma: no cover - diagnostic guard
+                loser_error = exc
+            finally:
+                release.set()
+            winner_result = first.result(timeout=5)
+            assert winner_result.state == "succeeded"
+            assert not winner_result.reused
+            assert isinstance(loser_error, (EffectNotAuthorized, EffectUncertain))
+        assert adapter.calls == 1
+        assert store_a.effect_approval_get(approval.approval_id)["status"] == "consumed"
+    finally:
+        release.set()
+        store_b.close()
+        store_a.close()
+
+
+def test_failed_attempt_insert_rolls_back_approval_consumption(scenario):
+    """A failure after token UPDATE must roll back the entire SQLite unit."""
+    store, service, adapter, dispatcher, scope = scenario
+    approval = issue(service, scope)
+    operation = store.prepare_external_operation(
+        scope["mission_id"], scope["task_id"], "scm-test:comment",
+        "revision-1:" + __import__("hashlib").sha256(
+            __import__("json").dumps(
+                [scope["repository"], scope["ref_name"], scope["commit_sha"]],
+                ensure_ascii=False, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest(),
+        scope["request"],
+    )
+    store._conn.execute(
+        """CREATE TRIGGER reject_external_attempt
+           BEFORE INSERT ON external_operation_attempts
+           BEGIN SELECT RAISE(ABORT, 'injected attempt insert failure'); END"""
+    )
+
+    with pytest.raises(EffectNotAuthorized):
+        execute(dispatcher, scope, approval.token)
+
+    assert store.effect_approval_get(approval.approval_id)["status"] == "issued"
+    assert store.external_operation_get(operation["operation_key"])["state"] == "prepared"
+    assert not any(
+        row["action"] == "effect_approval.consumed"
+        and row["ref"] == approval.approval_id
+        for row in store.tail_audit(50)
+    )
+
+    store._conn.execute("DROP TRIGGER reject_external_attempt")
+    result = execute(dispatcher, scope, approval.token)
+    assert result.state == "succeeded"
+    assert len(adapter.calls) == 1
