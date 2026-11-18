@@ -225,7 +225,7 @@ class AgentRuntime:
                     max_tokens=spec.max_tokens)
             except ProviderError as exc:
                 # Every provider fallback may have dispatched before failing.
-                failed_attempts = max(1, len(self.pool.last_errors))
+                failed_attempts = self.pool.max_fallback_attempts
                 self._settle_output_budget(
                     reservation, min(spec.max_tokens * failed_attempts,
                                      spec.max_tokens * self.pool.max_fallback_attempts))
