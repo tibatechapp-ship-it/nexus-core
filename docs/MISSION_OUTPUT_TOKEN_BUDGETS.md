@@ -17,7 +17,7 @@ The limit is immutable after creation. Existing missions without a configured bu
 - Reservations are written in SQLite inside `BEGIN IMMEDIATE`, so independent workers cannot reserve the same remaining capacity.
 - Successful responses settle the reservation using the provider-reported output-token usage.
 - Provider errors are charged at the full reserved ceiling because the runtime cannot prove that the request failed before dispatch.
-- A process interruption leaves its reservation outstanding. This intentionally fails closed; an operator must verify that no provider work remains active before releasing the reservation with an auditable reason.
+- A process interruption leaves its reservation outstanding. This intentionally fails closed; an operator must verify that no provider work remains active before releasing the reservation only through explicit reconciliation that records the operator, terminal-provider confirmation, reason, and evidence references.
 - A response reporting more output tokens than reserved is rejected for settlement and leaves the reservation outstanding for reconciliation.
 - Every configure, reserve, settle, release, and exhausted-budget event is recorded in the audit log.
 
@@ -32,7 +32,7 @@ The budget is opt-in and must be configured explicitly for each mission. A budge
 
 يمكن تحديد سقف المهمة عند الإنشاء، قبل تخطيطها أو تشغيل أي وكيل. أصبح
 `Mission.output_token_limit` جزءًا من عقد المهمة ويُحفظ في سجل `missions`
-(مخطط المتجر v9)، كما تُنشأ معه ميزانية الحجز في المعاملة نفسها. لا تُفعّل
+(مخطط المتجر v10)، كما تُنشأ معه ميزانية الحجز في المعاملة نفسها. لا تُفعّل
 ميزانية تلقائيًا للمهام القديمة أو للمهام التي لم تحدد سقفًا.
 
 - Python: `Mission(title=..., objective=..., output_token_limit=50000)`
@@ -49,3 +49,34 @@ The budget is opt-in and must be configured explicitly for each mission. A budge
 البدائل المهيئين. يُحاسب كل مزوّد بديل فشل بعد احتمال الإرسال بسقف الخرج
 الكامل، ثم تُضاف توكنات الرد الناجح وتُسوّى بقية الحجز. هذا متحفظ عمدًا لأن
 خطأ المزوّد لا يثبت أن الطلب لم يصل أو لم ينتج خرجًا.
+
+## Crash recovery and manual reconciliation
+
+A reservation left in `reserved` after a process interruption is **not** expired
+or released based on age. The provider request may still be executing, and a
+timeout does not prove that the provider did not process it.
+
+After independently confirming that the provider request is terminal, an
+authorized operator can reconcile the reservation:
+
+```python
+store.reconcile_mission_output_tokens(
+    reservation_id,
+    actual_tokens=usage_recovered_from_provider,
+    actor="incident-commander",
+    reason="Provider request reached a terminal state; usage recovered",
+    evidence_refs=["provider-log://request-id", "incident://case-id"],
+    confirm_provider_terminal=True,
+)
+```
+
+The operation is atomic and one-shot. It rejects missing evidence, a missing
+terminal-state confirmation, usage above the reserved ceiling, and reservations
+already settled or released. The reconciliation record and audit event preserve
+the actor, reason, evidence references, reserved amount, and actual usage.
+Reconciliation records are append-only and protected against update/delete.
+If provider usage cannot be established, do not guess or release the reservation:
+keep the capacity reserved and escalate for provider-side investigation.
+
+Schema v10 adds the immutable reconciliation ledger without rewriting existing
+reservation rows. The v8/v9 budget data remains intact during migration.
