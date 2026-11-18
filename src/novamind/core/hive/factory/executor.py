@@ -37,7 +37,9 @@ async def execute_agent(
     llm_call: Any = None,
 ) -> dict[str, Any]:
     """Delegate to the one canonical executor implementation."""
-    if llm_call is None and is_llm_available():
+    availability = is_llm_available
+    provider_available = availability() if callable(availability) else bool(availability)
+    if llm_call is None and provider_available:
         llm_call = make_llm_call()
     return await _canonical.execute_agent(
         agent_id=agent_id,
