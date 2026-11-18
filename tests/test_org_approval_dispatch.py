@@ -78,7 +78,8 @@ def test_dispatch_consumes_approval_and_success_replay_needs_no_new_token(scenar
     first = execute(dispatcher, scope, approval.token)
     replay = dispatcher.execute(
         scope["mission_id"], scope["task_id"], "comment", "revision-1",
-        scope["request"], actor="executor",
+        scope["request"], actor="executor", repository=scope["repository"],
+        ref_name=scope["ref_name"], commit_sha=scope["commit_sha"],
     )
 
     assert first.state == "succeeded" and not first.reused
@@ -96,11 +97,11 @@ def test_invalid_token_does_not_consume_valid_approval_or_claim_operation(scenar
 
     assert store.effect_approval_get(approval.approval_id)["status"] == "issued"
     assert adapter.calls == []
-    operation = store.prepare_external_operation(
-        scope["mission_id"], scope["task_id"], "scm-test:comment",
-        "revision-1", scope["request"],
+    prepared_event = next(
+        row for row in store.tail_audit(20)
+        if row["action"] == "external_operation.prepared"
     )
-    assert operation["state"] == "prepared"
+    assert store.external_operation_get(prepared_event["ref"])["state"] == "prepared"
 
     result = execute(dispatcher, scope, approval.token)
     assert result.state == "succeeded"
@@ -116,11 +117,11 @@ def test_crash_after_atomic_claim_consumes_token_and_blocks_redispatch(scenario)
         execute(dispatcher, scope, approval.token)
 
     assert store.effect_approval_get(approval.approval_id)["status"] == "consumed"
-    operation = store.external_operation_get(
-        store._external_operation_key(  # noqa: SLF001 - assert durable crash boundary
-            scope["mission_id"], scope["task_id"], "scm-test:comment", "revision-1"
-        )
+    prepared_event = next(
+        row for row in store.tail_audit(20)
+        if row["action"] == "external_operation.prepared"
     )
+    operation = store.external_operation_get(prepared_event["ref"])
     assert operation["state"] == "in_flight"
     with pytest.raises(EffectUncertain):
         execute(dispatcher, scope, approval.token)
