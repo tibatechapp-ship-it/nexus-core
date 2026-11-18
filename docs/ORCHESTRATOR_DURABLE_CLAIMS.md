@@ -32,13 +32,32 @@ development pass independently inspectable.
 - The idempotency key is persisted by the claim store, but this integration does
   not yet pass it to external side-effecting providers. Therefore it does not
   claim exactly-once execution for external systems.
-- The code-review gate and verification gate retain their existing direct
-  gate-state updates in this incremental integration; durable claims currently
-  protect department execution tasks. Extending claim ownership to gate tasks
-  is a separate follow-up, with independent review-round task records required.
+- Every code-review round is a separate task record with its own durable
+  claim and attempt history. A later review task depends on the development
+  revision it evaluates; rejected review tasks remain completed records with a
+  `request_changes` verdict and are never reopened.
+- Verification is claimed and finalized with its lease token. A rejected
+  verification report is a completed gate execution whose result records the
+  rejection; an exception is recorded as a failed attempt.
+- A running gate with an expired lease is not reclaimed automatically. An
+  operator must inspect and reconcile the uncertain execution before creating
+  any deliberate follow-up task.
+- The idempotency key is persisted by the claim store, but this integration does
+  not yet pass it to external side-effecting providers. Therefore it does not
+  claim exactly-once execution for external systems.
+- Human approval remains mandatory for release/merge; durable gate claims do
+  not authorize a release or merge on their own.
 
 ## Validation
 
 The orchestrator revision-loop test checks that a rejected review creates a
 second development task, both tasks retain their own completed attempt record,
 and the audit trail links the new task to the task it supersedes.
+
+## Review and verification gate validation
+
+The orchestrator tests assert that a successful mission leaves both the review
+and verification task with one completed durable attempt. The revision-loop
+test forces repeated review rejection and verifies that each development
+revision has a distinct review task, with the second review linked to the
+second development task. No completed review task is reset or reused.
