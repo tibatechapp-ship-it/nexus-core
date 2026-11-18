@@ -499,6 +499,28 @@ class TestExternalOperationLedger:
         with pytest.raises(OrgError, match="reconciled"):
             store.claim_external_operation(prepared["operation_key"], "worker-b")
 
+    def test_reconciliation_evidence_is_bounded_before_persistence(
+            self, store: OrgStore) -> None:
+        _, _, prepared = self._prepared(store)
+        claim = store.claim_external_operation(prepared["operation_key"], "worker-a")
+        store.mark_external_operation_uncertain(
+            prepared["operation_key"], claim["attempt_token"], "response lost")
+
+        oversized = {"provider_response": "x" * (16 * 1024)}
+        with pytest.raises(OrgError, match="تتجاوز الحد الأقصى"):
+            store.reconcile_external_operation(
+                prepared["operation_key"], claim["attempt_token"],
+                outcome="succeeded", evidence=oversized, reconciled_by="operator")
+
+        operation = store.external_operation_get(prepared["operation_key"])
+        assert operation["state"] == "uncertain"
+        assert operation["result_payload"] == ""
+        assert not any(
+            row["action"] == "external_operation.reconciled"
+            for row in store.tail_audit(20)
+        )
+
+
     def test_missing_task_or_mission_is_rejected(self, store: OrgStore) -> None:
         mission = store.create_mission(Mission(title="missing", objective="fail closed"))
         with pytest.raises(OrgError, match="المهمة الفرعية"):
