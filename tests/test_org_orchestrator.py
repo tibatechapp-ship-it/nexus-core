@@ -923,7 +923,8 @@ class TestCheckpointBeforePhaseTransition:
             task.id: len(first_store.task_attempts_for(task.id))
             for task in plan.tasks
         }
-        assert all(count == 1 for count in attempts_before.values())
+        assert {task_id for task_id, count in attempts_before.items() if count == 1} == completed_ids
+        assert all(count in (0, 1) for count in attempts_before.values())
         assert first_store.mission_get(mission.id).phase == "A_REQUIREMENTS"
         first_store.close()
 
