@@ -16,7 +16,10 @@ from src.org.external_effects import (
 from src.org.store import OrgStore
 
 
-def _scenario(tmp_path: Path, adapter: DryRunEffectAdapter | None = None):
+def _scenario(
+    tmp_path: Path,
+    adapter: DryRunEffectAdapter | None = None,
+) -> tuple[OrgStore, Mission, TaskSpec, DryRunEffectAdapter, ExternalEffectDispatcher]:
     store = OrgStore(tmp_path / "dry-run-dispatch.sqlite3")
     mission = store.create_mission(
         Mission(title="dry-run integration", objective="verify durable simulation")
