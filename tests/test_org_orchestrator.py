@@ -522,3 +522,107 @@ class TestExplicitMissionResume:
         assert calls == ["baseline", "qa", "security", "verification", "release"]
         assert orchestrator.org_store.task_get(review.id)["state"] == "done"
         assert len(orchestrator.org_store.task_attempts_for(review.id)) == 1
+
+
+class TestProcessInterruptionRecovery:
+    def test_reconstructs_orchestrator_from_durable_verification_checkpoint(
+            self, tmp_path: object) -> None:
+        """A fresh orchestrator continues after a durable gate checkpoint."""
+        from pathlib import Path
+
+        root = Path(tmp_path)  # type: ignore[arg-type]
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        database = root / "org.sqlite3"
+        state_root = root / "mission-state"
+        first_store = OrgStore(database)
+        first = ExecutiveOrchestrator(
+            first_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "first-run"), max_revision_loops=1,
+            state_root=state_root,
+        )
+        mission = first_store.create_mission(Mission(
+            title="process restart recovery",
+            objective="continue from a durable verification checkpoint",
+            repo_path=str(repo), phase="F_VERIFICATION", status="running",
+        ))
+        plan = first.plan(mission)
+
+        # Model termination after verification was durably recorded but before
+        # the orchestrator advanced the mission to the release phase.
+        for task in plan.tasks:
+            if task.dept == "release":
+                continue
+            claim = first_store.claim_task(
+                task.id, worker_id="interrupted-process-checkpoint")
+            assert claim is not None
+            result = (
+                {"verified": 2, "rejected": 0, "reproduced": True}
+                if task.dept == "verification"
+                else {"summary": f"completed:{task.dept}"}
+            )
+            first_store.finish_claimed_task(
+                task.id, str(claim["lease_token"]), result)
+
+        save_mission_context_snapshot(
+            first_store,
+            MissionContext(
+                mission=mission,
+                execution_policy={
+                    "schema_version": 1,
+                    "max_revision_loops": first.max_revision_loops,
+                },
+            ),
+            state_root,
+        )
+        checkpoint = first_store.mission_context_snapshot_get(mission.id)
+        assert checkpoint is not None
+        assert checkpoint["payload"]["context"]["execution_policy"] == {
+            "schema_version": 1, "max_revision_loops": 1,
+        }
+        initial_tasks = first_store.tasks_for_mission(mission.id)
+        mission_id = mission.id
+
+        # Close through the store's public lifecycle API, then construct a
+        # completely new store and orchestrator against the same SQLite file.
+        first_store.close()
+        second_store = OrgStore(database)
+        second = ExecutiveOrchestrator(
+            second_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "second-run"), max_revision_loops=99,
+            state_root=state_root,
+        )
+        release_calls: list[str] = []
+
+        def release(context: MissionContext) -> dict[str, str]:
+            release_calls.append(context.mission.id)
+            return {"status": "prepared"}
+
+        second.depts.release.run = release
+
+        resumed = second.resume_mission(
+            mission_id, actor="operator",
+            reason="resume after the previous process stopped",
+            expected_repo_root=repo,
+        )
+
+        assert resumed.status == "done"
+        assert resumed.phase == "G_RELEASE"
+        assert release_calls == [mission_id]
+        final_tasks = second_store.tasks_for_mission(mission_id)
+        final_by_id = {row["id"]: row for row in final_tasks}
+        assert set(final_by_id) == {row["id"] for row in initial_tasks}
+        assert all(row["state"] == "done" for row in final_tasks)
+        assert all(
+            len(second_store.task_attempts_for(row["id"])) == 1
+            for row in final_tasks
+        )
+        runs = second_store.mission_resume_runs_for(mission_id)
+        assert len(runs) == 1
+        assert runs[0]["status"] == "completed"
+        latest = second_store.mission_context_snapshot_get(mission_id)
+        assert latest is not None
+        assert latest["payload"]["context"]["execution_policy"] == {
+            "schema_version": 1, "max_revision_loops": 1,
+        }
