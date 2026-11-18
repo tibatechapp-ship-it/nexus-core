@@ -66,3 +66,22 @@ Remaining migration work:
 - compare and port any valuable archive-only or divergent implementation
   individually;
 - run real end-to-end engineering tasks across the user's project portfolio.
+
+
+## Canonical execution and pipeline authority (ADR-0008)
+
+The implementation now has one execution owner and one factory-pipeline owner:
+
+- `novamind.factory.executor` owns agent lookup, RBAC enforcement, prompt
+  construction, provider invocation, output parsing, guards, retries, and
+  execution result contracts.
+- `novamind.factory.pipeline` owns pipeline definitions, stage orchestration,
+  context propagation, summaries, and formatting.
+- `novamind.core.hive.factory.executor` and
+  `novamind.core.hive.factory.pipeline` are compatibility facades only. They
+  delegate to the canonical modules and do not maintain a second runtime.
+- The legacy hive executor keeps its provider-injection names patchable while
+  delegating the actual execution to the canonical executor.
+
+See [ADR-0008](adr/ADR-0008-canonical-novamind-execution.md). Compatibility
+facades remain until import inventory and runtime tests justify their removal.
