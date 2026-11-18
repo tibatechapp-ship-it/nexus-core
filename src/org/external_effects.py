@@ -171,6 +171,9 @@ class ExternalEffectDispatcher:
                 raise EffectNotAuthorized(
                     "durable approval repository, ref, and commit are required"
                 )
+            assert isinstance(repository, str)
+            assert isinstance(ref_name, str)
+            assert isinstance(commit_sha, str)
             try:
                 self._approval_service.verify_executor(actor.strip())
             except Exception as exc:
@@ -185,6 +188,8 @@ class ExternalEffectDispatcher:
         # one-time approvals are consumed only after operation identity is
         # persisted and only when the ledger still says "prepared".
         if self._approval_service is None:
+            if self._authorizer is None:
+                raise EffectNotAuthorized("application approval authorizer is unavailable")
             try:
                 allowed = self._authorizer(
                     actor.strip(), mission_id, task_id, self._adapter.provider_id,
