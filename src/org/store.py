@@ -18,8 +18,10 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +42,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 1
+ORG_SCHEMA_VERSION = 2
 
 
 class OrgError(RuntimeError):
@@ -111,6 +113,10 @@ class OrgStore:
             current = int(row["value"]) if row else 0
             if current < 1:
                 self._create_v1()
+                current = 1
+            if current < 2:
+                self._migrate_v2()
+                current = 2
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -190,6 +196,41 @@ class OrgStore:
             CREATE INDEX IF NOT EXISTS idx_evidence_mission ON evidence(mission_id);
             """
         )
+
+    def _migrate_v2(self) -> None:
+        """إضافة مطالبات تنفيذ ومحاولات دائمة دون إعادة تشغيل تلقائية."""
+        columns = {row["name"] for row in self._conn.execute(
+            "PRAGMA table_info(tasks)").fetchall()}
+        additions = {
+            "lease_owner": "TEXT NOT NULL DEFAULT ''",
+            "lease_token": "TEXT NOT NULL DEFAULT ''",
+            "lease_expires_at": "TEXT NOT NULL DEFAULT ''",
+            "idempotency_key": "TEXT NOT NULL DEFAULT ''",
+            "input_snapshot": "TEXT NOT NULL DEFAULT ''",
+        }
+        with self._conn:
+            for name, definition in additions.items():
+                if name not in columns:
+                    self._conn.execute(
+                        f"ALTER TABLE tasks ADD COLUMN {name} {definition}")
+            self._conn.execute(
+                """CREATE TABLE IF NOT EXISTS task_attempts (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    attempt_no INTEGER NOT NULL,
+                    worker_id TEXT NOT NULL,
+                    lease_token TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT NOT NULL DEFAULT '',
+                    error TEXT NOT NULL DEFAULT '',
+                    UNIQUE(task_id, attempt_no)
+                )"""
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_task_attempts_task "
+                "ON task_attempts(task_id, attempt_no)"
+            )
 
     # ── التدقيق ───────────────────────────────────────────────────────────
 
@@ -372,6 +413,117 @@ class OrgStore:
                 ),
             )
         self.audit("task.state", task_id, {"to": state, "error": error[:200]})
+
+    def claim_task(self, task_id: str, worker_id: str,
+                   lease_seconds: int = 300) -> dict[str, Any] | None:
+        """مطالبة ذرية بمهمة pending؛ لا تستولي على running أو lease منتهية."""
+        if not isinstance(worker_id, str) or not worker_id.strip():
+            raise OrgError("worker_id مطلوب")
+        if not isinstance(lease_seconds, int) or lease_seconds < 1:
+            raise OrgError("lease_seconds يجب أن يكون عددًا موجبًا")
+        token = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        started_at = now.isoformat()
+        expires_at = (now + timedelta(seconds=lease_seconds)).isoformat()
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if row is None:
+                raise OrgError(f"مهمة فرعية غير موجودة: {task_id}")
+            if row["state"] != "pending":
+                return None
+            snapshot = row["input_snapshot"] or json.dumps({
+                "mission_id": row["mission_id"], "dept": row["dept"],
+                "kind": row["kind"], "description": row["description"],
+                "deps": json.loads(row["deps"] or "[]"),
+                "params": json.loads(row["params"] or "{}"),
+            }, sort_keys=True, ensure_ascii=False)
+            idem = row["idempotency_key"] or new_id(
+                "org-idem", row["mission_id"], row["id"])
+            updated = self._conn.execute(
+                """UPDATE tasks SET state='running', attempts=attempts+1,
+                   lease_owner=?, lease_token=?, lease_expires_at=?,
+                   idempotency_key=?, input_snapshot=?, updated_at=?
+                   WHERE id=? AND state='pending'""",
+                (worker_id.strip(), token, expires_at, idem, snapshot,
+                 started_at, task_id),
+            )
+            if updated.rowcount != 1:
+                return None
+            attempt_no = int(row["attempts"] or 0) + 1
+            attempt_id = new_id("org-attempt", task_id, str(attempt_no), token)
+            self._conn.execute(
+                """INSERT INTO task_attempts
+                   (id, task_id, attempt_no, worker_id, lease_token,
+                    status, started_at)
+                   VALUES (?, ?, ?, ?, ?, 'running', ?)""",
+                (attempt_id, task_id, attempt_no, worker_id.strip(), token,
+                 started_at),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'task.claimed', ?, ?)",
+                (started_at, worker_id.strip(), task_id,
+                 json.dumps({"attempt": attempt_no, "lease_expires_at": expires_at},
+                            sort_keys=True)),
+            )
+            claimed = self._conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+        return dict(claimed) if claimed else None
+
+    def finish_claimed_task(self, task_id: str, lease_token: str,
+                            result: dict[str, Any]) -> None:
+        """إنهاء مطالبة صحيحة فقط؛ token قديم أو غير مالك مرفوض."""
+        self._finish_claimed_task(task_id, lease_token, "done", result, "")
+
+    def fail_claimed_task(self, task_id: str, lease_token: str,
+                          error: str) -> None:
+        """تسجيل فشل مطالبة صحيحة فقط دون إعادة محاولة تلقائية."""
+        self._finish_claimed_task(task_id, lease_token, "failed", {}, error)
+
+    def _finish_claimed_task(self, task_id: str, lease_token: str,
+                             state: str, result: dict[str, Any],
+                             error: str) -> None:
+        if not lease_token:
+            raise OrgError("lease_token مطلوب")
+        now = self._now()
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT lease_token, state FROM tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+            if row is None or row["state"] != "running" or not secrets.compare_digest(
+                str(row["lease_token"]), lease_token
+            ):
+                raise OrgError("مطالبة المهمة غير صالحة أو لم تعد مملوكة للعامل")
+            self._conn.execute(
+                """UPDATE tasks SET state=?, result=?, error=?,
+                   lease_owner='', lease_token='', lease_expires_at='',
+                   updated_at=? WHERE id=? AND state='running' AND lease_token=?""",
+                (state, json.dumps(result, sort_keys=True, ensure_ascii=False),
+                 error, now, task_id, lease_token),
+            )
+            self._conn.execute(
+                """UPDATE task_attempts SET status=?, finished_at=?, error=?
+                   WHERE task_id=? AND lease_token=? AND status='running'""",
+                (state, now, error, task_id, lease_token),
+            )
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, 'org', ?, ?, ?)",
+                (now, f"task.{state}", task_id,
+                 json.dumps({"error": error[:200]}, sort_keys=True)),
+            )
+
+    def task_attempts_for(self, task_id: str) -> list[dict[str, Any]]:
+        """سجل المحاولات بالترتيب؛ لا يُستبدل بتاريخ المهمة الحالي."""
+        rows = self._conn.execute(
+            "SELECT * FROM task_attempts WHERE task_id=? ORDER BY attempt_no",
+            (task_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     # ── تشغيلات الوكلاء ───────────────────────────────────────────────────
 
