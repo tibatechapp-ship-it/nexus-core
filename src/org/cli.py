@@ -43,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--title", required=True)
     m.add_argument("--objective", required=True)
     m.add_argument("--repo", default="")
+    m.add_argument("--max-output-tokens", type=int, default=None,
+                   help="سقف توكنات الخرج للمهمة (اختياري، موجب)")
 
     s = sub.add_parser("show", help="عرض مهمة مخزنة")
     s.add_argument("mission_id")
@@ -74,7 +76,8 @@ def _cmd_mission(args: argparse.Namespace) -> int:
     org, ops = _stores(args)
     pipeline = MissionPipeline(org, ops, outdir=args.outdir)
     report = pipeline.run(title=args.title, objective=args.objective,
-                          repo_path=args.repo)
+                          repo_path=args.repo,
+                          output_token_limit=args.max_output_tokens)
     _emit(report.to_dict())
     return 0 if report.mission.status == "done" else 1
 
