@@ -501,7 +501,8 @@ class TestExplicitMissionResume:
         monkeypatch.setattr(orchestrator.depts.release, "run", release)
 
         resumed = orchestrator.resume_mission(
-            mission.id, expected_repo_root=repo)
+            mission.id, actor="operator", reason="approved after reviewing checkpoint",
+            expected_repo_root=repo)
 
         assert resumed.status == "done"
         assert resumed.phase == "G_RELEASE"
