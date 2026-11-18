@@ -134,6 +134,100 @@ class TestPipelineBudgetLifecycle:
         assert budget["consumed_output_tokens"] <= 200000
 
 
+
+class TestTokenReservationCrashReconciliation:
+    def _reserved(self) -> tuple[OrgStore, str, str]:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(
+            title="crash recovery", objective="reconcile uncertain provider call"))
+        store.configure_mission_token_budget(mission.id, 5000)
+        reservation = store.reserve_mission_output_tokens(
+            mission.id, "agent:backend", 1200)
+        return store, mission.id, str(reservation["id"])
+
+    def test_reconciliation_requires_terminal_provider_confirmation(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        with pytest.raises(OrgError, match="نهائية طلب المزوّد"):
+            store.reconcile_mission_output_tokens(
+                reservation_id, 0, actor="operator", reason="worker crashed",
+                evidence_refs=["incident://worker-42"],
+                confirm_provider_terminal=False,
+            )
+        reservation = store._conn.execute(
+            "SELECT status FROM mission_token_reservations WHERE id=?",
+            (reservation_id,),
+        ).fetchone()
+        budget = store.mission_token_budget_get(mission_id)
+        assert reservation["status"] == "reserved"
+        assert budget is not None and budget["reserved_output_tokens"] == 1200
+        store.close()
+
+    def test_reconciliation_settles_once_and_preserves_audit_evidence(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        settled = store.reconcile_mission_output_tokens(
+            reservation_id, 375, actor="incident-commander",
+            reason="provider request confirmed terminal; usage recovered",
+            evidence_refs=["provider-log://req-abc", "trace://worker-42"],
+            confirm_provider_terminal=True,
+        )
+        assert settled["status"] == "settled"
+        assert settled["actual_tokens"] == 375
+        budget = store.mission_token_budget_get(mission_id)
+        assert budget is not None
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] == 375
+        record = store._conn.execute(
+            "SELECT * FROM mission_token_reconciliations WHERE reservation_id=?",
+            (reservation_id,),
+        ).fetchone()
+        assert record is not None
+        assert record["actor"] == "incident-commander"
+        assert record["provider_terminal"] == 1
+        assert record["actual_tokens"] == 375
+        with pytest.raises(OrgError, match="تمت تسويته"):
+            store.reconcile_mission_output_tokens(
+                reservation_id, 375, actor="incident-commander",
+                reason="duplicate attempt", evidence_refs=["provider-log://req-abc"],
+                confirm_provider_terminal=True,
+            )
+        with pytest.raises(Exception, match="immutable"):
+            with store._conn:
+                store._conn.execute(
+                    "UPDATE mission_token_reconciliations SET reason='tampered' "
+                    "WHERE reservation_id=?", (reservation_id,))
+        store.close()
+
+    def test_reconciliation_rejects_usage_above_reserved_ceiling(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        with pytest.raises(OrgError, match="يتجاوز سقف الحجز"):
+            store.reconcile_mission_output_tokens(
+                reservation_id, 1201, actor="operator", reason="bad usage",
+                evidence_refs=["provider-log://req-abc"],
+                confirm_provider_terminal=True,
+            )
+        budget = store.mission_token_budget_get(mission_id)
+        assert budget is not None and budget["reserved_output_tokens"] == 1200
+        store.close()
+
+    def test_schema_v10_migration_is_idempotent(self, tmp_path: Path) -> None:
+        db = tmp_path / "token-reconcile.sqlite"
+        first = OrgStore(db)
+        assert first._conn.execute(
+            "SELECT value FROM meta WHERE key='org_schema_version'"
+        ).fetchone()["value"] == "10"
+        first.close()
+        second = OrgStore(db)
+        try:
+            assert second._conn.execute(
+                "SELECT value FROM meta WHERE key='org_schema_version'"
+            ).fetchone()["value"] == "10"
+            tables = {row["name"] for row in second._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            assert "mission_token_reconciliations" in tables
+        finally:
+            second.close()
+
+
 def test_cli_exposes_and_validates_mission_output_token_cap() -> None:
     from src.org.cli import build_parser
 
