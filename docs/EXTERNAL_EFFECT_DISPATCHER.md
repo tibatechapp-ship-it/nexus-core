@@ -10,11 +10,11 @@ does not issue network requests, and does not enable automatic retries.
 
 1. Resolve the adapter's explicit capability for the exact operation name.
 2. Ask the application-supplied authorizer to verify an authenticated human
-   approval bound to actor, mission, task, operation and request.
+   approval bound to actor, mission, task, provider, operation and request.
 3. Persist the stable operation identity and canonical request fingerprint.
 4. Atomically claim the prepared operation with a fenced attempt token.
 5. Pass the stable operation key only when the adapter declares a documented
-   provider idempotency-key capability for that operation.
+   provider idempotency-key capability for that operation. Provider identity is part of the durable operation identity.
 6. Dispatch exactly once and persist success, definitive rejection or an
    uncertain outcome.
 7. Return an already persisted success without dispatching a second time.
@@ -44,7 +44,7 @@ the authenticated principal and a real approval record for the exact payload.
 The dispatcher does not authenticate users, create approvals, or treat a
 caller-provided boolean as proof of identity.
 
-No production SCM adapter implements this contract in this slice. The next
+Provider identity is namespaced into the durable operation name, preventing a result from one adapter from being reused for another provider. The authorization callback receives provider identity and an isolated JSON copy of the request.\n\nNo production SCM adapter implements this contract in this slice. The next
 step is a recording/fake provider contract test, followed by a provider-specific
 writer only after the provider's idempotency and reconciliation semantics are
 documented and independently reviewed.
