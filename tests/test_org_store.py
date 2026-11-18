@@ -343,7 +343,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 8
+        assert ORG_SCHEMA_VERSION == 9
 
 
 class TestReviewsAndFindings:
