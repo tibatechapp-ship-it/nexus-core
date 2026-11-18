@@ -1,6 +1,7 @@
 """Durable mission-context snapshot and restore tests."""
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -139,7 +140,7 @@ def test_context_checkpoints_are_append_only(tmp_path: Path) -> None:
     store, ctx, _, state_root = _context(tmp_path)
     saved = save_mission_context_snapshot(store, ctx, state_root)
 
-    with pytest.raises(Exception, match="mission context snapshots are immutable"):
+    with pytest.raises(sqlite3.IntegrityError, match="mission context snapshots are immutable"):
         with store._conn:
             store._conn.execute(
                 "UPDATE mission_context_snapshots SET payload = '{}' WHERE id = ?",
