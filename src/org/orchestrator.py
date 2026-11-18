@@ -432,6 +432,184 @@ class ExecutiveOrchestrator:
         )
         return context
 
+    def _load_persisted_plan(self, mission_id: str) -> ExecutionPlan:
+        """Rebuild the exact persisted DAG; never regenerate task identities."""
+        plan = ExecutionPlan(mission_id=mission_id)
+        rows = self.org_store.tasks_for_mission(mission_id)
+        if not rows:
+            raise OrgError("لا يوجد رسم مهام محفوظ لاستئنافه")
+        for row in rows:
+            try:
+                deps = json.loads(row.get("deps") or "[]")
+                params = json.loads(row.get("params") or "{}")
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise OrgError(f"بيانات مهمة تالفة: {row.get('id', '')}") from exc
+            if not isinstance(deps, list) or not isinstance(params, dict):
+                raise OrgError(f"عقد مهمة غير صالح: {row.get('id', '')}")
+            plan.tasks.append(TaskSpec(
+                mission_id=str(row["mission_id"]),
+                dept=str(row["dept"]),
+                kind=str(row["kind"]),
+                description=str(row["description"]),
+                deps=[str(dep) for dep in deps],
+                params=params,
+                id=str(row["id"]),
+            ))
+        plan.validate()
+        return plan
+
+    @staticmethod
+    def _task_result_payload(row: dict[str, Any]) -> dict[str, Any]:
+        try:
+            result = json.loads(row.get("result") or "{}")
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise OrgError(f"نتيجة المهمة تالفة: {row.get('id', '')}") from exc
+        if not isinstance(result, dict):
+            raise OrgError(f"نتيجة المهمة ليست كائنًا: {row.get('id', '')}")
+        return result
+
+    def _resume_review_gate(self, plan: ExecutionPlan,
+                            ctx: MissionContext) -> bool:
+        """Continue the review/revision loop from its durable gate record."""
+        while True:
+            development_task = max(
+                (task for task in plan.tasks if task.dept == "development"),
+                key=lambda task: int(task.params.get("revision", 0)),
+            )
+            review_task = next(
+                (task for task in reversed(plan.tasks)
+                 if task.dept == "code_review"
+                 and development_task.id in task.deps),
+                None,
+            )
+            if review_task is None:
+                existing_rounds = [
+                    int(task.params.get("round", 1))
+                    for task in plan.tasks if task.dept == "code_review"
+                ]
+                self._queue_review_round(
+                    plan, development_task, max(existing_rounds, default=1) + 1)
+                review_task = plan.tasks[-1]
+
+            row = self.org_store.task_get(review_task.id)
+            if row is None:
+                raise OrgError("سجل مهمة المراجعة اختفى أثناء الاستئناف")
+            if row.get("state") == "pending":
+                approved = self._run_review_gate(plan, ctx)
+            elif row.get("state") == "done":
+                result = self._task_result_payload(row)
+                verdict = result.get("verdict")
+                if verdict not in {"approve", "request_changes"}:
+                    raise OrgError("نتيجة المراجعة المكتملة لا تحمل قرارًا صالحًا")
+                approved = verdict == "approve"
+            else:
+                raise OrgError(
+                    f"حالة مهمة المراجعة غير قابلة للاستئناف: {row.get('state')}")
+
+            if approved:
+                return True
+
+            stored = self.org_store.mission_get(ctx.mission.id)
+            if stored is None:
+                raise OrgError("المهمة اختفت بعد رفض المراجعة")
+            next_revision = stored.revision_loops + 1
+            self._bump_revision_loops(ctx.mission)
+            if next_revision > self.max_revision_loops:
+                self._fail(ctx.mission, "تجاوز سقف دورات المراجعة أثناء الاستئناف")
+                return False
+
+            self._advance_phase(ctx.mission, "D_REVIEW", "C_DEVELOP")
+            self._queue_development_revision(
+                plan, development_task, next_revision)
+            self._run_wave(plan, ctx, phase="C_DEVELOP", dept="development")
+            self._advance_phase(ctx.mission, "C_DEVELOP", "D_REVIEW")
+
+    def resume_mission(
+            self, mission_id: str,
+            expected_repo_root: str | Path | None = None) -> Mission:
+        """Explicitly continue a preflighted mission from its durable phase.
+
+        This is an operator/caller action, not a background retry. It restores
+        and validates the checkpoint first, rebuilds the persisted DAG without
+        changing task IDs, skips completed tasks, and uses the existing durable
+        claim paths for pending work. Review and verification remain specialized
+        gates. A running/failed/skipped task or any drift blocks this method
+        before execution.
+        """
+        ctx = self.restore_context_for_resume(
+            mission_id, expected_repo_root=expected_repo_root)
+        plan = self._load_persisted_plan(mission_id)
+        mission = self.org_store.mission_get(mission_id)
+        if mission is None:
+            raise OrgError(f"مهمة غير موجودة: {mission_id}")
+        self.org_store.audit("mission.resume_started", mission_id, {
+            "phase": mission.phase,
+            "pending_task_ids": [
+                row["id"] for row in self.org_store.tasks_for_mission(mission_id)
+                if row.get("state") == "pending"
+            ],
+            "execution_explicit": True,
+        })
+        try:
+            while True:
+                phase = self._current_phase(mission)
+                if phase == "A_REQUIREMENTS":
+                    self._run_wave(plan, ctx, phase=phase, dept="executive")
+                    self._advance_phase(mission, phase, "B_INTEL")
+                elif phase == "B_INTEL":
+                    self._run_wave(plan, ctx, phase=phase, dept="repo_intel")
+                    self._advance_phase(mission, phase, "C_DEVELOP")
+                elif phase == "C_DEVELOP":
+                    self._run_wave(plan, ctx, phase=phase, dept="development")
+                    self._advance_phase(mission, phase, "D_REVIEW")
+                elif phase == "D_REVIEW":
+                    if not self._resume_review_gate(plan, ctx):
+                        return self._final(mission, ctx, failed=True)
+                    self._advance_phase(mission, phase, "E_TESTING")
+                elif phase == "E_TESTING":
+                    self._run_wave(plan, ctx, phase=phase, dept="qa")
+                    self._run_wave(plan, ctx, phase=phase, dept="security")
+                    self._advance_phase(mission, phase, "F_VERIFICATION")
+                elif phase == "F_VERIFICATION":
+                    verify_task = next(
+                        (task for task in plan.tasks
+                         if task.dept == "verification"), None)
+                    if verify_task is None:
+                        raise OrgError("مهمة التحقق غير موجودة في الرسم المحفوظ")
+                    verify_row = self.org_store.task_get(verify_task.id)
+                    if verify_row is None:
+                        raise OrgError("سجل مهمة التحقق اختفى")
+                    if verify_row.get("state") == "pending":
+                        verified = self._run_verification_gate(
+                            mission, plan, ctx)
+                    elif verify_row.get("state") == "done":
+                        result = self._task_result_payload(verify_row)
+                        verified = (
+                            isinstance(result.get("verified"), int)
+                            and isinstance(result.get("rejected"), int)
+                            and result["rejected"] == 0
+                        )
+                    else:
+                        raise OrgError(
+                            "حالة بوابة التحقق لا تسمح بالاستئناف")
+                    if not verified:
+                        self._fail(mission, "بوابة التحقق رفضت الأدلة أثناء الاستئناف")
+                        return self._final(mission, ctx, failed=True)
+                    self._advance_phase(mission, phase, "G_RELEASE")
+                elif phase == "G_RELEASE":
+                    self._run_wave(plan, ctx, phase=phase, dept="release")
+                    return self._final(mission, ctx, failed=False)
+                else:
+                    raise OrgError(f"طور استئناف غير مدعوم: {phase}")
+        except (DepartmentError, OrgError, PlanError, ValueError) as exc:
+            self._fail(mission, f"فشل الاستئناف: {type(exc).__name__}: {exc}")
+            return self._final(mission, ctx, failed=True, error=str(exc))
+        finally:
+            # Restored worktrees are non-owning; cleanup must never remove
+            # the immutable checkpoint copy.
+            if ctx.worktree is not None and getattr(ctx.worktree, "_owned", False):
+                ctx.worktree.cleanup()
+
     def _persist_claims(self, ctx: MissionContext) -> None:
         """تخزين ادعاءات جديدة فقط — لا تكرار للادعاء المخزن."""
         stored = {c.statement for c in self.org_store.claims_for(ctx.mission.id)}
