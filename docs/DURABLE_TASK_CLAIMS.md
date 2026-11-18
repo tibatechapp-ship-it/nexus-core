@@ -38,3 +38,29 @@ after adapters accept and propagate idempotency keys.
 - `task_attempts_for(task_id)`
 
 Schema migration v2 is additive and preserves existing mission/task rows.
+
+
+## Operator-driven reconciliation (schema v3)
+
+Recovery inspection remains read-only. A human operator may separately call
+`OrgStore.reconcile_task` with a non-empty actor, reason, and decision key.
+
+Supported decisions:
+
+- `manual_hold`: record a hold without changing task execution state.
+- `mark_failed`: close an expired running attempt as failed, or confirm an
+  already-failed task.
+- `mark_completed_with_evidence`: close an expired running or failed task only
+  when every supplied evidence reference belongs to the same mission and is
+  marked successful.
+- `retry_authorized`: preserve the original failed record and create a new
+  pending task with a distinct ID and a link to the original task.
+
+A running task cannot be reconciled by a terminal decision before its lease
+expires. No reconciliation action invokes a worker or executes pending work.
+Decision keys are unique per task; repeating the same decision is idempotent,
+while reusing a key for a different actor/action is rejected. Every decision is
+stored in `task_reconciliations` and appended to the audit log.
+
+This is operator authorization, not exactly-once execution. The replacement
+task remains pending and requires the normal orchestrator/worker claim path.
