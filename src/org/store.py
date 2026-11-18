@@ -790,7 +790,9 @@ class OrgStore:
                             (token, worker_id, attempt_no, now, operation_key),
                         ).rowcount
                         if changed != 1:
-                            error = "تعذر حجز العملية الخارجية بالتزامن"
+                            # Raising inside the transaction rolls back the
+                            # preceding approval-consumption update as well.
+                            raise OrgError("تعذر حجز العملية الخارجية بالتزامن")
                         else:
                             self._conn.execute(
                                 "INSERT INTO external_operation_attempts "
