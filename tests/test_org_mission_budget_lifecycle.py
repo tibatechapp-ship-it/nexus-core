@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
 
 from src.org.contracts import Mission
 from src.org.pipeline import MissionPipeline
@@ -75,7 +76,7 @@ class TestMissionBudgetPersistence:
                 title=mission.title, objective=mission.objective,
                 output_token_limit=10000, id=mission.id))
 
-    def test_v8_budget_is_backfilled_into_v9_mission_contract(self, tmp_path) -> None:
+    def test_v8_budget_is_backfilled_into_v9_mission_contract(self, tmp_path: Path) -> None:
         db = tmp_path / "v8-budget.sqlite"
         first = OrgStore(db)
         mission = first.create_mission(Mission(
@@ -92,9 +93,9 @@ class TestMissionBudgetPersistence:
         migrated = OrgStore(db)
         try:
             restored = migrated.mission_get(mission.id)
-            assert restored is not None
-            assert restored.output_token_limit == 7000
-            assert migrated.mission_token_budget_get(mission.id)["output_token_limit"] == 7000
+            budget = migrated.mission_token_budget_get(mission.id)
+            assert restored is not None and restored.output_token_limit == 7000
+            assert budget is not None and budget["output_token_limit"] == 7000
         finally:
             migrated.close()
 
@@ -107,7 +108,7 @@ class TestMissionBudgetPersistence:
 
 class TestPipelineBudgetLifecycle:
     def test_pipeline_configures_budget_before_agent_work_and_settles_it(
-            self, tmp_path) -> None:
+            self, tmp_path: Path) -> None:
         store = OrgStore(":memory:")
         pipeline = MissionPipeline(
             store, OpsStore(":memory:"), outdir=tmp_path / "reports")
