@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 9
+ORG_SCHEMA_VERSION = 10
 
 # Reconciliation evidence is persisted twice (operation result + audit); keep it bounded.
 MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES = 16 * 1024
@@ -142,6 +142,9 @@ class OrgStore:
             if current < 9:
                 self._migrate_v9()
                 current = 9
+            if current < 10:
+                self._migrate_v10()
+                current = 10
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -545,6 +548,33 @@ class OrgStore:
             "WHERE output_token_limit IS NULL AND EXISTS ("
             "SELECT 1 FROM mission_token_budgets "
             "WHERE mission_token_budgets.mission_id=missions.id)")
+
+    def _migrate_v10(self) -> None:
+        """سجل مصالحة غير قابل للتعديل لحجوزات التوكنات بعد التعطل."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS mission_token_reconciliations (
+                id TEXT PRIMARY KEY,
+                reservation_id TEXT NOT NULL UNIQUE,
+                actor TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                evidence_refs TEXT NOT NULL,
+                provider_terminal INTEGER NOT NULL CHECK(provider_terminal = 1),
+                actual_tokens INTEGER NOT NULL CHECK(actual_tokens >= 0),
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(reservation_id)
+                    REFERENCES mission_token_reservations(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_token_reconciliations_created
+                ON mission_token_reconciliations(created_at);
+            CREATE TRIGGER IF NOT EXISTS trg_token_reconciliations_no_update
+                BEFORE UPDATE ON mission_token_reconciliations
+                BEGIN SELECT RAISE(ABORT, 'token reconciliations are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS trg_token_reconciliations_no_delete
+                BEFORE DELETE ON mission_token_reconciliations
+                BEGIN SELECT RAISE(ABORT, 'token reconciliations are append-only'); END;
+            """
+        )
 
     def _migrate_v8(self) -> None:
         """ميزانية خرج توكنات موحدة وحجوزات ذرية لكل مهمة."""
@@ -1781,17 +1811,22 @@ class OrgStore:
             if actual_tokens > reserved:
                 raise OrgError("الاستهلاك الفعلي تجاوز الحجز؛ التسوية مرفوضة للمصالحة")
             mission_id = reservation["mission_id"]
-            self._conn.execute(
+            reservation_update = self._conn.execute(
                 "UPDATE mission_token_reservations SET actual_tokens=?, status='settled', "
                 "finished_at=? WHERE id=? AND status='reserved'",
                 (actual_tokens, now, reservation_id))
-            self._conn.execute(
+            if reservation_update.rowcount != 1:
+                raise OrgError("تغيرت حالة الحجز أثناء التسوية؛ أُلغيت المعاملة")
+            budget_update = self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
                 "reserved_output_tokens-?, consumed_output_tokens="
                 "consumed_output_tokens+?, status=CASE WHEN "
                 "consumed_output_tokens+?+reserved_output_tokens-? >= output_token_limit "
-                "THEN 'exhausted' ELSE 'active' END, updated_at=? WHERE mission_id=?",
-                (reserved, actual_tokens, actual_tokens, reserved, now, mission_id))
+                "THEN 'exhausted' ELSE 'active' END, updated_at=? "
+                "WHERE mission_id=? AND reserved_output_tokens>=?",
+                (reserved, actual_tokens, actual_tokens, reserved, now, mission_id, reserved))
+            if budget_update.rowcount != 1:
+                raise OrgError("رصيد الحجز غير متسق؛ أُلغيت التسوية دون تغيير")
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'mission.output_tokens_settled', ?, ?)",
@@ -1815,19 +1850,109 @@ class OrgStore:
                 (reservation_id,)).fetchone()
             if reservation is None or reservation["status"] != "reserved":
                 raise OrgError("حجز التوكنات غير موجود أو تمت معالجته")
-            self._conn.execute(
+            reservation_update = self._conn.execute(
                 "UPDATE mission_token_reservations SET status='released', finished_at=? "
                 "WHERE id=? AND status='reserved'", (now, reservation_id))
-            self._conn.execute(
+            if reservation_update.rowcount != 1:
+                raise OrgError("تغيرت حالة الحجز أثناء التحرير؛ أُلغيت المعاملة")
+            reserved = int(reservation["reserved_tokens"])
+            budget_update = self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
-                "reserved_output_tokens-?, updated_at=? WHERE mission_id=?",
-                (reservation["reserved_tokens"], now, reservation["mission_id"]))
+                "reserved_output_tokens-?, updated_at=? "
+                "WHERE mission_id=? AND reserved_output_tokens>=?",
+                (reserved, now, reservation["mission_id"], reserved))
+            if budget_update.rowcount != 1:
+                raise OrgError("رصيد الحجز غير متسق؛ أُلغيت عملية التحرير دون تغيير")
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'mission.output_tokens_released', ?, ?)",
                 (now, reservation["agent_role"], reservation["mission_id"],
                  json.dumps({"reservation_id": reservation_id, "reason": reason},
                             ensure_ascii=False, sort_keys=True)))
+            return dict(self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone())
+
+    def reconcile_mission_output_tokens(
+            self, reservation_id: str, actual_tokens: int, *,
+            actor: str, reason: str, evidence_refs: list[str],
+            confirm_provider_terminal: bool) -> dict[str, Any]:
+        """Resolve an orphaned reservation only with explicit terminal proof."""
+        if (not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool)
+                or actual_tokens < 0 or actual_tokens > 2**63 - 1):
+            raise OrgError("الاستهلاك الفعلي يجب أن يكون عددًا صحيحًا غير سالب")
+        actor = actor.strip() if isinstance(actor, str) else ""
+        reason = reason.strip() if isinstance(reason, str) else ""
+        if not actor or not reason:
+            raise OrgError("هوية المصالح وسبب المصالحة مطلوبان")
+        if len(actor) > 128 or len(reason) > 2048:
+            raise OrgError("هوية المصالح أو سبب المصالحة يتجاوز الحد المسموح")
+        if confirm_provider_terminal is not True:
+            raise OrgError("يلزم تأكيد نهائية طلب المزوّد قبل المصالحة")
+        if (not isinstance(evidence_refs, list) or not evidence_refs
+                or any(not isinstance(ref, str) or not ref.strip()
+                       for ref in evidence_refs)):
+            raise OrgError("مرجع دليل واحد على الأقل مطلوب للمصالحة")
+        if len(evidence_refs) > 32 or any(len(ref) > 512 for ref in evidence_refs):
+            raise OrgError("مراجع الأدلة تتجاوز الحدود المسموحة")
+        evidence_json = json.dumps(
+            evidence_refs, ensure_ascii=False, sort_keys=True)
+        if len(evidence_json.encode("utf-8")) > MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES:
+            raise OrgError("حجم أدلة المصالحة يتجاوز الحد المسموح")
+        now = self._now()
+        reconciliation_id = new_id(
+            "org-token-reconcile", reservation_id, actor, now,
+            json.dumps(evidence_refs, sort_keys=True))
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            reservation = self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone()
+            if reservation is None or reservation["status"] != "reserved":
+                raise OrgError("الحجز غير موجود أو تمت تسويته مسبقًا")
+            reserved = int(reservation["reserved_tokens"])
+            if actual_tokens > reserved:
+                raise OrgError("الاستهلاك المعلن يتجاوز سقف الحجز")
+            mission_id = str(reservation["mission_id"])
+            self._conn.execute(
+                "INSERT INTO mission_token_reconciliations "
+                "(id, reservation_id, actor, reason, evidence_refs, "
+                "provider_terminal, actual_tokens, created_at) "
+                "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+                (reconciliation_id, reservation_id, actor, reason,
+                 evidence_json, actual_tokens, now))
+            reservation_update = self._conn.execute(
+                "UPDATE mission_token_reservations SET actual_tokens=?, "
+                "status='settled', finished_at=? "
+                "WHERE id=? AND status='reserved'",
+                (actual_tokens, now, reservation_id))
+            if reservation_update.rowcount != 1:
+                raise OrgError("تغيرت حالة الحجز أثناء المصالحة؛ أُلغيت المعاملة")
+            budget_update = self._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens="
+                "reserved_output_tokens-?, consumed_output_tokens="
+                "consumed_output_tokens+?, status=CASE WHEN "
+                "consumed_output_tokens+?+reserved_output_tokens-? >= output_token_limit "
+                "THEN 'exhausted' ELSE 'active' END, updated_at=? "
+                "WHERE mission_id=? AND reserved_output_tokens>=?",
+                (reserved, actual_tokens, actual_tokens, reserved, now,
+                 mission_id, reserved))
+            if budget_update.rowcount != 1:
+                raise OrgError("رصيد الحجز غير متسق؛ أُلغيت المصالحة دون تغيير")
+            details = {
+                "reconciliation_id": reconciliation_id,
+                "reservation_id": reservation_id,
+                "reserved_tokens": reserved,
+                "actual_tokens": actual_tokens,
+                "reason": reason,
+                "evidence_refs": evidence_refs,
+                "provider_terminal": True,
+            }
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.output_tokens_reconciled', ?, ?)",
+                (now, actor, mission_id, json.dumps(
+                    details, ensure_ascii=False, sort_keys=True)))
             return dict(self._conn.execute(
                 "SELECT * FROM mission_token_reservations WHERE id=?",
                 (reservation_id,)).fetchone())
