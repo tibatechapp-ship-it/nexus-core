@@ -536,6 +536,15 @@ class OrgStore:
             self._conn.execute(
                 "ALTER TABLE missions ADD COLUMN output_token_limit INTEGER "
                 "CHECK(output_token_limit IS NULL OR output_token_limit > 0)")
+        # Budgets created by schema v8 are authoritative; backfill their cap
+        # into the mission contract before new lifecycle checks are enabled.
+        self._conn.execute(
+            "UPDATE missions SET output_token_limit=("
+            "SELECT output_token_limit FROM mission_token_budgets "
+            "WHERE mission_token_budgets.mission_id=missions.id) "
+            "WHERE output_token_limit IS NULL AND EXISTS ("
+            "SELECT 1 FROM mission_token_budgets "
+            "WHERE mission_token_budgets.mission_id=missions.id)")
 
     def _migrate_v8(self) -> None:
         """ميزانية خرج توكنات موحدة وحجوزات ذرية لكل مهمة."""
@@ -1658,8 +1667,11 @@ class OrgStore:
     def configure_mission_token_budget(self, mission_id: str,
                                        output_token_limit: int) -> dict[str, Any]:
         """إنشاء ميزانية خرج ثابتة؛ لا يسمح بتغيير سقف سبق اعتماده."""
-        if not isinstance(output_token_limit, int) or isinstance(output_token_limit, bool) or output_token_limit <= 0:
-            raise OrgError("حد توكنات الخرج يجب أن يكون عددًا صحيحًا موجبًا")
+        if (not isinstance(output_token_limit, int)
+                or isinstance(output_token_limit, bool)
+                or output_token_limit <= 0
+                or output_token_limit > 2**63 - 1):
+            raise OrgError("حد توكنات الخرج يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
         now = self._now()
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
