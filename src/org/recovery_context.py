@@ -14,7 +14,7 @@ import tempfile
 import uuid
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from src.org.contracts import Claim, Mission
 from src.org.departments import MissionContext
@@ -139,7 +139,7 @@ def _persist_worktree(worktree: Worktree | None, mission_id: str,
 
 def _json_value(value: Any) -> Any:
     if is_dataclass(value):
-        return asdict(value)
+        return asdict(cast(Any, value))
     if isinstance(value, dict):
         return {str(key): _json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
