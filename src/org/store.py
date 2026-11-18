@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 7
+ORG_SCHEMA_VERSION = 8
 
 # Reconciliation evidence is persisted twice (operation result + audit); keep it bounded.
 MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES = 16 * 1024
@@ -136,6 +136,9 @@ class OrgStore:
             if current < 7:
                 self._migrate_v7()
                 current = 7
+            if current < 8:
+                self._migrate_v8()
+                current = 8
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -518,6 +521,42 @@ class OrgStore:
             CREATE TRIGGER IF NOT EXISTS trg_effect_approvals_no_delete
                 BEFORE DELETE ON effect_approvals
                 BEGIN SELECT RAISE(ABORT, 'effect approval audit records are immutable'); END;
+            """
+        )
+
+
+    def _migrate_v8(self) -> None:
+        """ميزانية خرج توكنات موحدة وحجوزات ذرية لكل مهمة."""
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS mission_token_budgets (
+                mission_id TEXT PRIMARY KEY,
+                output_token_limit INTEGER NOT NULL CHECK(output_token_limit > 0),
+                reserved_output_tokens INTEGER NOT NULL DEFAULT 0
+                    CHECK(reserved_output_tokens >= 0),
+                consumed_output_tokens INTEGER NOT NULL DEFAULT 0
+                    CHECK(consumed_output_tokens >= 0),
+                status TEXT NOT NULL CHECK(status IN ('active','exhausted')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(mission_id) REFERENCES missions(id)
+            );
+            CREATE TABLE IF NOT EXISTS mission_token_reservations (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT NOT NULL,
+                agent_role TEXT NOT NULL,
+                reserved_tokens INTEGER NOT NULL CHECK(reserved_tokens > 0),
+                actual_tokens INTEGER NOT NULL DEFAULT 0 CHECK(actual_tokens >= 0),
+                status TEXT NOT NULL CHECK(status IN ('reserved','settled','released')),
+                created_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY(mission_id) REFERENCES missions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mission_token_reservations_active
+                ON mission_token_reservations(mission_id, status);
+            CREATE TRIGGER IF NOT EXISTS trg_mission_token_reservations_no_delete
+                BEFORE DELETE ON mission_token_reservations
+                BEGIN SELECT RAISE(ABORT, 'token reservation ledger is append-preserving'); END;
             """
         )
 
@@ -1571,6 +1610,163 @@ class OrgStore:
         return [dict(row) for row in rows]
 
     # ── تشغيلات الوكلاء ───────────────────────────────────────────────────
+
+
+    # ── ميزانية توكنات المهمة ─────────────────────────────────────────────
+
+    def configure_mission_token_budget(self, mission_id: str,
+                                       output_token_limit: int) -> dict[str, Any]:
+        """إنشاء ميزانية خرج ثابتة؛ لا يسمح بتغيير سقف سبق اعتماده."""
+        if not isinstance(output_token_limit, int) or isinstance(output_token_limit, bool) or output_token_limit <= 0:
+            raise OrgError("حد توكنات الخرج يجب أن يكون عددًا صحيحًا موجبًا")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            if self._conn.execute("SELECT 1 FROM missions WHERE id=?",
+                                  (mission_id,)).fetchone() is None:
+                raise OrgError("المهمة غير موجودة")
+            row = self._conn.execute(
+                "SELECT * FROM mission_token_budgets WHERE mission_id=?",
+                (mission_id,)).fetchone()
+            if row is not None:
+                if int(row["output_token_limit"]) != output_token_limit:
+                    raise OrgError("ميزانية المهمة موجودة ولا يمكن تغيير سقفها")
+                return dict(row)
+            self._conn.execute(
+                "INSERT INTO mission_token_budgets "
+                "(mission_id, output_token_limit, status, created_at, updated_at) "
+                "VALUES (?, ?, 'active', ?, ?)",
+                (mission_id, output_token_limit, now, now))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) VALUES "
+                "(?, 'system', 'mission.token_budget_configured', ?, ?)",
+                (now, mission_id, json.dumps(
+                    {"output_token_limit": output_token_limit}, sort_keys=True)))
+            return dict(self._conn.execute(
+                "SELECT * FROM mission_token_budgets WHERE mission_id=?",
+                (mission_id,)).fetchone())
+
+    def reserve_mission_output_tokens(self, mission_id: str, agent_role: str,
+                                      amount: int) -> dict[str, Any]:
+        """حجز ذري قبل استدعاء المزوّد؛ يحسب المحجوز والمتأكد معًا."""
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+            raise OrgError("حجم حجز التوكنات يجب أن يكون عددًا صحيحًا موجبًا")
+        if not isinstance(agent_role, str) or not agent_role.strip():
+            raise OrgError("هوية الوكيل مطلوبة لحجز التوكنات")
+        reservation_id = new_id("org-token-res", mission_id, agent_role,
+                                secrets.token_urlsafe(24))
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT * FROM mission_token_budgets WHERE mission_id=?",
+                (mission_id,)).fetchone()
+            if row is None:
+                raise OrgError("ميزانية توكنات المهمة غير مهيأة")
+            remaining = (int(row["output_token_limit"])
+                         - int(row["reserved_output_tokens"])
+                         - int(row["consumed_output_tokens"]))
+            if row["status"] != "active" or amount > remaining:
+                self._conn.execute(
+                    "UPDATE mission_token_budgets SET status='exhausted', updated_at=? "
+                    "WHERE mission_id=?", (now, mission_id))
+                self._conn.execute(
+                    "INSERT INTO audit (ts, actor, action, ref, details) "
+                    "VALUES (?, 'system', 'mission.token_budget_exhausted', ?, ?)",
+                    (now, mission_id, json.dumps(
+                        {"requested": amount, "remaining": max(0, remaining),
+                         "agent_role": agent_role}, sort_keys=True)))
+                raise OrgError("تم إيقاف المهمة: ميزانية توكنات الخرج غير كافية")
+            self._conn.execute(
+                "INSERT INTO mission_token_reservations "
+                "(id, mission_id, agent_role, reserved_tokens, status, created_at) "
+                "VALUES (?, ?, ?, ?, 'reserved', ?)",
+                (reservation_id, mission_id, agent_role, amount, now))
+            self._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens="
+                "reserved_output_tokens+?, updated_at=? WHERE mission_id=?",
+                (amount, now, mission_id))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.output_tokens_reserved', ?, ?)",
+                (now, agent_role, mission_id, json.dumps(
+                    {"reservation_id": reservation_id, "tokens": amount},
+                    sort_keys=True)))
+            return dict(self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone())
+
+    def settle_mission_output_tokens(self, reservation_id: str,
+                                     actual_tokens: int) -> dict[str, Any]:
+        """تسوية الحجز بالاستهلاك الفعلي؛ لا يقبل تجاوز الحجز أو التكرار."""
+        if not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool) or actual_tokens < 0:
+            raise OrgError("الاستهلاك الفعلي يجب أن يكون عددًا صحيحًا غير سالب")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            reservation = self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone()
+            if reservation is None or reservation["status"] != "reserved":
+                raise OrgError("حجز التوكنات غير موجود أو تمت تسويته مسبقًا")
+            reserved = int(reservation["reserved_tokens"])
+            if actual_tokens > reserved:
+                raise OrgError("الاستهلاك الفعلي تجاوز الحجز؛ التسوية مرفوضة للمصالحة")
+            mission_id = reservation["mission_id"]
+            self._conn.execute(
+                "UPDATE mission_token_reservations SET actual_tokens=?, status='settled', "
+                "finished_at=? WHERE id=? AND status='reserved'",
+                (actual_tokens, now, reservation_id))
+            self._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens="
+                "reserved_output_tokens-?, consumed_output_tokens="
+                "consumed_output_tokens+?, updated_at=? WHERE mission_id=?",
+                (reserved, actual_tokens, now, mission_id))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.output_tokens_settled', ?, ?)",
+                (now, reservation["agent_role"], mission_id, json.dumps(
+                    {"reservation_id": reservation_id, "reserved": reserved,
+                     "actual": actual_tokens}, sort_keys=True)))
+            return dict(self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone())
+
+    def release_mission_output_tokens(self, reservation_id: str,
+                                      reason: str) -> dict[str, Any]:
+        """تحرير الحجز فقط بعد فشل مؤكد قبل اعتماد خرج المزوّد."""
+        if not isinstance(reason, str) or not reason.strip():
+            raise OrgError("سبب تحرير الحجز مطلوب")
+        now = self._now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            reservation = self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone()
+            if reservation is None or reservation["status"] != "reserved":
+                raise OrgError("حجز التوكنات غير موجود أو تمت معالجته")
+            self._conn.execute(
+                "UPDATE mission_token_reservations SET status='released', finished_at=? "
+                "WHERE id=? AND status='reserved'", (now, reservation_id))
+            self._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens="
+                "reserved_output_tokens-?, updated_at=? WHERE mission_id=?",
+                (reservation["reserved_tokens"], now, reservation["mission_id"]))
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'mission.output_tokens_released', ?, ?)",
+                (now, reservation["agent_role"], reservation["mission_id"],
+                 json.dumps({"reservation_id": reservation_id, "reason": reason},
+                            ensure_ascii=False, sort_keys=True)))
+            return dict(self._conn.execute(
+                "SELECT * FROM mission_token_reservations WHERE id=?",
+                (reservation_id,)).fetchone())
+
+    def mission_token_budget_get(self, mission_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM mission_token_budgets WHERE mission_id=?",
+            (mission_id,)).fetchone()
+        return dict(row) if row else None
 
     def add_agent_run(self, mission_id: str, task_id: str, role: str,
                       provider: str, model: str, status: str, attempts: int,
