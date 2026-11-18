@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from src.org.contracts import Mission
+from src.org.contracts import Claim, Mission
 from src.org.departments import MissionContext
+from src.org.repo_intel import ModuleInfo, RepoMap
+from src.org.review import CouncilDecision
 from src.org.recovery_context import (
     fingerprint_directory,
     restore_mission_context,
@@ -34,6 +36,20 @@ def _context(tmp_path: Path) -> tuple[OrgStore, MissionContext, Path, Path]:
     ctx.diff_text = "diff --git a/src/app.py b/src/app.py"
     ctx.changed_files = ["src/app.py"]
     ctx.dev_notes = "checkpointed"
+    ctx.repo_map = RepoMap(
+        root=str(repo),
+        modules=[ModuleInfo(rel_path="src/app.py", functions=["run"])],
+        languages={"python": 1},
+        files_scanned=1,
+    )
+    ctx.council = CouncilDecision(
+        verdict="approve", mean_score=95, reasons=["clean"],
+        rounds=1, review_ids=["review-1"], dissent=[],
+    )
+    ctx.claims = [Claim(
+        mission_id=mission.id, agent_role="qa:runner",
+        statement="tests passed", claim_kind="test_pass",
+    )]
     return store, ctx, repo, state_root
 
 
@@ -54,6 +70,11 @@ def test_context_checkpoint_restores_after_store_reopen(tmp_path: Path) -> None:
     assert restored.diff_text == ctx.diff_text
     assert restored.changed_files == ctx.changed_files
     assert restored.dev_notes == "checkpointed"
+    assert restored.repo_map is not None
+    assert restored.repo_map.modules[0].functions == ["run"]
+    assert restored.council is not None
+    assert restored.council.verdict == "approve"
+    assert restored.claims[0].statement == "tests passed"
     assert restored.worktree is not None
     assert restored.worktree.read("src/app.py") == "VALUE = 2\n"
     assert reopened.mission_context_snapshot_get(ctx.mission.id, snapshot_id)
