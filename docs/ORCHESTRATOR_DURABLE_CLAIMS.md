@@ -61,3 +61,26 @@ and verification task with one completed durable attempt. The revision-loop
 test forces repeated review rejection and verifies that each development
 revision has a distinct review task, with the second review linked to the
 second development task. No completed review task is reset or reused.
+
+
+## Explicit dispatch of operator-authorized retries
+
+An operator-authorized retry creates a distinct pending task, but creation alone
+never schedules or executes it. The orchestrator now exposes
+`execute_authorized_retry(replacement_task_id, context)` as an explicit
+dispatch boundary. It requires the caller to supply the mission context and
+checks that:
+
+- the replacement belongs to that mission and is still pending;
+- exactly one persisted `retry_authorized` decision links it to its source task;
+- every declared dependency is present and completed successfully;
+- the task department has a supported direct executor.
+
+The replacement is then executed through the ordinary durable claim and lease
+path. The original task remains unchanged. Repeated dispatch is rejected by
+the pending-state check and atomic claim. Review and verification gates are
+intentionally excluded from this generic dispatcher because they require
+specialized gate context and must not be replayed as ordinary department work.
+This API does not reconstruct a lost worktree or resume an entire mission; the
+caller must provide a valid context and handle mission-level continuation
+separately.
