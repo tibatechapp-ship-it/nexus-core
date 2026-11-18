@@ -383,7 +383,7 @@ class TestExplicitMissionResume:
             mission.id, actor="operator", reason="approved after reviewing checkpoint",
             expected_repo_root=repo)
 
-        assert resumed.status == "done"
+        assert resumed.status == "done", second_store.tail_audit(30)
         assert resumed.phase == "G_RELEASE"
         assert release_calls == [mission.id]
         rows = orchestrator.org_store.tasks_for_mission(mission.id)
