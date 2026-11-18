@@ -626,3 +626,170 @@ class TestProcessInterruptionRecovery:
         assert latest["payload"]["context"]["execution_policy"] == {
             "schema_version": 1, "max_revision_loops": 1,
         }
+
+
+class TestSubprocessMissionCrashRecovery:
+    def test_recovers_after_first_process_exits_abruptly(
+            self, tmp_path: object) -> None:
+        """A separate OS process resumes SQLite state after os._exit()."""
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        root = Path(tmp_path)  # type: ignore[arg-type]
+        project_root = Path(__file__).resolve().parents[1]
+        repo = (project_root / "examples/org_demo/fixture_repo").resolve()
+        database = root / "org.sqlite3"
+        state_root = root / "mission-state"
+        marker = root / "first-process-stopped.json"
+        result_file = root / "resume-result.json"
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(project_root), str(project_root / "src"),
+             env.get("PYTHONPATH", "")])
+        env.update({
+            "NEXUS_TEST_DB": str(database),
+            "NEXUS_TEST_STATE": str(state_root),
+            "NEXUS_TEST_REPO": str(repo),
+            "NEXUS_TEST_MARKER": str(marker),
+            "NEXUS_TEST_RESULT": str(result_file),
+        })
+
+        bootstrap = r'''
+import json
+import os
+from pathlib import Path
+from src.org.contracts import Mission
+from src.org.departments import MissionContext
+from src.org.orchestrator import ExecutiveOrchestrator
+from src.org.providers import ProviderConfig, ProviderPool
+from src.org.recovery_context import save_mission_context_snapshot
+from src.org.store import OrgStore
+from src.ops.store import OpsStore
+
+db = Path(os.environ["NEXUS_TEST_DB"])
+state = Path(os.environ["NEXUS_TEST_STATE"])
+repo = Path(os.environ["NEXUS_TEST_REPO"])
+store = OrgStore(db)
+orchestrator = ExecutiveOrchestrator(
+    store, OpsStore(":memory:"), pool=ProviderPool([ProviderConfig()]),
+    outdir=str(db.parent / "first-run"), max_revision_loops=1,
+    state_root=state,
+)
+mission = store.create_mission(Mission(
+    title="subprocess crash recovery",
+    objective="resume from durable verification checkpoint",
+    repo_path=str(repo), phase="F_VERIFICATION", status="running",
+))
+plan = orchestrator.plan(mission)
+for task in plan.tasks:
+    if task.dept == "release":
+        continue
+    claim = store.claim_task(task.id, worker_id="crashed-os-process")
+    assert claim is not None
+    result = (
+        {"verified": 2, "rejected": 0, "reproduced": True}
+        if task.dept == "verification"
+        else {"summary": "durably completed:" + task.dept}
+    )
+    store.finish_claimed_task(task.id, str(claim["lease_token"]), result)
+
+save_mission_context_snapshot(
+    store,
+    MissionContext(mission=mission, execution_policy={
+        "schema_version": 1, "max_revision_loops": 1,
+    }),
+    state,
+)
+Path(os.environ["NEXUS_TEST_MARKER"]).write_text(
+    json.dumps({
+        "mission_id": mission.id,
+        "task_ids": [task.id for task in plan.tasks],
+    }),
+    encoding="utf-8",
+)
+# Deliberately bypass Python cleanup: the OS terminates this process while
+# SQLite has already committed every durable write above.
+os._exit(73)
+'''
+        first = subprocess.run(
+            [sys.executable, "-c", bootstrap],
+            cwd=project_root, env=env, capture_output=True, text=True,
+            timeout=60, check=False,
+        )
+        assert first.returncode == 73, first.stderr
+        assert marker.is_file()
+        checkpoint = json.loads(marker.read_text(encoding="utf-8"))
+        mission_id = checkpoint["mission_id"]
+        expected_task_ids = set(checkpoint["task_ids"])
+
+        resume_script = r'''
+import json
+import os
+from pathlib import Path
+from src.org.orchestrator import ExecutiveOrchestrator
+from src.org.providers import ProviderConfig, ProviderPool
+from src.org.store import OrgStore
+from src.ops.store import OpsStore
+
+db = Path(os.environ["NEXUS_TEST_DB"])
+state = Path(os.environ["NEXUS_TEST_STATE"])
+repo = Path(os.environ["NEXUS_TEST_REPO"])
+store = OrgStore(db)
+orchestrator = ExecutiveOrchestrator(
+    store, OpsStore(":memory:"), pool=ProviderPool([ProviderConfig()]),
+    outdir=str(db.parent / "second-run"), max_revision_loops=99,
+    state_root=state,
+)
+release_calls = []
+def prepare_release(context):
+    release_calls.append(context.mission.id)
+    return {"status": "prepared"}
+orchestrator.depts.release.run = prepare_release
+mission_id = json.loads(
+    Path(os.environ["NEXUS_TEST_MARKER"]).read_text(encoding="utf-8")
+)["mission_id"]
+mission = orchestrator.resume_mission(
+    mission_id, actor="operator",
+    reason="resume after abrupt operating-system process exit",
+    expected_repo_root=repo,
+)
+Path(os.environ["NEXUS_TEST_RESULT"]).write_text(
+    json.dumps({
+        "status": mission.status,
+        "phase": mission.phase,
+        "release_calls": release_calls,
+    }),
+    encoding="utf-8",
+)
+store.close()
+'''
+        second = subprocess.run(
+            [sys.executable, "-c", resume_script],
+            cwd=project_root, env=env, capture_output=True, text=True,
+            timeout=60, check=False,
+        )
+        assert second.returncode == 0, second.stderr
+        resumed = json.loads(result_file.read_text(encoding="utf-8"))
+        assert resumed == {
+            "status": "done",
+            "phase": "G_RELEASE",
+            "release_calls": [mission_id],
+        }
+
+        recovered_store = OrgStore(database)
+        try:
+            final_tasks = recovered_store.tasks_for_mission(mission_id)
+            assert {row["id"] for row in final_tasks} == expected_task_ids
+            assert all(row["state"] == "done" for row in final_tasks)
+            assert all(
+                len(recovered_store.task_attempts_for(row["id"])) == 1
+                for row in final_tasks
+            )
+            runs = recovered_store.mission_resume_runs_for(mission_id)
+            assert len(runs) == 1
+            assert runs[0]["status"] == "completed"
+        finally:
+            recovered_store.close()
