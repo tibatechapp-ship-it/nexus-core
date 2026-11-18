@@ -1668,9 +1668,6 @@ class OrgStore:
                          - int(row["consumed_output_tokens"]))
             if row["status"] != "active" or amount > remaining:
                 self._conn.execute(
-                    "UPDATE mission_token_budgets SET status='exhausted', updated_at=? "
-                    "WHERE mission_id=?", (now, mission_id))
-                self._conn.execute(
                     "INSERT INTO audit (ts, actor, action, ref, details) "
                     "VALUES (?, 'system', 'mission.token_budget_exhausted', ?, ?)",
                     (now, mission_id, json.dumps(
@@ -1720,8 +1717,10 @@ class OrgStore:
             self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
                 "reserved_output_tokens-?, consumed_output_tokens="
-                "consumed_output_tokens+?, updated_at=? WHERE mission_id=?",
-                (reserved, actual_tokens, now, mission_id))
+                "consumed_output_tokens+?, status=CASE WHEN "
+                "consumed_output_tokens+?+reserved_output_tokens-? >= output_token_limit "
+                "THEN 'exhausted' ELSE 'active' END, updated_at=? WHERE mission_id=?",
+                (reserved, actual_tokens, actual_tokens, reserved, now, mission_id))
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'mission.output_tokens_settled', ?, ?)",
