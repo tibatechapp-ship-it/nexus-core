@@ -77,7 +77,7 @@ class Commander:
     def _run_pipeline(self, pipeline_id: str, task: str) -> Dict:
         """يشغّل pipeline."""
         try:
-            from hive.factory.pipeline import run_pipeline_sync
+            from novamind.factory.pipeline import run_pipeline_sync
         except ImportError as e:
             logger.error(f"cannot import pipeline: {e}")
             return {"ok": False, "error": f"pipeline unavailable: {e}"}
