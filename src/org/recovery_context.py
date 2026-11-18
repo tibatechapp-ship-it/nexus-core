@@ -57,8 +57,8 @@ def fingerprint_directory(root: str | Path, *, include_git: bool = True) -> dict
             path = current_path / name
             rel = path.relative_to(base).as_posix()
             if path.is_symlink():
-                entry = {"path": rel, "type": "symlink", "target": os.readlink(path)}
-                encoded = json.dumps(entry, sort_keys=True).encode("utf-8")
+                symlink_entry = {"path": rel, "type": "symlink", "target": os.readlink(path)}
+                encoded = json.dumps(symlink_entry, sort_keys=True).encode("utf-8")
                 digest.update(len(encoded).to_bytes(8, "big"))
                 digest.update(encoded)
                 count += 1
