@@ -1718,8 +1718,9 @@ class OrgStore:
     def reserve_mission_output_tokens(self, mission_id: str, agent_role: str,
                                       amount: int) -> dict[str, Any]:
         """حجز ذري قبل استدعاء المزوّد؛ يحسب المحجوز والمتأكد معًا."""
-        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
-            raise OrgError("حجم حجز التوكنات يجب أن يكون عددًا صحيحًا موجبًا")
+        if (not isinstance(amount, int) or isinstance(amount, bool)
+                or amount <= 0 or amount > 2**63 - 1):
+            raise OrgError("حجم حجز التوكنات يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
         if not isinstance(agent_role, str) or not agent_role.strip():
             raise OrgError("هوية الوكيل مطلوبة لحجز التوكنات")
         reservation_id = new_id("org-token-res", mission_id, agent_role,
@@ -1765,8 +1766,9 @@ class OrgStore:
     def settle_mission_output_tokens(self, reservation_id: str,
                                      actual_tokens: int) -> dict[str, Any]:
         """تسوية الحجز بالاستهلاك الفعلي؛ لا يقبل تجاوز الحجز أو التكرار."""
-        if not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool) or actual_tokens < 0:
-            raise OrgError("الاستهلاك الفعلي يجب أن يكون عددًا صحيحًا غير سالب")
+        if (not isinstance(actual_tokens, int) or isinstance(actual_tokens, bool)
+                or actual_tokens < 0 or actual_tokens > 2**63 - 1):
+            raise OrgError("الاستهلاك الفعلي يجب أن يكون عددًا صحيحًا غير سالب ضمن حد SQLite")
         now = self._now()
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
