@@ -170,6 +170,7 @@ def assess_mission_resume(
     by_id = {str(row.get("id", "")): row for row in rows}
     states = {task_id: str(row.get("state", "")) for task_id, row in by_id.items()}
     current_order = _PHASE_ORDER.get(mission.phase, -1)
+    graph: dict[str, set[str]] = {}
 
     for task_id, row in by_id.items():
         dept = str(row.get("dept", ""))
