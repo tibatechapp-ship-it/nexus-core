@@ -98,7 +98,8 @@ class TestPhaseGates:
         assert mission.phase == "G_RELEASE"
         assert mission.status == "done"
         claimed_depts = {"executive", "repo_intel", "development",
-                         "security", "qa", "release"}
+                         "security", "qa", "release", "code_review",
+                         "verification"}
         rows = [
             row for row in orchestrator.org_store.tasks_for_mission(mission.id)
             if row["dept"] in claimed_depts
@@ -108,6 +109,7 @@ class TestPhaseGates:
             attempts = orchestrator.org_store.task_attempts_for(row["id"])
             assert len(attempts) == 1
             assert attempts[0]["status"] == "done"
+            assert row["state"] == "done"
 
     def test_illegal_phase_jump_via_store(
             self, orchestrator: ExecutiveOrchestrator) -> None:
@@ -195,3 +197,22 @@ class TestRevisionLoop:
         ]
         assert len(queued) == 1
         assert queued[0]["details"]["supersedes_task_id"] == revisions[0]["id"]
+
+        # Each development revision receives an independent durable review.
+        review_tasks = [
+            row for row in org_store.tasks_for_mission(mission.id)
+            if row["dept"] == "code_review"
+        ]
+        assert len(review_tasks) == 2
+        for review_task in review_tasks:
+            assert review_task["state"] == "done"
+            attempts = org_store.task_attempts_for(review_task["id"])
+            assert len(attempts) == 1
+            assert attempts[0]["status"] == "done"
+        review_rounds = [
+            event for event in org_store.tail_audit(200)
+            if event["action"] == "task.review_round_queued"
+        ]
+        assert len(review_rounds) == 1
+        assert review_rounds[0]["details"]["round"] == 2
+        assert review_rounds[0]["details"]["reviews_development_task_id"] == revisions[1]["id"]
