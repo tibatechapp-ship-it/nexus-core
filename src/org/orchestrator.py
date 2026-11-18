@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -318,6 +319,68 @@ class ExecutiveOrchestrator:
         self.org_store.finish_claimed_task(
             spec.id, lease_token, result.output)
         return result
+
+    def execute_authorized_retry(
+            self, replacement_task_id: str,
+            ctx: MissionContext) -> TaskResult:
+        """تنفيذ إعادة محاولة أنشأها قرار مشغّل صريح فقط.
+
+        لا يكتشف المهام تلقائيًا ولا يعيد تشغيل المهمة الأصلية. يجب أن
+        تكون المهمة البديلة معلّقة، مرتبطة بقرار retry_authorized، وأن
+        تكون كل تبعياتها مكتملة. يُمرر السياق المستعاد صراحة من المستدعي.
+        """
+        if not isinstance(replacement_task_id, str) or not replacement_task_id.strip():
+            raise OrgError("replacement_task_id مطلوب")
+        row = self.org_store.task_get(replacement_task_id)
+        if row is None or row.get("mission_id") != ctx.mission.id:
+            raise OrgError("مهمة إعادة المحاولة غير موجودة ضمن المهمة الحالية")
+        if row.get("state") != "pending":
+            raise OrgError("مهمة إعادة المحاولة ليست معلّقة")
+
+        params = json.loads(row.get("params") or "{}")
+        source_task_id = str(params.get("operator_retry_of") or "")
+        if not source_task_id:
+            raise OrgError("المهمة ليست إعادة محاولة مصرحًا بها من المشغّل")
+        decisions = [
+            decision for decision in self.org_store.task_reconciliations_for(
+                ctx.mission.id)
+            if decision.get("action") == "retry_authorized"
+            and decision.get("replacement_task_id") == replacement_task_id
+            and decision.get("task_id") == source_task_id
+        ]
+        if len(decisions) != 1:
+            raise OrgError("لا يوجد قرار مشغّل وحيد يجيز إعادة هذه المهمة")
+        source = self.org_store.task_get(source_task_id)
+        if source is None or source.get("mission_id") != ctx.mission.id:
+            raise OrgError("المهمة الأصلية لقرار إعادة المحاولة غير موجودة")
+
+        deps = json.loads(row.get("deps") or "[]")
+        for dependency_id in deps:
+            dependency = self.org_store.task_get(str(dependency_id))
+            if dependency is None or dependency.get("state") != "done":
+                raise OrgError(
+                    f"تبعية إعادة المحاولة لم تكتمل بنجاح: {dependency_id}")
+
+        # بوابات المجلس والتحقق لها مسارات خاصة؛ لا نمررها إلى منفذ الأقسام.
+        supported_departments = {
+            "executive", "repo_intel", "development", "security", "qa", "release"
+        }
+        if row.get("dept") not in supported_departments:
+            raise OrgError(
+                "إعادة محاولة هذه البوابة تتطلب مسار استئناف مخصصًا للمهمة")
+
+        spec = TaskSpec(
+            mission_id=str(row["mission_id"]), dept=str(row["dept"]),
+            kind=str(row["kind"]), description=str(row["description"]),
+            deps=[str(dep) for dep in deps], params=params,
+            id=str(row["id"]),
+        )
+        self.org_store.audit(
+            "task.operator_retry_dispatched", replacement_task_id,
+            {"source_task_id": source_task_id,
+             "decision_id": decisions[0].get("id", "")},
+        )
+        return self._execute_task(spec, ctx)
 
     def _persist_claims(self, ctx: MissionContext) -> None:
         """تخزين ادعاءات جديدة فقط — لا تكرار للادعاء المخزن."""
