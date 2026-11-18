@@ -46,6 +46,54 @@ class TestMissionOutputTokenBudget:
             store.settle_mission_output_token_reservation(
                 reservation["id"], 38)
 
+    def test_budget_validation_and_unconfigured_mission(self, store: OrgStore) -> None:
+        with pytest.raises(OrgError):
+            store.configure_mission_output_token_budget("missing", 100)
+        mission = store.create_mission(Mission(title="unbudgeted", objective="default"))
+        assert store.reserve_mission_output_tokens(mission.id, 20) is None
+        assert store.mission_output_token_budget(mission.id) is None
+        for invalid in (0, -1, True, 1.5):
+            with pytest.raises(OrgError):
+                store.configure_mission_output_token_budget(mission.id, invalid)  # type: ignore[arg-type]
+        with pytest.raises(OrgError):
+            store.reserve_mission_output_tokens(mission.id, 0)
+
+    def test_reservation_lifecycle_rejects_invalid_replays(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="budget", objective="lifecycle"))
+        store.configure_mission_output_token_budget(mission.id, 100)
+        with pytest.raises(OrgError):
+            store.settle_mission_output_token_reservation("missing", 1)
+        with pytest.raises(OrgError):
+            store.release_mission_output_token_reservation("missing", reason="no-op")
+        reservation = store.reserve_mission_output_tokens(mission.id, 40)
+        assert reservation is not None
+        with pytest.raises(OrgError):
+            store.settle_mission_output_token_reservation(reservation["id"], -1)
+        released = store.release_mission_output_token_reservation(
+            reservation["id"], reason="confirmed not dispatched")
+        assert released["state"] == "released"
+        assert store.release_mission_output_token_reservation(
+            reservation["id"], reason="idempotent replay")["state"] == "released"
+        with pytest.raises(OrgError):
+            store.settle_mission_output_token_reservation(reservation["id"], 0)
+        with pytest.raises(OrgError):
+            store.release_mission_output_token_reservation(
+                reservation["id"], reason="")
+
+    def test_budget_reservation_rejects_overspend_and_downgrade_after_usage(
+            self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="budget", objective="limits"))
+        store.configure_mission_output_token_budget(mission.id, 50)
+        with pytest.raises(OrgError, match="مستنفدة"):
+            store.reserve_mission_output_tokens(mission.id, 51)
+        reservation = store.reserve_mission_output_tokens(mission.id, 40)
+        assert reservation is not None
+        store.settle_mission_output_token_reservation(reservation["id"], 35)
+        with pytest.raises(OrgError, match="خفض"):
+            store.configure_mission_output_token_budget(mission.id, 34)
+        store.configure_mission_output_token_budget(mission.id, 60)
+        assert store.mission_output_token_budget(mission.id)["limit_tokens"] == 60
+
     def test_failed_provider_reservation_can_be_released(self, store: OrgStore) -> None:
         mission = store.create_mission(Mission(title="budget", objective="release"))
         store.configure_mission_output_token_budget(mission.id, 100)
@@ -349,7 +397,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 7
+        assert ORG_SCHEMA_VERSION == 8
 
 
 class TestReviewsAndFindings:
