@@ -514,7 +514,7 @@ class TestExternalOperationLedger:
 
         operation = store.external_operation_get(prepared["operation_key"])
         assert operation["state"] == "uncertain"
-        assert operation["result_payload"] is None
+        assert operation["result_payload"] == ""
         assert not any(
             row["action"] == "external_operation.reconciled"
             for row in store.tail_audit(20)
