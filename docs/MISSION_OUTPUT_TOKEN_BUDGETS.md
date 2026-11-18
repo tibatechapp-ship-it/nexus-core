@@ -26,3 +26,25 @@ The limit is immutable after creation. Existing missions without a configured bu
 This is an output-token ceiling, not a total-token, dollar, wall-clock, or request-count budget. Prompt/input tokens are not included because provider tokenization differs and the current provider contract does not expose a pre-dispatch exact count. Provider pricing and actual billed cost must continue to be monitored separately.
 
 The budget is opt-in and must be configured explicitly for each mission. A budget is not a substitute for provider-side spending limits, rate limits, or human approval for external effects.
+
+
+## ربط الميزانية بدورة حياة المهمة
+
+يمكن تحديد سقف المهمة عند الإنشاء، قبل تخطيطها أو تشغيل أي وكيل. أصبح
+`Mission.output_token_limit` جزءًا من عقد المهمة ويُحفظ في سجل `missions`
+(مخطط المتجر v9)، كما تُنشأ معه ميزانية الحجز في المعاملة نفسها. لا تُفعّل
+ميزانية تلقائيًا للمهام القديمة أو للمهام التي لم تحدد سقفًا.
+
+- Python: `Mission(title=..., objective=..., output_token_limit=50000)`
+- CLI: `org mission --title ... --objective ... --max-output-tokens 50000`
+- REST: أرسل `output_token_limit` كعدد صحيح موجب مع `POST /org/missions`.
+
+إعادة إنشاء مهمة بالهوية نفسها وبسقف مختلف مرفوضة؛ سقف المهمة غير قابل
+للتغيير بعد حفظه. تمرر نقطة تشغيل REST السقف المحفوظ إلى خط الأنابيب.
+القيم المنطقية والنصية والصفر والسالب والأعداد الأكبر من حد SQLite مرفوضة.
+الميزانية اختيارية، لذلك تظل المهام القديمة بلا سقف محافظة على السلوك السابق.
+
+الحد يخص توكنات الخرج فقط؛ لا يمثل حدًا للمدخلات أو التكلفة المالية أو الزمن
+أو عدد الطلبات. كل محاولة وكيل تحجز الحد الأقصى المعلن في عقد الوكيل قبل
+الإرسال، ثم تسوّي الاستهلاك الفعلي؛ أخطاء المزوّد بعد الإرسال تُحاسب تحفظيًا
+بكامل الحجز لأن حالة الإرسال قد تكون غير مؤكدة.
