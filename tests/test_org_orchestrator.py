@@ -870,3 +870,93 @@ class TestCheckpointLedgerDrift:
             for event in second_store.tail_audit(100)
         )
         second_store.close()
+
+
+class TestCheckpointBeforePhaseTransition:
+    def test_resume_skips_completed_phase_when_crash_follows_checkpoint(
+            self, tmp_path: object) -> None:
+        """A durable task+context checkpoint survives a crash before phase advance."""
+        from pathlib import Path
+
+        root = Path(tmp_path)  # type: ignore[arg-type]
+        repo = Path("examples/org_demo/fixture_repo").resolve()
+        database = root / "org.sqlite3"
+        state_root = root / "mission-state"
+
+        first_store = OrgStore(database)
+        first = ExecutiveOrchestrator(
+            first_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "first-run"), state_root=state_root,
+        )
+        mission = first_store.create_mission(Mission(
+            title="checkpoint before phase transition",
+            objective="إضافة حارس للقسمة على صفر إلى دالة divide مع اختبارها؛ resume without replay when phase metadata lags a durable checkpoint",
+            repo_path=str(repo), phase="A_REQUIREMENTS", status="running",
+        ))
+        plan = first.plan(mission)
+
+        # Execute the requirements phase normally so its durable result and
+        # the context checkpoint contain the real acceptance criteria/state.
+        # Simulate the crash only after that checkpoint, before phase advance.
+        context = MissionContext(mission=mission, execution_policy={
+            "schema_version": 1, "max_revision_loops": 1,
+        })
+        completed_ids = set()
+        for task in plan.tasks:
+            if task.dept != "executive":
+                continue
+            first._execute_task(task, context)
+            completed_ids.add(task.id)
+
+        assert completed_ids
+        # Re-save explicitly to make the intended crash boundary unambiguous:
+        # task ledger and matching context snapshot are durable; phase is stale.
+        save_mission_context_snapshot(first_store, context, state_root)
+        attempts_before = {
+            task.id: len(first_store.task_attempts_for(task.id))
+            for task in plan.tasks
+        }
+        assert {task_id for task_id, count in attempts_before.items() if count == 1} == completed_ids
+        assert all(count in (0, 1) for count in attempts_before.values())
+        assert first_store.mission_get(mission.id).phase == "A_REQUIREMENTS"
+        first_store.close()
+
+        second_store = OrgStore(database)
+        second = ExecutiveOrchestrator(
+            second_store, OpsStore(":memory:"),
+            pool=ProviderPool([ProviderConfig()]),
+            outdir=str(root / "second-run"), state_root=state_root,
+        )
+        resumed = second.resume_mission(
+            mission.id, actor="operator",
+            reason="recover after checkpoint commit before phase transition",
+            expected_repo_root=repo,
+        )
+
+        diagnostic = [
+            event for event in second_store.tail_audit(100)
+            if event.get("action") in {
+                "mission.failed", "gate.verification",
+                "verification.completed",
+            }
+        ]
+        assert resumed.status == "done", diagnostic
+        assert resumed.phase == "G_RELEASE"
+        rows = second_store.tasks_for_mission(mission.id)
+        assert all(row["state"] == "done" for row in rows)
+        attempts_after = {
+            row["id"]: len(second_store.task_attempts_for(row["id"]))
+            for row in rows
+        }
+        # The completed requirements task must not be replayed; every task
+        # that was pending at the crash boundary executes exactly once.
+        assert all(attempts_after[task_id] == 1 for task_id in completed_ids)
+        assert all(
+            attempts_after[task_id] == 1
+            for task_id in set(attempts_before) - completed_ids
+        )
+        runs = second_store.mission_resume_runs_for(mission.id)
+        assert len(runs) == 1
+        assert runs[0]["status"] == "completed"
+        second_store.close()
