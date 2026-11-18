@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from src.org.contracts import Mission
+from src.org.contracts import Mission, TaskSpec
 from src.org.effect_approvals import EffectApprovalError, EffectApprovalService
 from src.org.store import OrgStore
 
@@ -16,6 +16,10 @@ from src.org.store import OrgStore
 def scenario(tmp_path: Path):
     store = OrgStore(tmp_path / "approvals.sqlite3")
     mission = store.create_mission(Mission(title="approval", objective="test scoped approval"))
+    task = store.add_task(TaskSpec(
+        mission_id=mission.id, dept="release", kind="comment",
+        description="approved external comment",
+    ))
     service = EffectApprovalService(
         store,
         principal_verifier=lambda principal: principal in {"reviewer-1", "operator-1"},
@@ -25,7 +29,7 @@ def scenario(tmp_path: Path):
         ),
     )
     args = {
-        "mission_id": mission.id, "task_id": "task-1",
+        "mission_id": mission.id, "task_id": task.id,
         "repository": "owner/repo", "ref_name": "refs/heads/release",
         "commit_sha": "a" * 40, "provider_id": "scm-test",
         "operation_name": "comment", "request": {"body": "approved"},
@@ -120,3 +124,12 @@ def test_concurrent_consumption_has_exactly_one_winner(scenario):
         outcomes = list(pool.map(lambda _: attempt(), range(8)))
     assert outcomes.count("consumed") == 1
     assert outcomes.count("rejected") == 7
+
+
+def test_only_approver_can_revoke(scenario):
+    _, service, args = scenario
+    approval = _issue(service, args)
+    with pytest.raises(EffectApprovalError, match="not authorized to revoke"):
+        service.revoke(approval.approval_id, issuer_principal_id="operator-1",
+                       reason="not an approver")
+    assert _consume(service, approval.token, args)["status"] == "consumed"
