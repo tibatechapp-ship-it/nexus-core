@@ -182,19 +182,25 @@ class AgentRuntime:
         ]
         last_error = ""
         for attempt in range(1, spec.max_retries + 2):
+            reservation = self._reserve_output_budget(spec)
             t0 = time.time()
             try:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
-                latency = (time.time() - t0) * 1000.0
-                self._record(spec, resp, attempt, latency, "ok")
-                return resp
-            except ProviderError as exc:
+            except Exception as exc:
+                self._release_output_budget(reservation, "provider call failed")
+                if not isinstance(exc, ProviderError):
+                    raise
                 last_error = str(exc)
                 latency = (time.time() - t0) * 1000.0
                 self._record(spec, None, attempt, latency, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
+                continue
+            self._settle_output_budget(reservation, resp.usage.out_tokens)
+            latency = (time.time() - t0) * 1000.0
+            self._record(spec, resp, attempt, latency, "ok")
+            return resp
         raise ProviderError(
             f"الوكيل {spec.role} استنفد محاولاته ({spec.max_retries + 1}): "
             f"{last_error}")
@@ -207,17 +213,22 @@ class AgentRuntime:
         ]
         last_error = ""
         for attempt in range(1, spec.max_retries + 2):
+            reservation = self._reserve_output_budget(spec)
             t0 = time.time()
             try:
                 resp = self.pool.complete_with_fallback(
                     messages, temperature=spec.temperature,
                     max_tokens=spec.max_tokens)
-            except ProviderError as exc:
+            except Exception as exc:
+                self._release_output_budget(reservation, "provider call failed")
+                if not isinstance(exc, ProviderError):
+                    raise
                 last_error = str(exc)
                 self._record(spec, None, attempt,
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
                 continue
+            self._settle_output_budget(reservation, resp.usage.out_tokens)
             data, parse_error = self._parse_json(resp.text)
             if data is None:
                 last_error = parse_error
@@ -237,6 +248,23 @@ class AgentRuntime:
             spec_role=spec.role, success=False, attempts=spec.max_retries + 1,
             error=last_error or "رد غير قابل للتحليل",
         )
+
+    def _reserve_output_budget(self, spec: AgentSpec) -> dict[str, Any] | None:
+        """احجز سقف إخراج الاستدعاء قبل إرساله؛ بلا ميزانية يبقى السلوك السابق."""
+        return self.store.reserve_mission_output_tokens(
+            spec.mission_id, spec.max_tokens)
+
+    def _settle_output_budget(
+            self, reservation: dict[str, Any] | None, actual_tokens: int) -> None:
+        if reservation is not None:
+            self.store.settle_mission_output_token_reservation(
+                str(reservation["id"]), actual_tokens)
+
+    def _release_output_budget(
+            self, reservation: dict[str, Any] | None, reason: str) -> None:
+        if reservation is not None:
+            self.store.release_mission_output_token_reservation(
+                str(reservation["id"]), reason=reason)
 
     @staticmethod
     def _parse_json(text: str) -> tuple[dict[str, Any] | None, str]:
