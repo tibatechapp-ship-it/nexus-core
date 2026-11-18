@@ -137,7 +137,7 @@ def test_crash_after_dispatch_claim_leaves_in_flight_and_blocks_replay(
         )
         assert operation["state"] == "in_flight"
 
-        with pytest.raises(EffectUncertain, match="automatic redispatch is blocked"):
+        with pytest.raises(EffectUncertain, match="inspect or reconcile it before any new dispatch"):
             dispatcher.execute(
                 mission.id, task.id, "comment", "revision-1", request,
                 actor="operator",
