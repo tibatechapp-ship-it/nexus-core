@@ -327,6 +327,8 @@ class OrgStore:
             raise OrgError("بصمة المستودع غير صالحة")
         if bool(worktree_path) != bool(worktree_fingerprint):
             raise OrgError("مسار نسخة العمل وبصمتها يجب أن يظهرا معًا")
+        if not payload.get("task_ledger_digest"):
+            raise OrgError("بصمة سجل المهام مطلوبة داخل checkpoint")
         encoded_payload = json.dumps(
             payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         payload_digest = hashlib.sha256(encoded_payload.encode("utf-8")).hexdigest()
@@ -335,11 +337,26 @@ class OrgStore:
         now = self._now()
         snapshot_id = new_id("org-ctx", mission_id, now, encoded_payload)
         with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
             mission = self._conn.execute(
                 "SELECT id FROM missions WHERE id = ?", (mission_id,)
             ).fetchone()
             if mission is None:
                 raise OrgError(f"مهمة غير موجودة: {mission_id}")
+            ledger_rows = self._conn.execute(
+                "SELECT id, mission_id, dept, kind, description, deps, params, "
+                "state, attempts, result, error, updated_at, idempotency_key, "
+                "input_snapshot FROM tasks WHERE mission_id = ? ORDER BY id",
+                (mission_id,),
+            ).fetchall()
+            ledger = [dict(row) for row in ledger_rows]
+            encoded_ledger = json.dumps(
+                ledger, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            current_ledger_digest = hashlib.sha256(
+                encoded_ledger.encode("utf-8")).hexdigest()
+            if payload["task_ledger_digest"] != current_ledger_digest:
+                raise OrgError(
+                    "سجل المهام تغيّر أثناء checkpoint؛ اللقطة لم تُحفظ")
             latest = self._conn.execute(
                 "SELECT sequence, repo_fingerprint FROM mission_context_snapshots "
                 "WHERE mission_id = ? ORDER BY sequence DESC LIMIT 1",
