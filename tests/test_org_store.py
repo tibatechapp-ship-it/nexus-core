@@ -397,7 +397,7 @@ class TestExternalOperationLedger:
     def _prepared(self, store: OrgStore):
         mission = store.create_mission(Mission(title="external", objective="ledger"))
         task = store.add_task(TaskSpec(
-            mission_id=mission.id, dept="scm", kind="external",
+            mission_id=mission.id, dept="development", kind="external",
             description="create remote issue"))
         row = store.prepare_external_operation(
             mission.id, task.id, "github.issue.create", "rev-1",
