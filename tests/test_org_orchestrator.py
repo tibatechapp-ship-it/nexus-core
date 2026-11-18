@@ -252,10 +252,9 @@ class TestAuthorizedRetryDispatch:
 
         mission = orchestrator.org_store.create_mission(
             Mission(title="retry", objective="recover one failed task"))
-        original = TaskSpec(
+        original = orchestrator.org_store.add_task(TaskSpec(
             mission_id=mission.id, dept="development", kind="implement",
-            description="original implementation")
-        orchestrator.org_store.add_task(original)
+            description="original implementation"))
         orchestrator.org_store.task_set_state(
             original.id, "failed", error="provider interruption")
         decision = orchestrator.org_store.reconcile_task(
@@ -291,10 +290,9 @@ class TestAuthorizedRetryDispatch:
 
         mission = orchestrator.org_store.create_mission(
             Mission(title="retry", objective="must not run without approval"))
-        task = TaskSpec(
+        task = orchestrator.org_store.add_task(TaskSpec(
             mission_id=mission.id, dept="development", kind="implement",
-            description="unapproved task")
-        orchestrator.org_store.add_task(task)
+            description="unapproved task"))
         with pytest.raises(OrgError, match="ليست إعادة محاولة مصرحًا بها"):
             orchestrator.execute_authorized_retry(
                 task.id, MissionContext(mission=mission))
@@ -308,14 +306,12 @@ class TestAuthorizedRetryDispatch:
 
         mission = orchestrator.org_store.create_mission(
             Mission(title="retry", objective="dependency gate"))
-        dependency = TaskSpec(
+        dependency = orchestrator.org_store.add_task(TaskSpec(
             mission_id=mission.id, dept="repo_intel", kind="analyze",
-            description="required prerequisite")
-        original = TaskSpec(
+            description="required prerequisite"))
+        original = orchestrator.org_store.add_task(TaskSpec(
             mission_id=mission.id, dept="development", kind="implement",
-            description="dependent implementation", deps=[dependency.id])
-        orchestrator.org_store.add_task(dependency)
-        orchestrator.org_store.add_task(original)
+            description="dependent implementation", deps=[dependency.id]))
         orchestrator.org_store.task_set_state(
             original.id, "failed", error="interrupted")
         decision = orchestrator.org_store.reconcile_task(
