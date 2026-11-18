@@ -152,6 +152,42 @@ class TestAskJson:
         assert budget["reserved_output_tokens"] == 0
         assert budget["consumed_output_tokens"] == 0
 
+    def test_provider_fallback_failures_are_charged_conservatively(
+            self, store: OrgStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.org.contracts import Mission
+
+        mission = store.create_mission(Mission(
+            title="fallback budget", objective="charge failed dispatches"))
+        store.configure_mission_token_budget(mission.id, 5000)
+        pool = ProviderPool([
+            ProviderConfig(name="first", model="first-model"),
+            ProviderConfig(name="mock", model="mock-1"),
+        ])
+
+        class UncertainProvider:
+            def complete(self, messages, **kwargs):
+                raise ProviderError("timeout after possible provider dispatch")
+
+        original_get = pool.get
+
+        def get_provider(name: str = "", model: str = ""):
+            if name == "first":
+                return UncertainProvider()
+            return original_get(name, model)
+
+        monkeypatch.setattr(pool, "get", get_provider)
+        runtime = AgentRuntime(pool, ToolRegistry(), store)
+        outcome = runtime.ask_json(
+            _spec(mission_id=mission.id, max_tokens=1000, max_retries=0),
+            "أجب JSON",
+        )
+
+        assert outcome.success
+        budget = store.mission_token_budget_get(mission.id)
+        assert budget is not None
+        assert budget["reserved_output_tokens"] == 0
+        assert budget["consumed_output_tokens"] >= 1000 + outcome.tokens_out
+
     def test_outcome_carries_usage(self, runtime: AgentRuntime) -> None:
         out = runtime.ask_json(_spec(), "أجب JSON")
         assert out.tokens_in > 0 and out.attempts == 1
