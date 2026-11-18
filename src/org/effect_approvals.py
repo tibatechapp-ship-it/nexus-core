@@ -119,7 +119,7 @@ class EffectApprovalService:
             repository=repository, ref_name=ref_name, commit_sha=commit_sha,
             provider_id=provider_id, operation_name=operation_name,
             payload_fingerprint=payload_hash, principal_id=executor,
-            expires_at=expires)
+            issuer_principal_id=issuer, expires_at=expires)
         return EffectApproval(approval_id, token, expires)
 
     def consume(self, token: str, *, executor_principal_id: str,
@@ -146,6 +146,23 @@ class EffectApprovalService:
     def revoke(self, approval_id: str, *, issuer_principal_id: str,
                reason: str) -> None:
         issuer = self._principal(issuer_principal_id)
+        row = self._store.effect_approval_get(approval_id)
+        if row is None:
+            raise EffectApprovalError("تفويض غير موجود")
+        policy_scope = {
+            "mission_id": row["mission_id"], "task_id": row["task_id"],
+            "repository": row["repository"], "ref_name": row["ref_name"],
+            "commit_sha": row["commit_sha"], "provider_id": row["provider_id"],
+            "operation_name": row["operation_name"],
+            "payload_fingerprint": row["payload_fingerprint"],
+            "executor_principal_id": row["principal_id"],
+        }
+        try:
+            allowed = self._policy(issuer, policy_scope)
+        except Exception as exc:
+            raise EffectApprovalError("revocation policy evaluation failed") from exc
+        if allowed is not True:
+            raise EffectApprovalError("issuer is not authorized to revoke this effect")
         try:
             self._store.revoke_effect_approval(
                 approval_id, principal_id=issuer, reason=reason)
