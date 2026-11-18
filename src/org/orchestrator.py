@@ -539,6 +539,31 @@ class ExecutiveOrchestrator:
     def resume_mission(
             self, mission_id: str, *, actor: str, reason: str,
             expected_repo_root: str | Path | None = None) -> Mission:
+        """استئناف حصري مسجل؛ القفل اليتيم يحتاج مصالحة بشرية."""
+        if not isinstance(actor, str) or not actor.strip():
+            raise OrgError("هوية المشغّل مطلوبة للاستئناف الصريح")
+        if not isinstance(reason, str) or not reason.strip():
+            raise OrgError("سبب الاستئناف مطلوب للتدقيق")
+        run = self.org_store.claim_mission_resume(
+            mission_id, actor=actor, reason=reason)
+        try:
+            result = self._resume_mission_with_claim(
+                mission_id, actor=actor, reason=reason,
+                expected_repo_root=expected_repo_root)
+        except Exception as exc:
+            self.org_store.finish_mission_resume(
+                mission_id, run["token"], status="failed",
+                reason=f"{type(exc).__name__}: {exc}")
+            raise
+        status = "completed" if result.status == "done" else "failed"
+        self.org_store.finish_mission_resume(
+            mission_id, run["token"], status=status,
+            reason=f"mission_status={result.status}; phase={result.phase}")
+        return result
+
+    def _resume_mission_with_claim(
+            self, mission_id: str, *, actor: str, reason: str,
+            expected_repo_root: str | Path | None = None) -> Mission:
         """Explicitly continue a preflighted mission from its durable phase.
 
         This is an operator/caller action, not a background retry. It restores
