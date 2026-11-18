@@ -76,6 +76,12 @@ def test_dispatch_consumes_approval_and_success_replay_needs_no_new_token(scenar
     approval = issue(service, scope)
 
     first = execute(dispatcher, scope, approval.token)
+    with pytest.raises(EffectNotAuthorized):
+        dispatcher.execute(
+            scope["mission_id"], scope["task_id"], "comment", "revision-1",
+            scope["request"], actor="forged", repository=scope["repository"],
+            ref_name=scope["ref_name"], commit_sha=scope["commit_sha"],
+        )
     replay = dispatcher.execute(
         scope["mission_id"], scope["task_id"], "comment", "revision-1",
         scope["request"], actor="executor", repository=scope["repository"],
