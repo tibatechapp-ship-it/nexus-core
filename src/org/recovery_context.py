@@ -30,6 +30,23 @@ _IGNORED_DIRS = {
 }
 
 
+def _task_ledger_digest(store: OrgStore, mission_id: str) -> str:
+    """Bind a context checkpoint to the exact persisted task ledger revision."""
+    ledger = []
+    for row in store.tasks_for_mission(mission_id):
+        ledger.append({
+            key: row.get(key)
+            for key in (
+                "id", "mission_id", "dept", "kind", "description", "deps",
+                "params", "state", "attempts", "result", "error", "updated_at",
+                "idempotency_key", "input_snapshot",
+            )
+        })
+    encoded = json.dumps(
+        ledger, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def fingerprint_directory(root: str | Path, *, include_git: bool = True) -> dict[str, Any]:
     """Return a deterministic SHA-256 tree fingerprint without following symlinks."""
     base = Path(root).resolve(strict=True)
@@ -164,6 +181,7 @@ def save_mission_context_snapshot(
     repo_map = ctx.repo_map.to_dict() if ctx.repo_map is not None else None
     payload = {
         "schema_version": CONTEXT_SNAPSHOT_SCHEMA,
+        "task_ledger_digest": _task_ledger_digest(store, mission.id),
         "mission": mission.to_dict(),
         "context": {
             "repo_map": repo_map,
@@ -208,6 +226,10 @@ def restore_mission_context(
     if not isinstance(mission_data, dict) or mission_data.get("id") != mission_id:
         raise OrgError("هوية المهمة داخل لقطة السياق غير مطابقة")
     mission = Mission.from_dict(mission_data)
+    expected_ledger = str(payload.get("task_ledger_digest") or "")
+    if not expected_ledger or _task_ledger_digest(store, mission_id) != expected_ledger:
+        raise OrgError(
+            "سجل المهام تغيّر بعد آخر checkpoint؛ السياق غير متزامن ويتطلب مراجعة")
     repo_root = Path(mission.repo_path).resolve(strict=True)
     if expected_repo_root is not None and repo_root != Path(expected_repo_root).resolve():
         raise OrgError("مسار المستودع الحالي لا يطابق مسار المهمة المحفوظ")
