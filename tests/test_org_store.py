@@ -203,7 +203,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 2
+        assert ORG_SCHEMA_VERSION == 3
 
 
 class TestReviewsAndFindings:
@@ -231,3 +231,66 @@ class TestReviewsAndFindings:
                                       description="d"))
         with pytest.raises(OrgError):
             store.finding_set_status(f.id, "meh")
+
+    def test_operator_mark_failed_requires_expired_lease_and_audits(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="reconcile", objective="safe"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="uncertain"))
+        claim = store.claim_task(task.id, "worker", lease_seconds=60)
+        assert claim is not None
+        with pytest.raises(OrgError, match="انتهاء lease"):
+            store.reconcile_task(task.id, "mark_failed", "operator",
+                                 "inspect logs", "decision-1")
+        with store._conn:
+            store._conn.execute(
+                "UPDATE tasks SET lease_expires_at=? WHERE id=?",
+                ("2000-01-01T00:00:00+00:00", task.id))
+        decision = store.reconcile_task(task.id, "mark_failed", "operator",
+                                        "no side effect confirmed", "decision-1")
+        assert decision["action"] == "mark_failed"
+        assert store.task_get(task.id)["state"] == "failed"
+        assert store.task_attempts_for(task.id)[0]["status"] == "failed"
+        assert store.tail_audit(1)[0]["action"] == "task.reconciled"
+
+    def test_operator_completion_requires_successful_evidence(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="reconcile", objective="evidence"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="verify"))
+        store.task_set_state(task.id, "failed", error="interrupted")
+        with pytest.raises(OrgError, match="مراجع الأدلة"):
+            store.reconcile_task(task.id, "mark_completed_with_evidence",
+                                 "operator", "reviewed", "decision-2", [])
+        from src.org.contracts import Evidence
+        evidence = store.add_evidence(Evidence(
+            mission_id=mission.id, kind="test_result",
+            detail={"report": "reports/test.json"}, ok=True))
+        decision = store.reconcile_task(
+            task.id, "mark_completed_with_evidence", "operator",
+            "verified report", "decision-2", [evidence.id])
+        assert decision["action"] == "mark_completed_with_evidence"
+        assert store.task_get(task.id)["state"] == "done"
+
+    def test_retry_authorization_creates_new_task_and_is_idempotent(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="retry", objective="new record"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="run once"))
+        store.task_set_state(task.id, "failed", error="runner stopped", attempts=1)
+        decision = store.reconcile_task(task.id, "retry_authorized", "operator",
+                                        "safe after review", "retry-1")
+        replacement = store.task_get(decision["replacement_task_id"])
+        assert replacement is not None and replacement["state"] == "pending"
+        assert replacement["id"] != task.id
+        assert store.task_get(task.id)["state"] == "failed"
+        again = store.reconcile_task(task.id, "retry_authorized", "operator",
+                                     "safe after review", "retry-1")
+        assert again["id"] == decision["id"]
+        assert len(store.task_reconciliations_for(mission.id)) == 1
+
+    def test_reconciliation_rejects_completed_and_wrong_decision_reuse(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="closed", objective="immutable"))
+        task = store.add_task(TaskSpec(mission_id=mission.id, dept="qa",
+                                       kind="test", description="done"))
+        store.task_set_state(task.id, "done")
+        with pytest.raises(OrgError, match="لا يمكن مصالحة"):
+            store.reconcile_task(task.id, "manual_hold", "operator",
+                                 "hold", "closed-1")
