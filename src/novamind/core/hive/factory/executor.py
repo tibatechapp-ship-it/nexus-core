@@ -28,11 +28,25 @@ make_llm_call = _canonical.make_llm_call
 is_llm_available = _canonical.is_llm_available
 
 
-async def execute_agent(*args: Any, **kwargs: Any) -> dict[str, Any]:
+async def execute_agent(
+    agent_id: str,
+    task: str,
+    ctx: Any = None,
+    task_id: str | None = None,
+    max_retries: int = 1,
+    llm_call: Any = None,
+) -> dict[str, Any]:
     """Delegate to the one canonical executor implementation."""
-    if kwargs.get("llm_call") is None and is_llm_available():
-        kwargs["llm_call"] = make_llm_call()
-    return await _canonical.execute_agent(*args, **kwargs)
+    if llm_call is None and is_llm_available():
+        llm_call = make_llm_call()
+    return await _canonical.execute_agent(
+        agent_id=agent_id,
+        task=task,
+        ctx=ctx,
+        task_id=task_id,
+        max_retries=max_retries,
+        llm_call=llm_call,
+    )
 
 
 __all__ = [
