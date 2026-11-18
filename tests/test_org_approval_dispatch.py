@@ -150,9 +150,11 @@ def test_scope_mismatch_keeps_approval_available(scenario):
 def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winner(
     tmp_path: Path,
 ):
-    """Two independent SQLite connections racing one token must never dispatch twice."""
+    """Two independent SQLite connections racing one token must yield one claim."""
     from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier, Event
+    from threading import Barrier
+    import hashlib
+    import json
 
     db_path = tmp_path / "approval-race.sqlite3"
     store_a = OrgStore(db_path)
@@ -183,66 +185,56 @@ def test_concurrent_consumption_from_independent_sqlite_connections_has_one_winn
         issuer_principal_id="approver", executor_principal_id="executor",
         **scope,
     )
-
-    entered_a, entered_b, release = Event(), Event(), Event()
-
-    class BlockingAdapter:
-        provider_id = "scm-race"
-        capabilities = {"comment": EffectCapability("comment", "none")}
-
-        def __init__(self, entered):
-            self.entered = entered
-            self.calls = 0
-
-        def dispatch(self, operation_name, payload, *, idempotency_key):
-            self.calls += 1
-            self.entered.set()
-            assert release.wait(5), "test did not release the winning provider call"
-            return {"remote_id": "race-1"}
-
-    adapter_a = BlockingAdapter(entered_a)
-    adapter_b = BlockingAdapter(entered_b)
-    dispatcher_a = ExternalEffectDispatcher(
-        store_a, adapter_a, worker_id="race-worker-a", approval_service=service_a,
+    target = json.dumps(
+        [scope["repository"], scope["ref_name"], scope["commit_sha"]],
+        ensure_ascii=False, separators=(",", ":"),
     )
-    dispatcher_b = ExternalEffectDispatcher(
-        store_b, adapter_b, worker_id="race-worker-b", approval_service=service_b,
+    target_fingerprint = hashlib.sha256(target.encode("utf-8")).hexdigest()
+    operation = store_a.prepare_external_operation(
+        mission.id, task.id, "scm-race:comment",
+        "race-revision:" + target_fingerprint, request,
     )
     start = Barrier(2)
 
-    def run(dispatcher):
+    def consume(service, worker_id):
         start.wait(timeout=5)
-        return dispatcher.execute(
-            mission.id, task.id, "comment", "race-revision", request,
-            actor="executor", approval_token=approval.token,
+        return service.consume_and_claim(
+            approval.token, executor_principal_id="executor",
+            mission_id=mission.id, task_id=task.id,
             repository=scope["repository"], ref_name=scope["ref_name"],
-            commit_sha=scope["commit_sha"],
+            commit_sha=scope["commit_sha"], provider_id="scm-race",
+            operation_name="comment", request=request,
+            operation_key=operation["operation_key"], worker_id=worker_id,
         )
 
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            future_a = pool.submit(run, dispatcher_a)
-            future_b = pool.submit(run, dispatcher_b)
-            assert entered_a.wait(3) or entered_b.wait(3), (
-                "neither contender reached the provider adapter"
-            )
-            # Identify the winner by the adapter it entered; keep it in-flight
-            # while the other independent connection attempts the same token.
-            if entered_a.is_set():
-                winner, loser, winner_adapter = future_a, future_b, adapter_a
-            else:
-                winner, loser, winner_adapter = future_b, future_a, adapter_b
-            with pytest.raises((EffectNotAuthorized, EffectUncertain)):
-                loser.result(timeout=3)
-            release.set()
-            winner_result = winner.result(timeout=5)
-            assert winner_result.state == "succeeded"
-            assert not winner_result.reused
-            assert winner_adapter.calls == 1
-            assert adapter_a.calls + adapter_b.calls == 1
+            futures = [
+                pool.submit(consume, service_a, "race-worker-a"),
+                pool.submit(consume, service_b, "race-worker-b"),
+            ]
+            outcomes = []
+            failures = []
+            for future in futures:
+                try:
+                    outcomes.append(future.result(timeout=10))
+                except EffectApprovalError as exc:
+                    failures.append(exc)
+            assert len(outcomes) == 1
+            assert len(failures) == 1
+            assert outcomes[0]["state"] == "in_flight"
+            assert outcomes[0]["reused"] is False
+        persisted = store_a.external_operation_get(operation["operation_key"])
+        assert persisted["state"] == "in_flight"
+        assert persisted["attempt_count"] == 1
         assert store_a.effect_approval_get(approval.approval_id)["status"] == "consumed"
+        consumed_events = [
+            row for row in store_a.tail_audit(50)
+            if row["action"] == "effect_approval.consumed"
+            and row["ref"] == approval.approval_id
+        ]
+        assert len(consumed_events) == 1
     finally:
-        release.set()
         store_b.close()
         store_a.close()
 
