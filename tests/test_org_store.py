@@ -262,7 +262,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 5
+        assert ORG_SCHEMA_VERSION == 6
 
 
 class TestReviewsAndFindings:
@@ -391,3 +391,116 @@ class TestReviewsAndFindings:
             with pytest.raises(OrgError, match="انتهاء lease"):
                 store.reconcile_task(task.id, "mark_failed", "operator",
                                      "cannot verify lease expiry", f"bad-{invalid_expiry}")
+
+
+class TestExternalOperationLedger:
+    def _prepared(self, store: OrgStore):
+        mission = store.create_mission(Mission(title="external", objective="ledger"))
+        task = store.add_task(TaskSpec(
+            mission_id=mission.id, dept="development", kind="external",
+            description="create remote issue"))
+        row = store.prepare_external_operation(
+            mission.id, task.id, "github.issue.create", "rev-1",
+            {"repository": "acme/project", "title": "Bug"})
+        return mission, task, row
+
+    def test_prepare_is_stable_and_rejects_changed_payload(self, store: OrgStore) -> None:
+        mission, task, first = self._prepared(store)
+        again = store.prepare_external_operation(
+            mission.id, task.id, "github.issue.create", "rev-1",
+            {"title": "Bug", "repository": "acme/project"})
+        assert first["operation_key"] == again["operation_key"]
+        assert first["request_fingerprint"] == again["request_fingerprint"]
+        with pytest.raises(OrgError, match="بصمة"):
+            store.prepare_external_operation(
+                mission.id, task.id, "github.issue.create", "rev-1",
+                {"repository": "acme/project", "title": "Different"})
+
+    def test_claim_finalize_and_restart_persist(self, tmp_path) -> None:
+        db = tmp_path / "external-ledger.sqlite"
+        first = OrgStore(db)
+        mission, task, prepared = self._prepared(first)
+        claim = first.claim_external_operation(prepared["operation_key"], "worker-a")
+        done = first.finish_external_operation(
+            prepared["operation_key"], claim["attempt_token"],
+            state="succeeded", result={"remote_id": 42})
+        assert done["state"] == "succeeded"
+        second = OrgStore(db)
+        try:
+            restored = second.external_operation_get(prepared["operation_key"])
+            assert restored is not None and restored["state"] == "succeeded"
+            assert len(second.external_operation_attempts_for(
+                prepared["operation_key"])) == 1
+        finally:
+            second.close()
+            first.close()
+
+    def test_uncertain_result_blocks_automatic_reclaim(self, store: OrgStore) -> None:
+        _, _, prepared = self._prepared(store)
+        claim = store.claim_external_operation(prepared["operation_key"], "worker-a")
+        store.finish_external_operation(
+            prepared["operation_key"], claim["attempt_token"],
+            state="uncertain", error="timeout after request dispatch")
+        with pytest.raises(OrgError, match="uncertain"):
+            store.claim_external_operation(prepared["operation_key"], "worker-b")
+
+    def test_stale_attempt_token_cannot_finalize(self, store: OrgStore) -> None:
+        _, _, prepared = self._prepared(store)
+        claim = store.claim_external_operation(prepared["operation_key"], "worker-a")
+        with pytest.raises(OrgError, match="قديم"):
+            store.finish_external_operation(
+                prepared["operation_key"], "stale-token", state="succeeded",
+                result={"remote_id": 1})
+        assert store.external_operation_get(prepared["operation_key"])["state"] == "in_flight"
+        store.finish_external_operation(
+            prepared["operation_key"], claim["attempt_token"],
+            state="failed_definitive", error="provider rejected")
+
+
+
+    def test_recovered_in_flight_operation_becomes_uncertain_and_stays_blocked(
+            self, tmp_path) -> None:
+        db = tmp_path / "external-recovery.sqlite"
+        first = OrgStore(db)
+        _, _, prepared = self._prepared(first)
+        claim = first.claim_external_operation(prepared["operation_key"], "worker-a")
+        first.close()
+
+        recovered = OrgStore(db)
+        try:
+            uncertain = recovered.mark_external_operation_uncertain(
+                prepared["operation_key"], claim["attempt_token"],
+                "worker process disappeared during dispatch")
+            assert uncertain["state"] == "uncertain"
+            with pytest.raises(OrgError, match="uncertain"):
+                recovered.claim_external_operation(prepared["operation_key"], "worker-b")
+            assert recovered.external_operation_attempts_for(
+                prepared["operation_key"])[0]["state"] == "uncertain"
+        finally:
+            recovered.close()
+
+    def test_uncertain_operation_requires_explicit_evidence_to_reconcile(
+            self, store: OrgStore) -> None:
+        _, _, prepared = self._prepared(store)
+        claim = store.claim_external_operation(prepared["operation_key"], "worker-a")
+        store.mark_external_operation_uncertain(
+            prepared["operation_key"], claim["attempt_token"], "response lost")
+        with pytest.raises(OrgError, match="أدلة المصالحة"):
+            store.reconcile_external_operation(
+                prepared["operation_key"], claim["attempt_token"],
+                outcome="succeeded", evidence={}, reconciled_by="operator")
+        reconciled = store.reconcile_external_operation(
+            prepared["operation_key"], claim["attempt_token"],
+            outcome="succeeded",
+            evidence={"provider": "github", "remote_id": 42, "verified": True},
+            reconciled_by="operator")
+        assert reconciled["state"] == "reconciled"
+        assert '"remote_id":42' in reconciled["result_payload"]
+        with pytest.raises(OrgError, match="reconciled"):
+            store.claim_external_operation(prepared["operation_key"], "worker-b")
+
+    def test_missing_task_or_mission_is_rejected(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="missing", objective="fail closed"))
+        with pytest.raises(OrgError, match="المهمة الفرعية"):
+            store.prepare_external_operation(
+                mission.id, "missing-task", "provider.write", "1", {"x": 1})
