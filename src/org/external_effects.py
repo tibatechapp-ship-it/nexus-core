@@ -39,7 +39,7 @@ class EffectCapability:
     operation_name: str
     idempotency_mode: IdempotencyMode
     idempotency_scope: str = ""
-    retention_seconds: int | None = None
+    retention_seconds: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation_name, str) or not self.operation_name.strip():
@@ -49,11 +49,9 @@ class EffectCapability:
         if self.idempotency_mode == "provider_key":
             if not isinstance(self.idempotency_scope, str) or not self.idempotency_scope.strip():
                 raise ValueError("provider-key capability requires a documented scope")
-            if (self.retention_seconds is not None
-                    and (type(self.retention_seconds) is not int
-                         or self.retention_seconds <= 0)):
-                raise ValueError("retention_seconds must be a positive integer")
-        elif self.idempotency_scope or self.retention_seconds is not None:
+            if type(self.retention_seconds) is not int or self.retention_seconds <= 0:
+                raise ValueError("provider-key capability requires a documented positive retention")
+        elif self.idempotency_scope or self.retention_seconds != 0:
             raise ValueError("idempotency metadata is invalid when mode is none")
 
 
