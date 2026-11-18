@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import stat
 import uuid
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -100,7 +101,20 @@ def fingerprint_directory(root: str | Path, *, include_git: bool = True) -> dict
     if include_git:
         result["git_head"] = _git_value(base, "rev-parse", "HEAD")
         result["git_branch"] = _git_value(base, "branch", "--show-current")
+        result["git_index_digest"] = _git_digest(base, "diff", "--cached", "--binary")
     return result
+
+
+def _git_digest(root: Path, *args: str) -> str:
+    """Hash read-only Git metadata output without retaining potentially large diffs."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True, capture_output=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return hashlib.sha256(completed.stdout).hexdigest()
 
 
 def _git_value(root: Path, *args: str) -> str:
@@ -125,8 +139,11 @@ def _persist_worktree(worktree: Worktree | None, mission_id: str,
     state_root = state_root.resolve()
     if state_root == repo_root or repo_root in state_root.parents:
         raise OrgError("مخزن سياق المهام يجب أن يكون خارج المستودع")
+    state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(state_root, 0o700)
     mission_dir = state_root / mission_id
-    mission_dir.mkdir(parents=True, exist_ok=True)
+    mission_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(mission_dir, 0o700)
     final = mission_dir / f"worktree-{uuid.uuid4().hex}"
     staging = Path(tempfile.mkdtemp(prefix=".checkpoint-", dir=mission_dir))
     try:
@@ -146,6 +163,7 @@ def _persist_worktree(worktree: Worktree | None, mission_id: str,
                 target = target_dir / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, target)
+                os.chmod(target, 0o600)
         os.replace(staging, final)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
