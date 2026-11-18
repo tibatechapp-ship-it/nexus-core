@@ -1663,9 +1663,20 @@ class OrgStore:
         now = self._now()
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
-            if self._conn.execute("SELECT 1 FROM missions WHERE id=?",
-                                  (mission_id,)).fetchone() is None:
+            mission_row = self._conn.execute(
+                "SELECT output_token_limit FROM missions WHERE id=?",
+                (mission_id,),
+            ).fetchone()
+            if mission_row is None:
                 raise OrgError("المهمة غير موجودة")
+            persisted_limit = mission_row["output_token_limit"]
+            if persisted_limit is not None and int(persisted_limit) != output_token_limit:
+                raise OrgError("سقف المهمة محفوظ مسبقًا ولا يمكن تغييره")
+            self._conn.execute(
+                "UPDATE missions SET output_token_limit=? WHERE id=? "
+                "AND output_token_limit IS NULL",
+                (output_token_limit, mission_id),
+            )
             row = self._conn.execute(
                 "SELECT * FROM mission_token_budgets WHERE mission_id=?",
                 (mission_id,)).fetchone()
