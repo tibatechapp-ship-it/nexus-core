@@ -145,6 +145,37 @@ class TestTokenReservationCrashReconciliation:
             mission.id, "agent:backend", 1200)
         return store, mission.id, str(reservation["id"])
 
+    def test_settlement_rolls_back_when_budget_reservation_is_inconsistent(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        with store._conn:
+            store._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens=0 "
+                "WHERE mission_id=?", (mission_id,))
+        with pytest.raises(OrgError, match="رصيد الحجز غير متسق"):
+            store.settle_mission_output_tokens(reservation_id, 100)
+        reservation = store._conn.execute(
+            "SELECT status FROM mission_token_reservations WHERE id=?",
+            (reservation_id,),
+        ).fetchone()
+        assert reservation["status"] == "reserved"
+        store.close()
+
+    def test_release_rolls_back_when_budget_reservation_is_inconsistent(self) -> None:
+        store, mission_id, reservation_id = self._reserved()
+        with store._conn:
+            store._conn.execute(
+                "UPDATE mission_token_budgets SET reserved_output_tokens=0 "
+                "WHERE mission_id=?", (mission_id,))
+        with pytest.raises(OrgError, match="رصيد الحجز غير متسق"):
+            store.release_mission_output_tokens(
+                reservation_id, "provider confirmed not dispatched")
+        reservation = store._conn.execute(
+            "SELECT status FROM mission_token_reservations WHERE id=?",
+            (reservation_id,),
+        ).fetchone()
+        assert reservation["status"] == "reserved"
+        store.close()
+
     def test_reconciliation_requires_terminal_provider_confirmation(self) -> None:
         store, mission_id, reservation_id = self._reserved()
         with pytest.raises(OrgError, match="نهائية طلب المزوّد"):
