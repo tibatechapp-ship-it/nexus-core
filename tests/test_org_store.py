@@ -27,6 +27,65 @@ def store() -> OrgStore:
     return OrgStore(":memory:")
 
 
+class TestMissionOutputTokenBudget:
+    def test_reservation_settlement_is_idempotent_and_accounted(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="budget", objective="bounded"))
+        store.configure_mission_output_token_budget(mission.id, 100)
+        reservation = store.reserve_mission_output_tokens(mission.id, 60)
+        assert reservation is not None
+        settled = store.settle_mission_output_token_reservation(
+            reservation["id"], 37)
+        assert settled["state"] == "settled"
+        assert store.settle_mission_output_token_reservation(
+            reservation["id"], 37)["actual_tokens"] == 37
+        budget = store.mission_output_token_budget(mission.id)
+        assert budget is not None
+        assert budget["consumed_tokens"] == 37
+        assert budget["reserved_tokens"] == 0
+        with pytest.raises(OrgError, match="مختلف"):
+            store.settle_mission_output_token_reservation(
+                reservation["id"], 38)
+
+    def test_failed_provider_reservation_can_be_released(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="budget", objective="release"))
+        store.configure_mission_output_token_budget(mission.id, 100)
+        reservation = store.reserve_mission_output_tokens(mission.id, 80)
+        assert reservation is not None
+        released = store.release_mission_output_token_reservation(
+            reservation["id"], reason="provider rejected request")
+        assert released["state"] == "released"
+        budget = store.mission_output_token_budget(mission.id)
+        assert budget is not None
+        assert budget["reserved_tokens"] == 0
+        assert budget["consumed_tokens"] == 0
+
+    def test_parallel_reservations_cannot_overspend(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="budget", objective="race"))
+        store.configure_mission_output_token_budget(mission.id, 100)
+
+        def reserve() -> bool:
+            try:
+                store.reserve_mission_output_tokens(mission.id, 60)
+                return True
+            except OrgError:
+                return False
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            outcomes = list(pool.map(lambda _: reserve(), range(8)))
+        assert sum(outcomes) == 1
+        budget = store.mission_output_token_budget(mission.id)
+        assert budget is not None
+        assert budget["reserved_tokens"] == 60
+
+    def test_budget_configuration_rejects_lowering_below_reservations(
+            self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="budget", objective="no downgrade"))
+        store.configure_mission_output_token_budget(mission.id, 100)
+        store.reserve_mission_output_tokens(mission.id, 80)
+        with pytest.raises(OrgError, match="خفض"):
+            store.configure_mission_output_token_budget(mission.id, 50)
+
+
 class TestMissions:
     def test_create_get_list(self, store: OrgStore) -> None:
         m = store.create_mission(Mission(title="مهمة", objective="هدف"))
