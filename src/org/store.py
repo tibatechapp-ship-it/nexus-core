@@ -554,7 +554,7 @@ class OrgStore:
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'effect_approval.issued', ?, ?)",
-                (now, principal_id, approval_id, json.dumps(
+                (now, issuer_principal_id, approval_id, json.dumps(
                     {"mission_id": mission_id, "task_id": task_id,
                      "provider_id": provider_id, "operation_name": operation_name,
                      "repository": repository, "ref_name": ref_name,
