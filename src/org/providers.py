@@ -410,6 +410,11 @@ class ProviderPool:
                 return self._cache[key]
         raise ProviderError(f"مزوّد غير معلن في الحوض: {name or 'افتراضي'}")
 
+    @property
+    def max_fallback_attempts(self) -> int:
+        """Maximum provider dispatches one logical completion may perform."""
+        return len(self._cfgs)
+
     def models(self) -> list[str]:
         """سلسلة النماذج المعلنة بالترتيب — أولها الافتراضي."""
         return [cfg.model for cfg in self._cfgs]
