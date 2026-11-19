@@ -562,3 +562,47 @@ def test_mission_replay_preflights_case_ids_and_inputs_before_checkpoint_or_runn
     assert [event[0] for event in store.audit_events] == [
         "behavior.replay.requested", "behavior.replay.failed"
     ]
+
+
+
+def test_mission_replay_redacts_fixture_before_staging_and_execution(tmp_path, monkeypatch):
+    import json
+    import src.intelligence.mission as module
+    source = tmp_path / "checkpoint"
+    source.mkdir()
+    (source / "app.py").write_text("pass", encoding="utf-8")
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    raw_input = {"path": "/health", "api_key": "sensitive-fixture-value"}
+    baseline = _baseline(sink, cases=[
+        CapturedCase("health", raw_input, {"status": 200}),
+    ])
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: _context(source))
+
+    def fake_execute(**kwargs):
+        case = kwargs["cases"][0]
+        staged = Path(case.workspace) / ".nexus-behavior" / "input.json"
+        payload = json.loads(staged.read_text(encoding="utf-8"))
+        assert payload["api_key"] == "[REDACTED]"
+        assert "sensitive-fixture-value" not in staged.read_text(encoding="utf-8")
+        assert case.input_payload == payload
+        return (CapturedCase("health", payload, {"status": 200}),)
+
+    monkeypatch.setattr(module, "execute_authorized_cases", fake_execute)
+    result = run_mission_behavior_replay(
+        store=store, mission_id="mission-1", state_root=state,
+        baseline=baseline,
+        cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), raw_input)],
+        run_id="redacted-replay", collected_by="test", evidence_sink=sink,
+        verify_evidence=lambda ref: (
+            ref.evidence_id in sink.items
+            and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
+        ),
+    )
+    assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
