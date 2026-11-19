@@ -182,3 +182,34 @@ def test_mission_replay_verifies_baseline_before_invoking_runner(tmp_path, monke
             verify_evidence=lambda _: False,
         )
     assert store.audit_events[-1][0] == "behavior.replay.failed"
+
+
+
+def test_mission_replay_rejects_checkpoint_from_earlier_phase(tmp_path, monkeypatch):
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    context = _context(checkpoint)
+    context.mission = SimpleNamespace(status="running", phase="E_TESTING")
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: context)
+    monkeypatch.setattr(
+        module, "execute_authorized_cases",
+        lambda **kwargs: pytest.fail("stale checkpoint must not execute"),
+    )
+    sink = Sink()
+    with pytest.raises(MissionBehaviorError, match="final pre-completion"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("python", "-V"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    assert store.audit_events[-1][0] == "behavior.replay.failed"
