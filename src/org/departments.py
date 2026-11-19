@@ -301,6 +301,33 @@ class DevelopmentDept:
         if not targets:
             raise DepartmentError("لا ملفات هدف محددة للتطوير")
 
+        # Execution mode is a mission-level security decision. Never silently
+        # fall back to the legacy process runner for an arbitrary repository.
+        execution_policy = ctx.execution_policy
+        execution_mode = execution_policy.get("execution_mode")
+        container_image = execution_policy.get("container_image")
+        container_enabled = execution_policy.get("container_enabled") is True
+        container_approved = execution_policy.get("container_approved") is True
+        if execution_mode == "process":
+            if execution_policy.get("trusted_local") is not True:
+                raise DepartmentError(
+                    "process mode requires an explicit trusted_local mission policy"
+                )
+        elif execution_mode == "container":
+            if not container_enabled or not container_approved:
+                raise DepartmentError(
+                    "container mode requires explicit enablement and human approval"
+                )
+            if not isinstance(container_image, str) or "@sha256:" not in container_image:
+                raise DepartmentError(
+                    "container mode requires an immutable image digest"
+                )
+        else:
+            raise DepartmentError(
+                "execution policy missing: choose approved container mode or "
+                "explicit trusted-local process mode"
+            )
+
         engine_workdir = Path(tempfile.mkdtemp(prefix="nexus-coder-mission-"))
         connector = (
             self.connector_factory(self.runtime, ctx.mission.id)
@@ -314,7 +341,11 @@ class DevelopmentDept:
             result = self._run_async(run_engine(
                 ctx.mission.objective, connector, root=Path(repo_path),
                 workdir=engine_workdir, max_iterations=3,
-                council_mode="off", execution_mode="process", test_timeout=90,
+                council_mode="off", execution_mode=execution_mode,
+                container_image=container_image,
+                container_enabled=container_enabled,
+                container_approved=container_approved,
+                test_timeout=90,
             ))
             usage = connector.usage_total
             if any(usage.values()):
