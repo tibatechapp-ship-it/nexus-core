@@ -94,6 +94,69 @@ class MissionBehaviorReplayResult:
         }
 
 
+def _append_behavior_report(
+        mission: Any, result: MissionBehaviorReplayResult, run_id: str
+) -> bool:
+    """Atomically append a bounded replay verdict to the mission's final report."""
+    report_value = getattr(mission, "report_path", "")
+    if not isinstance(report_value, str) or not report_value.strip():
+        return False
+    report = Path(report_value)
+    if report.is_symlink() or not report.is_file():
+        raise MissionBehaviorError("mission final report is missing or is not a regular file")
+    report = report.resolve(strict=True)
+    if report.stat().st_size > 2 * 1024 * 1024:
+        raise MissionBehaviorError("mission final report exceeds the 2 MiB update limit")
+
+    comparison = result.comparison
+    payload = {
+        "schema": "nexus.behavior-report/v1",
+        "run_id": run_id,
+        "mission_id": result.mission_id,
+        "baseline_revision": result.baseline_revision,
+        "candidate_revision": result.candidate_revision,
+        "verdict": comparison.verdict.value,
+        "matched_case_ids": list(comparison.matched_case_ids),
+        "missing_case_ids": list(comparison.missing_case_ids),
+        "changed_case_ids": list(comparison.changed_case_ids),
+        "unexpected_case_ids": list(comparison.unexpected_case_ids),
+        "evidence_ids": list(result.evidence_ids),
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, indent=2)
+    if len(encoded.encode("utf-8")) > 128 * 1024:
+        raise MissionBehaviorError("behavior report section exceeds 128 KiB")
+    marker = f"<!-- nexus-behavior-run:{digest_payload(run_id)} -->"
+    original = report.read_text(encoding="utf-8")
+    if marker in original:
+        raise MissionBehaviorError("behavior replay run is already present in the final report")
+    section = (
+        f"\n\n## التحقق السلوكي — {run_id}\n\n{marker}\n"
+        f"\n```json\n{encoded}\n```\n"
+    )
+    updated = original.rstrip() + section
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=".nexus-report-", suffix=".tmp", dir=str(report.parent)
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(updated)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, report)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+    return True
+
+
 def _is_sensitive_name(name: str) -> bool:
     lowered = name.casefold()
     if lowered in _SENSITIVE_NAMES:
@@ -296,6 +359,18 @@ def run_mission_behavior_replay(
             candidate_revision=candidate_revision, comparison=comparison,
             evidence_ids=tuple(item.evidence_id for item in references),
         )
+        report_persisted = _append_behavior_report(mission, result, run_id)
+        if report_persisted:
+            store.audit("behavior.replay.report_persisted", mission_id, {
+                "report_path": str(mission.report_path),
+                "verdict": comparison.verdict.value,
+                "run_id": run_id,
+            })
+        else:
+            store.audit("behavior.replay.report_unavailable", mission_id, {
+                "reason": "legacy mission has no persisted report_path",
+                "run_id": run_id,
+            })
         store.audit("behavior.replay.completed", mission_id, {
             "baseline_revision": result.baseline_revision,
             "candidate_revision": result.candidate_revision,
