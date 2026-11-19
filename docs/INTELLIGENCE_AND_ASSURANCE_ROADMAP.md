@@ -109,7 +109,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine. Status: comparison contract and combined review gate implemented; capture/replay adapter and mission integration remain open.**
+**Priority: P1; first functional engine. Status: comparison contract, combined review gate, and safe fixture-capture adapter implemented; approved execution/replay integration remains open.**
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -120,9 +120,10 @@ Deliverables:
 
 Implemented first vertical slice:
 - [x] src/intelligence/behavior.py: canonical JSON payload digests, immutable baseline/case/observation contracts, evidence verification, and deterministic comparison verdicts.
-- [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, and verifier exceptions.
-- [x] Comparator performs no execution, subprocess launch, repository import, or network access.
-- [ ] Capture and replay adapter using the existing mission-approved isolated execution policy.
+- [x] src/intelligence/capture.py: bounded recording adapter for already-collected, sanitized fixtures; stores content-digested evidence through an injected immutable evidence sink.
+- [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, verifier exceptions, capture round trips, sink tampering, and size limits.
+- [x] Comparator and capture adapter perform no execution, subprocess launch, repository import, or network access.
+- [ ] Add an execution adapter that obtains mission authorization and invokes only the existing approved rootless-container runner; no legacy process runner.
 - [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
 - [ ] Connect baseline/candidate evidence to Coder Engine quality results and mission audit records.
 
