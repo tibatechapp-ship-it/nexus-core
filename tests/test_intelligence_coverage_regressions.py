@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 
 import pytest
 
@@ -109,11 +110,11 @@ class _CoverageSink:
         self.items[evidence_id] = payload
         reference = EvidenceReference(
             evidence_id, kind, f"memory://{evidence_id}",
-            __import__("hashlib").sha256(payload).hexdigest(), collected_by,
+            hashlib.sha256(payload).hexdigest(), collected_by,
         )
         if self.mode == "wrong-id":
             return EvidenceReference(
-                "wrong-id", kind, reference.uri, reference.sha256, collected_by
+                "wrong-id", kind, reference.locator, reference.sha256, collected_by
             )
         if self.mode == "wrong-type":
             return {"evidence_id": evidence_id}
@@ -214,7 +215,7 @@ def test_behavior_baseline_and_observation_deserialization_reject_bad_shapes() -
         (lambda b, o, e: (b, [o], []), BehaviorVerdict.INVALID),
         (lambda b, o, e: (b, [o], [e, e]), BehaviorVerdict.INVALID),
         (lambda b, o, e: (b, [o], [b.evidence[0]]), BehaviorVerdict.INVALID),
-        (lambda b, o, e: (b, [o], [EvidenceReference("other", e.kind, e.uri, e.sha256, e.collected_by)]), BehaviorVerdict.INVALID),
+        (lambda b, o, e: (b, [o], [EvidenceReference("other", e.kind, e.locator, e.sha256, e.collected_by)]), BehaviorVerdict.INVALID),
     ],
 )
 def test_behavior_comparison_rejects_invalid_evidence_mappings(mutator, expected) -> None:
