@@ -247,6 +247,11 @@ class ExecutiveOrchestrator:
         policy = self._validated_execution_policy(
             mission.id, execution_policy, require_approval=False)
         mission = self.org_store.create_mission(mission)
+        if mission.status != "created":
+            raise OrgError(
+                f"mission cannot be executed from status {mission.status!r}; "
+                "use the explicit resume workflow for interrupted missions"
+            )
         # Validate the human approval before changing mission state or
         # dispatching any work. A missing approval leaves the mission unstarted.
         policy = self._validated_execution_policy(
