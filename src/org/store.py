@@ -43,7 +43,7 @@ from src.org.contracts import (
 __all__ = ["OrgError", "OrgStore", "ORG_SCHEMA_VERSION"]
 
 #: إصدار مخطط متجر التنظيم — كل ترقية لاحقة إجراء معلن في ``_migrate``.
-ORG_SCHEMA_VERSION = 10
+ORG_SCHEMA_VERSION = 11
 
 # Reconciliation evidence is persisted twice (operation result + audit); keep it bounded.
 MAX_EXTERNAL_RECONCILIATION_EVIDENCE_BYTES = 16 * 1024
@@ -145,6 +145,9 @@ class OrgStore:
             if current < 10:
                 self._migrate_v10()
                 current = 10
+            if current < 11:
+                self._migrate_v11()
+                current = 11
             if current > ORG_SCHEMA_VERSION:
                 raise OrgError(
                     f"مخطط متجر التنظيم أحدث من الكود: {current} > {ORG_SCHEMA_VERSION}")
@@ -548,6 +551,38 @@ class OrgStore:
             "WHERE output_token_limit IS NULL AND EXISTS ("
             "SELECT 1 FROM mission_token_budgets "
             "WHERE mission_token_budgets.mission_id=missions.id)")
+
+    def _migrate_v11(self) -> None:
+        """Add monotonic task fencing generations, heartbeats, and reservation bindings."""
+        additions = {
+            "tasks": {
+                "lease_generation": "INTEGER NOT NULL DEFAULT 0 CHECK(lease_generation >= 0)",
+                "lease_heartbeat_at": "TEXT NOT NULL DEFAULT ''",
+            },
+            "task_attempts": {
+                "lease_generation": "INTEGER NOT NULL DEFAULT 0 CHECK(lease_generation >= 0)",
+            },
+            "mission_token_reservations": {
+                "task_id": "TEXT NOT NULL DEFAULT ''",
+                "attempt_no": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_no >= 0)",
+                "lease_generation": "INTEGER NOT NULL DEFAULT 0 CHECK(lease_generation >= 0)",
+                "lease_owner": "TEXT NOT NULL DEFAULT ''",
+                "lease_token_digest": "TEXT NOT NULL DEFAULT ''",
+            },
+        }
+        for table, columns_to_add in additions.items():
+            existing = {row["name"] for row in self._conn.execute(
+                f"PRAGMA table_info({table})").fetchall()}
+            for name, definition in columns_to_add.items():
+                if name not in existing:
+                    self._conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_task_lease_generation "
+            "ON tasks(id, lease_generation, state)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_token_reservation_task_attempt "
+            "ON mission_token_reservations(task_id, attempt_no, lease_generation)")
 
     def _migrate_v10(self) -> None:
         """سجل مصالحة غير قابل للتعديل لحجوزات التوكنات بعد التعطل."""
@@ -1462,13 +1497,16 @@ class OrgStore:
             }, sort_keys=True, ensure_ascii=False)
             idem = row["idempotency_key"] or new_id(
                 "org-idem", row["mission_id"], row["id"])
+            lease_generation = int(row["lease_generation"] or 0) + 1
             updated = self._conn.execute(
                 """UPDATE tasks SET state='running', attempts=attempts+1,
                    lease_owner=?, lease_token=?, lease_expires_at=?,
+                   lease_generation=?, lease_heartbeat_at=?,
                    idempotency_key=?, input_snapshot=?, updated_at=?
-                   WHERE id=? AND state='pending'""",
-                (worker_id.strip(), token, expires_at, idem, snapshot,
-                 started_at, task_id),
+                   WHERE id=? AND state='pending' AND lease_generation=?""",
+                (worker_id.strip(), token, expires_at, lease_generation,
+                 started_at, idem, snapshot, started_at, task_id,
+                 int(row["lease_generation"] or 0)),
             )
             if updated.rowcount != 1:
                 return None
@@ -1477,10 +1515,10 @@ class OrgStore:
             self._conn.execute(
                 """INSERT INTO task_attempts
                    (id, task_id, attempt_no, worker_id, lease_token,
-                    status, started_at)
-                   VALUES (?, ?, ?, ?, ?, 'running', ?)""",
+                    status, started_at, lease_generation)
+                   VALUES (?, ?, ?, ?, ?, 'running', ?, ?)""",
                 (attempt_id, task_id, attempt_no, worker_id.strip(), token,
-                 started_at),
+                 started_at, lease_generation),
             )
             self._conn.execute(
                 "INSERT INTO audit (ts, actor, action, ref, details) "
@@ -1494,31 +1532,102 @@ class OrgStore:
             ).fetchone()
         return dict(claimed) if claimed else None
 
+    def heartbeat_task(self, task_id: str, worker_id: str, lease_token: str,
+                       lease_generation: int, lease_seconds: int = 300) -> dict[str, Any]:
+        """Renew a lease only for its current owner and generation."""
+        if not isinstance(worker_id, str) or not worker_id.strip():
+            raise OrgError("worker_id مطلوب لتجديد lease")
+        if not isinstance(lease_token, str) or not lease_token:
+            raise OrgError("lease_token مطلوب لتجديد lease")
+        if (not isinstance(lease_generation, int) or isinstance(lease_generation, bool)
+                or lease_generation < 1):
+            raise OrgError("lease_generation غير صالح")
+        if (not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool)
+                or lease_seconds < 1):
+            raise OrgError("lease_seconds يجب أن يكون عددًا موجبًا")
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        expires_at = (now + timedelta(seconds=lease_seconds)).isoformat()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT state, lease_owner, lease_token, lease_generation, "
+                "lease_expires_at FROM tasks WHERE id=?", (task_id,)
+            ).fetchone()
+            if row is None or row["state"] != "running":
+                raise OrgError("المهمة ليست قيد التشغيل")
+            if (row["lease_owner"] != worker_id.strip()
+                    or not secrets.compare_digest(str(row["lease_token"]), lease_token)
+                    or int(row["lease_generation"]) != lease_generation):
+                raise OrgError("رفض heartbeat: العامل أو رمز fencing لم يعد المالك الحالي")
+            try:
+                current_expiry = datetime.fromisoformat(str(row["lease_expires_at"]))
+                if current_expiry.tzinfo is None or current_expiry <= now:
+                    raise OrgError("انتهت lease؛ لا يمكن إحياؤها بواسطة heartbeat")
+            except ValueError as exc:
+                raise OrgError("تاريخ انتهاء lease غير صالح؛ يلزم تدخل المشغّل") from exc
+            updated = self._conn.execute(
+                "UPDATE tasks SET lease_expires_at=?, lease_heartbeat_at=?, updated_at=? "
+                "WHERE id=? AND state='running' AND lease_owner=? AND lease_token=? "
+                "AND lease_generation=?",
+                (expires_at, now_iso, now_iso, task_id, worker_id.strip(),
+                 lease_token, lease_generation),
+            )
+            if updated.rowcount != 1:
+                raise OrgError("فشل heartbeat بسبب تغير مالك المهمة")
+            self._conn.execute(
+                "INSERT INTO audit (ts, actor, action, ref, details) "
+                "VALUES (?, ?, 'task.heartbeat', ?, ?)",
+                (now_iso, worker_id.strip(), task_id, json.dumps({
+                    "lease_generation": lease_generation,
+                    "lease_expires_at": expires_at,
+                }, sort_keys=True)),
+            )
+            renewed = self._conn.execute(
+                "SELECT * FROM tasks WHERE id=?", (task_id,)
+            ).fetchone()
+            return dict(renewed)
+
     def finish_claimed_task(self, task_id: str, lease_token: str,
-                            result: dict[str, Any]) -> None:
-        """إنهاء مطالبة صحيحة فقط؛ token قديم أو غير مالك مرفوض."""
-        self._finish_claimed_task(task_id, lease_token, "done", result, "")
+                            result: dict[str, Any], *,
+                            lease_generation: int | None = None) -> None:
+        """Finalize only the current lease; callers should pass its fencing generation."""
+        self._finish_claimed_task(
+            task_id, lease_token, "done", result, "", lease_generation)
 
     def fail_claimed_task(self, task_id: str, lease_token: str,
-                          error: str) -> None:
-        """تسجيل فشل مطالبة صحيحة فقط دون إعادة محاولة تلقائية."""
-        self._finish_claimed_task(task_id, lease_token, "failed", {}, error)
+                          error: str, *,
+                          lease_generation: int | None = None) -> None:
+        """Fail only the current lease; callers should pass its fencing generation."""
+        self._finish_claimed_task(
+            task_id, lease_token, "failed", {}, error, lease_generation)
 
     def _finish_claimed_task(self, task_id: str, lease_token: str,
                              state: str, result: dict[str, Any],
-                             error: str) -> None:
+                             error: str,
+                             lease_generation: int | None = None) -> None:
         if not lease_token:
             raise OrgError("lease_token مطلوب")
         now = self._now()
         with self._conn:
             row = self._conn.execute(
-                "SELECT lease_token, state FROM tasks WHERE id = ?",
+                "SELECT lease_token, state, lease_generation, lease_expires_at "
+                "FROM tasks WHERE id = ?",
                 (task_id,),
             ).fetchone()
-            if row is None or row["state"] != "running" or not secrets.compare_digest(
-                str(row["lease_token"]), lease_token
-            ):
-                raise OrgError("مطالبة المهمة غير صالحة أو لم تعد مملوكة للعامل")
+            if (row is None or row["state"] != "running"
+                    or not secrets.compare_digest(str(row["lease_token"]), lease_token)
+                    or (lease_generation is not None
+                        and (not isinstance(lease_generation, int)
+                             or isinstance(lease_generation, bool)
+                             or int(row["lease_generation"]) != lease_generation))):
+                raise OrgError("مطالبة المهمة غير صالحة أو رمز fencing قديم")
+            try:
+                expiry = datetime.fromisoformat(str(row["lease_expires_at"]))
+                if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+                    raise OrgError("انتهت lease؛ لا يمكن إنهاء المهمة بواسطة عاملها السابق")
+            except ValueError as exc:
+                raise OrgError("تاريخ انتهاء lease غير صالح؛ يلزم تدخل المشغّل") from exc
             self._conn.execute(
                 """UPDATE tasks SET state=?, result=?, error=?,
                    lease_owner='', lease_token='', lease_expires_at='',
