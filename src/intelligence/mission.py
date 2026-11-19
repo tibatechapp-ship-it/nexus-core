@@ -36,7 +36,10 @@ _SENSITIVE_NAMES = {
     ".env", ".env.local", ".env.production", ".npmrc", ".netrc",
     ".pypirc", "id_rsa", "id_ed25519", "credentials.json", "token.json",
 }
-_SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
+_SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".p8", ".jks", ".keystore"}
+_SENSITIVE_DIRS = {
+    ".aws", ".ssh", ".azure", ".gcloud", ".kube", ".gnupg", ".docker",
+}
 
 
 class MissionBehaviorError(RuntimeError):
@@ -198,6 +201,11 @@ def _copy_verified_snapshot(source: Path, destination: Path) -> None:
                 raise MissionBehaviorError("symlink directory in mission worktree is not replayable")
             if name in _IGNORED_DIRS:
                 dirs.remove(name)
+                continue
+            if name.casefold() in _SENSITIVE_DIRS:
+                raise MissionBehaviorError(
+                    f"credential-bearing directory must be removed before replay: {name}"
+                )
         for name in sorted(files):
             item = current_path / name
             if item.is_symlink():
