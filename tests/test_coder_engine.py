@@ -215,6 +215,33 @@ async def test_model_plan_with_broken_json_is_feedback(tmp_path: Path) -> None:
     assert "not valid JSON" in conn.calls[2]
 
 
+async def test_failed_attempt_restores_source_before_retry(tmp_path: Path) -> None:
+    """A retry's exact find block is applied to the original snapshot."""
+    (tmp_path / "mathlib.py").write_text(
+        "def add(a, b):\\n    return a + b\\n", encoding="utf-8")
+    (tmp_path / "test_mathlib.py").write_text(
+        "from mathlib import add\\n\\ndef test_add():\\n    assert add(2, 3) == 5\\n",
+        encoding="utf-8",
+    )
+    wrong = [{"file": "mathlib.py", "action": "edit", "reason": "bad first try",
+              "find": "    return a + b", "patch_hint": "    return a - b", "risk": "low"}]
+    corrected = [{"file": "mathlib.py", "action": "edit", "reason": "correct retry",
+                  "find": "    return a + b", "patch_hint": "    return a + b", "risk": "low"}]
+    conn = Scripted([
+        {"ok": True, "reply": "[]"},
+        _plan_reply(wrong, ["test_mathlib.py"]),
+        _plan_reply(corrected, ["test_mathlib.py"]),
+    ])
+    result = await run_engine("fix add", conn, root=tmp_path, max_iterations=2,
+                              gates=PASS_GATE, test_timeout=90)
+    assert result["ok"] is True, result
+    assert result["iterations"] == 2
+    assert result["attempts"][0]["tests_ok"] is False
+    assert result["attempts"][1]["tests_ok"] is True
+    assert (Path(result["workdir"]) / "mathlib.py").read_text().endswith(
+        "    return a + b\\n")
+
+
 async def test_failing_gate_blocks_success(tmp_path: Path) -> None:
     bad_gate: list = [[PY, "-c", "raise SystemExit(1)"]]
     conn = Scripted([{"ok": True, "reply": "[]"}, _plan_reply(GOOD_STEPS, GOOD_TESTS)])
