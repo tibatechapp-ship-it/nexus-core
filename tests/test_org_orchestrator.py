@@ -591,6 +591,7 @@ class TestProcessInterruptionRecovery:
                 execution_policy={
                     "schema_version": 1,
                     "max_revision_loops": first.max_revision_loops,
+                    "execution_mode": "process", "trusted_local": True,
                 },
             ),
             state_root,
