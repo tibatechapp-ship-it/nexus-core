@@ -239,3 +239,60 @@ class TestTooling:
         assert depts.qa is not None
         assert depts.council is not None
         assert depts.release is not None
+
+
+class TestRepairPlanWorktreeTransfer:
+    def test_edit_create_and_delete_are_explicit(self, tmp_path: Path) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        wt.write("pkg/mod.py", "VALUE = 1\\n")
+        applied = wt.apply_repair_steps([
+            {"file": "pkg/mod.py", "action": "edit", "find": "VALUE = 1",
+             "patch_hint": "VALUE = 2"},
+            {"file": "pkg/new.py", "action": "create", "patch_hint": "NEW = True\\n"},
+        ])
+        assert applied == ["pkg/mod.py", "pkg/new.py"]
+        assert wt.read("pkg/mod.py") == "VALUE = 2\\n"
+        assert wt.read("pkg/new.py") == "NEW = True\\n"
+        deleted = wt.apply_repair_steps([
+            {"file": "pkg/new.py", "action": "delete"}
+        ])
+        assert deleted == ["pkg/new.py"]
+        assert not (wt.root / "pkg/new.py").exists()
+
+    def test_ambiguous_find_rejects_entire_plan_without_partial_write(
+            self, tmp_path: Path) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        wt.write("first.py", "VALUE = 1\\n")
+        wt.write("second.py", "VALUE = 1\\nVALUE = 1\\n")
+        with pytest.raises(ValueError, match="exactly once"):
+            wt.apply_repair_steps([
+                {"file": "first.py", "action": "edit", "find": "VALUE = 1",
+                 "patch_hint": "VALUE = 2"},
+                {"file": "second.py", "action": "edit", "find": "VALUE = 1",
+                 "patch_hint": "VALUE = 2"},
+            ])
+        assert wt.read("first.py") == "VALUE = 1\\n"
+
+    @pytest.mark.parametrize("path", ["../escape.py", "/tmp/escape.py", "a/../../escape.py"])
+    def test_path_escape_is_rejected(self, tmp_path: Path, path: str) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        with pytest.raises(ValueError, match="unsafe|escapes"):
+            wt.apply_repair_steps([
+                {"file": path, "action": "create", "patch_hint": "x = 1"}
+            ])
+
+    def test_duplicate_paths_are_rejected(self, tmp_path: Path) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        with pytest.raises(ValueError, match="duplicate"):
+            wt.apply_repair_steps([
+                {"file": "a.py", "action": "create", "patch_hint": "x = 1"},
+                {"file": "a.py", "action": "create", "patch_hint": "x = 2"},
+            ])
