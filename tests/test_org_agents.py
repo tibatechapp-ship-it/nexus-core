@@ -125,6 +125,34 @@ class TestAskJson:
         assert rows[0]["tokens_in"] > 0
 
 
+
+    def test_provider_reservation_is_bound_to_current_task_claim(
+            self, runtime: AgentRuntime, store: OrgStore) -> None:
+        from src.org.contracts import Mission, TaskSpec
+
+        mission = store.create_mission(Mission(
+            title="agent lease binding", objective="bind provider usage"))
+        store.configure_mission_token_budget(mission.id, 3000)
+        task = store.add_task(TaskSpec(
+            mission_id=mission.id, dept="development",
+            kind="implementation", description="agent call"))
+        claim = store.claim_task(task.id, "worker:development")
+        assert claim is not None
+        context = runtime.set_task_lease(task.id, claim)
+        try:
+            outcome = runtime.ask_json(
+                _spec(mission_id=mission.id, task_id=task.id, max_tokens=500),
+                "أجب JSON")
+        finally:
+            runtime.reset_task_lease(context)
+        assert outcome.success
+        reservations = store.mission_token_reservations_for(mission.id)
+        assert len(reservations) == 1
+        assert reservations[0]["task_id"] == task.id
+        assert reservations[0]["lease_generation"] == claim["lease_generation"]
+        assert reservations[0]["attempt_no"] == claim["attempts"]
+        assert reservations[0]["status"] == "settled"
+
     def test_configured_mission_budget_is_enforced_and_settled(
             self, runtime: AgentRuntime, store: OrgStore) -> None:
         from src.org.contracts import Mission
