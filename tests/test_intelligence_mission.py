@@ -149,7 +149,7 @@ def test_mission_replay_rejects_noncompleted_mission_before_restore(tmp_path, mo
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -202,7 +202,7 @@ def test_mission_replay_verifies_baseline_before_invoking_runner(tmp_path, monke
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=baseline,
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: False,
         )
@@ -233,7 +233,7 @@ def test_mission_replay_rejects_checkpoint_from_earlier_phase(tmp_path, monkeypa
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -358,7 +358,7 @@ def test_mission_replay_rejects_state_root_inside_repository(tmp_path, monkeypat
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -384,7 +384,7 @@ def test_mission_replay_rejects_missing_checkpoint_worktree(tmp_path, monkeypatc
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -414,7 +414,7 @@ def test_mission_replay_wraps_runner_failure_and_cleans_workspace(tmp_path, monk
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -474,7 +474,7 @@ def test_mission_replay_audits_and_wraps_missing_roots(tmp_path, missing_kind) -
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state_path,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -496,7 +496,7 @@ def test_mission_replay_rejects_state_root_file(tmp_path) -> None:
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state_file,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
