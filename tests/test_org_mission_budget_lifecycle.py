@@ -110,6 +110,19 @@ class TestMissionBudgetPersistence:
         assert store.mission_token_budget_get(mission.id) is None
 
 
+def test_org_cli_resume_parser_requires_operator_reason() -> None:
+    from src.org.cli import build_parser
+
+    args = build_parser().parse_args([
+        "resume", "mission-123", "--by", "operator", "--reason",
+        "reviewed recovery checkpoint",
+    ])
+    assert args.cmd == "resume"
+    assert args.mission_id == "mission-123"
+    assert args.by == "operator"
+    assert args.reason == "reviewed recovery checkpoint"
+
+
 class TestPipelineBudgetLifecycle:
     def test_pipeline_reuses_existing_mission_without_creating_another(
             self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
