@@ -22,6 +22,7 @@ try:
     from opentelemetry.sdk.trace.export import (
         BatchSpanProcessor,
         ConsoleSpanExporter,
+        SimpleSpanProcessor,
     )
     _OTEL_AVAILABLE = True
 except ImportError:
@@ -53,7 +54,10 @@ def _init_otel() -> None:
 
     # Exporter selection
     if cfg.exporter == "console":
-        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+        # Console output is synchronous: a background batch worker can outlive
+        # pytest capture or an application-owned stdout stream and export into
+        # a closed file during teardown.
+        provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     elif cfg.exporter == "otlp":
         try:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -64,7 +68,7 @@ def _init_otel() -> None:
             )
         except ImportError:
             logger.warning("OTLP exporter unavailable — falling back to console")
-            provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+            provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
     otel_trace.set_tracer_provider(provider)
     _tracer = otel_trace.get_tracer(cfg.service_name, cfg.service_version)
