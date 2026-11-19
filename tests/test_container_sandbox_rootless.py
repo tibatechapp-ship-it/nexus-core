@@ -62,3 +62,4 @@ def test_container_accepts_rootless_security_option(tmp_path: Path, monkeypatch)
     assert "--network=none" in captured["argv"]
     assert "--read-only" in captured["argv"]
     assert "--cap-drop=ALL" in captured["argv"]
+    assert "--user=0:0" in captured["argv"]

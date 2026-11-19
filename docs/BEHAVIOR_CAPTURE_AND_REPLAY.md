@@ -51,6 +51,10 @@ infer whether arbitrary user-supplied fixture content is sensitive.
 - passes argv directly (never through a host shell) to `run_in_container`;
 - requires the existing rootless Docker preflight, network isolation, read-only image
   filesystem, dropped capabilities, no-new-privileges, and bounded resources;
+- runs as container UID 0 only inside the rootless user namespace. Container UID 0
+  maps to the unprivileged host account running the rootless daemon; it is not host
+  root. This preserves private owner-only mission worktrees while retaining dropped
+  capabilities and no-new-privileges;
 - treats timeout, output truncation, nonzero exit, and malformed runner results as failure;
 - never falls back to `subprocess`, the legacy process sandbox, or an unapproved runner.
 
@@ -108,3 +112,21 @@ work is to construct per-case disposable workspaces from a mission snapshot, con
 the adapter to the orchestrator's mission lifecycle and durable audit records, and
 run the complete workflow against a controlled fixture repository. No automatic
 replay is wired into arbitrary missions yet.
+
+
+## Mission lifecycle adapter
+
+Use `run_mission_behavior_replay` only as an explicit operator-requested action
+after the mission reaches `done`. It requires a baseline whose target is exactly
+`mission:<mission_id>`, restores the latest verified durable checkpoint, and
+rejects a missing worktree or invalid checkpoint. It creates one temporary copy
+per case, removes Git metadata and common generated/dependency directories, rejects
+symlinks and credential-like files, and enforces file-count and total-size limits.
+Temporary workspaces are deleted on success or failure. Requested and terminal
+outcomes are appended to the organization audit log; evidence bytes are stored
+through the injected immutable evidence sink.
+
+The copied workspace retains owner-only permissions. The rootless container's
+namespace root maps to the host account that owns the workspace, so the sandbox
+can read and write the disposable copy without making source files world-readable.
+The original mission checkpoint is never mounted writable.

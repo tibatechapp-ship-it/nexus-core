@@ -78,8 +78,10 @@ def _is_sensitive_name(name: str) -> bool:
 
 def _copy_verified_snapshot(source: Path, destination: Path) -> None:
     """Copy a verified worktree without Git metadata, links, or credential files."""
+    if source.is_symlink():
+        raise MissionBehaviorError("mission worktree root must not be a symlink")
     source = source.resolve(strict=True)
-    if not source.is_dir() or source.is_symlink():
+    if not source.is_dir():
         raise MissionBehaviorError("verified mission worktree is not a real directory")
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
     file_count = 0
@@ -154,7 +156,11 @@ def run_mission_behavior_replay(
         raise MissionBehaviorError("behavior replay is allowed only for an existing completed mission")
     state_path = Path(state_root).expanduser().resolve(strict=True)
     repo_path = Path(mission.repo_path).expanduser().resolve(strict=True)
-    if state_path == repo_path or repo_path in state_path.parents:
+    if (
+        state_path == repo_path
+        or repo_path in state_path.parents
+        or state_path in repo_path.parents
+    ):
         raise MissionBehaviorError("mission state root must be outside the target repository")
 
     store.audit("behavior.replay.requested", mission_id, {
@@ -173,7 +179,7 @@ def run_mission_behavior_replay(
             fingerprint_directory(context.worktree.root, include_git=False)["digest"]
         )
         with tempfile.TemporaryDirectory(
-            prefix=f"behavior-{mission_id[:16]}-", dir=state_path
+            prefix=f"behavior-{digest_payload(mission_id)[:16]}-", dir=state_path
         ) as temporary_root:
             root = Path(temporary_root)
             os.chmod(root, 0o700)
