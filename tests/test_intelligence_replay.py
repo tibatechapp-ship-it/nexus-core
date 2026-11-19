@@ -27,6 +27,7 @@ class ApprovalStore:
 
 def _policy(**updates):
     value = {
+        "schema_version": 1,
         "execution_mode": "container",
         "container_enabled": True,
         "container_image": _IMAGE,
@@ -153,3 +154,24 @@ def test_replay_rejects_invalid_workspace_and_command(tmp_path) -> None:
         ReplayCommandCase("bad", (), tmp_path, {})
     with pytest.raises(BehaviorReplayError):
         ReplayCommandCase("bad", ("python", "\x00"), tmp_path, {})
+
+
+def test_replay_rejects_missing_or_boolean_policy_version(tmp_path) -> None:
+    with pytest.raises(BehaviorReplayError):
+        execute_authorized_cases(
+            mission_id="mission-7", execution_policy=_policy(schema_version=True),
+            approval_store=ApprovalStore(_approval()), cases=[_case(tmp_path / "case")],
+        )
+
+
+def test_replay_rejects_malformed_runner_result(tmp_path, monkeypatch) -> None:
+    import src.intelligence.replay as replay
+    monkeypatch.setattr(
+        replay, "run_in_container",
+        lambda *args, **kwargs: {"ok": True, "exit_code": 0, "stdout": "", "stderr": ""},
+    )
+    with pytest.raises(BehaviorReplayError):
+        execute_authorized_cases(
+            mission_id="mission-8", execution_policy=_policy(),
+            approval_store=ApprovalStore(_approval()), cases=[_case(tmp_path / "case")],
+        )

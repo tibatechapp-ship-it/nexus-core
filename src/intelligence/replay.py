@@ -75,6 +75,8 @@ def _approved_image(
     mission_id = _required_text(mission_id, "mission_id")
     if not isinstance(execution_policy, Mapping):
         raise BehaviorReplayError("an explicit mission execution policy is required")
+    if type(execution_policy.get("schema_version")) is not int or execution_policy.get("schema_version") != 1:
+        raise BehaviorReplayError("unsupported or missing execution policy schema version")
     if execution_policy.get("execution_mode") != "container":
         raise BehaviorReplayError("behavior replay refuses host process execution")
     if execution_policy.get("container_enabled") is not True:
