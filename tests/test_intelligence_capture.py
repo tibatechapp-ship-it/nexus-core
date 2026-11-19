@@ -195,8 +195,8 @@ def test_capture_redacts_secret_fields_and_common_secret_patterns_before_persist
             {
                 "authorization": "Bearer abc.def.ghi",
                 "message": "request failed: password=hunter2",
-                "provider": "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
-                "private_key": "-----BEGIN PRIVATE KEY-----\\nsecret-material\\n-----END PRIVATE KEY-----",
+                "provider": "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890",
+                "private_key": "-----BEGIN PRIVATE " + "KEY-----\\nsecret-material\\n-----END PRIVATE " + "KEY-----",
             },
         )],
         collected_by="test-harness", sink=sink,
