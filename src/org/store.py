@@ -108,14 +108,6 @@ class OrgStore:
             self._closed = True
             raise
 
-    def close(self) -> None:
-        """Close the owned SQLite connection; repeated calls are harmless."""
-        with self._lock:
-            if self._closed:
-                return
-            self._conn._conn.close()
-            self._closed = True
-
     def __enter__(self) -> "OrgStore":
         """Return this store from a managed resource scope."""
         if self._closed:
@@ -2272,5 +2264,19 @@ class OrgStore:
         return now_iso()
 
     def close(self) -> None:
+        """إغلاق الاتصال الخام — آمن عند التكرار."""
         with self._lock:
+            if self._closed:
+                return
             self._conn._conn.close()  # noqa: SLF001 — إغلاق الاتصال الخام فقط
+            self._closed = True
+
+    def __enter__(self) -> "OrgStore":
+        """Return this store from a managed resource scope."""
+        if self._closed:
+            raise RuntimeError("organization store is closed")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release the owned connection when the scope exits."""
+        self.close()
