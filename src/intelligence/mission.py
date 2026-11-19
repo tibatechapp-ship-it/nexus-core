@@ -302,6 +302,18 @@ def run_mission_behavior_replay(
         "execution_mode": "container",
     })
     try:
+        baseline_cases = {item.case_id: item for item in baseline.cases}
+        requested_cases = {item.case_id: item for item in cases}
+        if set(requested_cases) != set(baseline_cases):
+            raise MissionBehaviorError(
+                "replay case IDs must exactly match the trusted baseline before execution"
+            )
+        for case_id, case in requested_cases.items():
+            if digest_payload(case.input_payload) != baseline_cases[case_id].input_sha256:
+                raise MissionBehaviorError(
+                    f"replay input fixture differs from the trusted baseline: {case_id}"
+                )
+
         state_path = Path(state_root).expanduser().resolve(strict=True)
         repo_path = Path(mission.repo_path).expanduser().resolve(strict=True)
         if not state_path.is_dir() or not repo_path.is_dir():
