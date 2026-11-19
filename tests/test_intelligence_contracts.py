@@ -177,3 +177,34 @@ def test_evidence_digest_is_not_mutable_through_serialized_copy() -> None:
 def test_result_rejects_control_characters_in_identifiers() -> None:
     with pytest.raises(ContractError, match="control characters"):
         result(run_id="run-1\x00forged")
+
+
+def test_contract_text_and_sequence_validation_edges() -> None:
+    with pytest.raises(ContractError, match="must be a string"):
+        evidence(locator=123)
+    with pytest.raises(ContractError, match="control characters"):
+        evidence(locator="bad\x00path")
+    with pytest.raises(ContractError, match="list or tuple"):
+        finding(evidence_ids="ev-1")
+    with pytest.raises(ContractError, match="duplicates"):
+        finding(evidence_ids=("ev-1", "ev-1"))
+    with pytest.raises(ContractError, match="at most"):
+        result(scope=tuple(f"scope-{i}" for i in range(257)))
+
+
+def test_contract_from_dict_wraps_missing_required_fields() -> None:
+    with pytest.raises(ContractError, match="invalid evidence fields"):
+        EvidenceReference.from_dict({"evidence_id": "ev", "kind": "log"})
+    with pytest.raises(ContractError, match="invalid finding fields"):
+        Finding.from_dict({"finding_id": "f"})
+    with pytest.raises(ContractError, match="invalid result fields"):
+        IntelligenceResult.from_dict({"run_id": "run"})
+
+
+def test_contract_rejects_invalid_enum_and_collection_item_types() -> None:
+    with pytest.raises(ContractError, match="unsupported finding classification"):
+        finding(severity="unrated")
+    with pytest.raises(ContractError, match="unsupported result status"):
+        result(status="unknown")
+    with pytest.raises(ContractError, match="contains an invalid item"):
+        result(findings=("not-a-finding",))

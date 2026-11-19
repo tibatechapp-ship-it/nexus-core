@@ -137,3 +137,49 @@ def test_capture_never_invokes_a_target_runner() -> None:
         collected_by="test", sink=sink,
     )
     assert invoked is False
+
+
+def test_capture_rejects_invalid_status_and_non_json_payloads() -> None:
+    with pytest.raises(CaptureError, match="unsupported capture status"):
+        CapturedCase("bad", {}, {}, "unknown")
+    with pytest.raises(CaptureError, match="canonical JSON"):
+        capture_baseline(
+            target="repo", revision="rev", run_id="run",
+            cases=[CapturedCase("bad", object(), {})],
+            collected_by="test", sink=MemoryEvidenceSink(),
+        )
+
+
+def test_capture_rejects_empty_or_invalid_case_collections() -> None:
+    with pytest.raises(CaptureError, match="between 1 and 1000"):
+        capture_baseline(
+            target="repo", revision="rev", run_id="empty",
+            cases=[], collected_by="test", sink=MemoryEvidenceSink(),
+        )
+    with pytest.raises(CaptureError, match="invalid case"):
+        capture_observations(
+            target="repo", revision="rev", run_id="invalid",
+            cases=[object()], collected_by="test", sink=MemoryEvidenceSink(),
+        )
+
+
+def test_capture_wraps_sink_exception_and_rejects_wrong_reference_type() -> None:
+    class RaisingSink:
+        def put(self, *args, **kwargs):
+            raise OSError("storage offline")
+
+    class WrongSink:
+        def put(self, *args, **kwargs):
+            return {"evidence_id": "not-a-reference"}
+
+    case = [CapturedCase("case", {}, {})]
+    with pytest.raises(CaptureError, match="sink rejected"):
+        capture_baseline(
+            target="repo", revision="rev", run_id="raising",
+            cases=case, collected_by="test", sink=RaisingSink(),
+        )
+    with pytest.raises(CaptureError, match="must return an EvidenceReference"):
+        capture_baseline(
+            target="repo", revision="rev", run_id="wrong",
+            cases=case, collected_by="test", sink=WrongSink(),
+        )
