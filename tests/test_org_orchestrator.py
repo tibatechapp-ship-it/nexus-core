@@ -127,6 +127,27 @@ class TestExecutionPolicy:
                 require_approval=True)
 
 
+    def test_execution_policy_rejects_unknown_fields_and_boolean_schema(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="strict policy", objective="reject ambiguous policy",
+        ))
+        with pytest.raises(OrgError, match="unsupported execution policy schema"):
+            orchestrator._validated_execution_policy(
+                mission.id,
+                {"schema_version": True, "execution_mode": "process",
+                 "trusted_local": True},
+                require_approval=False,
+            )
+        with pytest.raises(OrgError, match="unsupported execution policy fields"):
+            orchestrator._validated_execution_policy(
+                mission.id,
+                {"schema_version": 1, "execution_mode": "process",
+                 "trusted_local": True, "container_image": "unexpected"},
+                require_approval=False,
+            )
+
+
 class TestPhaseGates:
     def test_execute_walks_phases_in_order(
             self, orchestrator: ExecutiveOrchestrator,
