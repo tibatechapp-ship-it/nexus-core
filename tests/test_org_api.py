@@ -122,6 +122,27 @@ class TestWriteEndpointsAuth:
         stored = org.mission_get(mission_id)
         assert stored is not None and stored.status == "created"
 
+    def test_run_rejects_already_started_mission_with_conflict(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "already started", "objective": "must not run twice",
+        }, headers=AUTH)
+        mission = org.mission_get(created.json()["id"])
+        assert mission is not None
+        org.mission_update(Mission(
+            title=mission.title, objective=mission.objective,
+            repo_path=mission.repo_path, phase=mission.phase,
+            status="running", id=mission.id,
+        ))
+        response = http.post(
+            f"/org/missions/{mission.id}/run",
+            json={"execution_mode": "process", "trusted_local": True},
+            headers=AUTH,
+        )
+        assert response.status_code == 409
+        assert "created" in response.json()["detail"]
+
     def test_run_uses_the_approved_existing_mission(
             self, client: tuple[TestClient, OrgStore],
             monkeypatch: pytest.MonkeyPatch) -> None:
