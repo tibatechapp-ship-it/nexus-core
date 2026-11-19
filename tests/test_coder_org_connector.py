@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.coder.org_connector import OrgRuntimeConnector
+from src.org.providers import ProviderError
 
 
 class FakePool:
@@ -69,7 +70,7 @@ def test_adapter_assigns_declared_stage_roles(prompt: str, expected: str) -> Non
 
 
 def test_adapter_contains_provider_failure() -> None:
-    runtime = FakeRuntime(fail=RuntimeError("provider unavailable"))
+    runtime = FakeRuntime(fail=ProviderError("provider unavailable"))
     connector = OrgRuntimeConnector(runtime, mission_id="mission-3")
 
     result = asyncio.run(connector.generate("request"))
