@@ -318,3 +318,24 @@ A clean scan is not proof that a system is defect-free. A passing replay is not 
 - The 106 inventory records remain inventory records, not 106 task-validated agents.
 - Benchmark claims require a versioned dataset, pinned environment, repeated runs and raw machine-readable results.
 - PR approval, merge, release and deployment remain separate human-controlled decisions.
+
+
+### G4 implementation contract — Coder Engine and quality gate
+
+The current Coder Engine and quality-gate APIs are useful producers of execution outcomes, but they are not yet durable evidence authorities:
+
+- Coder Engine defaults to process execution for trusted local development. That mode must never be promoted into an untrusted mission assurance result.
+- Quality-gate and engine JSONL writes are best-effort today; a failed log write does not necessarily fail the engine.
+- A returned ok=true is an orchestration summary, not proof that every command ran in the intended isolated environment or that the result is reproducible.
+
+Therefore the integration adapter must:
+
+1. Require container execution, explicit feature enablement, persisted human approval and an immutable digest-pinned image for untrusted candidate validation. Reject process mode at the assurance boundary even if the Coder Engine supports it for trusted local development.
+2. Bind every result to mission_id, run_id, candidate Git SHA, baseline SHA, RepairPlan digest, test/gate configuration digest, runner image digest, Python/toolchain versions and timestamps.
+3. Convert each test, static-analysis, security and independent-review outcome into a separate typed evidence artifact. Store it through the immutable evidence sink; verify the returned digest and provenance independently.
+4. Redact output before persistence. Do not treat raw stdout/stderr, exception messages, patch contents or model explanations as safe evidence by default.
+5. Fail closed if evidence persistence, digest verification, report writing or audit append fails. Keep best-effort operational logs separate from mandatory assurance evidence.
+6. Preserve the existing RepairPlan validation, isolated worktree, policy decision, reviewer/council requirements and human approval. The assurance gate may reject or request human review; it must not execute a repair, approve a merge or authorize a deployment.
+7. Test negative paths: process-mode attempt, missing approval, image digest mismatch, evidence-sink outage, altered artifact, missing gate result, stale candidate SHA, truncated output, timeout, failed cleanup and audit/report persistence failure.
+
+The adapter should be a narrow boundary module with contract tests; do not rewrite Coder Engine or replace the existing quality gate to accomplish this integration.
