@@ -188,7 +188,7 @@ def test_contract_text_and_sequence_validation_edges() -> None:
         finding(evidence_ids="ev-1")
     with pytest.raises(ContractError, match="duplicates"):
         finding(evidence_ids=("ev-1", "ev-1"))
-    with pytest.raises(ContractError, match="at most"):
+    with pytest.raises(ContractError, match="scope exceeds 256 items"):
         result(scope=tuple(f"scope-{i}" for i in range(257)))
 
 
