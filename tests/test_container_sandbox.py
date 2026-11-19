@@ -91,14 +91,18 @@ def test_workspace_must_exist(
 
 
 
-def _timeout_runner(monkeypatch, cidfile_contents="a" * 64, cleanup_returncode=0):
+def _timeout_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    cidfile_contents: str | None = "a" * 64,
+    cleanup_returncode: int = 0,
+) -> tuple[list[tuple[str, list[str]]], type]:
     import io
     import os
     import subprocess
     import src.coder.container_sandbox as sandbox
 
-    calls = []
-    processes = []
+    calls: list[tuple[str, list[str]]] = []
+    processes: list[FakeProcess] = []
 
     class FakeProcess:
         pid = 4242
@@ -106,22 +110,24 @@ def _timeout_runner(monkeypatch, cidfile_contents="a" * 64, cleanup_returncode=0
         stderr = io.BytesIO(b"")
         returncode = None
 
-        def __init__(self, command, **kwargs):
+        def __init__(self, command: list[str], **kwargs: object) -> None:
             calls.append(("popen", command))
             processes.append(self)
             cid_path = Path(command[command.index("--cidfile") + 1])
             if cidfile_contents is not None:
                 cid_path.write_text(cidfile_contents, encoding="ascii")
 
-        def wait(self, timeout=None):
+        def wait(self, timeout: float | None = None) -> int | None:
             if self.returncode is None:
                 raise subprocess.TimeoutExpired("docker run", timeout)
             return self.returncode
 
-        def kill(self):
+        def kill(self) -> None:
             self.returncode = -9
 
-    def fake_run(command, **kwargs):
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(("run", command))
         return subprocess.CompletedProcess(command, cleanup_returncode, "", "cleanup failed")
 
@@ -140,7 +146,7 @@ def _timeout_runner(monkeypatch, cidfile_contents="a" * 64, cleanup_returncode=0
 def test_timeout_force_removes_container_by_cidfile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls, process = _timeout_runner(monkeypatch)
+    calls, _ = _timeout_runner(monkeypatch)
     result = run_in_container(
         ["python", "-c", "pass"], tmp_path, image=IMAGE,
         enabled=True, approved=True, timeout=1, require_rootless=False,
@@ -148,6 +154,9 @@ def test_timeout_force_removes_container_by_cidfile(
     assert result["timeout"] is True
     assert result["cleanup_attempted"] is True
     assert result["cleanup_ok"] is True
+    docker_run = next(command for kind, command in calls if kind == "popen")
+    assert docker_run[1] == "run"
+    assert docker_run[2] == "--cidfile"
     cleanup = next(command for kind, command in calls if kind == "run")
     assert cleanup[:3] == ["/usr/bin/docker", "rm", "--force"]
     assert cleanup[3] == "a" * 64

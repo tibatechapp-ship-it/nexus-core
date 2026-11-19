@@ -108,13 +108,25 @@ evidence. Then combine its result with `evaluate_assurance` using
 The comparator only proves agreement over the recorded test corpus. It does not
 prove equivalence for unobserved inputs.
 
-## Remaining validation
+## Runtime cleanup and validation status
 
-The mission lifecycle adapter and durable audit wiring are implemented. Remaining
-validation is an end-to-end run against a controlled fixture repository using a real
-rootless Docker daemon and a preloaded digest-pinned runner image, followed by
-connecting the behavior verdict into the final mission assurance report. No
-automatic replay is wired into arbitrary missions.
+The real Rootless Docker E2E workflow has verified approval-bound execution,
+network isolation, and a read-only container root with a preloaded digest-pinned
+image. The mission adapter persists the behavior verdict and evidence IDs into
+the final mission report and organization audit log.
+
+The Docker client now receives a private per-invocation `--cidfile`. If the
+client-side wait reaches its deadline, the adapter kills the local Docker CLI
+process group and then attempts `docker rm --force <container-id>` with a
+separate 10-second cleanup deadline. The result records whether cleanup was
+attempted, confirmed, or left unconfirmed; an unconfirmed cleanup remains a
+failed replay and is never treated as a successful run. No resource limits or
+isolation controls are relaxed to make cleanup succeed.
+
+The cleanup path is covered by unit tests for confirmed removal, failed removal,
+and a missing/malformed container ID. The dedicated Rootless Docker workflow
+continues to validate the real daemon path. No automatic replay is wired into
+arbitrary missions.
 
 
 ## Mission lifecycle adapter
