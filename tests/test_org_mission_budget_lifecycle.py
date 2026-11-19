@@ -375,7 +375,9 @@ class TestLeaseBoundTokenReservations:
             current = store.mission_token_budget_get(mission.id)
             assert current["reserved_output_tokens"] == 200
             assert current["consumed_output_tokens"] == 0
-            assert store.mission_token_reservations_for(mission.id)[0]["status"] == "reserved"
+            assert store._conn.execute(
+                "SELECT status FROM mission_token_reservations WHERE id=?",
+                (reservation["id"],)).fetchone()["status"] == "reserved"
         finally:
             store.close()
 
