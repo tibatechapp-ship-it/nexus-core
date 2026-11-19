@@ -98,7 +98,8 @@ Deliverables:
 - [x] `src/intelligence/contracts.py`: bounded, versioned evidence references, findings, and result contracts.
 - [x] `src/intelligence/capture.py`: canonical fixture capture and content-digest verification through an injected immutable evidence sink.
 - [x] `src/intelligence/gate.py`: deterministic acceptance rules; missing or unverifiable evidence fails closed.
-- [ ] Dedicated redaction and intelligence-specific scope/budget policy adapters are not implemented in this PR; sanitized-fixture responsibility remains with the caller and mission authorization remains owned by the existing organization policy.
+- [x] PR #148 adds defense-in-depth credential redaction before evidence hashing/persistence; callers remain responsible for sanitized fixtures because this is not complete DLP.
+- [ ] Intelligence-specific scope/budget policy adapters remain separate follow-up work; mission authorization remains owned by the existing organization policy.
 - [ ] Add the missing `docs/INTELLIGENCE_AND_ASSURANCE.md` design document or remove the stale reference; the roadmap itself and `docs/BEHAVIOR_CAPTURE_AND_REPLAY.md` currently hold the implementation guidance.
 
 Acceptance:
@@ -122,7 +123,7 @@ Deliverables:
 
 Implemented first vertical slice:
 - [x] src/intelligence/behavior.py: canonical JSON payload digests, immutable baseline/case/observation contracts, evidence verification, and deterministic comparison verdicts.
-- [x] src/intelligence/capture.py: bounded recording adapter for already-collected, sanitized fixtures; stores content-digested evidence through an injected immutable evidence sink.
+- [x] src/intelligence/capture.py: bounded recording adapter for already-collected fixtures; applies defense-in-depth credential redaction before hashing and stores content-digested evidence through an injected immutable evidence sink.
 - [x] src/intelligence/replay.py: mission-approval-gated adapter that verifies the persisted run_untrusted approval and invokes only the existing rootless container sandbox; process mode is rejected.
 - [x] src/intelligence/mission.py: explicit completed-mission orchestration restores the verified final checkpoint, binds the baseline to the mission ID, verifies baseline evidence before candidate execution, stages canonical input fixtures through an argv placeholder, prepares separate disposable workspaces, captures and compares evidence, and appends requested/completed/failed audit events.
 - [x] Workspace preparation rejects symlinks and credential-like files, excludes Git metadata and generated/dependency directories, and enforces 100,000-file / 2 GiB limits.
@@ -265,3 +266,55 @@ The initiative is complete only when a scoped mission can:
 7. stop safely on missing authorization, incomplete evidence or failed gates.
 
 A clean scan is not proof that a system is defect-free. A passing replay is not proof of equivalence outside the recorded corpus.
+
+
+## 9. PR 148 hardening follow-up and execution control
+
+**Follow-up branch:** fix/pr147-evidence-redaction  
+**Target:** feat/intelligence-evidence-contract (the implementation branch behind PR 147).  
+**Policy:** keep this follow-up Draft until all required checks pass on one exact head SHA. A passing CI run on an earlier SHA is historical evidence only.
+
+### Additional controls delivered in the follow-up
+
+- [x] Redact common credential-bearing keys and recognizable bearer, assignment, provider-token, cloud-key and private-key patterns before calculating payload digests or persisting evidence.
+- [x] Stamp captured artifacts with nexus.secret-redaction/v1; document that this is defense in depth, not complete DLP.
+- [x] Require one-to-one evidence-reference mapping for baseline cases and candidate observations; reject orphaned, duplicate and reused references.
+- [x] Reject credential-bearing directories (.aws, .ssh, .azure, .gcloud, .kube, .gnupg, .docker) and additional key-store suffixes during replay snapshot preparation.
+- [x] Compare requested replay case IDs and canonical input digests with the trusted baseline before checkpoint restore or candidate execution.
+- [x] Add negative-path tests for the above controls.
+- [x] Restore a genuine two-case workspace-isolation test: two cases must receive two distinct disposable workspaces copied from the same verified checkpoint.
+- [ ] Run the complete Python 3.11/3.12/3.13 matrix, exact 95% framework coverage gate, report freshness, MIZAN and all security checks on the same final PR head.
+- [ ] Run the real Rootless Docker E2E on that same final PR head.
+- [ ] Obtain independent review; no review submissions or inline review threads were present on PR #147 at the last inspection.
+
+### Revised delivery gates
+
+| Gate | Required proof | Stop condition |
+|---|---|---|
+| G0 — Exact-head integrity | PR head SHA recorded; CI, test matrix and E2E all refer to that SHA | Any check is missing, stale or still running |
+| G1 — Evidence safety | Secret redaction tests, immutable sink digest checks, one-to-one evidence mapping, malformed/oversized input tests | Any secret-bearing fixture is persisted or evidence mapping is ambiguous |
+| G2 — Replay safety | Exact baseline case/input preflight, persisted human approval, digest-pinned image, rootless isolation, per-case workspace separation, cleanup | Any preflight occurs after restore/execution, or any host-process fallback exists |
+| G3 — Assurance correctness | Evidence verification, explicit partial/invalid states, behavior comparison, independent assurance and combined gate | Missing evidence can produce an assured result |
+| G4 — Integration | Coder Engine/QA evidence enters the mission contract through existing RepairPlan and quality gates | Parallel repair path or gate bypass appears |
+| G5 — Fleet qualification | Per-agent evidence matrix; synthetic vs real task harness separated; task quality, cost, latency and reliability recorded | Inventory/import health is presented as task competence |
+| G6 — Product and operations | Observability, durable recovery, cost budgets, release rollback, operator UX and incident drills | UI or automation hides uncertainty or bypasses human approvals |
+
+### Professional implementation sequence
+
+1. **Close G0–G3 first.** Do not begin a broad feature expansion while the evidence/replay foundation is still changing.
+2. **Integrate existing quality systems.** Adapt existing Coder Engine, MIZAN, src/security, observability and durable-workflow results to the shared contract; do not duplicate scanners, queues or policy engines.
+3. **Build a representative task corpus.** Start with a small critical agent cohort and labelled repositories/tasks. Record exact model/provider, prompt/template, tool policy, dataset revision, environment, cost and latency for every run.
+4. **Qualify agents individually.** Keep discovery, importability, construction, synthetic invocation, task validation and production qualification as separate maturity levels. Unknown evidence remains unknown.
+5. **Add read-only reverse-engineering adapters incrementally.** Bound archive expansion, file count, recursion, parser time and memory; no execution or network by default.
+6. **Unify security assessment after adapters are stable.** Keep heuristic signals distinct from confirmed findings; require authorization for active validation and retest.
+7. **Expose MCP/UI last.** Every surface consumes the same contracts and gates; no UI-side alternate execution path.
+8. **Operationalize only after measurable gates.** Add SLOs for workflow completion, evidence integrity, recovery, false positives, cost per successful task and rollback time.
+
+### Evidence discipline
+
+- A run is current only if its commit SHA equals the current PR head SHA.
+- A green CI job does not imply the non-blocking NovaMind suite or its coverage is production-qualified.
+- A rootless E2E pass proves the tested container path and scenarios only; it does not prove all mission integrations safe.
+- The 106 inventory records remain inventory records, not 106 task-validated agents.
+- Benchmark claims require a versioned dataset, pinned environment, repeated runs and raw machine-readable results.
+- PR approval, merge, release and deployment remain separate human-controlled decisions.
