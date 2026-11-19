@@ -88,6 +88,45 @@ class TestPlan:
             plan.validate()
 
 
+class TestExecutionPolicy:
+    def test_container_requires_approved_image_bound_record(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        from src.org.contracts import Approval
+
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="container policy", objective="require image-specific approval",
+        ))
+        image = "registry.example/nexus-runner@sha256:" + "b" * 64
+        policy = {
+            "schema_version": 1, "execution_mode": "container",
+            "container_enabled": True, "container_image": image,
+            "approval_id": "org-a-not-approved",
+        }
+        with pytest.raises(OrgError, match="approved run_untrusted"):
+            orchestrator._validated_execution_policy(
+                mission.id, policy, require_approval=True)
+
+        approval = orchestrator.org_store.request_approval(Approval(
+            mission_id=mission.id, kind="run_untrusted", subject=image,
+        ))
+        with pytest.raises(OrgError, match="approved run_untrusted"):
+            orchestrator._validated_execution_policy(
+                mission.id, {**policy, "approval_id": approval.id},
+                require_approval=True)
+
+        orchestrator.org_store.decide_approval(
+            approval.id, approved=True, decided_by="test-operator")
+        accepted = orchestrator._validated_execution_policy(
+            mission.id, {**policy, "approval_id": approval.id},
+            require_approval=True)
+        assert accepted["container_image"] == image
+        with pytest.raises(OrgError, match="approved run_untrusted"):
+            orchestrator._validated_execution_policy(
+                mission.id, {**policy, "container_image": image + "x",
+                             "approval_id": approval.id},
+                require_approval=True)
+
+
 class TestPhaseGates:
     def test_execute_walks_phases_in_order(
             self, orchestrator: ExecutiveOrchestrator,
