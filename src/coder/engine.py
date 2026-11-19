@@ -130,6 +130,27 @@ def _promotion(verdict: str, *, high_risk: bool) -> str:
     return "pending"
 
 
+def _restore_plan_targets(root: Path, workdir: Path, plan: RepairPlan) -> None:
+    """Restore planned paths to the original snapshot before a retry.
+
+    A failed test gate must not leave the previous attempt's edits in place:
+    the next plan is grounded in the original read-only context, so applying
+    its exact find block against a mutated workspace would spuriously match
+    zero times. Only paths declared by the previous plan are restored; audit
+    records and unrelated workspace artifacts remain intact.
+    """
+    for step in plan.steps:
+        source = (root / step.file).resolve()
+        target = (workdir / step.file).resolve()
+        if not target.is_relative_to(workdir.resolve()):
+            raise ValueError(f"plan path escapes workspace during retry: {step.file!r}")
+        if source.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+        else:
+            target.unlink(missing_ok=True)
+
+
 def _summarize(results: list) -> str:
     """One-line gate summary for the next iteration's feedback."""
     failed = [r for r in results if not r.get("ok")]
@@ -213,6 +234,13 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
 
     for iteration in range(1, max_iterations + 1):
         started = time.monotonic()
+        if iteration > 1 and last_plan is not None:
+            try:
+                _restore_plan_targets(root, workdir, last_plan)
+            except OSError as exc:
+                return {"ok": False, "error": f"retry workspace restore failed: {type(exc).__name__}",
+                        "iterations": iteration - 1, "attempts": attempts,
+                        "plan": last_plan.to_json(), "workdir": str(workdir)}
         # ب1.2 — التصعيد عند العجز (وضع escalate فقط): بعد ESCALATE_AFTER_FAILURES
         # محاولة فاشلة في التشغيل نفسه يُستشار المجلس مرة واحدة بسياق العجز،
         # ليحلّ لا ليوقف — نص حكمه يصير feedback المحاولة التالية.
