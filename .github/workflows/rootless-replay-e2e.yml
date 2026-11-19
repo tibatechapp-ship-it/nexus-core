@@ -51,7 +51,7 @@ jobs:
           sudo systemctl start "user-runtime-dir@${user_id}.service"
           sudo systemctl start "user@${user_id}.service"
           export XDG_RUNTIME_DIR="/run/user/${user_id}"
-          export DBUS_SESSION_BUS_ADDRESS="unix://${XDG_RUNTIME_DIR}/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
           if [ ! -S "${XDG_RUNTIME_DIR}/bus" ]; then
             echo "systemd user bus was not created for the runner account"
             sudo systemctl status "user@${user_id}.service" --no-pager || true
