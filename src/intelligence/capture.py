@@ -112,17 +112,17 @@ def _redact_string(value: str) -> str:
     return result
 
 
-def _sanitize_payload(value: Any, *, field_name: Any = None) -> Any:
+def sanitize_payload(value: Any, *, field_name: Any = None) -> Any:
     """Return a JSON-shaped copy with credential-bearing fields and strings redacted."""
     if _is_secret_key(field_name):
         return _REDACTED
     if isinstance(value, Mapping):
         return {
-            key: _sanitize_payload(item, field_name=key)
+            key: sanitize_payload(item, field_name=key)
             for key, item in value.items()
         }
     if isinstance(value, (list, tuple)):
-        return [_sanitize_payload(item) for item in value]
+        return [sanitize_payload(item) for item in value]
     if isinstance(value, str):
         return _redact_string(value)
     return value
@@ -155,8 +155,8 @@ def _store_case(
     collected_by: str,
     sink: EvidenceSink,
 ) -> tuple[str, str, str, EvidenceReference]:
-    sanitized_input = _sanitize_payload(case.input_payload)
-    sanitized_output = _sanitize_payload(case.output_payload)
+    sanitized_input = sanitize_payload(case.input_payload)
+    sanitized_output = sanitize_payload(case.output_payload)
     try:
         input_hash = digest_payload(sanitized_input)
         output_hash = digest_payload(sanitized_output)
@@ -277,5 +277,5 @@ def capture_observations(
 
 __all__ = [
     "CaptureError", "CapturedCase", "EvidenceSink",
-    "capture_baseline", "capture_observations",
+    "capture_baseline", "capture_observations", "sanitize_payload",
 ]
