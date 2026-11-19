@@ -282,11 +282,11 @@ class TestRevisionLoop:
         from src.org.providers import MockProvider
 
         class TodoDevProvider(MockProvider):
-            def _dev_reply(self, prompt: str) -> str:
+            def _coder_plan_reply(self, prompt: str) -> str:
                 import json
-                base = json.loads(super()._dev_reply(prompt))
-                for c in base["changed_files"]:
-                    c["content"] += "\n# TODO: لاحقًا\n"
+                base = json.loads(super()._coder_plan_reply(prompt))
+                for step in base.get("steps", []):
+                    step["patch_hint"] += "\\n# TODO: لاحقًا\\n"
                 return json.dumps(base, ensure_ascii=False)
 
         pool = ProviderPool([ProviderConfig()])
