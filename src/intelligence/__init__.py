@@ -10,6 +10,10 @@ from .gate import (
 )
 from .capture import CaptureError, CapturedCase, EvidenceSink, capture_baseline, capture_observations
 from .replay import BehaviorReplayError, ReplayCommandCase, execute_authorized_cases
+from .mission import (
+    BehaviorCaseSpec, MissionBehaviorError, MissionBehaviorReplayResult,
+    run_mission_behavior_replay,
+)
 from .behavior import (
     BehaviorBaseline, BehaviorCase, BehaviorComparison, BehaviorContractError,
     BehaviorGateDecision, BehaviorGateVerdict, BehaviorObservation, BehaviorVerdict,
@@ -26,5 +30,6 @@ __all__ = [
     "compare_behavior", "digest_payload", "evaluate_behavior_gate",
     "CaptureError", "CapturedCase", "EvidenceSink", "capture_baseline",
     "capture_observations", "BehaviorReplayError", "ReplayCommandCase",
-    "execute_authorized_cases",
+    "execute_authorized_cases", "BehaviorCaseSpec", "MissionBehaviorError",
+    "MissionBehaviorReplayResult", "run_mission_behavior_replay",
 ]
