@@ -176,8 +176,11 @@ class ExecutiveOrchestrator:
 
     # ── التنفيذ ───────────────────────────────────────────────────────────
 
-    def execute(self, mission: Mission) -> Mission:
-        """تنفيذ كامل A→G — بوابات الأطوار عبر المتجر، فشل صريح لا صمت."""
+    def execute(self, mission: Mission, *,
+                execution_policy: dict[str, Any] | None = None) -> Mission:
+        """تنفيذ كامل A→G — لا يبدأ أي وكيل بلا سياسة تشغيل صريحة."""
+        policy = self._validated_execution_policy(
+            mission.id, execution_policy, require_approval=False)
         mission = self.org_store.create_mission(mission)
         mission = self.org_store.mission_update(
             mission.with_phase("A_REQUIREMENTS"))
