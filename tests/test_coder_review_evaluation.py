@@ -97,7 +97,8 @@ def test_evaluation_rejects_path_traversal_duplicate_find_and_symlink(tmp_path:P
     with pytest.raises(EvaluationError,match="exactly once"):
         _apply_task(tmp_path,{"files":{"a.py":"x=1\nx=1"},
             "patches":[{"path":"a.py","find":"x=1","replace":"x=2"}]})
-    outside=tmp_path/"outside.py"; outside.write_text("x=1")
+    outside = tmp_path / "outside.py"
+    outside.write_text("x=1")
     (tmp_path/"link.py").symlink_to(outside)
     with pytest.raises(EvaluationError,match="regular file"):
         _apply_task(tmp_path,{"files":{},"patches":[
@@ -123,7 +124,8 @@ def test_container_sandbox_requires_opt_in_approval_digest(tmp_path:Path,monkeyp
     ({"command":[]},"non-empty argv"),({"command":["x","y"*4097]},"argument limits")])
 def test_container_sandbox_rejects_resource_limits(tmp_path:Path,monkeypatch,kw,msg):
     monkeypatch.setenv("NEXUS_ENABLE_CONTAINER_SANDBOX","1")
-    args={"command":["pytest"],"memory":"1g","cpus":"2","pids_limit":64}; args.update(kw)
+    args = {"command":["pytest"],"memory":"1g","cpus":"2","pids_limit":64}
+    args.update(kw)
     with pytest.raises(ContainerSandboxError,match=msg):
         run_in_container(args.pop("command"),tmp_path,image="runner@sha256:"+"b"*64,
                          enabled=True,approved=True,**args)
