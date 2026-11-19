@@ -112,6 +112,8 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
         ),
     )
     assert result.comparison.verdict is BehaviorVerdict.INVALID
+    assert result.assurance.accepted is True
+    assert result.gate_decision.verdict.value == "rejected"
     assert [item[0] for item in store.audit_events] == [
         "behavior.replay.requested",
         "behavior.replay.report_persisted",
@@ -280,7 +282,15 @@ def test_report_append_handles_missing_duplicate_and_oversized_report(tmp_path) 
     result = MissionBehaviorReplayResult(
         "mission-1", "base", "candidate",
         BehaviorComparison(BehaviorVerdict.EQUIVALENT, ("matched",)),
-        ("ev-1",),
+        assurance=__import__("src.intelligence.gate", fromlist=["AssuranceDecision"]).AssuranceDecision(
+            __import__("src.intelligence.gate", fromlist=["AssuranceVerdict"]).AssuranceVerdict.ASSURED,
+            ("verified",), ("ev-1",),
+        ),
+        gate_decision=__import__("src.intelligence.behavior", fromlist=["BehaviorGateDecision"]).BehaviorGateDecision(
+            __import__("src.intelligence.behavior", fromlist=["BehaviorGateVerdict"]).BehaviorGateVerdict.ASSURED,
+            ("passed",),
+        ),
+        evidence_ids=("ev-1",),
     )
     assert _append_behavior_report(SimpleNamespace(), result, "run-1") is False
 
@@ -443,6 +453,8 @@ def test_mission_replay_reports_unavailable_for_legacy_mission(tmp_path, monkeyp
         ),
     )
     assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
+    assert result.assurance.accepted is True
+    assert result.gate_decision.verdict.value == "assured"
     assert any(event[0] == "behavior.replay.report_unavailable" for event in store.audit_events)
 
 

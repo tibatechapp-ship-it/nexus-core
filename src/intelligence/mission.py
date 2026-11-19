@@ -16,10 +16,12 @@ from typing import Any, Callable, Sequence
 
 from src.org.recovery_context import fingerprint_directory, restore_mission_context
 from .behavior import (
-    BehaviorBaseline, BehaviorComparison, _required_text, compare_behavior,
-    digest_payload,
+    BehaviorBaseline, BehaviorComparison, BehaviorGateDecision, _required_text,
+    compare_behavior, digest_payload, evaluate_behavior_gate,
 )
 from .capture import EvidenceSink, capture_observations
+from .contracts import IntelligenceResult, ResultStatus
+from .gate import AssuranceDecision, evaluate_assurance
 from .replay import ReplayCommandCase, execute_authorized_cases
 
 _MAX_CASES = 1000
@@ -82,6 +84,8 @@ class MissionBehaviorReplayResult:
     baseline_revision: str
     candidate_revision: str
     comparison: BehaviorComparison
+    assurance: AssuranceDecision
+    gate_decision: BehaviorGateDecision
     evidence_ids: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
@@ -90,6 +94,8 @@ class MissionBehaviorReplayResult:
             "baseline_revision": self.baseline_revision,
             "candidate_revision": self.candidate_revision,
             "comparison": self.comparison.to_dict(),
+            "assurance": self.assurance.to_dict(),
+            "gate_decision": self.gate_decision.to_dict(),
             "evidence_ids": list(self.evidence_ids),
         }
 
@@ -116,6 +122,8 @@ def _append_behavior_report(
         "baseline_revision": result.baseline_revision,
         "candidate_revision": result.candidate_revision,
         "verdict": comparison.verdict.value,
+        "assurance": result.assurance.to_dict(),
+        "gate_decision": result.gate_decision.to_dict(),
         "matched_case_ids": list(comparison.matched_case_ids),
         "missing_case_ids": list(comparison.missing_case_ids),
         "changed_case_ids": list(comparison.changed_case_ids),
@@ -357,9 +365,34 @@ def run_mission_behavior_replay(
                 baseline, observations, observation_evidence=references,
                 verify_evidence=verify_evidence,
             )
+            all_evidence = (*baseline.evidence, *references)
+            if len(all_evidence) > 5000:
+                raise MissionBehaviorError(
+                    "combined baseline and candidate evidence exceeds 5000 references"
+                )
+            intelligence_result = IntelligenceResult(
+                mission_id=mission_id,
+                run_id=run_id,
+                engine="behavior-replay",
+                target=baseline.target,
+                scope=(baseline.target,),
+                status=(
+                    ResultStatus.PARTIAL
+                    if comparison.verdict.value == "incomplete"
+                    else ResultStatus.COMPLETE
+                ),
+                evidence=all_evidence,
+            )
+            assurance = evaluate_assurance(
+                intelligence_result,
+                authorized_scope=(baseline.target,),
+                verify_evidence=verify_evidence,
+            )
+            gate_decision = evaluate_behavior_gate(assurance, comparison)
         result = MissionBehaviorReplayResult(
             mission_id=mission_id, baseline_revision=baseline.revision,
             candidate_revision=candidate_revision, comparison=comparison,
+            assurance=assurance, gate_decision=gate_decision,
             evidence_ids=tuple(item.evidence_id for item in references),
         )
         report_persisted = _append_behavior_report(mission, result, run_id)
@@ -378,6 +411,8 @@ def run_mission_behavior_replay(
             "baseline_revision": result.baseline_revision,
             "candidate_revision": result.candidate_revision,
             "verdict": comparison.verdict.value,
+            "assurance_verdict": assurance.verdict.value,
+            "gate_verdict": gate_decision.verdict.value,
             "matched": len(comparison.matched_case_ids),
             "missing": len(comparison.missing_case_ids),
             "changed": len(comparison.changed_case_ids),
