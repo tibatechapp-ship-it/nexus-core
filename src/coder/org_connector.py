@@ -67,10 +67,11 @@ class OrgRuntimeConnector:
             max_tokens=self.max_tokens,
         )
         try:
-            response = await asyncio.to_thread(
-                self.runtime.complete, spec, prompt
+            response = await asyncio.wait_for(
+                asyncio.to_thread(self.runtime.complete, spec, prompt),
+                timeout=self.timeout_s,
             )
-        except (ProviderError, ValueError) as exc:
+        except (ProviderError, ValueError, asyncio.TimeoutError) as exc:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:400]}
         return {
             "ok": True,
