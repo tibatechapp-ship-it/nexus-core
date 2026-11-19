@@ -15,12 +15,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import difflib
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from src.org.agents import AgentOutcome, AgentRuntime, AgentSpec, Tool, ToolRegistry
+from src.coder.engine import run_engine
+from src.coder.org_connector import OrgRuntimeConnector
 from src.org.contracts import (
     Approval,
     Claim,
@@ -238,85 +244,127 @@ class RepoIntelDept:
 
 
 class DevelopmentDept:
-    """قسم التطوير — وكيل لكل نوع (backend/api/...) يولّد رقعة في نسخة عمل."""
+    """قسم التطوير — يفوض التخطيط والتنفيذ والتحقق إلى Coder Engine."""
 
     def __init__(self, runtime: AgentRuntime) -> None:
         self.runtime = runtime
+
+    @staticmethod
+    def _run_async(coro: Any) -> Any:
+        """Run the async engine from this synchronous department API."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(asyncio.run, coro).result()
 
     def run(self, ctx: MissionContext, dev_kind: str = "backend") -> dict[str, Any]:
         if dev_kind not in DEV_KINDS:
             raise DepartmentError(f"نوع تطوير غير معلن: {dev_kind}")
         if ctx.worktree is None:
             raise DepartmentError("لا نسخة عمل — الذكاء يجب أن يسبق التطوير")
+        repo_path = ctx.mission.repo_path
+        if not repo_path or not Path(repo_path).is_dir():
+            raise DepartmentError("محرك Coder يحتاج مسار مستودع صالحًا")
         targets = ctx.affected.get("direct") or list(ctx.originals)[:1]
         if not targets:
             raise DepartmentError("لا ملفات هدف محددة للتطوير")
-        fn_name = self._function_hint(ctx.mission.objective, targets[0])
-        spec = AgentSpec(role=f"dev:{dev_kind}", dept="development",
-                         mission_id=ctx.mission.id,
-                         tools=frozenset({"read_repo"}), max_retries=1)
-        files_block = "\n".join(f"file: {t}" for t in targets[:3])
-        guard_desc = self._guard_hint(ctx.mission.objective)
-        prompt = (
-            f"TASK: {ctx.mission.objective}\n"
-            f"FUNCTION: {fn_name}\nGUARD: {guard_desc}\n"
-            f"TARGET FILES:\n{files_block}\n"
-            "أجب JSON بمفاتيح: changed_files (قائمة {path, content})، notes، "
-            "risks (قائمة {severity, message})."
+
+        engine_workdir = Path(tempfile.mkdtemp(prefix="nexus-coder-mission-"))
+        connector = OrgRuntimeConnector(
+            self.runtime, mission_id=ctx.mission.id,
+            max_tokens=4000, max_retries=1, timeout_s=120.0,
         )
-        outcome = self.runtime.ask_json(spec, prompt)
-        ctx.add_usage(outcome)
-        if not outcome.success:
-            raise DepartmentError(f"فشل وكيل التطوير: {outcome.error}")
-        changes = [c for c in outcome.data.get("changed_files", [])
-                   if isinstance(c, dict) and c.get("path")]
-        if not changes:
-            raise DepartmentError("وكيل التطوير أعاد لا تغييرات — فشل صريح")
-        applied = ctx.worktree.apply_changes(changes)
-        ctx.changed_files = sorted(set(applied))
-        ctx.diff_text = self._build_diff(ctx, changes)
-        ctx.dev_notes = str(outcome.data.get("notes", ""))
-        ctx.dev_risks = [r for r in outcome.data.get("risks", [])
-                         if isinstance(r, dict)]
-        statement = (f"طُبِّقت رقعة على {len(applied)} ملفًا مع حارس "
-                     f"«{guard_desc}»")
-        claim = Claim(mission_id=ctx.mission.id, agent_role=spec.role,
-                      statement=statement, claim_kind="fix",
-                      id=new_id("org-c", ctx.mission.id, spec.role, statement))
-        ctx.claims.append(claim)
-        self.runtime.store.add_evidence(Evidence(
-            mission_id=ctx.mission.id, kind="diff",
-            detail={"paths": applied, "diff_chars": len(ctx.diff_text)},
-            captured_by=spec.role, ok=True, claim_id=claim.id))
-        return {"status": "ok", "applied": applied, "diff_chars": len(ctx.diff_text),
-                "claim": claim}
+        try:
+            result = self._run_async(run_engine(
+                ctx.mission.objective, connector, root=Path(repo_path),
+                workdir=engine_workdir, max_iterations=3,
+                council_mode="off", execution_mode="process", test_timeout=90,
+            ))
+            usage = connector.usage_total
+            if any(usage.values()):
+                ctx.add_usage(AgentOutcome(
+                    spec_role=f"dev:{dev_kind}", success=bool(result.get("ok")),
+                    tokens_in=usage["tokens_in"], tokens_out=usage["tokens_out"],
+                    cost_usd=usage["cost_usd"],
+                    provider_used=";".join(sorted(connector.providers_used)),
+                    model_used=";".join(sorted(connector.models_used)),
+                ))
+            if not result.get("ok"):
+                raise DepartmentError(
+                    "فشل Coder Engine: " + str(result.get("error", "unknown"))[:400]
+                )
+            plan = result.get("plan")
+            if not isinstance(plan, dict) or not isinstance(plan.get("steps"), list):
+                raise DepartmentError("Coder Engine لم يُرجع RepairPlan قابلة للتطبيق")
 
-    @staticmethod
-    def _function_hint(objective: str, target: str) -> str:
-        """استنتاج حتمي لاسم الدالة من الهدف — لا اختراع صامت."""
-        import re
-        m = re.search(r"دالة\s*[`\"']?(\w+)", objective)
-        if m:
-            return m.group(1)
-        for word in ("divide", "split", "parse", "validate", "login", "create"):
-            if word in objective.lower():
-                return word
-        return Path(target).stem
+            repo_root = Path(repo_path).resolve()
+            for step in plan["steps"]:
+                if not isinstance(step, dict):
+                    raise DepartmentError("RepairPlan تحتوي خطوة غير صالحة")
+                rel = step.get("file")
+                if not isinstance(rel, str) or not rel:
+                    raise DepartmentError("RepairPlan تحتوي مسارًا فارغًا")
+                source = (repo_root / rel).resolve()
+                if not source.is_relative_to(repo_root):
+                    raise DepartmentError(f"مسار خارج المستودع مرفوض: {rel}")
+                if rel not in ctx.originals:
+                    try:
+                        ctx.originals[rel] = (
+                            source.read_text(encoding="utf-8") if source.is_file() else ""
+                        )
+                    except (OSError, UnicodeError) as exc:
+                        raise DepartmentError(f"تعذر قراءة خط أساس {rel}: {exc}") from exc
 
-    @staticmethod
-    def _guard_hint(objective: str) -> str:
-        lowered = objective.lower()
-        for kw, hint in (("صفر", "القسمة على صفر"), ("zero", "القسمة على صفر"),
-                         ("empty", "مدخلات فارغة"), ("فارغ", "مدخلات فارغة"),
-                         ("auth", "طلبات بلا تصريح"), ("negative", "قيم سالبة")):
-            if kw in lowered:
-                return hint
-        return "مدخلات غير صالحة"
+            try:
+                applied = ctx.worktree.apply_repair_steps(plan["steps"])
+            except (ValueError, OSError) as exc:
+                raise DepartmentError(f"رفض تطبيق RepairPlan: {exc}") from exc
+            if not applied:
+                raise DepartmentError("RepairPlan لم تنتج تغييرات قابلة للتطبيق")
+
+            changes: list[dict[str, str]] = []
+            for step in plan["steps"]:
+                rel = step["file"]
+                content = "" if step["action"] == "delete" else ctx.worktree.read(rel)
+                changes.append({"path": rel, "content": content})
+            ctx.changed_files = sorted(set(applied))
+            ctx.diff_text = self._build_diff(ctx, changes)
+            ctx.dev_notes = str(plan.get("goal", ctx.mission.objective))
+            ctx.dev_risks = [
+                {"severity": step.get("risk", "low"),
+                 "message": str(step.get("reason", ""))}
+                for step in plan["steps"] if step.get("risk") in {"medium", "high"}
+            ]
+            statement = (
+                f"نفّذ Coder Engine خطة إصلاح على {len(applied)} ملفًا "
+                "داخل نسخة العمل بعد اجتياز بوابة الاختبارات"
+            )
+            claim = Claim(
+                mission_id=ctx.mission.id, agent_role=f"dev:{dev_kind}",
+                statement=statement, claim_kind="fix",
+                id=new_id("org-c", ctx.mission.id, f"dev:{dev_kind}", statement),
+            )
+            ctx.claims.append(claim)
+            self.runtime.store.add_evidence(Evidence(
+                mission_id=ctx.mission.id, kind="diff",
+                detail={"paths": applied, "diff_chars": len(ctx.diff_text),
+                        "engine_iterations": result.get("iterations", 0),
+                        "promotion": result.get("promotion", "pending")},
+                captured_by=f"dev:{dev_kind}", ok=True, claim_id=claim.id,
+            ))
+            return {
+                "status": "ok", "applied": applied,
+                "diff_chars": len(ctx.diff_text), "engine": result, "claim": claim,
+            }
+        finally:
+            shutil.rmtree(engine_workdir, ignore_errors=True)
 
     @staticmethod
     def _build_diff(ctx: MissionContext,
                     changes: list[dict[str, str]]) -> str:
-        """فرق نصي موحّد بين الأصل ونسخة العمل — حتمي قابل للتخزين كدليل."""
+        """فرق نصي موحّد بين الأصل ونسخة العمل — دليل قابل للتدقيق."""
         lines: list[str] = []
         by_path = {c["path"]: c.get("content", "") for c in changes}
         for path in sorted(set(list(by_path) + list(ctx.originals))):
@@ -327,9 +375,6 @@ class DevelopmentDept:
                 fromfile=f"a/{path}", tofile=f"b/{path}", lineterm="")
             lines.extend(diff)
         return "\n".join(lines)
-
-
-# ── 4: الأمن ──────────────────────────────────────────────────────────────
 
 
 class SecurityDept:
