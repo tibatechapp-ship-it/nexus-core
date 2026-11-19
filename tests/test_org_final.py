@@ -211,7 +211,8 @@ class TestCliMissionCommand:
                    "--outdir", str(tmp_path / "r"),
                    "mission", "--title", "t",
                    "--objective", "هدف غير قابل للتنفيذ",
-                   "--repo", str(tmp_path / "no-repo")])
+                   "--repo", str(tmp_path / "no-repo"),
+                   "--execution-mode", "process", "--trust-local"])
         assert rc == 1
         payload = __import__("json").loads(capsys.readouterr().out)
         assert payload["mission"]["status"] == "failed"
@@ -358,7 +359,9 @@ class TestSmallGaps:
                                             outdir=str(tmp_path / "r")))
         http = TestClient(app)
         resp = http.post("/org/missions/nope/run",
-                         headers={"Authorization": "Bearer tok"})
+                         headers={"Authorization": "Bearer tok"},
+                         json={"execution_mode": "process",
+                               "trusted_local": True})
         assert resp.status_code == 404
 
     def test_department_hint_guard_paths(self) -> None:
