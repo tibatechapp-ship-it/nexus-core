@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 import pytest
 
@@ -98,16 +99,15 @@ class TestRejectedPaths:
         """رقعة تعطّل الاختبارات لا تصل للإصدار إطلاقًا."""
 
         class BrokenDevProvider(MockProvider):
-            def _dev_reply(self, prompt: str) -> str:
+            def _coder_plan_reply(self, prompt: str) -> str:
                 import json
-                base = json.loads(super()._dev_reply(prompt))
-                for c in base["changed_files"]:
-                    if "test" not in c["path"]:
-                        c["content"] = (
-                            "def divide(value, divisor):\n"
-                            "    if divisor == 0:\n"
-                            "        raise ValueError(\"صفر\")\n"
-                            "    return value + divisor\n")
+                base = json.loads(super()._coder_plan_reply(prompt))
+                for step in base.get("steps", []):
+                    step["patch_hint"] = re.sub(
+                        r"(?m)^([ \\t]*)return .* / .*$",
+                        r"\\1return value + divisor",
+                        step["patch_hint"],
+                    )
                 return json.dumps(base, ensure_ascii=False)
 
         org = OrgStore(":memory:")
@@ -128,11 +128,11 @@ class TestRejectedPaths:
         """رقعة بـTODO تُرفض مراجعةً وتُنهى المهمة بسقف الدورة."""
 
         class TodoDevProvider(MockProvider):
-            def _dev_reply(self, prompt: str) -> str:
+            def _coder_plan_reply(self, prompt: str) -> str:
                 import json
-                base = json.loads(super()._dev_reply(prompt))
-                for c in base["changed_files"]:
-                    c["content"] += "\n# TODO: لاحقًا\n"
+                base = json.loads(super()._coder_plan_reply(prompt))
+                for step in base.get("steps", []):
+                    step["patch_hint"] += "\\n# TODO: لاحقًا\\n"
                 return json.dumps(base, ensure_ascii=False)
 
         org = OrgStore(":memory:")
