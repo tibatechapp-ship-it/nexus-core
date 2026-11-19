@@ -109,7 +109,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine. Status: comparison contract, combined review gate, safe fixture capture, approval-gated rootless replay, and explicit completed-mission orchestration with durable audit events implemented; real rootless-Docker end-to-end validation and final assurance-report wiring remain open.**
+**Priority: P1; first functional engine. Status: comparison contract, combined review gate, safe fixture capture, approval-gated rootless replay, and explicit completed-mission orchestration with durable audit events implemented; exact-head CI and real rootless-Docker end-to-end validation remain open.**
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -126,8 +126,10 @@ Implemented first vertical slice:
 - [x] Workspace preparation rejects symlinks and credential-like files, excludes Git metadata and generated/dependency directories, and enforces 100,000-file / 2 GiB limits.
 - [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, verifier exceptions, capture round trips, sink tampering, approval denial, image mismatch, rootless runner result validation, per-case workspace isolation, cleanup, and audit behavior.
 - [x] Comparator and capture adapter perform no execution, subprocess launch, repository import, or network access.
-- [ ] Validate the full mission replay flow against a real rootless Docker daemon and preloaded digest-pinned runner image; wire its verdict into the final mission assurance report. Replay remains explicit, never automatic.
+- [ ] Validate the full mission replay flow against a real rootless Docker daemon and preloaded digest-pinned runner image. Replay remains explicit, never automatic.
 - [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
+- [x] Persist release `branch`, `patch_path`, `report_path`, and ticket ID on the mission record before marking the release task complete; reject incomplete release metadata and retain fields through the terminal mission transition.
+- [x] Append the explicit behavior replay verdict, baseline/candidate revisions, case outcomes, and evidence IDs to the mission `REPORT.md` atomically; audit report persistence and mark legacy missions without a report path as unavailable.
 - [ ] Connect baseline/candidate evidence to Coder Engine quality results and mission audit records.
 
 Safety:
