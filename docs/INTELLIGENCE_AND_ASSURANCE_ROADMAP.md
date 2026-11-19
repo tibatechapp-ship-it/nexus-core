@@ -78,14 +78,15 @@ Evidence records must not embed secrets, private keys, tokens, or unrestricted s
 
 ### Phase 0 — Baseline and quality closure
 
-**Status: baseline passed; Novamind measurement corrected, awaiting exact-head validation.**
+**Status at `ff120cab`: Python 3.11 exact-head job passed, including framework coverage ≥95%, report freshness, and both Novamind test steps; Python 3.12 and 3.13 exact-head jobs were still running at the last check.**
 
 - [x] Python 3.11, 3.12 and 3.13 framework suites pass on the baseline commit.
 - [x] 5,342 passed and 30 skipped per Python version.
 - [x] Framework coverage 95.02% per version; required floor remains 95%.
 - [x] CI and MIZAN workflows pass on the baseline commit.
 - [x] Root cause identified: the shared coverage config intentionally omits `src/novamind`; the separate report now uses a dedicated coverage config scoped to that package and no longer suppresses command errors.
-- [ ] Validate the corrected Novamind report on the exact current PR head; keep it explicitly non-blocking until a separately approved coverage threshold exists.
+- [x] Validate the corrected Novamind test/report commands on the exact current PR head in Python 3.11; the Novamind steps remain explicitly non-blocking and no Novamind coverage threshold is claimed.
+- [ ] Confirm the same exact-head result on Python 3.12 and 3.13.
 - [ ] Preserve the successful baseline and run all workflows again after each implementation PR.
 
 ### Phase 1 — Evidence contract and assurance gate
@@ -94,10 +95,11 @@ Evidence records must not embed secrets, private keys, tokens, or unrestricted s
 
 Deliverables:
 - [x] `src/intelligence/contracts.py`: typed result, finding and evidence records.
-- `src/intelligence/evidence.py`: digest, provenance, redaction and bounded evidence references.
-- `src/intelligence/policy.py`: scope, permission and budget checks that defer to the existing mission policy.
+- [x] `src/intelligence/contracts.py`: bounded, versioned evidence references, findings, and result contracts.
+- [x] `src/intelligence/capture.py`: canonical fixture capture and content-digest verification through an injected immutable evidence sink.
 - [x] `src/intelligence/gate.py`: deterministic acceptance rules; missing or unverifiable evidence fails closed.
-- `docs/INTELLIGENCE_AND_ASSURANCE.md`: contract, threat model, data lifecycle and examples.
+- [ ] Dedicated redaction and intelligence-specific scope/budget policy adapters are not implemented in this PR; sanitized-fixture responsibility remains with the caller and mission authorization remains owned by the existing organization policy.
+- [ ] Add the missing `docs/INTELLIGENCE_AND_ASSURANCE.md` design document or remove the stale reference; the roadmap itself and `docs/BEHAVIOR_CAPTURE_AND_REPLAY.md` currently hold the implementation guidance.
 
 Acceptance:
 - schema/version validation rejects unknown or malformed fields;
@@ -109,7 +111,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine. Status: comparison contract, combined review gate, safe fixture capture, approval-gated rootless replay, and explicit completed-mission orchestration with durable audit events implemented; exact-head CI and real rootless-Docker end-to-end validation remain open.**
+**Priority: P1; first functional engine. Status at `ff120cab`: comparison contract, combined review gate, sanitized-fixture capture, approval-gated rootless replay, explicit completed-mission orchestration, durable audit events, and final-report persistence implemented; real Rootless Docker E2E passed on this exact head; Python 3.11 exact-head tests passed while Python 3.12/3.13 were still running at last check.**
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -126,11 +128,11 @@ Implemented first vertical slice:
 - [x] Workspace preparation rejects symlinks and credential-like files, excludes Git metadata and generated/dependency directories, and enforces 100,000-file / 2 GiB limits.
 - [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, verifier exceptions, capture round trips, sink tampering, approval denial, image mismatch, rootless runner result validation, per-case workspace isolation, cleanup, and audit behavior.
 - [x] Comparator and capture adapter perform no execution, subprocess launch, repository import, or network access.
-- [ ] Validate the full mission replay flow against a real rootless Docker daemon and preloaded digest-pinned runner image. Replay remains explicit, never automatic.
+- [x] Validate the full mission replay flow against a real rootless Docker daemon and preloaded digest-pinned runner image (`Rootless behavior replay E2E` run `44533579702` passed on `ff120cab`). Replay remains explicit, never automatic.
 - [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
 - [x] Persist release `branch`, `patch_path`, `report_path`, and ticket ID on the mission record before marking the release task complete; reject incomplete release metadata and retain fields through the terminal mission transition.
 - [x] Append the explicit behavior replay verdict, baseline/candidate revisions, case outcomes, and evidence IDs to the mission `REPORT.md` atomically; audit report persistence and mark legacy missions without a report path as unavailable.
-- [ ] Connect baseline/candidate evidence to Coder Engine quality results and mission audit records.
+- [ ] Connect baseline/candidate evidence and the combined behavior/assurance verdict to Coder Engine quality-gate results; mission replay request/completion/failure audit events and final-report persistence are already implemented.
 
 Safety:
 - never execute repository code during static analysis;
