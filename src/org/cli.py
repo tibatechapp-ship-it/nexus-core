@@ -17,7 +17,7 @@ import json
 import sys
 from typing import Any
 
-from src.org.contracts import Mission
+from src.org.contracts import Approval, Mission
 from src.org.dashboard import OrgDashboard
 from src.org.learning import LessonsEngine
 from src.org.metrics import OrgMetrics
@@ -75,6 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("lessons", help="الدروس والأنماط")
 
     sub.add_parser("metrics", help="لقطة المقاييس")
+
+    r = sub.add_parser(
+        "request-run-approval",
+        help="طلب موافقة بشرية على تشغيل صورة حاوية مثبتة ببصمة sha256",
+    )
+    r.add_argument("mission_id")
+    r.add_argument("--container-image", required=True)
 
     a = sub.add_parser("approve", help="قرار موافقة بشرية")
     a.add_argument("approval_id")
@@ -169,6 +176,29 @@ def _cmd_metrics(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_request_run_approval(args: argparse.Namespace) -> int:
+    org, _ = _stores(args)
+    mission = org.mission_get(args.mission_id)
+    if mission is None:
+        print(f"مهمة غير موجودة: {args.mission_id}", file=sys.stderr)
+        return 2
+    image = args.container_image
+    digest = image.rsplit("@sha256:", 1)[-1] if "@sha256:" in image else ""
+    if (len(digest) != 64
+            or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
+        print("الصورة يجب أن تكون مثبتة ببصمة sha256 صحيحة", file=sys.stderr)
+        return 2
+    approval = org.request_approval(Approval(
+        mission_id=mission.id, kind="run_untrusted", subject=image,
+        note="Authorize execution only inside this immutable container image",
+    ))
+    _emit({
+        "approval_id": approval.id, "kind": approval.kind,
+        "subject": approval.subject, "approved": approval.approved,
+    })
+    return 0
+
+
 def _cmd_approve(args: argparse.Namespace) -> int:
     org, _ = _stores(args)
     approval = org.decide_approval(args.approval_id, approved=args.yes,
@@ -185,7 +215,9 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "mission": _cmd_mission, "show": _cmd_show,
         "dashboard": _cmd_dashboard, "lessons": _cmd_lessons,
-        "metrics": _cmd_metrics, "approve": _cmd_approve,
+        "metrics": _cmd_metrics,
+        "request-run-approval": _cmd_request_run_approval,
+        "approve": _cmd_approve,
     }
     return handlers[args.cmd](args)
 
