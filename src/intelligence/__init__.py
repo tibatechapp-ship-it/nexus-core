@@ -8,6 +8,7 @@ from .contracts import (
 from .gate import (
     AssuranceDecision, AssuranceVerdict, EvidenceVerifier, evaluate_assurance,
 )
+from .capture import CaptureError, CapturedCase, EvidenceSink, capture_baseline, capture_observations
 from .behavior import (
     BehaviorBaseline, BehaviorCase, BehaviorComparison, BehaviorContractError,
     BehaviorGateDecision, BehaviorGateVerdict, BehaviorObservation, BehaviorVerdict,
@@ -22,4 +23,6 @@ __all__ = [
     "BehaviorComparison", "BehaviorContractError", "BehaviorGateDecision",
     "BehaviorGateVerdict", "BehaviorObservation", "BehaviorVerdict", "ObservationStatus",
     "compare_behavior", "digest_payload", "evaluate_behavior_gate",
+    "CaptureError", "CapturedCase", "EvidenceSink", "capture_baseline",
+    "capture_observations",
 ]
