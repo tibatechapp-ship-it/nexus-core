@@ -182,7 +182,10 @@ def _store_case(
             evidence_id, payload, kind="behavior-capture", collected_by=collected_by
         )
     except Exception as exc:
-        raise CaptureError(f"evidence sink rejected case {case.case_id}: {exc}") from exc
+        safe_error = sanitize_payload(str(exc))
+        raise CaptureError(
+            f"evidence sink rejected case {case.case_id}: {safe_error}"
+        ) from exc
     if not isinstance(reference, EvidenceReference):
         raise CaptureError("evidence sink must return an EvidenceReference")
     if (
