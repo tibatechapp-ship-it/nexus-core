@@ -386,7 +386,9 @@ class TestExplicitMissionResume:
         saved = orchestrator.org_store.mission_context_snapshot_get(mission.id)
         assert saved is not None
         assert saved["payload"]["context"]["execution_policy"] == {
-            "schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,\n        "execution_mode": "process", "trusted_local": True,\n        }
+            "schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+        "execution_mode": "process", "trusted_local": True,
+        }
 
         release_calls: list[str] = []
 
@@ -441,7 +443,8 @@ class TestExplicitMissionResume:
         save_mission_context_snapshot(
             orchestrator.org_store, MissionContext(
                 mission=mission,
-                execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+                execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+                              "execution_mode": "process", "trusted_local": True},
             ), orchestrator.state_root)
 
         calls: list[str] = []
@@ -491,7 +494,8 @@ class TestExplicitMissionResume:
 
         ctx = MissionContext(
             mission=mission,
-            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+                              "execution_mode": "process", "trusted_local": True},
         )
         save_mission_context_snapshot(
             orchestrator.org_store, ctx, orchestrator.state_root)
@@ -641,7 +645,9 @@ class TestProcessInterruptionRecovery:
         latest = second_store.mission_context_snapshot_get(mission_id)
         assert latest is not None
         assert latest["payload"]["context"]["execution_policy"] == {
-            "schema_version": 1, "max_revision_loops": 1,\n        "execution_mode": "process", "trusted_local": True,\n        }
+            "schema_version": 1, "max_revision_loops": 1,
+        "execution_mode": "process", "trusted_local": True,
+        }
 
 
 class TestSubprocessMissionCrashRecovery:
@@ -715,7 +721,9 @@ for task in plan.tasks:
 save_mission_context_snapshot(
     store,
     MissionContext(mission=mission, execution_policy={
-        "schema_version": 1, "max_revision_loops": 1,\n    "execution_mode": "process", "trusted_local": True,\n    }),
+        "schema_version": 1, "max_revision_loops": 1,
+    "execution_mode": "process", "trusted_local": True,
+    }),
     state,
 )
 Path(os.environ["NEXUS_TEST_MARKER"]).write_text(
@@ -916,7 +924,9 @@ class TestCheckpointBeforePhaseTransition:
         # the context checkpoint contain the real acceptance criteria/state.
         # Simulate the crash only after that checkpoint, before phase advance.
         context = MissionContext(mission=mission, execution_policy={
-            "schema_version": 1, "max_revision_loops": 1,\n        "execution_mode": "process", "trusted_local": True,\n        })
+            "schema_version": 1, "max_revision_loops": 1,
+        "execution_mode": "process", "trusted_local": True,
+        })
         completed_ids = set()
         for task in plan.tasks:
             if task.dept != "executive":
