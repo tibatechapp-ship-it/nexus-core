@@ -34,7 +34,8 @@ def test_learn_from_pr_review_persists_normalized_findings(tmp_path):
         ],
         ensure_ascii=False,
         sort_keys=True,
-    )\n    assert records[0]["input_hash"] == hashlib.sha256(expected_payload.encode()).hexdigest()
+    )
+    assert records[0]["input_hash"] == hashlib.sha256(expected_payload.encode()).hexdigest()
 
 
 def test_learn_from_pr_review_empty_findings_do_not_write(tmp_path):
