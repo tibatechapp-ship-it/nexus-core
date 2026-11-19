@@ -229,6 +229,10 @@ class ExecutiveOrchestrator:
         policy = self._validated_execution_policy(
             mission.id, execution_policy, require_approval=False)
         mission = self.org_store.create_mission(mission)
+        # Validate the human approval before changing mission state or
+        # dispatching any work. A missing approval leaves the mission unstarted.
+        policy = self._validated_execution_policy(
+            mission.id, execution_policy, require_approval=True)
         mission = self.org_store.mission_update(
             mission.with_phase("A_REQUIREMENTS"))
         self.org_store.mission_update(
@@ -236,10 +240,6 @@ class ExecutiveOrchestrator:
                     repo_path=mission.repo_path,
                     acceptance_criteria=mission.acceptance_criteria,
                     status="running", id=mission.id))
-        # Bind the approved policy to the durable mission checkpoint before
-        # any agent is dispatched. Revision limits remain orchestrator-owned.
-        policy = self._validated_execution_policy(
-            mission.id, execution_policy, require_approval=True)
         ctx = MissionContext(mission=mission, execution_policy=policy)
         plan = self.plan(mission)
         try:
