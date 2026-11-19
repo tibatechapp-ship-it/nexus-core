@@ -78,7 +78,7 @@ Evidence records must not embed secrets, private keys, tokens, or unrestricted s
 
 ### Phase 0 — Baseline and quality closure
 
-**Status at `ff120cab`: Python 3.11 exact-head job passed, including framework coverage ≥95%, report freshness, and both Novamind test steps; Python 3.12 and 3.13 exact-head jobs were still running at the last check.**
+**Historical baseline snapshot (`ff120cab`):** Python 3.11 passed its exact-head job, including framework coverage ≥95%, report freshness, and both Novamind test steps; Python 3.12/3.13 were still running at that historical inspection. This is not evidence for the current PR #148 head. Current exact-head validation is tracked in §9 and must be re-run after every source change.
 
 - [x] Python 3.11, 3.12 and 3.13 framework suites pass on the baseline commit.
 - [x] 5,342 passed and 30 skipped per Python version.
@@ -112,7 +112,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine. Status at `ff120cab`: comparison contract, combined review gate, sanitized-fixture capture, approval-gated rootless replay, explicit completed-mission orchestration, durable audit events, and final-report persistence implemented; real Rootless Docker E2E passed on this exact head; Python 3.11 exact-head tests passed while Python 3.12/3.13 were still running at last check.**
+**Priority: P1; first functional engine. Historical implementation snapshot (`ff120cab`):** comparison contract, combined review gate, sanitized-fixture capture, approval-gated rootless replay, explicit completed-mission orchestration, durable audit events, and final-report persistence were implemented; real Rootless Docker E2E passed on that commit. This historical result does not qualify the current PR #148 head; current exact-head checks are tracked in §9.
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -129,7 +129,8 @@ Implemented first vertical slice:
 - [x] Workspace preparation rejects symlinks and credential-like files, excludes Git metadata and generated/dependency directories, and enforces 100,000-file / 2 GiB limits.
 - [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, verifier exceptions, capture round trips, sink tampering, approval denial, image mismatch, rootless runner result validation, per-case workspace isolation, cleanup, and audit behavior.
 - [x] Comparator and capture adapter perform no execution, subprocess launch, repository import, or network access.
-- [x] Validate the full mission replay flow against a real rootless Docker daemon and preloaded digest-pinned runner image (`Rootless behavior replay E2E` run `44533579702` passed on `ff120cab`). Replay remains explicit, never automatic.
+- [x] Historical validation: full mission replay passed against a real rootless Docker daemon and preloaded digest-pinned runner image (`Rootless behavior replay E2E` run `44533579702` on `ff120cab`).
+- [ ] Revalidate the full flow on the current PR #148 head after every source change; historical E2E runs do not satisfy the current-head gate. Replay remains explicit, never automatic.
 - [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
 - [x] Persist release `branch`, `patch_path`, `report_path`, and ticket ID on the mission record before marking the release task complete; reject incomplete release metadata and retain fields through the terminal mission transition.
 - [x] Append the explicit behavior replay verdict, baseline/candidate revisions, case outcomes, and evidence IDs to the mission `REPORT.md` atomically; audit report persistence and mark legacy missions without a report path as unavailable.
@@ -233,7 +234,7 @@ No performance, accuracy or model-quality claims without a reproducible benchmar
 7. Add MCP exposure only after tool contracts and authorization tests pass.
 8. Publish evaluation results and then consider UI work.
 
-Each phase is a separate reviewable PR with a narrow scope. The current PR #141 remains focused on the Coder Engine / organization integration; this roadmap is developed on a separate branch.
+Each phase is a separate reviewable PR with a narrow scope. The earlier PR #141 scope note is historical and does not describe the current execution stack: PR #148 is the security/replay-hardening follow-up stacked on PR #147, while Coder Engine / organization integration remains a later gated workstream.
 
 ## 6. Global non-negotiable gates
 
@@ -287,6 +288,21 @@ A clean scan is not proof that a system is defect-free. A passing replay is not 
 - [ ] Run the complete Python 3.11/3.12/3.13 matrix, exact 95% framework coverage gate, report freshness, MIZAN and all security checks on the same final PR head.
 - [ ] Run the real Rootless Docker E2E on that same final PR head.
 - [ ] Obtain independent review; no review submissions or inline review threads were present on PR #147 at the last inspection.
+
+### Current execution order — authoritative
+
+The phase descriptions above define the destination; this ordered queue defines what may be executed next. Do not run workstreams in parallel when one changes the contracts consumed by another.
+
+1. **Freeze the current implementation scope and record the exact head SHA.** While required workflows are running, do not push unrelated changes. A necessary fix creates a new head and invalidates every earlier exact-head result.
+2. **Close G0 on one SHA.** Require completed CI, the complete Python 3.11/3.12/3.13 test matrix, the independent ≥95% framework coverage gate, report freshness, security checks, and real Rootless Docker E2E. Queued, pending, skipped-required, cancelled, or stale-SHA jobs are not passes.
+3. **Close G1 — evidence safety.** Verify sanitizer behavior for structured fields and free text, exception paths, sink failures, canonicalization, payload limits, immutable evidence IDs, digest verification, and exact one-to-one evidence mapping. Treat redaction as defense in depth, never as permission to ingest real secrets.
+4. **Close G2 — replay safety.** Verify approval provenance, digest-pinned image enforcement, rootless-only execution, preflight-before-restore, snapshot exclusions, per-case workspace isolation, bounded execution, cleanup, and failure auditing. Any process fallback or credential-bearing workspace blocks progression.
+5. **Close G3 — assurance correctness.** Verify that incomplete, missing, stale, altered, or unverifiable evidence can never yield an assured result; verify the combined behavior + evidence gate and report/audit persistence fail closed. Obtain independent review of the security-sensitive changes.
+6. **Only then start G4 — Coder Engine/quality-gate adapter.** Keep it narrow: translate existing validated RepairPlan and QA outputs into typed evidence. Preserve policy, approvals, isolated worktree, and current quality gate; do not add a parallel repair engine.
+7. **G5 — qualify a small critical agent cohort.** Build a labelled task corpus and score agents by real task outcomes, correctness, regressions, cost, latency, reliability, and evidence quality. Inventory/import success is not qualification.
+8. **G6 — expand capabilities and operations.** Add bounded read-only reverse-engineering adapters, then unify security/MIZAN evidence, then controlled MCP, dashboards, SLOs, recovery drills, cost controls, and release rollback. Do not reverse this order.
+
+**Current checkpoint (2026-11-19):** PR #148 head `e781d1926dbc61799000327c55163be5c6f97cf5`; Rootless Docker E2E succeeded on that SHA; the Python 3.11/3.12/3.13 framework test jobs were still running at the last live inspection; CI run was pending with no jobs exposed yet. G0 is therefore open. PR #148 and PR #147 remain Draft; no merge/release/deploy is authorized.
 
 ### Revised delivery gates
 
