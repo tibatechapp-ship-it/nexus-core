@@ -1524,8 +1524,9 @@ class OrgStore:
                 "INSERT INTO audit (ts, actor, action, ref, details) "
                 "VALUES (?, ?, 'task.claimed', ?, ?)",
                 (started_at, worker_id.strip(), task_id,
-                 json.dumps({"attempt": attempt_no, "lease_expires_at": expires_at},
-                            sort_keys=True)),
+                 json.dumps({"attempt": attempt_no,
+                             "lease_generation": lease_generation,
+                             "lease_expires_at": expires_at}, sort_keys=True)),
             )
             claimed = self._conn.execute(
                 "SELECT * FROM tasks WHERE id = ?", (task_id,)
@@ -1631,9 +1632,11 @@ class OrgStore:
             self._conn.execute(
                 """UPDATE tasks SET state=?, result=?, error=?,
                    lease_owner='', lease_token='', lease_expires_at='',
-                   updated_at=? WHERE id=? AND state='running' AND lease_token=?""",
+                   lease_heartbeat_at='', updated_at=?
+                   WHERE id=? AND state='running' AND lease_token=?
+                   AND lease_generation=?""",
                 (state, json.dumps(result, sort_keys=True, ensure_ascii=False),
-                 error, now, task_id, lease_token),
+                 error, now, task_id, lease_token, int(row["lease_generation"])),
             )
             self._conn.execute(
                 """UPDATE task_attempts SET status=?, finished_at=?, error=?
