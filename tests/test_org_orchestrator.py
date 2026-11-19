@@ -39,6 +39,72 @@ def orchestrator(org_store: OrgStore, ops_store: OpsStore,
         max_revision_loops=1)
 
 
+class TestTaskHeartbeat:
+    def test_heartbeat_worker_renews_and_stops_cleanly(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        import threading
+
+        class ImmediateEvent:
+            def __init__(self) -> None:
+                self._stop = threading.Event()
+                self._first = True
+
+            def wait(self, timeout: float) -> bool:
+                if self._first:
+                    self._first = False
+                    return False
+                return self._stop.wait(timeout)
+
+            def set(self) -> None:
+                self._stop.set()
+
+        calls: list[tuple[str, str, int, int]] = []
+
+        def heartbeat(task_id: str, worker_id: str, lease_token: str,
+                      lease_generation: int, lease_seconds: int = 300):
+            calls.append((task_id, worker_id, lease_generation, lease_seconds))
+            return {}
+
+        monkeypatch.setattr("src.org.orchestrator.Event", ImmediateEvent)
+        monkeypatch.setattr(orchestrator.org_store, "heartbeat_task", heartbeat)
+        claim = {"lease_token": "opaque-token", "lease_generation": 7}
+        running = orchestrator._start_task_heartbeat(
+            "task-1", "worker-a", claim)
+        assert orchestrator._stop_task_heartbeat(running) == ""
+        assert calls == [("task-1", "worker-a", 7, 300)]
+
+    def test_heartbeat_failure_is_reported_to_task_owner(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        import threading
+
+        class ImmediateEvent:
+            def __init__(self) -> None:
+                self._stop = threading.Event()
+                self._first = True
+
+            def wait(self, timeout: float) -> bool:
+                if self._first:
+                    self._first = False
+                    return False
+                return self._stop.wait(timeout)
+
+            def set(self) -> None:
+                self._stop.set()
+
+        def heartbeat(*args: object, **kwargs: object) -> dict:
+            raise OrgError("lease lost")
+
+        monkeypatch.setattr("src.org.orchestrator.Event", ImmediateEvent)
+        monkeypatch.setattr(orchestrator.org_store, "heartbeat_task", heartbeat)
+        running = orchestrator._start_task_heartbeat(
+            "task-2", "worker-a",
+            {"lease_token": "opaque-token", "lease_generation": 3})
+        error = orchestrator._stop_task_heartbeat(running)
+        assert "lease lost" in error
+
+
 class TestPlan:
     def test_plan_covers_all_phases(self, orchestrator:
                                     ExecutiveOrchestrator) -> None:

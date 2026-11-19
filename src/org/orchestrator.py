@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 
 from src.org.contracts import (
@@ -300,6 +301,44 @@ class ExecutiveOrchestrator:
         )
         return spec
 
+    def _start_task_heartbeat(
+            self, task_id: str, worker_id: str,
+            claim: dict[str, Any]) -> tuple[Event, Thread, list[Exception]]:
+        """Keep long-running orchestration claims alive while work is active."""
+        stop = Event()
+        failures: list[Exception] = []
+        lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
+
+        def renew() -> None:
+            while not stop.wait(30):
+                try:
+                    self.org_store.heartbeat_task(
+                        task_id, worker_id, lease_token, lease_generation,
+                        lease_seconds=300)
+                except Exception as exc:  # noqa: BLE001 — ownership loss is terminal
+                    failures.append(exc)
+                    stop.set()
+                    return
+
+        thread = Thread(
+            target=renew, name=f"nexus-lease-heartbeat-{task_id[:8]}",
+            daemon=True)
+        thread.start()
+        return stop, thread, failures
+
+    @staticmethod
+    def _stop_task_heartbeat(
+            heartbeat: tuple[Event, Thread, list[Exception]]) -> str:
+        stop, thread, failures = heartbeat
+        stop.set()
+        thread.join(timeout=5)
+        if thread.is_alive():
+            return "تعذر إيقاف خيط heartbeat بأمان"
+        if failures:
+            return f"فُقدت ملكية lease أثناء التنفيذ: {type(failures[0]).__name__}: {failures[0]}"
+        return ""
+
     def _execute_task(self, spec: TaskSpec, ctx: MissionContext) -> TaskResult:
         """تنفيذ مطالبة دائمة؛ لا يبدأ التنفيذ دون lease مسجلة."""
         claim = self.org_store.claim_task(
@@ -307,6 +346,10 @@ class ExecutiveOrchestrator:
         if claim is None:
             raise OrgError(f"المهمة غير معلّقة أو مملوكة لعامل آخر: {spec.id}")
         lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
+        heartbeat = self._start_task_heartbeat(
+            spec.id, f"nexus-orchestrator:{spec.dept}", claim)
+        lease_context = self.depts.runtime.set_task_lease(spec.id, claim)
         t0 = time.time()
         try:
             if spec.dept == "executive":
@@ -335,11 +378,25 @@ class ExecutiveOrchestrator:
                 attempts=int(claim.get("attempts", 1)),
                 duration_ms=round((time.time() - t0) * 1000, 2))
         except Exception as exc:  # noqa: BLE001 — الفشل يُسجَّل ثم يُرفع
+            heartbeat_error = self._stop_task_heartbeat(heartbeat)
+            detail = f"{type(exc).__name__}: {exc}"
+            if heartbeat_error:
+                detail += f"; {heartbeat_error}"
             self.org_store.fail_claimed_task(
-                spec.id, lease_token, f"{type(exc).__name__}: {exc}")
+                spec.id, lease_token, detail,
+                lease_generation=lease_generation)
             raise
+        finally:
+            self.depts.runtime.reset_task_lease(lease_context)
+        heartbeat_error = self._stop_task_heartbeat(heartbeat)
+        if heartbeat_error:
+            self.org_store.fail_claimed_task(
+                spec.id, lease_token, heartbeat_error,
+                lease_generation=lease_generation)
+            raise OrgError(heartbeat_error)
         self.org_store.finish_claimed_task(
-            spec.id, lease_token, result.output)
+            spec.id, lease_token, result.output,
+            lease_generation=lease_generation)
         self._checkpoint_context(ctx)
         return result
 
@@ -745,6 +802,10 @@ class ExecutiveOrchestrator:
         if claim is None:
             raise OrgError(f"مهمة المراجعة غير متاحة للمطالبة: {review_task.id}")
         lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
+        heartbeat = self._start_task_heartbeat(
+            review_task.id, "nexus-orchestrator:code_review", claim)
+        lease_context = self.depts.runtime.set_task_lease(review_task.id, claim)
         try:
             decision, reviews = self.depts.council.review_with_debate(
                 ctx.mission.id, review_task.id,
@@ -770,15 +831,25 @@ class ExecutiveOrchestrator:
                 "development_task_id": development_task.id,
             }
             self.org_store.audit("gate.review", ctx.mission.id, result)
+            heartbeat_error = self._stop_task_heartbeat(heartbeat)
+            if heartbeat_error:
+                raise OrgError(heartbeat_error)
             self.org_store.finish_claimed_task(
-                review_task.id, lease_token, result)
+                review_task.id, lease_token, result,
+                lease_generation=lease_generation)
             self._checkpoint_context(ctx)
             return decision.verdict == "approve"
         except Exception as exc:  # noqa: BLE001 — المطالبة تُنهى أو تفشل صراحة
+            heartbeat_error = self._stop_task_heartbeat(heartbeat)
+            detail = f"{type(exc).__name__}: {exc}"
+            if heartbeat_error:
+                detail += f"; {heartbeat_error}"
             self.org_store.fail_claimed_task(
-                review_task.id, lease_token,
-                f"{type(exc).__name__}: {exc}")
+                review_task.id, lease_token, detail,
+                lease_generation=lease_generation)
             raise
+        finally:
+            self.depts.runtime.reset_task_lease(lease_context)
 
     def _run_verification_gate(self, mission: Mission, plan: ExecutionPlan,
                                ctx: MissionContext) -> bool:
@@ -792,6 +863,10 @@ class ExecutiveOrchestrator:
         if claim is None:
             raise OrgError(f"مهمة التحقق غير متاحة للمطالبة: {verify_task.id}")
         lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
+        heartbeat = self._start_task_heartbeat(
+            verify_task.id, "nexus-orchestrator:verification", claim)
+        lease_context = self.depts.runtime.set_task_lease(verify_task.id, claim)
         try:
             test_target = (ctx.affected.get("test_files") or [""])[0]
             report = self.verification.verify_mission(
@@ -805,15 +880,25 @@ class ExecutiveOrchestrator:
             }
             self.org_store.audit(
                 "gate.verification", mission.id, report.to_dict())
+            heartbeat_error = self._stop_task_heartbeat(heartbeat)
+            if heartbeat_error:
+                raise OrgError(heartbeat_error)
             self.org_store.finish_claimed_task(
-                verify_task.id, lease_token, result)
+                verify_task.id, lease_token, result,
+                lease_generation=lease_generation)
             self._checkpoint_context(ctx)
             return not report.rejected
         except Exception as exc:  # noqa: BLE001 — لا نترك بوابة بلا نتيجة دائمة
+            heartbeat_error = self._stop_task_heartbeat(heartbeat)
+            detail = f"{type(exc).__name__}: {exc}"
+            if heartbeat_error:
+                detail += f"; {heartbeat_error}"
             self.org_store.fail_claimed_task(
-                verify_task.id, lease_token,
-                f"{type(exc).__name__}: {exc}")
+                verify_task.id, lease_token, detail,
+                lease_generation=lease_generation)
             raise
+        finally:
+            self.depts.runtime.reset_task_lease(lease_context)
 
     # ── أدوات الحالة ──────────────────────────────────────────────────────
 

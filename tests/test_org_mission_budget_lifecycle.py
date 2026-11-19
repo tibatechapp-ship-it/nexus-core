@@ -280,13 +280,13 @@ class TestTokenReservationCrashReconciliation:
         first = OrgStore(db)
         assert first._conn.execute(
             "SELECT value FROM meta WHERE key='org_schema_version'"
-        ).fetchone()["value"] == "10"
+        ).fetchone()["value"] == "11"
         first.close()
         second = OrgStore(db)
         try:
             assert second._conn.execute(
                 "SELECT value FROM meta WHERE key='org_schema_version'"
-            ).fetchone()["value"] == "10"
+            ).fetchone()["value"] == "11"
             tables = {row["name"] for row in second._conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
             assert "mission_token_reconciliations" in tables
@@ -308,3 +308,99 @@ def test_cli_exposes_and_validates_mission_output_token_cap() -> None:
             "mission", "--title", "bounded", "--objective", "test",
             "--max-output-tokens", "0",
         ])
+
+
+class TestLeaseBoundTokenReservations:
+    def test_reservation_binds_to_live_task_attempt_and_settles(self) -> None:
+        from src.org.contracts import TaskSpec
+
+        store = OrgStore(":memory:")
+        try:
+            mission = store.create_mission(Mission(
+                title="lease-bound budget", objective="bind reservation"))
+            store.configure_mission_token_budget(mission.id, 500)
+            task = store.add_task(TaskSpec(
+                mission_id=mission.id, dept="development",
+                kind="implementation", description="provider call"))
+            claim = store.claim_task(task.id, "worker:development")
+            assert claim is not None
+            reservation = store.reserve_mission_output_tokens(
+                mission.id, "dev:backend", 200,
+                task_id=task.id, attempt_no=claim["attempts"],
+                lease_generation=claim["lease_generation"],
+                lease_owner=claim["lease_owner"],
+                lease_token=claim["lease_token"])
+            assert reservation["task_id"] == task.id
+            assert reservation["attempt_no"] == claim["attempts"]
+            assert reservation["lease_generation"] == claim["lease_generation"]
+            assert reservation["lease_owner"] == "worker:development"
+            assert reservation["lease_token_digest"]
+            assert reservation["lease_token_digest"] != claim["lease_token"]
+            settled = store.settle_mission_output_tokens(reservation["id"], 75)
+            assert settled["status"] == "settled"
+            budget = store.mission_token_budget_get(mission.id)
+            assert budget["reserved_output_tokens"] == 0
+            assert budget["consumed_output_tokens"] == 75
+        finally:
+            store.close()
+
+    def test_stale_task_generation_cannot_settle_or_release_reservation(self) -> None:
+        from src.org.contracts import TaskSpec
+
+        store = OrgStore(":memory:")
+        try:
+            mission = store.create_mission(Mission(
+                title="stale lease budget", objective="hold reservation"))
+            store.configure_mission_token_budget(mission.id, 500)
+            task = store.add_task(TaskSpec(
+                mission_id=mission.id, dept="development",
+                kind="implementation", description="provider call"))
+            claim = store.claim_task(task.id, "worker:development")
+            assert claim is not None
+            reservation = store.reserve_mission_output_tokens(
+                mission.id, "dev:backend", 200,
+                task_id=task.id, attempt_no=claim["attempts"],
+                lease_generation=claim["lease_generation"],
+                lease_owner=claim["lease_owner"],
+                lease_token=claim["lease_token"])
+            with store._conn:
+                store._conn.execute(
+                    "UPDATE tasks SET lease_generation=lease_generation+1 WHERE id=?",
+                    (task.id,))
+            with pytest.raises(OrgError, match="جيل قديم"):
+                store.settle_mission_output_tokens(reservation["id"], 50)
+            with pytest.raises(OrgError, match="جيل قديم"):
+                store.release_mission_output_tokens(
+                    reservation["id"], "stale worker must not release")
+            current = store.mission_token_budget_get(mission.id)
+            assert current["reserved_output_tokens"] == 200
+            assert current["consumed_output_tokens"] == 0
+            assert store._conn.execute(
+                "SELECT status FROM mission_token_reservations WHERE id=?",
+                (reservation["id"],)).fetchone()["status"] == "reserved"
+        finally:
+            store.close()
+
+    def test_binding_rejects_wrong_owner_before_provider_dispatch(self) -> None:
+        from src.org.contracts import TaskSpec
+
+        store = OrgStore(":memory:")
+        try:
+            mission = store.create_mission(Mission(
+                title="wrong owner", objective="reject invalid binding"))
+            store.configure_mission_token_budget(mission.id, 500)
+            task = store.add_task(TaskSpec(
+                mission_id=mission.id, dept="development",
+                kind="implementation", description="provider call"))
+            claim = store.claim_task(task.id, "worker:development")
+            assert claim is not None
+            with pytest.raises(OrgError, match="لا تطابق المالك الحالي"):
+                store.reserve_mission_output_tokens(
+                    mission.id, "dev:backend", 200,
+                    task_id=task.id, attempt_no=claim["attempts"],
+                    lease_generation=claim["lease_generation"],
+                    lease_owner="attacker", lease_token=claim["lease_token"])
+            budget = store.mission_token_budget_get(mission.id)
+            assert budget["reserved_output_tokens"] == 0
+        finally:
+            store.close()
