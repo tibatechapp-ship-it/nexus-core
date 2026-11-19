@@ -189,13 +189,11 @@ class ExecutiveOrchestrator:
                     repo_path=mission.repo_path,
                     acceptance_criteria=mission.acceptance_criteria,
                     status="running", id=mission.id))
-        ctx = MissionContext(
-            mission=mission,
-            execution_policy={
-                "schema_version": 1,
-                "max_revision_loops": self.max_revision_loops,
-            },
-        )
+        # Bind the approved policy to the durable mission checkpoint before
+        # any agent is dispatched. Revision limits remain orchestrator-owned.
+        policy = self._validated_execution_policy(
+            mission.id, execution_policy, require_approval=True)
+        ctx = MissionContext(mission=mission, execution_policy=policy)
         plan = self.plan(mission)
         try:
             # First durable checkpoint: plan and policy exist before any agent runs.
