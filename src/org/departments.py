@@ -295,7 +295,8 @@ class DevelopmentDept:
             if any(usage.values()):
                 ctx.add_usage(AgentOutcome(
                     spec_role=f"dev:{dev_kind}", success=bool(result.get("ok")),
-                    tokens_in=usage["tokens_in"], tokens_out=usage["tokens_out"],
+                    tokens_in=int(usage["tokens_in"]),
+                    tokens_out=int(usage["tokens_out"]),
                     cost_usd=usage["cost_usd"],
                     provider_used=";".join(sorted(connector.providers_used)),
                     model_used=";".join(sorted(connector.models_used)),
