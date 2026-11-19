@@ -56,7 +56,10 @@ class CapturedCase:
     status: ObservationStatus = ObservationStatus.PASSED
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "case_id", _required_text(self.case_id, "case_id"))
+        try:
+            object.__setattr__(self, "case_id", _required_text(self.case_id, "case_id"))
+        except ValueError as exc:
+            raise CaptureError(str(exc)) from exc
         try:
             object.__setattr__(self, "status", ObservationStatus(self.status))
         except (TypeError, ValueError) as exc:
@@ -90,8 +93,11 @@ def _store_case(
     collected_by: str,
     sink: EvidenceSink,
 ) -> tuple[str, str, str, EvidenceReference]:
-    input_hash = digest_payload(case.input_payload)
-    output_hash = digest_payload(case.output_payload)
+    try:
+        input_hash = digest_payload(case.input_payload)
+        output_hash = digest_payload(case.output_payload)
+    except ValueError as exc:
+        raise CaptureError(f"case {case.case_id} contains an invalid or oversized payload: {exc}") from exc
     artifact = {
         "contract": _CAPTURE_VERSION,
         "run_id": run_id,
