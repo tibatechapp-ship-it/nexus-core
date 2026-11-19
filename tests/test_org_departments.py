@@ -173,6 +173,28 @@ class TestDevelopment:
             depts.development.run(MissionContext(mission=mission),  # type: ignore[arg-type]
                                   dev_kind="magic")
 
+    def test_missing_execution_policy_fails_closed(
+            self, depts: Departments, mission: object,
+            fixture_repo: Path) -> None:
+        from src.org.contracts import Mission
+
+        stored = depts.org_store.mission_get(mission.id)  # type: ignore[attr-defined]
+        stored = depts.org_store.mission_update(Mission(
+            title=stored.title, objective=stored.objective,
+            repo_path=str(fixture_repo), id=stored.id,
+            phase=stored.phase, status=stored.status))
+        ctx = MissionContext(mission=stored)
+        depts.intel.run(ctx)
+
+        with pytest.raises(DepartmentError, match="execution policy missing"):
+            depts.development.run(ctx)
+
+        assert ctx.worktree is not None
+        assert "if divisor == 0" not in ctx.worktree.read("calc/mathops.py")
+        assert "if divisor == 0" not in (
+            fixture_repo / "calc" / "mathops.py"
+        ).read_text(encoding="utf-8")
+
     def test_engine_failure_never_transfers_partial_changes(
             self, depts: Departments, mission: object,
             fixture_repo: Path) -> None:
