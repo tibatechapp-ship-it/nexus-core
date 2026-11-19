@@ -145,6 +145,7 @@ def test_cli_exposes_and_validates_mission_output_token_cap() -> None:
     args = parser.parse_args([
         "mission", "--title", "bounded", "--objective", "test",
         "--max-output-tokens", "15000",
+        "--execution-mode", "process", "--trust-local",
     ])
     assert args.max_output_tokens == 15000
     with pytest.raises(SystemExit):
