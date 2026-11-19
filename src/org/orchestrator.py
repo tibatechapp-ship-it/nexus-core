@@ -142,6 +142,71 @@ class ExecutiveOrchestrator:
         self.max_revision_loops = max_revision_loops
         self.state_root = Path(state_root or Path.home() / ".nexus-core" / "missions")
 
+    def _validated_execution_policy(
+            self, mission_id: str,
+            supplied: dict[str, Any] | None, *,
+            require_approval: bool,
+            allow_checkpoint_limit: bool = False) -> dict[str, Any]:
+        """Validate and normalize the security decision; never infer trust."""
+        if not isinstance(supplied, dict):
+            raise OrgError("execution_policy is required; execution fails closed")
+        policy = dict(supplied)
+        schema_version = policy.get("schema_version", 1)
+        if type(schema_version) is not int or schema_version != 1:
+            raise OrgError("unsupported execution policy schema")
+        mode = policy.get("execution_mode")
+        common_keys = {"schema_version", "execution_mode", "max_revision_loops"}
+        if "max_revision_loops" in policy:
+            if not allow_checkpoint_limit:
+                raise OrgError("max_revision_loops is controlled by the orchestrator")
+            if type(policy["max_revision_loops"]) is not int or policy["max_revision_loops"] < 0:
+                raise OrgError("checkpoint max_revision_loops is invalid")
+        if mode == "process":
+            allowed = common_keys | {"trusted_local"}
+            if set(policy) - allowed:
+                raise OrgError("process mode contains unsupported execution policy fields")
+            if policy.get("trusted_local") is not True:
+                raise OrgError("process mode requires explicit trusted_local=true")
+        elif mode == "container":
+            allowed = common_keys | {
+                "container_enabled", "container_image", "approval_id",
+            }
+            if set(policy) - allowed:
+                raise OrgError("container mode contains unsupported execution policy fields")
+            image = policy.get("container_image")
+            approval_id = policy.get("approval_id")
+            if policy.get("container_enabled") is not True:
+                raise OrgError("container mode requires explicit enablement")
+            digest = (
+                image.rsplit("@sha256:", 1)[-1]
+                if isinstance(image, str) and image.count("@sha256:") == 1
+                else ""
+            )
+            if (not isinstance(image, str) or not image.split("@sha256:", 1)[0]
+                    or len(digest) != 64
+                    or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
+                raise OrgError("container mode requires a valid immutable sha256 image digest")
+            if not isinstance(approval_id, str) or not approval_id.strip():
+                raise OrgError("container mode requires a recorded human approval_id")
+            if require_approval:
+                approvals = self.org_store.approvals_for(mission_id)
+                approval = next((item for item in approvals
+                                 if item.id == approval_id), None)
+                if (approval is None or approval.kind != "run_untrusted"
+                        or approval.approved is not True
+                        or not approval.decided_by
+                        or approval.subject != image):
+                    raise OrgError(
+                        "container execution requires an approved run_untrusted "
+                        "record bound to the exact image digest"
+                    )
+        else:
+            raise OrgError("execution_mode must be process or container")
+        policy["schema_version"] = 1
+        if "max_revision_loops" not in policy:
+            policy["max_revision_loops"] = self.max_revision_loops
+        return policy
+
     # ── التخطيط ───────────────────────────────────────────────────────────
 
     def plan(self, mission: Mission) -> ExecutionPlan:
@@ -176,9 +241,21 @@ class ExecutiveOrchestrator:
 
     # ── التنفيذ ───────────────────────────────────────────────────────────
 
-    def execute(self, mission: Mission) -> Mission:
-        """تنفيذ كامل A→G — بوابات الأطوار عبر المتجر، فشل صريح لا صمت."""
+    def execute(self, mission: Mission, *,
+                execution_policy: dict[str, Any] | None = None) -> Mission:
+        """تنفيذ كامل A→G — لا يبدأ أي وكيل بلا سياسة تشغيل صريحة."""
+        policy = self._validated_execution_policy(
+            mission.id, execution_policy, require_approval=False)
         mission = self.org_store.create_mission(mission)
+        if mission.status != "created":
+            raise OrgError(
+                f"mission cannot be executed from status {mission.status!r}; "
+                "use the explicit resume workflow for interrupted missions"
+            )
+        # Validate the human approval before changing mission state or
+        # dispatching any work. A missing approval leaves the mission unstarted.
+        policy = self._validated_execution_policy(
+            mission.id, execution_policy, require_approval=True)
         mission = self.org_store.mission_update(
             mission.with_phase("A_REQUIREMENTS"))
         self.org_store.mission_update(
@@ -186,13 +263,7 @@ class ExecutiveOrchestrator:
                     repo_path=mission.repo_path,
                     acceptance_criteria=mission.acceptance_criteria,
                     status="running", id=mission.id))
-        ctx = MissionContext(
-            mission=mission,
-            execution_policy={
-                "schema_version": 1,
-                "max_revision_loops": self.max_revision_loops,
-            },
-        )
+        ctx = MissionContext(mission=mission, execution_policy=policy)
         plan = self.plan(mission)
         try:
             # First durable checkpoint: plan and policy exist before any agent runs.
@@ -601,6 +672,11 @@ class ExecutiveOrchestrator:
                 or policy["max_revision_loops"] < 0):
             raise OrgError(
                 "سياسة التنفيذ الأصلية غير موجودة أو تالفة؛ الاستئناف مرفوض")
+        # Resume uses only the policy restored from the immutable checkpoint;
+        # never accept a caller override or silently switch execution modes.
+        self._validated_execution_policy(
+            mission_id, policy, require_approval=True,
+            allow_checkpoint_limit=True)
         plan = self._load_persisted_plan(mission_id)
         mission = self.org_store.mission_get(mission_id)
         if mission is None:

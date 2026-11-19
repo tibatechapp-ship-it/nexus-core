@@ -17,6 +17,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.org.api import build_org_router  # noqa: E402
+from src.org.contracts import Mission  # noqa: E402
 from src.org.store import OrgStore  # noqa: E402
 from src.ops.store import OpsStore  # noqa: E402
 
@@ -108,6 +109,158 @@ class TestWriteEndpointsAuth:
         }, headers=AUTH)
         assert resp.status_code == 422
         assert org.mission_list() == []
+
+    def test_run_endpoint_requires_explicit_execution_policy(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "run policy", "objective": "must provide execution authority",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        response = http.post(
+            f"/org/missions/{mission_id}/run", headers=AUTH)
+        assert response.status_code == 422
+        stored = org.mission_get(mission_id)
+        assert stored is not None and stored.status == "created"
+
+    def test_resume_endpoint_requires_operator_and_forwards_audit_context(
+            self, client: tuple[TestClient, OrgStore],
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "resume route", "objective": "forward operator audit context",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        from src.org.orchestrator import ExecutiveOrchestrator
+        captured: dict[str, object] = {}
+
+        def fake_resume(self, mission_id: str, *, actor: str, reason: str,
+                        expected_repo_root: str | None = None) -> Mission:
+            captured.update({
+                "mission_id": mission_id, "actor": actor, "reason": reason,
+                "expected_repo_root": expected_repo_root,
+            })
+            mission = org.mission_get(mission_id)
+            assert mission is not None
+            return mission
+
+        monkeypatch.setattr(ExecutiveOrchestrator, "resume_mission", fake_resume)
+        response = http.post(
+            f"/org/missions/{mission_id}/resume",
+            json={"actor": "release-operator", "reason": "validated checkpoint",
+                  "expected_repo_root": "/workspace/repo"},
+            headers=AUTH,
+        )
+        assert response.status_code == 200
+        assert captured == {
+            "mission_id": mission_id, "actor": "release-operator",
+            "reason": "validated checkpoint",
+            "expected_repo_root": "/workspace/repo",
+        }
+
+    def test_run_maps_invalid_execution_policy_to_client_error(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "invalid policy", "objective": "bad mode must be rejected",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        response = http.post(
+            f"/org/missions/{mission_id}/run",
+            json={"execution_mode": "unknown"}, headers=AUTH,
+        )
+        assert response.status_code == 422
+        stored = org.mission_get(mission_id)
+        assert stored is not None and stored.status == "created"
+
+    def test_run_rejects_already_started_mission_with_conflict(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "already started", "objective": "must not run twice",
+        }, headers=AUTH)
+        mission = org.mission_get(created.json()["id"])
+        assert mission is not None
+        org.mission_update(Mission(
+            title=mission.title, objective=mission.objective,
+            repo_path=mission.repo_path, phase=mission.phase,
+            status="running", id=mission.id,
+        ))
+        response = http.post(
+            f"/org/missions/{mission.id}/run",
+            json={"execution_mode": "process", "trusted_local": True},
+            headers=AUTH,
+        )
+        assert response.status_code == 409
+        assert "created" in response.json()["detail"]
+
+    def test_run_uses_the_approved_existing_mission(
+            self, client: tuple[TestClient, OrgStore],
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        from types import SimpleNamespace
+        from src.org.pipeline import MissionPipeline
+
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "same mission", "objective": "retain approval identity",
+            "repo_path": "fixture",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        captured: dict[str, object] = {}
+
+        def fake_run(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(to_dict=lambda: {"mission_id": mission_id})
+
+        monkeypatch.setattr(MissionPipeline, "run", fake_run)
+        response = http.post(
+            f"/org/missions/{mission_id}/run",
+            json={"execution_mode": "process", "trusted_local": True},
+            headers=AUTH,
+        )
+        assert response.status_code == 200
+        assert captured["existing_mission"].id == mission_id
+        assert len(org.mission_list()) == 1
+
+    def test_container_execution_approval_is_image_bound(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "container approval", "objective": "run safely",
+        }, headers=AUTH)
+        assert created.status_code == 200
+        mission_id = created.json()["id"]
+        image = "registry.example/nexus-runner@sha256:" + "a" * 64
+        requested = http.post(
+            f"/org/missions/{mission_id}/approvals/run-untrusted",
+            json={"container_image": image}, headers=AUTH)
+        assert requested.status_code == 200
+        approval_id = requested.json()["approval_id"]
+        approval = org.approvals_for(mission_id)[0]
+        assert approval.id == approval_id
+        assert approval.kind == "run_untrusted"
+        assert approval.subject == image
+        assert approval.approved is None
+
+        decided = http.post(
+            f"/org/approvals/{approval_id}/decide",
+            json={"approved": True, "decided_by": "operator"}, headers=AUTH)
+        assert decided.status_code == 200
+        assert org.approvals_for(mission_id)[0].approved is True
+
+    def test_container_execution_approval_rejects_mutable_image(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "mutable image", "objective": "must reject",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        response = http.post(
+            f"/org/missions/{mission_id}/approvals/run-untrusted",
+            json={"container_image": "registry.example/runner:latest"},
+            headers=AUTH)
+        assert response.status_code == 422
+        assert org.approvals_for(mission_id) == []
 
     def test_decide_approval_requires_token(
             self, client: tuple[TestClient, OrgStore]) -> None:

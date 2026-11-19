@@ -194,6 +194,15 @@ def save_mission_context_snapshot(
     if mission is None:
         raise OrgError(f"مهمة غير موجودة: {ctx.mission.id}")
     repo_root = Path(mission.repo_path).resolve(strict=True)
+    # Execution authority is immutable across checkpoints. A later checkpoint
+    # may advance task state, but cannot silently change the security policy.
+    previous = store.mission_context_snapshot_get(mission.id)
+    if previous is not None:
+        previous_context = previous.get("payload", {}).get("context", {})
+        previous_policy = previous_context.get("execution_policy")
+        if previous_policy != _json_value(ctx.execution_policy):
+            raise OrgError(
+                "سياسة التنفيذ تغيّرت بعد checkpoint؛ تغييرها يتطلب مهمة جديدة")
     repo_fingerprint = fingerprint_directory(repo_root)
     state_path = Path(state_root).expanduser().resolve()
     worktree_path, worktree_fingerprint = _persist_worktree(

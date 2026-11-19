@@ -339,7 +339,8 @@ class TestApiRunEndpoint:
         m = org.create_mission(Mission(title="t", objective="o"))
         # مهمة بلا مستودع → فشل صريح داخل البوابة → 500 لا صمت
         resp = http.post(f"/org/missions/{m.id}/run", headers={
-            "Authorization": "Bearer tok-run"})
+            "Authorization": "Bearer tok-run"}, json={
+                "execution_mode": "process", "trusted_local": True})
         assert resp.status_code in (200, 500)
         stored = org.mission_get(m.id)
         assert stored is not None
