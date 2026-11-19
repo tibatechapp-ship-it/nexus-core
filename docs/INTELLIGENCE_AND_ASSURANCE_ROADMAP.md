@@ -132,7 +132,8 @@ Implemented first vertical slice:
 - [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
 - [x] Persist release `branch`, `patch_path`, `report_path`, and ticket ID on the mission record before marking the release task complete; reject incomplete release metadata and retain fields through the terminal mission transition.
 - [x] Append the explicit behavior replay verdict, baseline/candidate revisions, case outcomes, and evidence IDs to the mission `REPORT.md` atomically; audit report persistence and mark legacy missions without a report path as unavailable.
-- [ ] Connect baseline/candidate evidence and the combined behavior/assurance verdict to Coder Engine quality-gate results; mission replay request/completion/failure audit events and final-report persistence are already implemented.
+- [x] Persist a combined evidence-assurance + behavior-comparison verdict in the mission replay result, final report, and completion audit event. The combined gate remains review-only and grants no execution/release authority.
+- [ ] Connect Coder Engine / organization QA quality results and their persisted evidence into the same mission-level assurance contract.
 
 Safety:
 - never execute repository code during static analysis;

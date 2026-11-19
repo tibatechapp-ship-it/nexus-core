@@ -148,3 +148,20 @@ The copied workspace retains owner-only permissions. The rootless container's
 namespace root maps to the host account that owns the workspace, so the sandbox
 can read and write the disposable copy without making source files world-readable.
 The original mission checkpoint is never mounted writable.
+
+
+## Combined assurance decision
+
+After candidate observations are captured and independently compared, the mission adapter
+builds a bounded `IntelligenceResult` from the baseline and candidate evidence references.
+It runs `evaluate_assurance` with the mission-bound target as the authorized scope, then
+combines that decision with the behavior comparison through `evaluate_behavior_gate`.
+
+The final replay result and atomic mission report persist three distinct outcomes:
+- `comparison.verdict`: equivalent, regression, incomplete, or invalid behavior;
+- `assurance.verdict`: whether the evidence references and scope passed independent verification;
+- `gate_decision.verdict`: the combined review outcome (assured, needs_human, rejected).
+
+The completion audit event includes the assurance and combined-gate verdicts. A replay is
+not a deployment or merge authorization; human approval for those actions remains separate.
+The mission adapter rejects a combined evidence collection larger than 5,000 references.
