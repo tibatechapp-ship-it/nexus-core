@@ -72,15 +72,28 @@ class MissionPipeline:
 
     def run(self, title: str, objective: str, repo_path: str = "",
             output_token_limit: int | None = None,
-            execution_policy: dict[str, Any] | None = None) -> PipelineReport:
+            execution_policy: dict[str, Any] | None = None,
+            existing_mission: Mission | None = None) -> PipelineReport:
         """تشغيل مهمة كاملة — سياسة التنفيذ يجب أن تكون صريحة قبل أول وكيل."""
         if execution_policy is None:
             raise ValueError(
                 "execution_policy is required; select an explicit trusted-local "
                 "or approved container execution mode"
             )
-        mission = Mission(title=title, objective=objective, repo_path=repo_path,
-                          output_token_limit=output_token_limit)
+        if existing_mission is not None:
+            if (
+                existing_mission.title != title
+                or existing_mission.objective != objective
+                or existing_mission.repo_path != repo_path
+                or existing_mission.output_token_limit != output_token_limit
+            ):
+                raise ValueError(
+                    "existing_mission fields must match the supplied mission arguments"
+                )
+            mission = existing_mission
+        else:
+            mission = Mission(title=title, objective=objective, repo_path=repo_path,
+                              output_token_limit=output_token_limit)
         mission = self.orchestrator.execute(
             mission, execution_policy=execution_policy)
         snap = self.metrics.snapshot()
