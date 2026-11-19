@@ -8,7 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from src.intelligence import EvidenceReference
-from src.intelligence.behavior import BehaviorVerdict
+from src.intelligence.behavior import (
+    BehaviorComparison, BehaviorGateDecision, BehaviorGateVerdict, BehaviorVerdict,
+)
+from src.intelligence.gate import AssuranceDecision, AssuranceVerdict
 from src.intelligence.capture import CapturedCase, capture_baseline
 from src.intelligence.mission import (
     BehaviorCaseSpec, MissionBehaviorError, run_mission_behavior_replay,
@@ -282,14 +285,8 @@ def test_report_append_handles_missing_duplicate_and_oversized_report(tmp_path) 
     result = MissionBehaviorReplayResult(
         "mission-1", "base", "candidate",
         BehaviorComparison(BehaviorVerdict.EQUIVALENT, ("matched",)),
-        assurance=__import__("src.intelligence.gate", fromlist=["AssuranceDecision"]).AssuranceDecision(
-            __import__("src.intelligence.gate", fromlist=["AssuranceVerdict"]).AssuranceVerdict.ASSURED,
-            ("verified",), ("ev-1",),
-        ),
-        gate_decision=__import__("src.intelligence.behavior", fromlist=["BehaviorGateDecision"]).BehaviorGateDecision(
-            __import__("src.intelligence.behavior", fromlist=["BehaviorGateVerdict"]).BehaviorGateVerdict.ASSURED,
-            ("passed",),
-        ),
+        assurance=AssuranceDecision(AssuranceVerdict.ASSURED, ("verified",), ("ev-1",)),
+        gate_decision=BehaviorGateDecision(BehaviorGateVerdict.ASSURED, ("passed",)),
         evidence_ids=("ev-1",),
     )
     assert _append_behavior_report(SimpleNamespace(), result, "run-1") is False
