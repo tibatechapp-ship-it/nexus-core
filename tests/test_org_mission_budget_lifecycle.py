@@ -111,6 +111,30 @@ class TestMissionBudgetPersistence:
 
 
 class TestPipelineBudgetLifecycle:
+    def test_pipeline_reuses_existing_mission_without_creating_another(
+            self, tmp_path: Path) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(
+            title="existing", objective="retain identity",
+            repo_path="fixture", output_token_limit=200000,
+        ))
+        pipeline = MissionPipeline(
+            store, OpsStore(":memory:"), outdir=tmp_path / "reports")
+        # A deliberately invalid repository makes execution fail after the
+        # existing mission is selected; no second mission may be created.
+        report = pipeline.run(
+            title=mission.title, objective=mission.objective,
+            repo_path=mission.repo_path,
+            output_token_limit=mission.output_token_limit,
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            },
+            existing_mission=mission,
+        )
+        assert report.mission.id == mission.id
+        assert len(store.mission_list()) == 1
+
     def test_pipeline_configures_budget_before_agent_work_and_settles_it(
             self, tmp_path: Path) -> None:
         store = OrgStore(":memory:")
