@@ -122,7 +122,7 @@ class TestExecutionPolicy:
         assert accepted["container_image"] == image
         with pytest.raises(OrgError, match="approved run_untrusted"):
             orchestrator._validated_execution_policy(
-                mission.id, {**policy, "container_image": image + "x",
+                mission.id, {**policy, "container_image": "registry.example/nexus-runner@sha256:" + "c" * 64,
                              "approval_id": approval.id},
                 require_approval=True)
 
