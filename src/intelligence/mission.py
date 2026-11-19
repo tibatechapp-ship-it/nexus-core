@@ -134,11 +134,12 @@ def _append_behavior_report(
         f"\n```json\n{encoded}\n```\n"
     )
     updated = original.rstrip() + section
+    original_mode = report.stat().st_mode & 0o777
     fd, temporary_name = tempfile.mkstemp(
         prefix=".nexus-report-", suffix=".tmp", dir=str(report.parent)
     )
     try:
-        os.fchmod(fd, 0o600)
+        os.fchmod(fd, original_mode)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(updated)
             stream.flush()
