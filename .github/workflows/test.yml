@@ -54,6 +54,12 @@ jobs:
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
 
+      # pytest-cov prints the threshold warning, but some plugin/session
+      # combinations can leave pytest's final exit status successful. Enforce
+      # the persisted coverage data independently so a sub-95% result is fatal.
+      - name: Enforce framework coverage floor (independent exit-code gate)
+        run: python -m coverage report --fail-under=95
+
       # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
       # match a fresh deep generation (identity/reconcile/measurement/rule)
       - name: Reports freshness (deep regen matches committed)
