@@ -60,11 +60,26 @@ jobs:
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
 
-      # pytest-cov prints the threshold warning, but some plugin/session
-      # combinations can leave pytest's final exit status successful. Enforce
-      # the persisted coverage data independently so a sub-95% result is fatal.
-      - name: Enforce framework coverage floor (independent exit-code gate)
-        run: python -m coverage report --fail-under=95
+      # coverage report --fail-under rounds the displayed percentage to a
+      # whole number (94.77 becomes 95), which can create a false-green gate.
+      # Read the unrounded JSON percentage and compare it exactly instead.
+      - name: Enforce framework coverage floor (exact independent gate)
+        run: |
+          python -m coverage json -o /tmp/framework-coverage.json --fail-under=0
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+
+          report = json.loads(Path("/tmp/framework-coverage.json").read_text())
+          actual = Decimal(str(report["totals"]["percent_covered"]))
+          required = Decimal("95")
+          print(f"Framework coverage: {actual}% (required: {required}%)")
+          if actual < required:
+              raise SystemExit(
+                  f"Coverage gate failed: {actual}% is below {required}%"
+              )
+          PY
 
       # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
       # match a fresh deep generation (identity/reconcile/measurement/rule)
