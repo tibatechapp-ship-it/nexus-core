@@ -98,6 +98,13 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / f"nexus-test-metrics-{os.getpid()}.json"),
 )
 
+# The Novamind learning loop has its own persistent JSONL ledger. Isolate it
+# from the checkout even when CI deliberately points NOVAMIND_HOME at the repo
+# for other fixtures and company data.
+os.environ["NOVAMIND_LEARNING_LOOP_PATH"] = str(
+    Path(tempfile.gettempdir()) / f"nexus-test-learning-loop-{os.getpid()}.jsonl"
+)
+
 from report import AdversarialReport  # noqa: E402  (after sys.path is set)
 
 #: The one adversarial verdict ledger, shared for the whole session.
