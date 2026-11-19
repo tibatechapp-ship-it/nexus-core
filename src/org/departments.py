@@ -255,6 +255,31 @@ class DevelopmentDept:
         self.connector_factory = connector_factory
 
     @staticmethod
+    def _function_hint(objective: str, target: str) -> str:
+        """Backward-compatible deterministic hint for older department clients."""
+        import re
+        match = re.search(r"دالة\\s*[\x60\"']?(\\w+)", objective)
+        if match:
+            return match.group(1)
+        for word in ("divide", "split", "parse", "validate", "login", "create"):
+            if word in objective.lower():
+                return word
+        return Path(target).stem
+
+    @staticmethod
+    def _guard_hint(objective: str) -> str:
+        """Backward-compatible guard description; never used as execution authority."""
+        lowered = objective.lower()
+        for keyword, hint in (
+            ("صفر", "القسمة على صفر"), ("zero", "القسمة على صفر"),
+            ("empty", "مدخلات فارغة"), ("فارغ", "مدخلات فارغة"),
+            ("auth", "طلبات بلا تصريح"), ("negative", "قيم سالبة"),
+        ):
+            if keyword in lowered:
+                return hint
+        return "مدخلات غير صالحة"
+
+    @staticmethod
     def _run_async(coro: Any) -> Any:
         """Run the async engine from this synchronous department API."""
         try:
