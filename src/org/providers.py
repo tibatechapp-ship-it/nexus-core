@@ -220,6 +220,10 @@ class MockProvider(Provider):
             return self._requirements_reply(prompt)
         if tag.startswith("repo_intel"):
             return self._repo_intel_reply(prompt)
+        if tag == "coder:detector":
+            return "[]"
+        if tag == "coder:planner":
+            return self._coder_plan_reply(prompt)
         if tag.startswith("dev"):
             return self._dev_reply(prompt)
         if tag.startswith("review"):
@@ -268,6 +272,89 @@ class MockProvider(Provider):
                 f"حزمة Python بمكوّنات {len(files)} ملفًا معلنًا في الخريطة."),
             "suggested_focus": files[:3],
             "notes": "ملخص ذكاء المستودع الحتمي.",
+        }, ensure_ascii=False)
+
+    def _coder_plan_reply(self, prompt: str) -> str:
+        """Build a deterministic RepairPlan for the coder engine's test fixture.
+
+        Unlike the legacy department mock, this returns the engine's native
+        edit/find/patch contract and only names test files present in the
+        bounded source context.
+        """
+        blocks = re.findall(
+            r"(?ms)^FILE: ([^\\n]+)\\n(.*?)(?=^FILE: |\\Z)", prompt
+        )
+        source_entry = next(
+            ((path.strip(), body) for path, body in blocks
+             if path.strip().endswith(".py")
+             and "test" not in path.lower()
+             and re.search(r"(?m)^def divide\\(", body)),
+            None,
+        )
+        if source_entry is None:
+            return json.dumps({"goal": "No deterministic target found",
+                               "defects": [], "steps": [], "tests_to_run": []})
+        source_path, source = source_entry
+        function = re.search(
+            r"(?ms)^def divide\\(([^)]*)\\):\\n.*?(?=^(?:def |class )|\\Z)",
+            source,
+        )
+        if function is None:
+            return json.dumps({"goal": "No deterministic function found",
+                               "defects": [], "steps": [], "tests_to_run": []})
+        original = function.group(0)
+        params = [item.strip().split("=")[0].strip()
+                  for item in function.group(1).split(",")]
+        divisor = params[1] if len(params) > 1 and params[1].isidentifier() else "b"
+        return_line = re.search(r"(?m)^(?P<indent>[ \\t]*)return .+/.+$", original)
+        if return_line is None:
+            return json.dumps({"goal": "No division expression found",
+                               "defects": [], "steps": [], "tests_to_run": []})
+        indent = return_line.group("indent")
+        guarded = (
+            f"{indent}if {divisor} == 0:\\n"
+            f"{indent}    raise ZeroDivisionError('division by zero')\\n"
+            f"{return_line.group(0)}"
+        )
+        patched = original[:return_line.start()] + guarded + original[return_line.end():]
+        steps = [{
+            "file": source_path, "action": "edit",
+            "reason": "Reject a zero divisor before division",
+            "find": original, "patch_hint": patched, "risk": "low",
+        }]
+        test_entry = next(
+            ((path.strip(), body) for path, body in blocks
+             if path.strip().endswith(".py") and "test" in path.lower()
+             and "test_divide_normal" in body),
+            None,
+        )
+        tests_to_run = []
+        if test_entry is not None:
+            test_path, test_source = test_entry
+            test_match = re.search(
+                r"(?ms)^def test_divide_normal\\(\\):\\n.*?(?=^(?:def |class )|\\Z)",
+                test_source,
+            )
+            if test_match is not None:
+                test_original = test_match.group(0)
+                test_patch = (
+                    test_original.rstrip() + "\\n\\n\\n"
+                    "def test_divide_zero_guard():\\n"
+                    "    try:\\n"
+                    "        divide(1, 0)\\n"
+                    "    except ZeroDivisionError:\\n"
+                    "        return\\n"
+                    "    raise AssertionError('zero divisor was accepted')\\n"
+                )
+                steps.append({
+                    "file": test_path, "action": "edit",
+                    "reason": "Cover the zero-divisor boundary",
+                    "find": test_original, "patch_hint": test_patch, "risk": "low",
+                })
+            tests_to_run.append(test_path)
+        return json.dumps({
+            "goal": "Add an explicit division-by-zero guard",
+            "defects": [], "steps": steps, "tests_to_run": tests_to_run,
         }, ensure_ascii=False)
 
     def _dev_reply(self, prompt: str) -> str:
