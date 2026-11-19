@@ -86,3 +86,23 @@ Schema v11 adds the generation and heartbeat timestamps to tasks, the
 generation to attempt history, and optional task/attempt ownership columns
 to token reservations as groundwork for binding provider budgets to a
 specific execution claim. Existing rows are migrated additively.
+
+
+## Provider token reservations are fenced by task ownership (v11)
+
+When an agent runtime executes inside an orchestrator task scope, its
+`AgentRuntime` carries the claim through a context-local lease binding.
+Every output-token reservation created in that scope records the task ID,
+attempt number, monotonic lease generation, lease owner, and a SHA-256 digest
+of the lease capability (the raw token is never persisted in the reservation).
+
+Reservation creation verifies that all ownership fields match the live task
+row and that its lease has not expired. Settlement and release repeat that
+verification in the same immediate transaction as the budget update. A worker
+whose lease expired or whose generation was superseded cannot settle or
+release the reservation. The reserved amount remains held until explicit
+provider-terminal reconciliation with evidence; lease expiry alone is not
+proof that a remote provider stopped processing.
+
+Legacy reservations without task ownership remain readable and retain their
+existing explicit settlement/release behavior for backward compatibility.
