@@ -103,7 +103,7 @@ class TestRejectedPaths:
             org, ops, pool=_patched_pool(BrokenDevProvider),
             outdir=tmp_path / "reports")
         report = pipeline.run(title="رقعة معطوبة", objective=OBJECTIVE,
-                              repo_path="examples/org_demo/fixture_repo")
+                              repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         assert report.mission.status == "failed"
         assert report.mission.phase == "FAILED"
         assert report.ticket_id == ""  # لا تذكرة لمهمة رفضها التحقق
@@ -128,7 +128,7 @@ class TestRejectedPaths:
             org, ops, pool=_patched_pool(TodoDevProvider),
             outdir=tmp_path / "reports")
         pipeline.run(title="رقعة متأجلة", objective=OBJECTIVE,
-                     repo_path="examples/org_demo/fixture_repo")
+                     repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         mission = org.mission_list()[0]
         assert mission.status == "failed"
         assert mission.revision_loops >= 1
@@ -144,7 +144,7 @@ class TestDeterminism:
                                        outdir=tmp_path / f"r{i}")
             report = pipeline.run(title="حارس قسمة على صفر",
                                   objective=OBJECTIVE,
-                                  repo_path="examples/org_demo/fixture_repo")
+                                  repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
             ids.append(report.mission.id)
         assert ids[0] == ids[1]
 
@@ -159,7 +159,7 @@ class TestDeterminism:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "d")
         pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                     repo_path="examples/org_demo/fixture_repo")
+                     repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         dash = OrgDashboard(org, outdir=tmp_path / "d")
         assert dash.markdown_report() == dash.markdown_report()
 
@@ -175,7 +175,7 @@ class TestDeterminism:
             pipeline = MissionPipeline(org, ops,
                                        outdir=tmp_path / f"s{i}")
             pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                         repo_path="examples/org_demo/fixture_repo")
+                         repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
             snap = OrgDashboard(org, outdir=tmp_path / f"s{i}").snapshot()
             snap.pop("usage")  # زمن استجابة حقيقي مقيس — ليس عقدًا حتميًا
             snaps.append(json.dumps(snap, sort_keys=True))
@@ -193,7 +193,7 @@ class TestObservability:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "m")
         report = pipeline.run(title="حارس قسمة", objective=OBJECTIVE,
-                              repo_path="examples/org_demo/fixture_repo")
+                              repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         assert report.mission.status == "done"
         metrics = OrgMetrics(org)
         snap = metrics.snapshot()
@@ -206,7 +206,7 @@ class TestObservability:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "l")
         pipeline.run(title="حارس قسمة", objective=OBJECTIVE,
-                     repo_path="examples/org_demo/fixture_repo")
+                     repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         engine = LessonsEngine(org)
         assert engine.lessons_for_planning()
         # الدروس لا تمنح صلاحيات ولا تعدّل سياسات — واجهة قراءة فقط
