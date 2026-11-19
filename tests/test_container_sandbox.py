@@ -97,12 +97,11 @@ def _timeout_runner(
     cleanup_returncode: int = 0,
 ) -> tuple[list[tuple[str, list[str]]], type]:
     import io
-    import os
     import subprocess
     import src.coder.container_sandbox as sandbox
 
     calls: list[tuple[str, list[str]]] = []
-    processes: list[FakeProcess] = []
+    processes = []
 
     class FakeProcess:
         pid = 4242
