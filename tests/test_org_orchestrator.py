@@ -127,6 +127,22 @@ class TestExecutionPolicy:
                 require_approval=True)
 
 
+    def test_resume_policy_keeps_checkpoint_revision_limit(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="resume revision policy", objective="preserve saved limit",
+        ))
+        orchestrator.max_revision_loops = 3
+        restored = orchestrator._validated_execution_policy(
+            mission.id,
+            {
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True, "max_revision_loops": 1,
+            },
+            require_approval=False, allow_checkpoint_limit=True,
+        )
+        assert restored["max_revision_loops"] == 1
+
     def test_execution_policy_rejects_unknown_fields_and_boolean_schema(
             self, orchestrator: ExecutiveOrchestrator) -> None:
         mission = orchestrator.org_store.create_mission(Mission(
