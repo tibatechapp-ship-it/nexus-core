@@ -54,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--title", required=True)
     m.add_argument("--objective", required=True)
     m.add_argument("--repo", default="")
+    m.add_argument("--mission-id", default="",
+                   help="تشغيل مهمة موجودة؛ مطلوب لمسار موافقة الحاوية")
     m.add_argument("--execution-mode", choices=("process", "container"),
                    required=True, help="وضع التشغيل الأمني الصريح")
     m.add_argument("--trust-local", action="store_true",
@@ -108,6 +110,23 @@ def _emit(payload: Any) -> None:
 
 def _cmd_mission(args: argparse.Namespace) -> int:
     org, ops = _stores(args)
+    existing_mission = None
+    if args.mission_id:
+        existing_mission = org.mission_get(args.mission_id)
+        if existing_mission is None:
+            raise SystemExit(f"mission not found: {args.mission_id}")
+        if (
+            existing_mission.title != args.title
+            or existing_mission.objective != args.objective
+            or existing_mission.repo_path != args.repo
+            or existing_mission.output_token_limit != args.max_output_tokens
+        ):
+            raise SystemExit("--mission-id fields must match the stored mission")
+    elif args.execution_mode == "container":
+        raise SystemExit(
+            "container mode requires --mission-id from create-mission so approval "
+            "is bound to the mission being executed"
+        )
     if args.execution_mode == "process":
         if not args.trust_local:
             raise SystemExit("--execution-mode process requires --trust-local")
@@ -130,7 +149,8 @@ def _cmd_mission(args: argparse.Namespace) -> int:
     report = pipeline.run(title=args.title, objective=args.objective,
                           repo_path=args.repo,
                           output_token_limit=args.max_output_tokens,
-                          execution_policy=policy)
+                          execution_policy=policy,
+                          existing_mission=existing_mission)
     _emit(report.to_dict())
     return 0 if report.mission.status == "done" else 1
 
