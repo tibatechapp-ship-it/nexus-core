@@ -1,0 +1,118 @@
+name: Rootless behavior replay E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# Keep only the newest validation run for each PR/branch; avoid stale
+# multi-minute matrices racing against the current head.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rootless-replay:
+    name: real Rootless Docker replay (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NEXUS_ENABLE_CONTAINER_SANDBOX: "1"
+      NEXUS_RUN_ROOTLESS_E2E: "1"
+      NEXUS_E2E_CONTAINER_IMAGE: "python:3.13.18-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install Docker rootless prerequisites
+        run: |
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg uidmap dbus-user-session slirp4netns fuse-overlayfs
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          sudo chmod a+r /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras
+          sudo systemctl disable --now docker.service docker.socket || true
+          sudo rm -f /var/run/docker.sock /run/docker.sock
+          user_name="$(id -un)"
+          for mapping_file in /etc/subuid /etc/subgid; do
+            if ! sudo awk -F: -v user="$user_name" '$1 == user && $3 >= 65536 { found=1 } END { exit !found }' "$mapping_file"; then
+              echo "$user_name:1000000:65536" | sudo tee -a "$mapping_file" > /dev/null
+            fi
+          done
+
+      - name: Start and verify Rootless Docker
+        run: |
+          user_id="$(id -u)"
+          sudo mkdir -p /etc/systemd/system/user@.service.d
+          printf '[Service]\nDelegate=cpu cpuset io memory pids\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf > /dev/null
+          sudo systemctl daemon-reload
+          sudo loginctl enable-linger "$USER"
+          sudo systemctl start "user-runtime-dir@${user_id}.service"
+          sudo systemctl restart "user@${user_id}.service"
+          export XDG_RUNTIME_DIR="/run/user/${user_id}"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+          if [ ! -S "${XDG_RUNTIME_DIR}/bus" ]; then
+            echo "systemd user bus was not created for the runner account"
+            sudo systemctl status "user@${user_id}.service" --no-pager || true
+            exit 1
+          fi
+          export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/docker.sock"
+          systemctl --user show-environment >/dev/null
+          controllers="$(cat "/sys/fs/cgroup/user.slice/user-${user_id}.slice/user@${user_id}.service/cgroup.controllers")"
+          for controller in cpu cpuset io memory pids; do
+            case " ${controllers} " in
+              *" ${controller} "*) ;;
+              *) echo "required cgroup controller is not delegated: ${controller}"; exit 1 ;;
+            esac
+          done
+          dockerd-rootless.sh > "$RUNNER_TEMP/rootless-dockerd.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/rootless-dockerd.pid"
+          ready=0
+          for attempt in $(seq 1 60); do
+            if docker info --format '{{json .SecurityOptions}}' > "$RUNNER_TEMP/docker-security-options.json" 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat "$RUNNER_TEMP/rootless-dockerd.log"
+            exit 1
+          fi
+          docker context create nexus-rootless-e2e --docker "host=$DOCKER_HOST"
+          docker context use nexus-rootless-e2e
+          unset DOCKER_HOST
+          docker info --format '{{json .SecurityOptions}}' | grep -qi 'name=rootless'
+          docker info
+
+      - name: Preload immutable runner image
+        run: docker pull "$NEXUS_E2E_CONTAINER_IMAGE"
+
+      - name: Run real replay isolation test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pytest -q tests/test_rootless_replay_e2e.py
+
+      - name: Rootless daemon diagnostics
+        if: failure()
+        run: |
+          cat "$RUNNER_TEMP/rootless-dockerd.log" || true
+          docker info || true
+          docker context ls || true
+
+      - name: Stop Rootless Docker
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/rootless-dockerd.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/rootless-dockerd.pid")" || true
+          fi

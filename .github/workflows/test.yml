@@ -9,6 +9,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Keep only the newest validation run for each PR/branch; avoid stale
+# multi-minute matrices racing against the current head.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   # ض8 (v1.58.0): least privilege — the workflow default is READ-only; the
   # only job that commits back (coverage badge + fleet/benchmark reports)
@@ -54,6 +60,27 @@ jobs:
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
 
+      # coverage report --fail-under rounds the displayed percentage to a
+      # whole number (94.77 becomes 95), which can create a false-green gate.
+      # Read the unrounded JSON percentage and compare it exactly instead.
+      - name: Enforce framework coverage floor (exact independent gate)
+        run: |
+          python -m coverage json -o /tmp/framework-coverage.json --fail-under=0
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+
+          report = json.loads(Path("/tmp/framework-coverage.json").read_text())
+          actual = Decimal(str(report["totals"]["percent_covered"]))
+          required = Decimal("95")
+          print(f"Framework coverage: {actual}% (required: {required}%)")
+          if actual < required:
+              raise SystemExit(
+                  f"Coverage gate failed: {actual}% is below {required}%"
+              )
+          PY
+
       # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
       # match a fresh deep generation (identity/reconcile/measurement/rule)
       - name: Reports freshness (deep regen matches committed)
@@ -91,7 +118,19 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          pytest tests/novamind --cov=src/novamind --cov-report=term --tb=line || true
+          # The repository-wide coverage config intentionally omits src/novamind.
+          # Use a dedicated config so this separate report measures the intended layer.
+          cat > /tmp/novamind.coveragerc <<'EOF'
+          [run]
+          branch = True
+          source = src/novamind
+
+          [report]
+          show_missing = True
+          skip_empty = True
+          fail_under = 0
+          EOF
+          pytest tests/novamind --cov=src/novamind --cov-config=/tmp/novamind.coveragerc --cov-report=term --tb=line
         env:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test

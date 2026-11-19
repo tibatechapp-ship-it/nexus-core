@@ -8,6 +8,7 @@ import shutil
 import signal
 import subprocess
 import threading
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,36 @@ def _approved(*, enabled: bool, approved: bool, image: str) -> None:
         raise ContainerSandboxError("human approval required before command execution")
     if not _IMAGE_RE.fullmatch(image):
         raise ContainerSandboxError("image must be pinned by immutable sha256 digest")
+
+
+
+def _force_remove_container(
+    docker: str, cidfile: Path, docker_env: dict[str, str]
+) -> tuple[bool, str]:
+    """Best-effort bounded cleanup after the Docker client loses control."""
+    try:
+        container_id = cidfile.read_text(encoding="ascii").strip()
+    except OSError as exc:
+        return False, f"container ID file unavailable: {type(exc).__name__}"
+    if not re.fullmatch(r"[0-9a-f]{12,64}", container_id):
+        return False, "container ID file is missing or malformed"
+    try:
+        result = subprocess.run(
+            [docker, "rm", "--force", container_id],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+            check=False,
+            env=docker_env,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"docker rm failed: {type(exc).__name__}"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown Docker error").strip()
+        return False, f"docker rm exited {result.returncode}: {detail[:200]}"
+    return True, ""
 
 
 def run_in_container(
@@ -76,13 +107,21 @@ def run_in_container(
     docker = shutil.which(docker_binary)
     if docker is None:
         raise ContainerSandboxError("Docker CLI not found")
+    # Docker's selected context (including the rootless socket) is stored under
+    # the user's Docker config directory. Preserve only the executable search
+    # path and home directory for the Docker CLI; never forward this environment
+    # to the container or inherit unrelated host credentials/configuration.
+    docker_env = {
+        "PATH": os.path.dirname(docker),
+        "HOME": str(Path.home()),
+    }
     if require_rootless:
         try:
             daemon = subprocess.run(
                 [docker, "info", "--format", "{{json .SecurityOptions}}"],
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True, timeout=10, check=False,
-                env={"PATH": os.path.dirname(docker)},
+                env=docker_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ContainerSandboxError(f"rootless Docker preflight failed: {exc}") from exc
@@ -99,6 +138,7 @@ def run_in_container(
                 "rootless Docker daemon is required; refusing non-rootless execution"
             )
 
+    container_user = "0:0" if require_rootless else "65532:65532"
     argv = [
         docker,
         "run",
@@ -111,10 +151,13 @@ def run_in_container(
         f"--pids-limit={pids_limit}",
         f"--memory={memory}",
         f"--cpus={cpus}",
-        "--user=65532:65532",
+        # Rootless Docker maps container UID 0 to the unprivileged daemon
+        # owner on the host. Capabilities are still dropped and no-new-privileges
+        # remains enforced; owner-only worktree files stay private to that user.
+        f"--user={container_user}",
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
         "--mount",
-        f"type=bind,src={root},dst=/workspace,rw",
+        f"type=bind,src={root},dst=/workspace",
         "--workdir=/workspace",
         "--entrypoint",
         command[0],
@@ -122,68 +165,92 @@ def run_in_container(
         *command[1:],
     ]
     timeout = min(max(int(timeout), 1), MAX_TIMEOUT_S)
-    try:
-        proc = subprocess.Popen(
-            argv,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={"PATH": os.path.dirname(docker)},
-            start_new_session=True,
-        )
-    except OSError as exc:
+    with tempfile.TemporaryDirectory(prefix="nexus-container-cid-") as cid_dir:
+        cidfile = Path(cid_dir) / "container.id"
+        argv[2:2] = ["--cidfile", str(cidfile)]
+        try:
+            proc = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=docker_env,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "exit_code": None,
+                "timeout": False,
+                "stdout": "",
+                "stderr": f"docker spawn failed: {exc}"[:200],
+                "cleanup_attempted": False,
+                "cleanup_ok": None,
+                "cleanup_error": "",
+            }
+
+        out_buf = bytearray()
+        err_buf = bytearray()
+        truncated = {"value": False}
+
+        def drain(pipe: Any, sink: bytearray) -> None:
+            try:
+                while True:
+                    chunk = pipe.read(65536)
+                    if not chunk:
+                        break
+                    remaining = MAX_OUTPUT_BYTES - len(sink)
+                    if remaining > 0:
+                        sink.extend(chunk[:remaining])
+                    if len(chunk) > remaining:
+                        truncated["value"] = True
+            finally:
+                pipe.close()
+
+        threads = [
+            threading.Thread(target=drain, args=(proc.stdout, out_buf), daemon=True),
+            threading.Thread(target=drain, args=(proc.stderr, err_buf), daemon=True),
+        ]
+        for thread in threads:
+            thread.start()
+
+        timed_out = False
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                proc.kill()
+            proc.wait()
+
+        for thread in threads:
+            thread.join(timeout=5)
+
+        cleanup_attempted = timed_out
+        cleanup_ok: bool | None = None
+        cleanup_error = ""
+        if timed_out:
+            cleanup_ok, cleanup_error = _force_remove_container(
+                docker, cidfile, docker_env
+            )
+
         return {
-            "ok": False,
-            "exit_code": None,
-            "timeout": False,
-            "stdout": "",
-            "stderr": f"docker spawn failed: {exc}"[:200],
+            "ok": not timed_out and proc.returncode == 0,
+            "exit_code": None if timed_out else proc.returncode,
+            "timeout": timed_out,
+            "stdout": out_buf.decode("utf-8", "replace"),
+            "stderr": (
+                "container timeout"
+                if timed_out and cleanup_ok
+                else (
+                    "container timeout; cleanup unconfirmed: " + cleanup_error
+                    if timed_out else err_buf.decode("utf-8", "replace")
+                )
+            ),
+            "truncated": truncated["value"],
+            "cleanup_attempted": cleanup_attempted,
+            "cleanup_ok": cleanup_ok,
+            "cleanup_error": cleanup_error,
         }
-
-    out_buf = bytearray()
-    err_buf = bytearray()
-    truncated = {"value": False}
-
-    def drain(pipe: Any, sink: bytearray) -> None:
-        try:
-            while True:
-                chunk = pipe.read(65536)
-                if not chunk:
-                    break
-                remaining = MAX_OUTPUT_BYTES - len(sink)
-                if remaining > 0:
-                    sink.extend(chunk[:remaining])
-                if len(chunk) > remaining:
-                    truncated["value"] = True
-        finally:
-            pipe.close()
-
-    threads = [
-        threading.Thread(target=drain, args=(proc.stdout, out_buf), daemon=True),
-        threading.Thread(target=drain, args=(proc.stderr, err_buf), daemon=True),
-    ]
-    for thread in threads:
-        thread.start()
-
-    timed_out = False
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
-            proc.kill()
-        proc.wait()
-
-    for thread in threads:
-        thread.join(timeout=5)
-
-    return {
-        "ok": not timed_out and proc.returncode == 0,
-        "exit_code": None if timed_out else proc.returncode,
-        "timeout": timed_out,
-        "stdout": out_buf.decode("utf-8", "replace"),
-        "stderr": "container timeout" if timed_out else err_buf.decode("utf-8", "replace"),
-        "truncated": truncated["value"],
-    }

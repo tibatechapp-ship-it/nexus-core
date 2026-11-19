@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from src.org.contracts import Mission
+from src.org.contracts import Mission, TaskSpec
 from src.org.departments import MissionContext
 from src.org.recovery_context import save_mission_context_snapshot
 from src.org.orchestrator import ExecutiveOrchestrator, PlanError
@@ -37,6 +37,76 @@ def orchestrator(org_store: OrgStore, ops_store: OpsStore,
         pool=ProviderPool([ProviderConfig()]),
         outdir=str(tmp_path),  # type: ignore[arg-type]
         max_revision_loops=1)
+
+
+class TestReleaseArtifactPersistence:
+    def test_release_metadata_is_saved_on_mission_before_task_completion(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="persist release artifacts",
+            objective="keep report and patch discoverable after mission completion",
+        ))
+        task = orchestrator.org_store.add_task(TaskSpec(
+            mission_id=mission.id, dept="release", kind="prepare",
+            description="prepare release artifacts",
+        ))
+        output = {
+            "status": "ok",
+            "branch": f"org/{mission.id}",
+            "patch_path": "/tmp/nexus/patch.diff",
+            "report_path": "/tmp/nexus/REPORT.md",
+            "ticket_id": "ticket-123",
+            "approval_id": "approval-123",
+            "publish_allowed": False,
+        }
+        monkeypatch.setattr(orchestrator.depts.release, "run", lambda ctx: output)
+        monkeypatch.setattr(orchestrator, "_checkpoint_context", lambda ctx: None)
+
+        orchestrator._execute_task(
+            task, MissionContext(mission=mission, execution_policy={})
+        )
+
+        saved = orchestrator.org_store.mission_get(mission.id)
+        assert saved is not None
+        assert saved.branch == output["branch"]
+        assert saved.patch_path == output["patch_path"]
+        assert saved.report_path == output["report_path"]
+        assert saved.ticket_ids == ["ticket-123"]
+        task_row = orchestrator.org_store.task_get(task.id)
+        assert task_row is not None and task_row["state"] == "done"
+        events = orchestrator.org_store.tail_audit(10)
+        assert any(
+            event["action"] == "mission.release_artifacts.persisted"
+            and event["ref"] == mission.id
+            for event in events
+        )
+
+    def test_release_without_report_metadata_fails_closed(
+            self, orchestrator: ExecutiveOrchestrator,
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="reject incomplete release", objective="report path is mandatory",
+        ))
+        task = orchestrator.org_store.add_task(TaskSpec(
+            mission_id=mission.id, dept="release", kind="prepare",
+            description="return incomplete release result",
+        ))
+        monkeypatch.setattr(
+            orchestrator.depts.release, "run",
+            lambda ctx: {"status": "ok", "publish_allowed": False},
+        )
+        monkeypatch.setattr(orchestrator, "_checkpoint_context", lambda ctx: None)
+
+        with pytest.raises(OrgError, match="missing required artifact metadata"):
+            orchestrator._execute_task(
+                task, MissionContext(mission=mission, execution_policy={})
+            )
+
+        saved = orchestrator.org_store.mission_get(mission.id)
+        assert saved is not None and not saved.report_path
+        task_row = orchestrator.org_store.task_get(task.id)
+        assert task_row is not None and task_row["state"] == "failed"
 
 
 class TestPlan:
@@ -490,7 +560,13 @@ class TestExplicitMissionResume:
 
         def release(ctx: MissionContext) -> dict[str, str]:
             release_calls.append(ctx.mission.id)
-            return {"status": "prepared"}
+            return {
+                "status": "prepared", "branch": f"org/{ctx.mission.id}",
+                "patch_path": "/tmp/test-patch.diff",
+                "report_path": "/tmp/test-REPORT.md",
+                "ticket_id": "ticket-test", "approval_id": "approval-test",
+                "publish_allowed": False,
+            }
 
         monkeypatch.setattr(orchestrator.depts.release, "run", release)
         resumed = orchestrator.resume_mission(
@@ -621,7 +697,13 @@ class TestExplicitMissionResume:
 
         def release(context: MissionContext) -> dict[str, str]:
             calls.append("release")
-            return {"status": "prepared"}
+            return {
+                "status": "prepared", "branch": f"org/{context.mission.id}",
+                "patch_path": "/tmp/test-patch.diff",
+                "report_path": "/tmp/test-REPORT.md",
+                "ticket_id": "ticket-test", "approval_id": "approval-test",
+                "publish_allowed": False,
+            }
 
         monkeypatch.setattr(orchestrator.depts.qa, "baseline", baseline)
         monkeypatch.setattr(orchestrator.depts.qa, "patched", patched)
@@ -715,7 +797,13 @@ class TestProcessInterruptionRecovery:
 
         def release(context: MissionContext) -> dict[str, str]:
             release_calls.append(context.mission.id)
-            return {"status": "prepared"}
+            return {
+                "status": "prepared", "branch": f"org/{context.mission.id}",
+                "patch_path": "/tmp/test-patch.diff",
+                "report_path": "/tmp/test-REPORT.md",
+                "ticket_id": "ticket-test", "approval_id": "approval-test",
+                "publish_allowed": False,
+            }
 
         second.depts.release.run = release
 
@@ -866,7 +954,13 @@ orchestrator = ExecutiveOrchestrator(
 release_calls = []
 def prepare_release(context):
     release_calls.append(context.mission.id)
-    return {"status": "prepared"}
+    return {
+        "status": "prepared", "branch": f"org/{context.mission.id}",
+        "patch_path": "/tmp/test-patch.diff",
+        "report_path": "/tmp/test-REPORT.md",
+        "ticket_id": "ticket-test", "approval_id": "approval-test",
+        "publish_allowed": False,
+    }
 orchestrator.depts.release.run = prepare_release
 mission_id = json.loads(
     Path(os.environ["NEXUS_TEST_MARKER"]).read_text(encoding="utf-8")
