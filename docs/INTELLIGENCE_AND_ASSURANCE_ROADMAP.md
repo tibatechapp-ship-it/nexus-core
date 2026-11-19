@@ -358,3 +358,30 @@ Therefore the integration adapter must:
 7. Test negative paths: process-mode attempt, missing approval, image digest mismatch, evidence-sink outage, altered artifact, missing gate result, stale candidate SHA, truncated output, timeout, failed cleanup and audit/report persistence failure.
 
 The adapter should be a narrow boundary module with contract tests; do not rewrite Coder Engine or replace the existing quality gate to accomplish this integration.
+
+## 10. Approved cross-cutting program controls
+
+The following controls are part of the approved organization-wide development plan. They are not optional feature ideas and must be implemented as measurable controls, while respecting the G0–G6 dependency order above.
+
+| Program pillar | Required implementation | Delivery gate |
+|---|---|---|
+| Central engineering memory | Versioned architecture map, ADR/decision log, incident and regression knowledge, owner/status/source links, and explicit distinction between verified facts, hypotheses, and superseded decisions | Foundation now; enforced across G4–G6 |
+| Early-warning system | Exact-head CI alerts, workflow failure and stale-report detection, dependency/security advisories, regression trend alerts, budget/SLO threshold alerts, and named escalation ownership | G0 for CI/security signals; G6 for operational SLOs |
+| Independent technology lab | Isolated, non-production evaluation of new models, frameworks, scanners, and runtimes; threat/licence review, reproducible benchmarks, resource caps, and an ADR before adoption | G5; no production dependency before review |
+| Independent security function | Separate threat modelling, supply-chain review, secret handling, static analysis, authorized dynamic testing, adversarial QA, finding provenance, retest, and closure evidence | G1–G3 foundation; continuous G6 control |
+| Quantitative competitive intelligence | Versioned capability matrix, comparable task corpus, measured quality/latency/cost/reliability, evidence links, and dated competitor observations; distinguish published facts from estimates | G5; no unsupported superiority claims |
+| Versioning and recovery | Immutable release manifests, pinned tool/model/container versions, compatibility matrix, migration plans, signed/provenance-aware artifacts where supported, rollback criteria, backup verification, and restore drills | G6 after stable G4/G5 |
+| Product governance and UX | Requirements traceability, operator roles, approval visibility, Arabic-first reporting, accessible states, clear uncertainty/limitations, usability tests, and release acceptance criteria | G6; UX must consume the same contracts and permissions |
+| Cost and resource economics | Per-run/agent/model budgets, cost per successful task, token/tool/container accounting, latency and memory budgets, quotas, caching policy, anomaly alerts, and stop conditions | G5 measurement; G6 enforcement |
+
+### Cross-cutting execution rules
+
+1. Establish the engineering-memory schema and decision ownership before starting G4; do not build a second unstructured memory store.
+2. Treat CI, MIZAN, CodeQL, dependency audit, and regression failures as early-warning signals with exact SHA and actionable owner, not as dashboard decoration.
+3. Keep the technology lab isolated from production credentials, repositories, and execution privileges. A successful experiment produces an ADR and reproducible evidence, not automatic adoption.
+4. Keep security approval independent from the implementation agent. The agent that authors a change cannot be its sole security approver.
+5. Compare competitors only on equivalent, dated tasks and disclosed test conditions; do not infer internal capability from marketing claims.
+6. No release is complete without a version manifest, compatibility result, rollback owner, and a tested recovery path appropriate to the change.
+7. Product/UX acceptance cannot weaken authorization, evidence, or human-approval gates.
+8. Resource exhaustion, budget breach, missing cost telemetry, or anomalous tool use must stop or downgrade work safely rather than silently continue.
+
