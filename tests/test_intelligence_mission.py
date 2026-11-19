@@ -278,7 +278,6 @@ def test_behavior_case_spec_rejects_invalid_identity_args_timeout_and_fixture() 
 
 
 def test_report_append_handles_missing_duplicate_and_oversized_report(tmp_path) -> None:
-    from src.intelligence.behavior import BehaviorComparison
     from src.intelligence.mission import (
         MissionBehaviorReplayResult, _append_behavior_report,
     )
