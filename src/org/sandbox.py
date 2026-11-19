@@ -219,6 +219,93 @@ class Worktree:
             applied.append(path)
         return applied
 
+    def apply_repair_steps(self, steps: list[dict[str, Any]]) -> list[str]:
+        """Apply validated coder RepairPlan operations atomically to this worktree.
+
+        Only explicit edit/create/delete operations are accepted. All paths and
+        preconditions are checked before the first write; on an I/O failure the
+        original bytes are restored.
+        """
+        root = self.root.resolve()
+        staged: list[tuple[Path, str, bytes | None]] = []
+        seen: set[str] = set()
+        for step in steps:
+            if not isinstance(step, dict):
+                raise ValueError("repair step must be an object")
+            rel = step.get("file")
+            action = step.get("action")
+            if not isinstance(rel, str) or not rel or Path(rel).is_absolute():
+                raise ValueError("repair step has an unsafe path")
+            rel_path = Path(rel)
+            if ".." in rel_path.parts or "\\" in rel:
+                raise ValueError(f"unsafe repair path: {rel!r}")
+            normalized = rel_path.as_posix()
+            if normalized in seen:
+                raise ValueError(f"duplicate repair path: {normalized!r}")
+            seen.add(normalized)
+            target = (root / rel_path).resolve()
+            if not target.is_relative_to(root) or target == root:
+                raise ValueError(f"repair path escapes worktree: {rel!r}")
+            cursor = root
+            for part in rel_path.parts:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    raise ValueError(f"symlink repair target rejected: {rel!r}")
+            if action == "create":
+                if target.exists():
+                    raise ValueError(f"refusing to overwrite existing file: {rel!r}")
+                content = step.get("patch_hint")
+                if not isinstance(content, str):
+                    raise ValueError(f"create content is invalid: {rel!r}")
+                staged.append((target, action, content.encode("utf-8")))
+            elif action == "edit":
+                find = step.get("find")
+                replacement = step.get("patch_hint")
+                if not isinstance(find, str) or not find or not isinstance(replacement, str):
+                    raise ValueError(f"edit patch is invalid: {rel!r}")
+                if not target.is_file():
+                    raise FileNotFoundError(f"edit target missing: {rel!r}")
+                original = target.read_bytes()
+                try:
+                    text = original.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise ValueError(f"edit target is not UTF-8: {rel!r}") from exc
+                if text.count(find) != 1:
+                    raise ValueError(f"find block must match exactly once: {rel!r}")
+                updated = text.replace(find, replacement, 1).encode("utf-8")
+                staged.append((target, action, updated))
+            elif action == "delete":
+                if not target.is_file():
+                    raise FileNotFoundError(f"delete target missing: {rel!r}")
+                staged.append((target, action, None))
+            else:
+                raise ValueError(f"unknown repair action: {action!r}")
+
+        snapshots: dict[Path, bytes | None] = {}
+        applied: list[str] = []
+        try:
+            for target, action, content in staged:
+                snapshots[target] = target.read_bytes() if target.is_file() else None
+                if action == "delete":
+                    target.unlink()
+                else:
+                    assert content is not None
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(content)
+                applied.append(target.relative_to(root).as_posix())
+        except OSError:
+            for target, previous in reversed(list(snapshots.items())):
+                try:
+                    if previous is None:
+                        target.unlink(missing_ok=True)
+                    else:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(previous)
+                except OSError:
+                    pass
+            raise
+        return applied
+
     def cleanup(self) -> None:
         """حذف نسخة العمل المؤقتة — آمن لأنها مملوكة حتميًا."""
         if self._owned and self.root.exists():
