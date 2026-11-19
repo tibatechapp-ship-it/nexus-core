@@ -376,9 +376,29 @@ class DevelopmentDept:
                     model_used=";".join(sorted(connector.models_used)),
                 ))
             if not result.get("ok"):
-                raise DepartmentError(
-                    "فشل Coder Engine: " + str(result.get("error", "unknown"))[:400]
-                )
+                # Preserve bounded, actionable engine diagnostics at the org boundary.
+                # The full attempt log remains in the engine result; this summary
+                # identifies whether planning, patch application, or a test gate failed.
+                attempts = result.get("attempts", [])
+                recent = attempts[-3:] if isinstance(attempts, list) else []
+                diagnostics = []
+                for attempt in recent:
+                    if not isinstance(attempt, dict):
+                        continue
+                    item = {key: attempt.get(key) for key in (
+                        "iteration", "stage", "error", "tests_ok", "gate_ok"
+                    ) if key in attempt}
+                    gate = attempt.get("gate")
+                    if isinstance(gate, list):
+                        item["gate"] = gate[:3]
+                    diagnostics.append(item)
+                detail = str(result.get("error", "unknown"))[:240]
+                if diagnostics:
+                    import json
+                    detail += "; attempts=" + json.dumps(
+                        diagnostics, ensure_ascii=False, default=str
+                    )[:900]
+                raise DepartmentError("فشل Coder Engine: " + detail[:1200])
             plan = result.get("plan")
             if not isinstance(plan, dict) or not isinstance(plan.get("steps"), list):
                 raise DepartmentError("Coder Engine لم يُرجع RepairPlan قابلة للتطبيق")
