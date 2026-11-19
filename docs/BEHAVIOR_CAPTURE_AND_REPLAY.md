@@ -117,9 +117,12 @@ replay is wired into arbitrary missions yet.
 ## Mission lifecycle adapter
 
 Use `run_mission_behavior_replay` only as an explicit operator-requested action
-after the mission reaches `done`. It requires a baseline whose target is exactly
-`mission:<mission_id>`, restores the latest verified durable checkpoint, and
-rejects a missing worktree or invalid checkpoint. It creates one temporary copy
+after the mission reaches `done`. The orchestrator now persists a final
+pre-completion checkpoint after the release wave and before cleaning its live
+worktree. The replay service requires a baseline whose target is exactly
+`mission:<mission_id>`, restores that latest verified checkpoint, and confirms
+its phase matches the completed mission and that it is the final running state.
+It rejects a missing, stale, or invalid checkpoint. It creates one temporary copy
 per case, removes Git metadata and common generated/dependency directories, rejects
 symlinks and credential-like files, and enforces file-count and total-size limits.
 Temporary workspaces are deleted on success or failure. Requested and terminal
