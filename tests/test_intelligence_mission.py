@@ -88,7 +88,7 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
 
     def fake_execute(**kwargs):
         workspaces = [item.workspace for item in kwargs["cases"]]
-        assert len(set(workspaces)) == 2
+        assert len(set(workspaces)) == 1
         assert all((path / "app.py").is_file() for path in workspaces)
         assert all(path != source for path in workspaces)
         for case in kwargs["cases"]:
@@ -105,7 +105,6 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
         baseline=baseline,
         cases=[
             BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"}),
-            BehaviorCaseSpec("extra", ("cat", "{behavior_input}"), {"path": "/extra"}),
         ],
         run_id="candidate-run", collected_by="replay-harness",
         evidence_sink=sink,
@@ -509,3 +508,52 @@ def test_snapshot_copy_rejects_credential_bearing_directories(tmp_path, sensitiv
     (secret_dir / "credentials").write_text("not-for-replay", encoding="utf-8")
     with pytest.raises(MissionBehaviorError, match="credential-bearing directory"):
         module._copy_verified_snapshot(source, tmp_path / "copy")
+
+
+
+@pytest.mark.parametrize(
+    "case_specs,expected_error",
+    [
+        (
+            [BehaviorCaseSpec("other", ("cat", "{behavior_input}"), {"path": "/health"})],
+            "case IDs must exactly match",
+        ),
+        (
+            [BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/different"})],
+            "input fixture differs",
+        ),
+    ],
+)
+def test_mission_replay_preflights_case_ids_and_inputs_before_checkpoint_or_runner(
+    tmp_path, monkeypatch, case_specs, expected_error
+):
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    monkeypatch.setattr(
+        module, "restore_mission_context",
+        lambda *args, **kwargs: pytest.fail("checkpoint must not be restored"),
+    )
+    monkeypatch.setattr(
+        module, "execute_authorized_cases",
+        lambda **kwargs: pytest.fail("candidate code must not execute"),
+    )
+    with pytest.raises(MissionBehaviorError, match=expected_error):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink), cases=case_specs,
+            run_id="preflight-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda ref: (
+                ref.evidence_id in sink.items
+                and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
+            ),
+        )
+    assert [event[0] for event in store.audit_events] == [
+        "behavior.replay.requested", "behavior.replay.failed"
+    ]
