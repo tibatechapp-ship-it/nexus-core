@@ -54,6 +54,16 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--title", required=True)
     m.add_argument("--objective", required=True)
     m.add_argument("--repo", default="")
+    m.add_argument("--execution-mode", choices=("process", "container"),
+                   required=True, help="وضع التشغيل الأمني الصريح")
+    m.add_argument("--trust-local", action="store_true",
+                   help="إقرار صريح بأن المستودع موثوق للتنفيذ المحلي")
+    m.add_argument("--container-image", default="",
+                   help="صورة حاوية مثبتة ببصمة sha256")
+    m.add_argument("--container-enabled", action="store_true",
+                   help="تفعيل تشغيل الحاوية صراحة")
+    m.add_argument("--approval-id", default="",
+                   help="معرّف موافقة run_untrusted المسجلة للمهمة")
     m.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None,
                    help="سقف توكنات الخرج للمهمة (اختياري، موجب)")
 
@@ -85,10 +95,29 @@ def _emit(payload: Any) -> None:
 
 def _cmd_mission(args: argparse.Namespace) -> int:
     org, ops = _stores(args)
+    if args.execution_mode == "process":
+        if not args.trust_local:
+            raise SystemExit("--execution-mode process requires --trust-local")
+        policy = {
+            "schema_version": 1, "execution_mode": "process",
+            "trusted_local": True,
+        }
+    else:
+        if not args.container_enabled or not args.container_image or not args.approval_id:
+            raise SystemExit(
+                "container mode requires --container-enabled, --container-image "
+                "and --approval-id"
+            )
+        policy = {
+            "schema_version": 1, "execution_mode": "container",
+            "container_enabled": True, "container_image": args.container_image,
+            "approval_id": args.approval_id,
+        }
     pipeline = MissionPipeline(org, ops, outdir=args.outdir)
     report = pipeline.run(title=args.title, objective=args.objective,
                           repo_path=args.repo,
-                          output_token_limit=args.max_output_tokens)
+                          output_token_limit=args.max_output_tokens,
+                          execution_policy=policy)
     _emit(report.to_dict())
     return 0 if report.mission.status == "done" else 1
 
