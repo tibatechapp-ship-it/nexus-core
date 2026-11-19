@@ -123,6 +123,20 @@ class TestWriteEndpointsAuth:
         stored = org.mission_get(mission_id)
         assert stored is not None and stored.status == "created"
 
+    def test_run_maps_invalid_execution_policy_to_client_error(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "invalid policy", "objective": "bad mode must be rejected",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        response = http.post(
+            f"/org/missions/{mission_id}/run",
+            json={"execution_mode": "unknown"}, headers=AUTH,
+        )
+        assert response.status_code == 422
+        assert org.mission_get(mission_id).status == "created"
+
     def test_run_rejects_already_started_mission_with_conflict(
             self, client: tuple[TestClient, OrgStore]) -> None:
         http, org = client
