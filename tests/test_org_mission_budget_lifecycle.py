@@ -280,13 +280,13 @@ class TestTokenReservationCrashReconciliation:
         first = OrgStore(db)
         assert first._conn.execute(
             "SELECT value FROM meta WHERE key='org_schema_version'"
-        ).fetchone()["value"] == "10"
+        ).fetchone()["value"] == "11"
         first.close()
         second = OrgStore(db)
         try:
             assert second._conn.execute(
                 "SELECT value FROM meta WHERE key='org_schema_version'"
-            ).fetchone()["value"] == "10"
+            ).fetchone()["value"] == "11"
             tables = {row["name"] for row in second._conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
             assert "mission_token_reconciliations" in tables
