@@ -122,6 +122,34 @@ class TestWriteEndpointsAuth:
         stored = org.mission_get(mission_id)
         assert stored is not None and stored.status == "created"
 
+    def test_run_uses_the_approved_existing_mission(
+            self, client: tuple[TestClient, OrgStore],
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        from types import SimpleNamespace
+        from src.org.pipeline import MissionPipeline
+
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "same mission", "objective": "retain approval identity",
+            "repo_path": "fixture",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        captured: dict[str, object] = {}
+
+        def fake_run(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(to_dict=lambda: {"mission_id": mission_id})
+
+        monkeypatch.setattr(MissionPipeline, "run", fake_run)
+        response = http.post(
+            f"/org/missions/{mission_id}/run",
+            json={"execution_mode": "process", "trusted_local": True},
+            headers=AUTH,
+        )
+        assert response.status_code == 200
+        assert captured["existing_mission"].id == mission_id
+        assert len(org.mission_list()) == 1
+
     def test_container_execution_approval_is_image_bound(
             self, client: tuple[TestClient, OrgStore]) -> None:
         http, org = client
