@@ -115,6 +115,11 @@ def _cmd_mission(args: argparse.Namespace) -> int:
         existing_mission = org.mission_get(args.mission_id)
         if existing_mission is None:
             raise SystemExit(f"mission not found: {args.mission_id}")
+        if existing_mission.status != "created":
+            raise SystemExit(
+                f"mission cannot be executed from status {existing_mission.status!r}; "
+                "use the explicit resume workflow"
+            )
         if (
             existing_mission.title != args.title
             or existing_mission.objective != args.objective
