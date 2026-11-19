@@ -41,6 +41,18 @@ def _patched_pool(provider_cls: type[MockProvider]) -> ProviderPool:
 
 
 class TestGreenPath:
+    def test_pipeline_requires_explicit_execution_policy(
+            self, tmp_path: Path) -> None:
+        pipeline = MissionPipeline(
+            OrgStore(":memory:"), OpsStore(":memory:"),
+            outdir=tmp_path / "missing-policy",
+        )
+        with pytest.raises(ValueError, match="execution_policy is required"):
+            pipeline.run(
+                title="must fail closed", objective="do not infer trust",
+                repo_path="examples/org_demo/fixture_repo",
+            )
+
     @pytest.fixture()
     def report(self, tmp_path: Path) -> object:
         org = OrgStore(":memory:")
