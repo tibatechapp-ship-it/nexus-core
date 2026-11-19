@@ -67,6 +67,12 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None,
                    help="سقف توكنات الخرج للمهمة (اختياري، موجب)")
 
+    c = sub.add_parser("create-mission", help="إنشاء مهمة دون تشغيلها")
+    c.add_argument("--title", required=True)
+    c.add_argument("--objective", required=True)
+    c.add_argument("--repo", default="")
+    c.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None)
+
     s = sub.add_parser("show", help="عرض مهمة مخزنة")
     s.add_argument("mission_id")
 
@@ -127,6 +133,16 @@ def _cmd_mission(args: argparse.Namespace) -> int:
                           execution_policy=policy)
     _emit(report.to_dict())
     return 0 if report.mission.status == "done" else 1
+
+
+def _cmd_create_mission(args: argparse.Namespace) -> int:
+    org, _ = _stores(args)
+    mission = org.create_mission(Mission(
+        title=args.title, objective=args.objective, repo_path=args.repo,
+        output_token_limit=args.max_output_tokens,
+    ))
+    _emit(mission.to_dict())
+    return 0
 
 
 def _cmd_show(args: argparse.Namespace) -> int:
@@ -213,7 +229,8 @@ def main(argv: list[str] | None = None) -> int:
     """نقطة الدخول — توجيه مباشر لأوامر معلنة."""
     args = build_parser().parse_args(argv)
     handlers = {
-        "mission": _cmd_mission, "show": _cmd_show,
+        "mission": _cmd_mission, "create-mission": _cmd_create_mission,
+        "show": _cmd_show,
         "dashboard": _cmd_dashboard, "lessons": _cmd_lessons,
         "metrics": _cmd_metrics,
         "request-run-approval": _cmd_request_run_approval,
