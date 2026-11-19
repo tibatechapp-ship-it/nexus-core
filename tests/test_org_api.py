@@ -17,6 +17,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.org.api import build_org_router  # noqa: E402
+from src.org.contracts import Mission  # noqa: E402
 from src.org.store import OrgStore  # noqa: E402
 from src.ops.store import OpsStore  # noqa: E402
 
