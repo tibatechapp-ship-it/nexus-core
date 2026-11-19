@@ -112,7 +112,7 @@ class TestMissionBudgetPersistence:
 
 class TestPipelineBudgetLifecycle:
     def test_pipeline_reuses_existing_mission_without_creating_another(
-            self, tmp_path: Path) -> None:
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         store = OrgStore(":memory:")
         mission = store.create_mission(Mission(
             title="existing", objective="retain identity",
@@ -120,8 +120,14 @@ class TestPipelineBudgetLifecycle:
         ))
         pipeline = MissionPipeline(
             store, OpsStore(":memory:"), outdir=tmp_path / "reports")
-        # A deliberately invalid repository makes execution fail after the
-        # existing mission is selected; no second mission may be created.
+        captured: dict[str, object] = {}
+
+        def fake_execute(candidate: Mission, *, execution_policy: dict[str, object]) -> Mission:
+            captured["mission"] = candidate
+            captured["policy"] = execution_policy
+            return candidate
+
+        monkeypatch.setattr(pipeline.orchestrator, "execute", fake_execute)
         report = pipeline.run(
             title=mission.title, objective=mission.objective,
             repo_path=mission.repo_path,
@@ -133,6 +139,7 @@ class TestPipelineBudgetLifecycle:
             existing_mission=mission,
         )
         assert report.mission.id == mission.id
+        assert captured["mission"].id == mission.id
         assert len(store.mission_list()) == 1
 
     def test_pipeline_configures_budget_before_agent_work_and_settles_it(
