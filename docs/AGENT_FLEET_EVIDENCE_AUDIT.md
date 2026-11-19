@@ -30,9 +30,9 @@ At this revision, the generated inventory reports 106/106 healthy under its impo
 
 ## 3. Historical evidence that must not be conflated
 
-`reports/all-81-agents-test.json` contains a historical run with many NovaMind constructor errors (for example, classes expecting keyword-only/no positional constructor arguments). It is not an exact-head, current CI run and must not be treated as current failure evidence without reproducing it.
+`reports/all-81-agents-test.json` is a historical artifact whose filename is itself inaccurate: it contains **64 records**, not 81. It records 20/20 Core agents as passing and 44/44 NovaMind records as failing. The dominant error is an incompatible generic positional-constructor assumption (for example, NovaMind classes whose constructors accept no positional backend). It is not an exact-head, current CI run and must not be treated as proof that those 44 agents are currently broken.
 
-It is nevertheless a useful warning: the old broad test harness used an incompatible generic constructor assumption. The supported current evidence is the fleet probe and the exact-head CI jobs, each with their own limited scope. The historical report should be labelled as historical or regenerated with a contract-aware runner before it is used for decisions.
+It is nevertheless a useful warning: the old broad test harness did not respect each agent's construction contract. The supported current evidence is the fleet probe and exact-head CI, each with limited scope. Keep this artifact labelled historical and replace it with a contract-aware per-agent report before using it for operational decisions.
 
 ## 4. Training and capability integration
 
@@ -43,6 +43,10 @@ The codebase contains:
 - skills, memory/learning, certification and genome components.
 
 The training plan itself states that these layers are not all connected to the live API/agent execution path. Presence in the repository is not proof of live integration. In particular, do not claim that all 106 agents are trained, certified, memory-enabled, or operating under one fully integrated lifecycle.
+
+The current exact-head CI logs add two important qualifications: the NovaMind unit/observability subset passed 83 tests and the broader NovaMind suite passed 173 tests on each supported Python version, but both are explicitly non-blocking. The dedicated NovaMind coverage report showed approximately 17% coverage for the broad `src/novamind` package at that run. Passing 173 tests is useful evidence, but it is not broad coverage of the 79-record NovaMind inventory.
+
+Two documentation counts are stale relative to the generated inventory: `docs/novamind/AGENTS_PERMISSIONS.md` says 67 agents (last updated 2026-10-09), while the canonical NovaMind registry currently lists 79; `docs/AGENT_TRAINING_PLAN.md` describes 99 as the total (20 Core + 79 NovaMind) and omits the 7 legacy inventory records. These documents need explicit scope and generated counts, not silent number replacement.
 
 ## 5. Required maturity labels
 
