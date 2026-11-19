@@ -86,3 +86,52 @@ def test_record_feedback_rejects_invalid_input(tmp_path, pattern, liked, error):
     loop = LearningLoop(tmp_path / "experiences.jsonl")
     with pytest.raises(error):
         loop.record_feedback(pattern, liked)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["record", "learn_from_pr_review", "record_feedback"],
+)
+def test_learning_apis_raise_when_storage_is_unwritable(tmp_path, operation):
+    # A directory at the JSONL path makes append-open fail deterministically
+    # across platforms without relying on chmod behavior (which differs as root).
+    storage_path = tmp_path / "experiences.jsonl"
+    storage_path.mkdir()
+    loop = LearningLoop(storage_path)
+
+    with pytest.raises(OSError):
+        if operation == "record":
+            loop.record(
+                agent="test",
+                task="persistence failure",
+                input_data="input",
+                output={"summary": "output"},
+                outcome="success",
+            )
+        elif operation == "learn_from_pr_review":
+            loop.learn_from_pr_review(
+                "owner/project", 12,
+                [{"description": "review finding", "severity": "high"}],
+            )
+        else:
+            loop.record_feedback("deterministic persistence", True)
+
+
+def test_learning_loop_does_not_acknowledge_failed_fsync(tmp_path, monkeypatch):
+    import novamind.core.learning_loop as module
+
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+
+    def fail_fsync(_fd):
+        raise OSError("simulated fsync failure")
+
+    monkeypatch.setattr(module.os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        loop.record(
+            agent="test",
+            task="durability failure",
+            input_data="input",
+            output={"summary": "output"},
+            outcome="success",
+        )
