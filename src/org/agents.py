@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -38,6 +39,8 @@ __all__ = [
 ]
 
 _JSON_OBJ = re.compile(r"\{.*\}", re.DOTALL)
+_ACTIVE_TASK_LEASE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "nexus_active_task_lease", default=None)
 
 
 class ToolDenied(PermissionError):
@@ -175,6 +178,22 @@ class AgentRuntime:
         self.tools = tools
         self.store = store
 
+    @staticmethod
+    def set_task_lease(task_id: str, claim: dict[str, Any]) -> Token:
+        """Bind provider reservations to the current execution context."""
+        return _ACTIVE_TASK_LEASE.set({
+            "task_id": task_id,
+            "attempt_no": int(claim["attempts"]),
+            "lease_generation": int(claim["lease_generation"]),
+            "lease_owner": str(claim["lease_owner"]),
+            "lease_token": str(claim["lease_token"]),
+        })
+
+    @staticmethod
+    def reset_task_lease(token: Token) -> None:
+        """Restore the previous context after a task execution scope."""
+        _ACTIVE_TASK_LEASE.reset(token)
+
     # ── استدعاء النموذج بعقد الوكيل ───────────────────────────────────────
 
     def complete(self, spec: AgentSpec, user_prompt: str) -> ModelResponse:
@@ -277,9 +296,11 @@ class AgentRuntime:
         budget = self.store.mission_token_budget_get(spec.mission_id)
         if budget is None:
             return None
+        lease = _ACTIVE_TASK_LEASE.get()
         reservation = self.store.reserve_mission_output_tokens(
             spec.mission_id, spec.role,
-            spec.max_tokens * self.pool.max_fallback_attempts)
+            spec.max_tokens * self.pool.max_fallback_attempts,
+            **(lease or {}))
         return str(reservation["id"])
 
     def _settle_output_budget(self, reservation_id: str | None,
