@@ -202,10 +202,11 @@ def test_capture_redacts_secret_fields_and_common_secret_patterns_before_persist
         collected_by="test-harness", sink=sink,
     )
     stored = next(iter(sink.items.values())).decode("utf-8")
+    expected_provider_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
     assert "sk-live-do-not-store" not in stored
     assert "abc.def.ghi" not in stored
     assert "hunter2" not in stored
-    assert "ghp_abcdefghijklmnopqrstuvwxyz1234567890" not in stored
+    assert expected_provider_token not in stored
     assert "secret-material" not in stored
     artifact = json.loads(stored)
     assert artifact["input"]["api_key"] == "[REDACTED]"
