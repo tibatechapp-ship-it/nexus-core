@@ -288,6 +288,7 @@ A clean scan is not proof that a system is defect-free. A passing replay is not 
 - [ ] Run the complete Python 3.11/3.12/3.13 matrix, exact 95% framework coverage gate, report freshness, MIZAN and all security checks on the same final PR head.
 - [ ] Run the real Rootless Docker E2E on that same final PR head.
 - [x] Run the MIZAN PR evidence adapter from a trusted, immutable main-branch commit and check out the candidate PR into a separate data-only directory; do not execute the candidate's `scripts/mizan/build_pr_evidence.py`.
+- [x] Suppress raw MIZAN adapter stdout/stderr in PR workflow logs; scanner output can contain source-derived values and must not be treated as safe log content.
 - [ ] Obtain independent review; no review submissions or inline review threads were present on PR #147 at the last inspection.
 
 ### Current execution order — authoritative
