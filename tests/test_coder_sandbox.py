@@ -38,8 +38,7 @@ def test_run_cmd_does_not_inherit_host_secrets_or_pythonpath(
     )
     result = run_cmd([PY, "-c", script], tmp_path)
     assert result["ok"] is True, result
-    import json as _json
-    child_env = _json.loads(result["stdout"])
+    child_env = json.loads(result["stdout"])
     assert child_env["PYTHONPATH"] is None
     assert child_env["OPENAI_API_KEY"] is None
     assert child_env["AWS_SECRET_ACCESS_KEY"] is None
