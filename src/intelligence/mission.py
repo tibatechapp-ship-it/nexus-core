@@ -268,6 +268,10 @@ def run_mission_behavior_replay(
             "missing": len(comparison.missing_case_ids),
             "changed": len(comparison.changed_case_ids),
             "unexpected": len(comparison.unexpected_case_ids),
+            "matched_case_ids": list(comparison.matched_case_ids),
+            "missing_case_ids": list(comparison.missing_case_ids),
+            "changed_case_ids": list(comparison.changed_case_ids),
+            "unexpected_case_ids": list(comparison.unexpected_case_ids),
             "evidence_ids": list(result.evidence_ids),
             "result_sha256": digest_payload(result.to_dict()),
         })
