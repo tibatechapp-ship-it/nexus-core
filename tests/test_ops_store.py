@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 
 import pytest
 
@@ -16,9 +17,28 @@ from src.ops.store import OpsError, OpsStore, SCHEMA_VERSION
 
 
 @pytest.fixture()
-def store() -> OpsStore:
-    """مخزن ذاكرة نظيف لكل اختبار — لا تلوث بين الحالات."""
-    return OpsStore(":memory:")
+def store() -> Iterator[OpsStore]:
+    """مخزن ذاكرة يُغلق حتميًا بعد كل اختبار."""
+    instance = OpsStore(":memory:")
+    try:
+        yield instance
+    finally:
+        instance.close()
+
+
+def test_store_close_is_idempotent() -> None:
+    store = OpsStore(":memory:")
+    store.close()
+    store.close()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        store._conn.execute("SELECT 1")
+
+
+def test_store_context_manager_closes_connection() -> None:
+    with OpsStore(":memory:") as store:
+        assert store._conn.execute("SELECT 1").fetchone()[0] == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        store._conn.execute("SELECT 1")
 
 
 class TestSchema:

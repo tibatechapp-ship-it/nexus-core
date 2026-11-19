@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Iterator
+
 import pytest
 from concurrent.futures import ThreadPoolExecutor
 
@@ -23,8 +26,27 @@ from src.org.store import OrgError, OrgStore, ORG_SCHEMA_VERSION
 
 
 @pytest.fixture()
-def store() -> OrgStore:
-    return OrgStore(":memory:")
+def store() -> Iterator[OrgStore]:
+    instance = OrgStore(":memory:")
+    try:
+        yield instance
+    finally:
+        instance.close()
+
+
+def test_store_close_is_idempotent() -> None:
+    store = OrgStore(":memory:")
+    store.close()
+    store.close()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        store._conn.execute("SELECT 1")
+
+
+def test_store_context_manager_closes_connection() -> None:
+    with OrgStore(":memory:") as store:
+        assert store._conn.execute("SELECT 1").fetchone()[0] == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        store._conn.execute("SELECT 1")
 
 
 class TestMissions:
