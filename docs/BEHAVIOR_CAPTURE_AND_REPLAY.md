@@ -35,9 +35,12 @@ The sink must persist bytes immutably by evidence ID and return an `EvidenceRefe
 whose SHA-256 is the digest of the exact stored bytes. The adapter verifies the returned
 ID, kind, collector, and digest. Artifacts are canonical JSON and limited to 1 MiB.
 
-Only sanitized test fixtures may be persisted. Do not record credentials, tokens,
-private keys, personal data, or unrestricted production payloads. The adapter cannot
-infer whether arbitrary user-supplied fixture content is sensitive.
+The capture adapter redacts common credential-bearing field names and recognizable
+token, bearer, assignment, and private-key patterns before hashing or persisting
+the fixture. The stored artifact declares the redaction contract version. This is
+defense in depth, not a complete data-loss-prevention system: callers must still
+provide sanitized test fixtures and must never submit credentials, personal data,
+or unrestricted production payloads. Unknown secret formats may not be recognized.
 
 ## Executing candidate cases
 
