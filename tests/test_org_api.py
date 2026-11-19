@@ -109,6 +109,46 @@ class TestWriteEndpointsAuth:
         assert resp.status_code == 422
         assert org.mission_list() == []
 
+    def test_container_execution_approval_is_image_bound(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "container approval", "objective": "run safely",
+        }, headers=AUTH)
+        assert created.status_code == 200
+        mission_id = created.json()["id"]
+        image = "registry.example/nexus-runner@sha256:" + "a" * 64
+        requested = http.post(
+            f"/org/missions/{mission_id}/approvals/run-untrusted",
+            json={"container_image": image}, headers=AUTH)
+        assert requested.status_code == 200
+        approval_id = requested.json()["approval_id"]
+        approval = org.approvals_for(mission_id)[0]
+        assert approval.id == approval_id
+        assert approval.kind == "run_untrusted"
+        assert approval.subject == image
+        assert approval.approved is None
+
+        decided = http.post(
+            f"/org/approvals/{approval_id}/decide",
+            json={"approved": True, "decided_by": "operator"}, headers=AUTH)
+        assert decided.status_code == 200
+        assert org.approvals_for(mission_id)[0].approved is True
+
+    def test_container_execution_approval_rejects_mutable_image(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "mutable image", "objective": "must reject",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        response = http.post(
+            f"/org/missions/{mission_id}/approvals/run-untrusted",
+            json={"container_image": "registry.example/runner:latest"},
+            headers=AUTH)
+        assert response.status_code == 422
+        assert org.approvals_for(mission_id) == []
+
     def test_decide_approval_requires_token(
             self, client: tuple[TestClient, OrgStore]) -> None:
         http, org = client
