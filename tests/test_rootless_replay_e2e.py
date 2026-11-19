@@ -83,7 +83,15 @@ def test_approved_behavior_replay_runs_in_real_rootless_container(tmp_path: Path
     )
 
     assert len(captured) == 1
-    assert captured[0].status is ObservationStatus.PASSED
+    if captured[0].status is not ObservationStatus.PASSED:
+        output = captured[0].output_payload
+        pytest.fail(
+            "real rootless replay failed: "
+            f"exit_code={output.get('exit_code')!r}, "
+            f"timeout={output.get('timeout')!r}, "
+            f"stderr={output.get('stderr')!r}, "
+            f"stdout={output.get('stdout')!r}"
+        )
     assert captured[0].output_payload["runner"] == "nexus.rootless-container/v1"
     assert captured[0].output_payload["image"] == image
     assert captured[0].output_payload["stdout"].strip() == "nexus-rootless-e2e-ok"
