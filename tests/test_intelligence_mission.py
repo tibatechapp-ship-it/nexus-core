@@ -606,3 +606,33 @@ def test_mission_replay_redacts_fixture_before_staging_and_execution(tmp_path, m
         ),
     )
     assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
+
+
+
+def test_mission_replay_redacts_secret_from_failure_audit(tmp_path, monkeypatch):
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    monkeypatch.setattr(
+        module, "restore_mission_context",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("runner failed: Bearer ghp_SUPERSECRETEXAMPLE1234567890")
+        ),
+    )
+    with pytest.raises(MissionBehaviorError, match="failed closed"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            run_id="audit-redaction", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    failure = store.audit_events[-1][2]
+    assert "ghp_SUPERSECRETEXAMPLE1234567890" not in failure["error"]
+    assert "[REDACTED]" in failure["error"]
