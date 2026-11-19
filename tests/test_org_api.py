@@ -109,6 +109,19 @@ class TestWriteEndpointsAuth:
         assert resp.status_code == 422
         assert org.mission_list() == []
 
+    def test_run_endpoint_requires_explicit_execution_policy(
+            self, client: tuple[TestClient, OrgStore]) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "run policy", "objective": "must provide execution authority",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        response = http.post(
+            f"/org/missions/{mission_id}/run", headers=AUTH)
+        assert response.status_code == 422
+        stored = org.mission_get(mission_id)
+        assert stored is not None and stored.status == "created"
+
     def test_container_execution_approval_is_image_bound(
             self, client: tuple[TestClient, OrgStore]) -> None:
         http, org = client
