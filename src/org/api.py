@@ -154,7 +154,8 @@ if _FASTAPI_OK:
                                   objective=mission.objective,
                                   repo_path=mission.repo_path,
                                   output_token_limit=mission.output_token_limit,
-                                  execution_policy=payload.dict(exclude_unset=True))
+                                  execution_policy=payload.dict(exclude_unset=True),
+                                  existing_mission=mission)
             return report.to_dict()
 
         @router.post("/approvals/{approval_id}/decide")
