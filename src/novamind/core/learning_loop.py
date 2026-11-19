@@ -207,6 +207,58 @@ class LearningLoop:
         return [{"agent": a, "failures": c}
                 for a, c in sorted(failures.items(), key=lambda x: -x[1])[:limit]]
 
+    def learn_from_pr_review(self, repo: str, pr_num: int, issues: List[Dict]) -> Dict:
+        """Persist PR review findings as a single auditable learning experience."""
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if isinstance(pr_num, bool) or not isinstance(pr_num, int) or pr_num < 0:
+            raise ValueError("pr_num must be a non-negative integer")
+        if not isinstance(issues, list):
+            raise TypeError("issues must be a list of mappings")
+        if any(not isinstance(item, dict) for item in issues):
+            raise TypeError("each issue must be a mapping")
+
+        normalized = []
+        for item in issues:
+            description = item.get("description", item.get("message", ""))
+            if not isinstance(description, str) or not description.strip():
+                continue
+            normalized.append({
+                "description": description[:2000],
+                "severity": str(item.get("severity", "info"))[:32],
+            })
+
+        if not normalized:
+            return {"learned": 0, "experience_id": None}
+
+        payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+        experience = self.record(
+            agent="pr-review-learner",
+            task=f"Learn from PR review {pr_num} in {repo.strip()[:300]}",
+            input_data=payload,
+            output={"summary": f"Recorded {len(normalized)} review findings"},
+            outcome="success",
+            tags=["pr-review", "review-learning"],
+        )
+        return {"learned": len(normalized), "experience_id": experience.experience_id}
+
+    def record_feedback(self, pattern: str, liked: bool) -> Dict:
+        """Persist explicit feedback through the same append-only experience log."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise TypeError("liked must be a boolean")
+        experience = self.record(
+            agent="feedback",
+            task="pattern-feedback",
+            input_data=pattern.strip(),
+            output={"summary": "positive feedback" if liked else "negative feedback"},
+            outcome="success",
+            user_feedback="liked" if liked else "disliked",
+            tags=["feedback", "positive" if liked else "negative"],
+        )
+        return {"ok": True, "experience_id": experience.experience_id}
+
     def clear(self, confirm: bool = False) -> Dict:
         if not confirm:
             raise RuntimeError("Pass confirm=True to clear (destructive!)")
