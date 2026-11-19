@@ -349,6 +349,7 @@ class ExecutiveOrchestrator:
         lease_generation = int(claim["lease_generation"])
         heartbeat = self._start_task_heartbeat(
             spec.id, f"nexus-orchestrator:{spec.dept}", claim)
+        lease_context = self.depts.runtime.set_task_lease(spec.id, claim)
         t0 = time.time()
         try:
             if spec.dept == "executive":
@@ -385,6 +386,8 @@ class ExecutiveOrchestrator:
                 spec.id, lease_token, detail,
                 lease_generation=lease_generation)
             raise
+        finally:
+            self.depts.runtime.reset_task_lease(lease_context)
         heartbeat_error = self._stop_task_heartbeat(heartbeat)
         if heartbeat_error:
             self.org_store.fail_claimed_task(
@@ -802,6 +805,7 @@ class ExecutiveOrchestrator:
         lease_generation = int(claim["lease_generation"])
         heartbeat = self._start_task_heartbeat(
             review_task.id, "nexus-orchestrator:code_review", claim)
+        lease_context = self.depts.runtime.set_task_lease(review_task.id, claim)
         try:
             decision, reviews = self.depts.council.review_with_debate(
                 ctx.mission.id, review_task.id,
@@ -844,6 +848,8 @@ class ExecutiveOrchestrator:
                 review_task.id, lease_token, detail,
                 lease_generation=lease_generation)
             raise
+        finally:
+            self.depts.runtime.reset_task_lease(lease_context)
 
     def _run_verification_gate(self, mission: Mission, plan: ExecutionPlan,
                                ctx: MissionContext) -> bool:
@@ -860,6 +866,7 @@ class ExecutiveOrchestrator:
         lease_generation = int(claim["lease_generation"])
         heartbeat = self._start_task_heartbeat(
             verify_task.id, "nexus-orchestrator:verification", claim)
+        lease_context = self.depts.runtime.set_task_lease(verify_task.id, claim)
         try:
             test_target = (ctx.affected.get("test_files") or [""])[0]
             report = self.verification.verify_mission(
@@ -890,6 +897,8 @@ class ExecutiveOrchestrator:
                 verify_task.id, lease_token, detail,
                 lease_generation=lease_generation)
             raise
+        finally:
+            self.depts.runtime.reset_task_lease(lease_context)
 
     # ── أدوات الحالة ──────────────────────────────────────────────────────
 
