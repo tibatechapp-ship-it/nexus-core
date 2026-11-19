@@ -7,6 +7,8 @@ builders, tolerant parser, retry rule, awareness-gap matrix, memory block).
 """
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from src.learning.interactions import (
@@ -196,17 +198,41 @@ def test_similar_can_filter_by_agent_and_honours_k(tmp_path):
 
 # ── store: singleton ────────────────────────────────────────────────────────
 
-def test_singleton_is_sticky_until_reset(monkeypatch, tmp_path):
+def test_store_close_is_idempotent_and_releases_connection(tmp_path):
+    store = InteractionStore(str(tmp_path / "close.db"))
+    store.save(agent_id="a", question="q", answer="a", signal_ok=True)
+
+    store.close()
+    store.close()
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        store.count()
+
+
+def test_store_context_manager_closes_connection(tmp_path):
+    with InteractionStore(str(tmp_path / "context.db")) as store:
+        store.save(agent_id="a", question="q", answer="a", signal_ok=True)
+        assert store.count() == 1
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        store.count()
+
+
+def test_singleton_is_sticky_until_reset_and_reset_closes_it(monkeypatch, tmp_path):
     monkeypatch.setenv("NEXUS_INTERACTIONS_DB", str(tmp_path / "s.db"))
     reset_interaction_store()
-    try:
-        first = get_interaction_store()
-        assert get_interaction_store() is first  # first path wins
-    finally:
-        reset_interaction_store()
-    second = get_interaction_store()  # noqa: F841 — a fresh instance
+    first = get_interaction_store()
+    assert get_interaction_store() is first  # first path wins
+
+    reset_interaction_store()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        first.count()
+
+    second = get_interaction_store()
     assert second is not first
     reset_interaction_store()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        second.count()
 
 
 # ── reflection: prompt builders ─────────────────────────────────────────────
