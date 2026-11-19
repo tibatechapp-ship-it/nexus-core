@@ -99,6 +99,7 @@ def run_in_container(
                 "rootless Docker daemon is required; refusing non-rootless execution"
             )
 
+    container_user = "0:0" if require_rootless else "65532:65532"
     argv = [
         docker,
         "run",
@@ -114,7 +115,7 @@ def run_in_container(
         # Rootless Docker maps container UID 0 to the unprivileged daemon
         # owner on the host. Capabilities are still dropped and no-new-privileges
         # remains enforced; owner-only worktree files stay private to that user.
-        "--user=0:0",
+        f"--user={container_user}",
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
         "--mount",
         f"type=bind,src={root},dst=/workspace,rw",
