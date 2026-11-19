@@ -646,7 +646,7 @@ class ExecutiveOrchestrator:
         if (not isinstance(policy, dict)
                 or policy.get("schema_version") != 1
                 or type(policy.get("max_revision_loops")) is not int
-                or policy["max_revision_loops"] != self.max_revision_loops):
+                or policy["max_revision_loops"] < 0):
             raise OrgError(
                 "سياسة التنفيذ الأصلية غير موجودة أو تالفة؛ الاستئناف مرفوض")
         # Resume uses only the policy restored from the immutable checkpoint;
