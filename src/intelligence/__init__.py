@@ -9,6 +9,7 @@ from .gate import (
     AssuranceDecision, AssuranceVerdict, EvidenceVerifier, evaluate_assurance,
 )
 from .capture import CaptureError, CapturedCase, EvidenceSink, capture_baseline, capture_observations
+from .replay import BehaviorReplayError, ReplayCommandCase, execute_authorized_cases
 from .behavior import (
     BehaviorBaseline, BehaviorCase, BehaviorComparison, BehaviorContractError,
     BehaviorGateDecision, BehaviorGateVerdict, BehaviorObservation, BehaviorVerdict,
@@ -24,5 +25,6 @@ __all__ = [
     "BehaviorGateVerdict", "BehaviorObservation", "BehaviorVerdict", "ObservationStatus",
     "compare_behavior", "digest_payload", "evaluate_behavior_gate",
     "CaptureError", "CapturedCase", "EvidenceSink", "capture_baseline",
-    "capture_observations",
+    "capture_observations", "BehaviorReplayError", "ReplayCommandCase",
+    "execute_authorized_cases",
 ]
