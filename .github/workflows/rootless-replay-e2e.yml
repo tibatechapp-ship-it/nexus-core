@@ -48,7 +48,7 @@ jobs:
         run: |
           user_id="$(id -u)"
           sudo mkdir -p /etc/systemd/system/user@.service.d
-          printf '[Service]\\nDelegate=cpu cpuset io memory pids\\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf > /dev/null
+          printf '[Service]\nDelegate=cpu cpuset io memory pids\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf > /dev/null
           sudo systemctl daemon-reload
           sudo loginctl enable-linger "$USER"
           sudo systemctl start "user-runtime-dir@${user_id}.service"
