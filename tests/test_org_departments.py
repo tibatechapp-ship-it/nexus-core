@@ -29,6 +29,42 @@ from src.ops.store import OpsStore
 OBJECTIVE = ("أضف حارس قسمة على صفر إلى دالة divide في وحدة calc.mathops "
              "مع اختبارات للحدية")
 
+class DeterministicCoderConnector:
+    """Test-only coder connector: deterministic detector and safe RepairPlan."""
+
+    def __init__(self) -> None:
+        self.usage_total = {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
+        self.providers_used: set[str] = set()
+        self.models_used: set[str] = set()
+
+    async def generate(self, prompt: str) -> dict:
+        import json
+        if "defect-discovery stage" in prompt:
+            return {"ok": True, "reply": "[]"}
+        if "planning stage" in prompt:
+            plan = {
+                "goal": "Add explicit division-by-zero guard",
+                "defects": [],
+                "steps": [{
+                    "file": "calc/mathops.py",
+                    "action": "edit",
+                    "reason": "Reject zero divisor",
+                    "find": "def divide(a, b):\\n    return a / b",
+                    "patch_hint": (
+                        "def divide(a, divisor):\\n"
+                        "    if divisor == 0:\\n"
+                        "        raise ZeroDivisionError('division by zero')\\n"
+                        "    return a / divisor"
+                    ),
+                    "risk": "low",
+                }],
+                "tests_to_run": ["tests/test_mathops.py"],
+            }
+            return {"ok": True, "reply": json.dumps(plan)}
+        return {"ok": False, "error": "unexpected coder prompt"}
+
+
+
 
 @pytest.fixture()
 def fixture_repo(tmp_path: Path) -> Path:
@@ -50,8 +86,11 @@ def fixture_repo(tmp_path: Path) -> Path:
 def depts(tmp_path: Path) -> Departments:
     org = OrgStore(":memory:")
     ops = OpsStore(":memory:")
-    return Departments(ProviderPool([ProviderConfig()]), org, ops,
-                       outdir=tmp_path / "reports")
+    return Departments(
+        ProviderPool([ProviderConfig()]), org, ops,
+        outdir=tmp_path / "reports",
+        coder_connector_factory=lambda runtime, mission_id: DeterministicCoderConnector(),
+    )
 
 
 @pytest.fixture()
