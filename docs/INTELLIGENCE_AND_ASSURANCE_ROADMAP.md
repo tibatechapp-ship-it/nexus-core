@@ -109,7 +109,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine. Status: comparison contract implemented; capture/replay adapter and mission integration remain open.**
+**Priority: P1; first functional engine. Status: comparison contract and combined review gate implemented; capture/replay adapter and mission integration remain open.**
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -123,6 +123,7 @@ Implemented first vertical slice:
 - [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, and verifier exceptions.
 - [x] Comparator performs no execution, subprocess launch, repository import, or network access.
 - [ ] Capture and replay adapter using the existing mission-approved isolated execution policy.
+- [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
 - [ ] Connect baseline/candidate evidence to Coder Engine quality results and mission audit records.
 
 Safety:
