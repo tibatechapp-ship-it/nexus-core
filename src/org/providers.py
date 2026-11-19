@@ -275,11 +275,12 @@ class MockProvider(Provider):
         }, ensure_ascii=False)
 
     def _coder_plan_reply(self, prompt: str) -> str:
-        """Build a deterministic RepairPlan for the coder engine's test fixture.
+        """Build a deterministic RepairPlan using only source-context evidence.
 
-        Unlike the legacy department mock, this returns the engine's native
-        edit/find/patch contract and only names test files present in the
-        bounded source context.
+        The engine runs the plan-declared existing tests in its isolated
+        workspace. The organization QA stage owns adding and validating new
+        test cases; this fixture therefore keeps the coder plan focused on
+        the source edit, matching the connector contract used by unit tests.
         """
         blocks = re.findall(
             r"(?ms)^FILE: ([^\n]+)\n(.*?)(?=^FILE: |\Z)", prompt
@@ -317,44 +318,25 @@ class MockProvider(Provider):
             f"{return_line.group(0)}"
         )
         patched = original[:return_line.start()] + guarded + original[return_line.end():]
-        steps = [{
-            "file": source_path, "action": "edit",
-            "reason": "Reject a zero divisor before division",
-            "find": original, "patch_hint": patched, "risk": "low",
-        }]
         test_entry = next(
             ((path.strip(), body) for path, body in blocks
              if path.strip().endswith(".py") and "test" in path.lower()
-             and "test_divide_normal" in body),
+             and re.search(r"(?m)^def test_", body)),
             None,
         )
-        tests_to_run = []
-        if test_entry is not None:
-            test_path, test_source = test_entry
-            test_match = re.search(
-                r"(?ms)^def test_divide_normal\(\):\n.*?(?=^(?:def |class )|\Z)",
-                test_source,
-            )
-            if test_match is not None:
-                test_original = test_match.group(0)
-                test_patch = (
-                    test_original.rstrip() + "\n\n\n"
-                    "def test_divide_zero_guard():\n"
-                    "    try:\n"
-                    "        divide(1, 0)\n"
-                    "    except ZeroDivisionError:\n"
-                    "        return\n"
-                    "    raise AssertionError('zero divisor was accepted')\n"
-                )
-                steps.append({
-                    "file": test_path, "action": "edit",
-                    "reason": "Cover the zero-divisor boundary",
-                    "find": test_original, "patch_hint": test_patch, "risk": "low",
-                })
-            tests_to_run.append(test_path)
+        if test_entry is None:
+            return json.dumps({"goal": "No declared test file in source context",
+                               "defects": [], "steps": [], "tests_to_run": []})
+        test_path, _ = test_entry
         return json.dumps({
             "goal": "Add an explicit division-by-zero guard",
-            "defects": [], "steps": steps, "tests_to_run": tests_to_run,
+            "defects": [],
+            "steps": [{
+                "file": source_path, "action": "edit",
+                "reason": "Reject a zero divisor before division",
+                "find": original, "patch_hint": patched, "risk": "low",
+            }],
+            "tests_to_run": [test_path],
         }, ensure_ascii=False)
 
     def _dev_reply(self, prompt: str) -> str:
