@@ -78,13 +78,14 @@ Evidence records must not embed secrets, private keys, tokens, or unrestricted s
 
 ### Phase 0 — Baseline and quality closure
 
-**Status: framework baseline passed; one reporting issue remains.**
+**Status: baseline passed; Novamind measurement corrected, awaiting exact-head validation.**
 
 - [x] Python 3.11, 3.12 and 3.13 framework suites pass on the baseline commit.
 - [x] 5,342 passed and 30 skipped per Python version.
 - [x] Framework coverage 95.02% per version; required floor remains 95%.
 - [x] CI and MIZAN workflows pass on the baseline commit.
-- [ ] Investigate the separate Novamind report invocation that emitted `no-data-collected` and 0% coverage while its non-blocking tests passed. Correct the measurement/configuration or document why coverage is intentionally not collected; do not silently treat 0% as a meaningful product coverage result.
+- [x] Root cause identified: the shared coverage config intentionally omits `src/novamind`; the separate report now uses a dedicated coverage config scoped to that package and no longer suppresses command errors.
+- [ ] Validate the corrected Novamind report on the exact current PR head; keep it explicitly non-blocking until a separately approved coverage threshold exists.
 - [ ] Preserve the successful baseline and run all workflows again after each implementation PR.
 
 ### Phase 1 — Evidence contract and assurance gate
@@ -92,10 +93,10 @@ Evidence records must not embed secrets, private keys, tokens, or unrestricted s
 **Priority: P1.**
 
 Deliverables:
-- `src/intelligence/contracts.py`: typed result, finding and evidence records.
+- [x] `src/intelligence/contracts.py`: typed result, finding and evidence records.
 - `src/intelligence/evidence.py`: digest, provenance, redaction and bounded evidence references.
 - `src/intelligence/policy.py`: scope, permission and budget checks that defer to the existing mission policy.
-- `src/intelligence/gate.py`: deterministic acceptance rules; missing or unverifiable evidence fails closed.
+- [x] `src/intelligence/gate.py`: deterministic acceptance rules; missing or unverifiable evidence fails closed.
 - `docs/INTELLIGENCE_AND_ASSURANCE.md`: contract, threat model, data lifecycle and examples.
 
 Acceptance:
@@ -108,7 +109,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine.**
+**Priority: P1; first functional engine. Status: comparison contract implemented; capture/replay adapter and mission integration remain open.**
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -116,6 +117,13 @@ Deliverables:
 - normalized output comparison with explicit handling for timestamps, random IDs and nondeterministic fields;
 - regression report showing matched, changed, missing and inconclusive cases;
 - adapter interface so language-specific harnesses remain replaceable.
+
+Implemented first vertical slice:
+- [x] src/intelligence/behavior.py: canonical JSON payload digests, immutable baseline/case/observation contracts, evidence verification, and deterministic comparison verdicts.
+- [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, and verifier exceptions.
+- [x] Comparator performs no execution, subprocess launch, repository import, or network access.
+- [ ] Capture and replay adapter using the existing mission-approved isolated execution policy.
+- [ ] Connect baseline/candidate evidence to Coder Engine quality results and mission audit records.
 
 Safety:
 - never execute repository code during static analysis;
