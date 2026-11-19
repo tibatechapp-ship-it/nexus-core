@@ -5,9 +5,10 @@ Uses in-memory databases (and ``tmp_path`` files) — no shared state, no networ
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Callable, Iterator
 import json
-
-from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -21,11 +22,11 @@ from src.learning import (
 
 
 @pytest.fixture()
-def database_factory() -> Iterator[object]:
+def database_factory() -> Iterator[Callable[[str | Path], LessonDatabase]]:
     """Track every test database and close its connection during teardown."""
-    databases = []
+    databases: list[LessonDatabase] = []
 
-    def create(path=":memory:"):
+    def create(path: str | Path = ":memory:") -> LessonDatabase:
         database = LessonDatabase(path)
         databases.append(database)
         return database
@@ -75,6 +76,22 @@ def test_migrate_schema_is_idempotent(database_factory):
     db.migrate_schema()
     db.migrate_schema()
     assert db.count() == 0
+
+
+def test_lesson_database_close_is_idempotent(database_factory):
+    db = database_factory()
+    db.close()
+    db.close()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        db.count()
+
+
+def test_lesson_database_context_manager_closes_connection(database_factory):
+    db = database_factory()
+    with db as managed:
+        assert managed.count() == 0
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        db.count()
 
 
 # ── round trip ───────────────────────────────────────────────────────────
