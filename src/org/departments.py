@@ -307,7 +307,16 @@ class DevelopmentDept:
         execution_mode = execution_policy.get("execution_mode")
         container_image = execution_policy.get("container_image")
         container_enabled = execution_policy.get("container_enabled") is True
-        container_approved = execution_policy.get("container_approved") is True
+        approval_id = execution_policy.get("approval_id")
+        approvals = self.org_store.approvals_for(ctx.mission.id)
+        container_approved = any(
+            item.id == approval_id
+            and item.kind == "run_untrusted"
+            and item.approved is True
+            and bool(item.decided_by)
+            and item.subject == container_image
+            for item in approvals
+        )
         if execution_mode == "process":
             if execution_policy.get("trusted_local") is not True:
                 raise DepartmentError(
@@ -318,9 +327,13 @@ class DevelopmentDept:
                 raise DepartmentError(
                     "container mode requires explicit enablement and human approval"
                 )
-            if not isinstance(container_image, str) or "@sha256:" not in container_image:
+            digest = (container_image.rsplit("@sha256:", 1)[-1]
+                      if isinstance(container_image, str) and "@sha256:" in container_image
+                      else "")
+            if (len(digest) != 64
+                    or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
                 raise DepartmentError(
-                    "container mode requires an immutable image digest"
+                    "container mode requires a valid immutable sha256 image digest"
                 )
         else:
             raise DepartmentError(
