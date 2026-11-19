@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from src.org.contracts import (
     Approval,
