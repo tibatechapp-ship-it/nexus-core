@@ -444,3 +444,48 @@ def test_mission_replay_reports_unavailable_for_legacy_mission(tmp_path, monkeyp
     )
     assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
     assert any(event[0] == "behavior.replay.report_unavailable" for event in store.audit_events)
+
+
+@pytest.mark.parametrize("missing_kind", ["state", "repository"])
+def test_mission_replay_audits_and_wraps_missing_roots(tmp_path, missing_kind) -> None:
+    existing_repo = tmp_path / "repo"
+    existing_repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    repo_path = existing_repo if missing_kind == "state" else tmp_path / "missing-repo"
+    state_path = tmp_path / "missing-state" if missing_kind == "state" else state
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo_path)
+    ))
+    sink = Sink()
+    with pytest.raises(MissionBehaviorError, match="failed closed"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state_path,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    assert [event[0] for event in store.audit_events] == [
+        "behavior.replay.requested", "behavior.replay.failed"
+    ]
+
+
+def test_mission_replay_rejects_state_root_file(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_file = tmp_path / "state-file"
+    state_file.write_text("not a directory", encoding="utf-8")
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    with pytest.raises(MissionBehaviorError, match="must be directories"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state_file,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    assert store.audit_events[-1][0] == "behavior.replay.failed"

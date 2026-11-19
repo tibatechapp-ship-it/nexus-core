@@ -280,21 +280,23 @@ def run_mission_behavior_replay(
             "error": "behavior replay is allowed only for an existing completed mission",
         })
         raise MissionBehaviorError("behavior replay is allowed only for an existing completed mission")
-    state_path = Path(state_root).expanduser().resolve(strict=True)
-    repo_path = Path(mission.repo_path).expanduser().resolve(strict=True)
-    if (
-        state_path == repo_path
-        or repo_path in state_path.parents
-        or state_path in repo_path.parents
-    ):
-        raise MissionBehaviorError("mission state root must be outside the target repository")
-
     store.audit("behavior.replay.requested", mission_id, {
         "baseline_revision": baseline.revision,
         "case_count": len(cases),
         "execution_mode": "container",
     })
     try:
+        state_path = Path(state_root).expanduser().resolve(strict=True)
+        repo_path = Path(mission.repo_path).expanduser().resolve(strict=True)
+        if not state_path.is_dir() or not repo_path.is_dir():
+            raise MissionBehaviorError("mission state root and target repository must be directories")
+        if (
+            state_path == repo_path
+            or repo_path in state_path.parents
+            or state_path in repo_path.parents
+        ):
+            raise MissionBehaviorError("mission state root must be outside the target repository")
+
         # Verify the baseline before executing any candidate code. The
         # comparator repeats verification when producing the final verdict.
         for reference in baseline.evidence:
