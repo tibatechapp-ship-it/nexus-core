@@ -76,13 +76,21 @@ def run_in_container(
     docker = shutil.which(docker_binary)
     if docker is None:
         raise ContainerSandboxError("Docker CLI not found")
+    # Docker's selected context (including the rootless socket) is stored under
+    # the user's Docker config directory. Preserve only the executable search
+    # path and home directory for the Docker CLI; never forward this environment
+    # to the container or inherit unrelated host credentials/configuration.
+    docker_env = {
+        "PATH": os.path.dirname(docker),
+        "HOME": str(Path.home()),
+    }
     if require_rootless:
         try:
             daemon = subprocess.run(
                 [docker, "info", "--format", "{{json .SecurityOptions}}"],
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True, timeout=10, check=False,
-                env={"PATH": os.path.dirname(docker)},
+                env=docker_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ContainerSandboxError(f"rootless Docker preflight failed: {exc}") from exc
@@ -132,7 +140,7 @@ def run_in_container(
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env={"PATH": os.path.dirname(docker)},
+            env=docker_env,
             start_new_session=True,
         )
     except OSError as exc:

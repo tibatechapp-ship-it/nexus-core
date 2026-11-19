@@ -16,6 +16,8 @@ def test_container_refuses_non_rootless_daemon(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("src.coder.container_sandbox.shutil.which", lambda _: "/usr/bin/docker")
 
     def fake_run(*args, **kwargs):
+        assert kwargs["env"]["HOME"] == str(Path.home())
+        assert set(kwargs["env"]) == {"PATH", "HOME"}
         return subprocess.CompletedProcess(args[0], 0, stdout='["name=seccomp"]', stderr="")
 
     monkeypatch.setattr("src.coder.container_sandbox.subprocess.run", fake_run)
@@ -48,6 +50,7 @@ def test_container_accepts_rootless_security_option(tmp_path: Path, monkeypatch)
 
     def fake_popen(argv, **kwargs):
         captured["argv"] = argv
+        captured["env"] = kwargs["env"]
         proc = Proc()
         proc.stdout = __import__("io").BytesIO(b"ok")
         proc.stderr = __import__("io").BytesIO(b"")
@@ -59,6 +62,9 @@ def test_container_accepts_rootless_security_option(tmp_path: Path, monkeypatch)
         enabled=True, approved=True,
     )
     assert result["ok"] is True
+    assert set(captured["env"]) == {"PATH", "HOME"}
+    assert captured["env"]["HOME"] == str(Path.home())
+    assert "NEXUS_ENABLE_CONTAINER_SANDBOX" not in captured["env"]
     assert "--network=none" in captured["argv"]
     assert "--read-only" in captured["argv"]
     assert "--cap-drop=ALL" in captured["argv"]
