@@ -104,8 +104,8 @@ class TestRejectedPaths:
                 base = json.loads(super()._coder_plan_reply(prompt))
                 for step in base.get("steps", []):
                     step["patch_hint"] = re.sub(
-                        r"(?m)^([ \\t]*)return .* / .*$",
-                        r"\\1return value + divisor",
+                        r"(?m)^([ \t]*)return .* / .*$",
+                        r"\1return value + divisor",
                         step["patch_hint"],
                     )
                 return json.dumps(base, ensure_ascii=False)
@@ -132,7 +132,7 @@ class TestRejectedPaths:
                 import json
                 base = json.loads(super()._coder_plan_reply(prompt))
                 for step in base.get("steps", []):
-                    step["patch_hint"] += "\\n# TODO: لاحقًا\\n"
+                    step["patch_hint"] += "\n# TODO: لاحقًا\n"
                 return json.dumps(base, ensure_ascii=False)
 
         org = OrgStore(":memory:")
