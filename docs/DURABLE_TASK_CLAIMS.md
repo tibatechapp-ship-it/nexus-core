@@ -64,3 +64,25 @@ stored in `task_reconciliations` and appended to the audit log.
 
 This is operator authorization, not exactly-once execution. The replacement
 task remains pending and requires the normal orchestrator/worker claim path.
+
+
+## Heartbeats and fencing generations (schema v11)
+
+Each successful claim increments a task-local, monotonic `lease_generation`.
+The generation is copied to the immutable attempt history and returned in the
+claim object. Worker completion/failure should always pass that generation;
+the store rejects a mismatched generation even if a caller presents a token
+from an older execution.
+
+`heartbeat_task(task_id, worker_id, lease_token, lease_generation,
+lease_seconds=300)` extends only the current, unexpired lease. It performs a
+conditional update under an immediate SQLite transaction, verifies worker,
+random lease capability, and generation, and appends an audit event. A late
+heartbeat cannot resurrect an expired lease. Expiry still does not trigger
+automatic task replay or token release; operator reconciliation remains
+required because external work may still be active.
+
+Schema v11 adds the generation and heartbeat timestamps to tasks, the
+generation to attempt history, and optional task/attempt ownership columns
+to token reservations as groundwork for binding provider budgets to a
+specific execution claim. Existing rows are migrated additively.
