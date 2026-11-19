@@ -22,5 +22,5 @@ pytest-benchmark>=5.3.1
 syrupy>=4
 
 # ── voice  (optional voice features) ───────────────────────────────────────
-gTTS>=2.5.0
+gTTS>=2.5.4
 SpeechRecognition>=3.17.0
