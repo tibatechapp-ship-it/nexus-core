@@ -65,6 +65,8 @@ def test_container_accepts_rootless_security_option(tmp_path: Path, monkeypatch)
     assert set(captured["env"]) == {"PATH", "HOME"}
     assert captured["env"]["HOME"] == str(Path.home())
     assert "NEXUS_ENABLE_CONTAINER_SANDBOX" not in captured["env"]
+    mount_value = captured["argv"][captured["argv"].index("--mount") + 1]
+    assert mount_value == f"type=bind,src={tmp_path.resolve()},dst=/workspace"
     assert "--network=none" in captured["argv"]
     assert "--read-only" in captured["argv"]
     assert "--cap-drop=ALL" in captured["argv"]
