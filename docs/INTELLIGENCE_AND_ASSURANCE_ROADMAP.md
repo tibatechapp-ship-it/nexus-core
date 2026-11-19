@@ -302,7 +302,7 @@ The phase descriptions above define the destination; this ordered queue defines 
 7. **G5 — qualify a small critical agent cohort.** Build a labelled task corpus and score agents by real task outcomes, correctness, regressions, cost, latency, reliability, and evidence quality. Inventory/import success is not qualification.
 8. **G6 — expand capabilities and operations.** Add bounded read-only reverse-engineering adapters, then unify security/MIZAN evidence, then controlled MCP, dashboards, SLOs, recovery drills, cost controls, and release rollback. Do not reverse this order.
 
-**Current checkpoint (2026-11-19):** PR #148 head `e781d1926dbc61799000327c55163be5c6f97cf5`; Rootless Docker E2E succeeded on that SHA; the Python 3.11/3.12/3.13 framework test jobs were still running at the last live inspection; CI run was pending with no jobs exposed yet. G0 is therefore open. PR #148 and PR #147 remain Draft; no merge/release/deploy is authorized.
+**Live checkpoint policy:** PR #148 is the authoritative live status surface. Its current head SHA, CI, Python matrix, MIZAN/CodeQL, and Rootless Docker E2E results must be read from GitHub Actions for that exact head; this roadmap deliberately avoids embedding a mutable SHA/status snapshot that becomes stale after documentation-only commits. The MIZAN PR workflow now runs for stacked PRs as well as PRs targeting `main`. A green result on any prior SHA is historical only. G0 remains open until every required check completes on one exact head. PR #148 and PR #147 remain Draft; no merge/release/deploy is authorized.
 
 ### Revised delivery gates
 
