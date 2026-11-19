@@ -128,7 +128,9 @@ def _copy_verified_snapshot(source: Path, destination: Path) -> None:
                 dirs.remove(name)
         for name in sorted(files):
             item = current_path / name
-            if item.is_symlink() or not item.is_file():
+            if item.is_symlink():
+                raise MissionBehaviorError("symlink file in mission worktree is not replayable")
+            if not item.is_file():
                 raise MissionBehaviorError("non-regular file in mission worktree is not replayable")
             if _is_sensitive_name(name):
                 raise MissionBehaviorError(
@@ -209,6 +211,10 @@ def run_mission_behavior_replay(
 
     mission = store.mission_get(mission_id)
     if mission is None or mission.status != "done":
+        store.audit("behavior.replay.failed", mission_id, {
+            "error_type": "MissionBehaviorError",
+            "error": "behavior replay is allowed only for an existing completed mission",
+        })
         raise MissionBehaviorError("behavior replay is allowed only for an existing completed mission")
     state_path = Path(state_root).expanduser().resolve(strict=True)
     repo_path = Path(mission.repo_path).expanduser().resolve(strict=True)

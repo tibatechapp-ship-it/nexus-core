@@ -136,7 +136,12 @@ def test_mission_replay_rejects_noncompleted_mission_before_restore(tmp_path, mo
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
-    assert store.audit_events[-1][0] == "behavior.replay.requested"
+    assert store.audit_events == [(
+        "behavior.replay.failed", "mission-1", {
+            "error_type": "MissionBehaviorError",
+            "error": "behavior replay is allowed only for an existing completed mission",
+        }
+    )]
 
 
 def test_snapshot_copy_rejects_credentials(tmp_path):
@@ -222,3 +227,27 @@ def test_mission_replay_rejects_checkpoint_from_earlier_phase(tmp_path, monkeypa
 def test_behavior_case_spec_requires_fixture_placeholder():
     with pytest.raises(MissionBehaviorError, match="behavior_input"):
         BehaviorCaseSpec("health", ("python", "-V"), {})
+
+
+
+def test_snapshot_copy_rejects_symlink_directory(tmp_path):
+    import src.intelligence.mission as module
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (source / "linked-dir").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(MissionBehaviorError, match="symlink directory"):
+        module._copy_verified_snapshot(source, tmp_path / "copy")
+
+
+def test_snapshot_copy_rejects_nonregular_file(tmp_path):
+    import os
+    import src.intelligence.mission as module
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO files are not supported on this platform")
+    source = tmp_path / "source"
+    source.mkdir()
+    os.mkfifo(source / "pipe")
+    with pytest.raises(MissionBehaviorError, match="non-regular file"):
+        module._copy_verified_snapshot(source, tmp_path / "copy")
