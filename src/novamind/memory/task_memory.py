@@ -6,9 +6,10 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 logger = logging.getLogger("hive.memory.task_memory")
 
@@ -53,8 +54,20 @@ class TaskMemory:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
-    def _connect(self):
-        return sqlite3.connect(str(self.db_path))
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Yield a transactional connection and always close its handle.
+
+        sqlite3.Connection's context manager commits or rolls back; it does
+        not close the connection. Keep that transaction behavior while making
+        ownership deterministic for every TaskMemory operation.
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self):
         with self._connect() as conn:
