@@ -108,16 +108,6 @@ class OrgStore:
             self._closed = True
             raise
 
-    def __enter__(self) -> "OrgStore":
-        """Return this store from a managed resource scope."""
-        if self._closed:
-            raise RuntimeError("organization store is closed")
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """Release the owned connection when the scope exits."""
-        self.close()
-
     # ── المخطط والهجرة ────────────────────────────────────────────────────
 
     def _migrate(self) -> None:
@@ -2270,6 +2260,16 @@ class OrgStore:
                 return
             self._conn._conn.close()  # noqa: SLF001 — إغلاق الاتصال الخام فقط
             self._closed = True
+
+    def __enter__(self) -> "OrgStore":
+        """Return this store from a managed resource scope."""
+        if self._closed:
+            raise RuntimeError("organization store is closed")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release the owned connection when the scope exits."""
+        self.close()
 
     def __enter__(self) -> "OrgStore":
         """Return this store from a managed resource scope."""
