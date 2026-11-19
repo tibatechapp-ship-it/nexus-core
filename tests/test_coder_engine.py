@@ -218,9 +218,9 @@ async def test_model_plan_with_broken_json_is_feedback(tmp_path: Path) -> None:
 async def test_failed_attempt_restores_source_before_retry(tmp_path: Path) -> None:
     """A retry's exact find block is applied to the original snapshot."""
     (tmp_path / "mathlib.py").write_text(
-        "def add(a, b):\\n    return a + b\\n", encoding="utf-8")
+        "def add(a, b):\n    return a + b\n", encoding="utf-8")
     (tmp_path / "test_mathlib.py").write_text(
-        "from mathlib import add\\n\\ndef test_add():\\n    assert add(2, 3) == 5\\n",
+        "from mathlib import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
         encoding="utf-8",
     )
     wrong = [{"file": "mathlib.py", "action": "edit", "reason": "bad first try",
@@ -239,7 +239,7 @@ async def test_failed_attempt_restores_source_before_retry(tmp_path: Path) -> No
     assert result["attempts"][0]["tests_ok"] is False
     assert result["attempts"][1]["tests_ok"] is True
     assert (Path(result["workdir"]) / "mathlib.py").read_text().endswith(
-        "    return a + b\\n")
+        "    return a + b\n")
 
 
 async def test_failing_gate_blocks_success(tmp_path: Path) -> None:
