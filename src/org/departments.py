@@ -258,7 +258,7 @@ class DevelopmentDept:
     def _function_hint(objective: str, target: str) -> str:
         """Backward-compatible deterministic hint for older department clients."""
         import re
-        match = re.search(r"دالة\\s*[\x60\"']?(\\w+)", objective)
+        match = re.search(r"دالة\s*[`\"']?(\w+)", objective)
         if match:
             return match.group(1)
         for word in ("divide", "split", "parse", "validate", "login", "create"):
