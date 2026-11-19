@@ -150,24 +150,39 @@ class ExecutiveOrchestrator:
         if not isinstance(supplied, dict):
             raise OrgError("execution_policy is required; execution fails closed")
         policy = dict(supplied)
-        if policy.get("schema_version", 1) != 1:
+        schema_version = policy.get("schema_version", 1)
+        if type(schema_version) is not int or schema_version != 1:
             raise OrgError("unsupported execution policy schema")
         mode = policy.get("execution_mode")
+        common_keys = {"schema_version", "execution_mode", "max_revision_loops"}
+        if "max_revision_loops" in policy and (
+                type(policy["max_revision_loops"]) is not int
+                or policy["max_revision_loops"] != self.max_revision_loops):
+            raise OrgError("max_revision_loops is controlled by the orchestrator")
         if mode == "process":
+            allowed = common_keys | {"trusted_local"}
+            if set(policy) - allowed:
+                raise OrgError("process mode contains unsupported execution policy fields")
             if policy.get("trusted_local") is not True:
                 raise OrgError("process mode requires explicit trusted_local=true")
-            forbidden = {"container_enabled", "container_approved", "approval_id"}
-            if any(key in policy for key in forbidden):
-                raise OrgError("process mode cannot carry container approval fields")
         elif mode == "container":
+            allowed = common_keys | {
+                "container_enabled", "container_image", "approval_id",
+            }
+            if set(policy) - allowed:
+                raise OrgError("container mode contains unsupported execution policy fields")
             image = policy.get("container_image")
             approval_id = policy.get("approval_id")
             if policy.get("container_enabled") is not True:
                 raise OrgError("container mode requires explicit enablement")
-            if (not isinstance(image, str) or "@sha256:" not in image
-                    or len(image.rsplit("@sha256:", 1)[-1]) != 64
-                    or any(ch not in "0123456789abcdefABCDEF"
-                           for ch in image.rsplit("@sha256:", 1)[-1])):
+            digest = (
+                image.rsplit("@sha256:", 1)[-1]
+                if isinstance(image, str) and image.count("@sha256:") == 1
+                else ""
+            )
+            if (not isinstance(image, str) or not image.split("@sha256:", 1)[0]
+                    or len(digest) != 64
+                    or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
                 raise OrgError("container mode requires a valid immutable sha256 image digest")
             if not isinstance(approval_id, str) or not approval_id.strip():
                 raise OrgError("container mode requires a recorded human approval_id")
