@@ -109,7 +109,7 @@ Acceptance:
 
 ### Phase 2 — Behavior Verification Engine
 
-**Priority: P1; first functional engine. Status: comparison contract, combined review gate, and safe fixture-capture adapter implemented; approved execution/replay integration remains open.**
+**Priority: P1; first functional engine. Status: comparison contract, combined review gate, safe fixture capture, and approval-gated rootless replay adapter implemented; mission lifecycle integration remains open.**
 
 Deliverables:
 - baseline capture for explicitly selected, safe test commands and API/function contracts;
@@ -121,9 +121,10 @@ Deliverables:
 Implemented first vertical slice:
 - [x] src/intelligence/behavior.py: canonical JSON payload digests, immutable baseline/case/observation contracts, evidence verification, and deterministic comparison verdicts.
 - [x] src/intelligence/capture.py: bounded recording adapter for already-collected, sanitized fixtures; stores content-digested evidence through an injected immutable evidence sink.
-- [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, verifier exceptions, capture round trips, sink tampering, and size limits.
+- [x] src/intelligence/replay.py: mission-approval-gated adapter that verifies the persisted run_untrusted approval and invokes only the existing rootless container sandbox; process mode is rejected.
+- [x] Tests cover equivalent behavior, output regressions, input drift, missing/not-run cases, unexpected/duplicate cases, invalid evidence, verifier exceptions, capture round trips, sink tampering, approval denial, image mismatch, rootless runner result validation, and size limits.
 - [x] Comparator and capture adapter perform no execution, subprocess launch, repository import, or network access.
-- [ ] Add an execution adapter that obtains mission authorization and invokes only the existing approved rootless-container runner; no legacy process runner.
+- [ ] Integrate replay into the mission lifecycle with per-case disposable workspaces and durable audit records; do not auto-run on arbitrary missions.
 - [x] Combine the evidence AssuranceDecision and BehaviorComparison through a deterministic review gate; only both assured + equivalent yield an assured result.
 - [ ] Connect baseline/candidate evidence to Coder Engine quality results and mission audit records.
 
