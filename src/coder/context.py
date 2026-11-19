@@ -222,7 +222,7 @@ def build_code_context(
             truncated = True
             raw = raw[:max_file_bytes]
         try:
-            source = raw.decode("utf-8")
+            source = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
         except UnicodeDecodeError:
             continue
         remaining = max_total_chars - total
