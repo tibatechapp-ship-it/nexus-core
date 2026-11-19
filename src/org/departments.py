@@ -22,7 +22,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.org.agents import AgentOutcome, AgentRuntime, AgentSpec, Tool, ToolRegistry
 from src.coder.engine import run_engine
@@ -246,8 +246,13 @@ class RepoIntelDept:
 class DevelopmentDept:
     """قسم التطوير — يفوض التخطيط والتنفيذ والتحقق إلى Coder Engine."""
 
-    def __init__(self, runtime: AgentRuntime) -> None:
+    def __init__(
+        self,
+        runtime: AgentRuntime,
+        connector_factory: Callable[[AgentRuntime, str], Any] | None = None,
+    ) -> None:
         self.runtime = runtime
+        self.connector_factory = connector_factory
 
     @staticmethod
     def _run_async(coro: Any) -> Any:
@@ -272,9 +277,13 @@ class DevelopmentDept:
             raise DepartmentError("لا ملفات هدف محددة للتطوير")
 
         engine_workdir = Path(tempfile.mkdtemp(prefix="nexus-coder-mission-"))
-        connector = OrgRuntimeConnector(
-            self.runtime, mission_id=ctx.mission.id,
-            max_tokens=4000, max_retries=1, timeout_s=120.0,
+        connector = (
+            self.connector_factory(self.runtime, ctx.mission.id)
+            if self.connector_factory is not None else
+            OrgRuntimeConnector(
+                self.runtime, mission_id=ctx.mission.id,
+                max_tokens=4000, max_retries=1, timeout_s=120.0,
+            )
         )
         try:
             result = self._run_async(run_engine(
@@ -682,8 +691,11 @@ class ReleaseDept:
 class Departments:
     """مجمّع الأقسام الثمانية — بناء واحد بأسلاك مشتركة معلنة."""
 
-    def __init__(self, pool: ProviderPool, org_store: OrgStore,
-                 ops_store: OpsStore, outdir: str | Path = "reports/org") -> None:
+    def __init__(
+        self, pool: ProviderPool, org_store: OrgStore,
+        ops_store: OpsStore, outdir: str | Path = "reports/org",
+        coder_connector_factory: Callable[[AgentRuntime, str], Any] | None = None,
+    ) -> None:
         self.pool = pool
         self.org_store = org_store
         self.ops_store = ops_store
@@ -694,7 +706,7 @@ class Departments:
         self.runtime = AgentRuntime(pool, self.tools, org_store)
         self.requirements = RequirementsOffice(self.runtime)
         self.intel = RepoIntelDept(self.runtime, self.guard)
-        self.development = DevelopmentDept(self.runtime)
+        self.development = DevelopmentDept(self.runtime, coder_connector_factory)
         self.security = SecurityDept(self.runtime, self.guard)
         self.qa = QADept(self.runner, org_store)
         self.council = ReviewCouncil(self.runtime, org_store)
