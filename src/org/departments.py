@@ -359,6 +359,11 @@ class DevelopmentDept:
                 container_enabled=container_enabled,
                 container_approved=container_approved,
                 test_timeout=90,
+                # The engine already runs the plan-declared tests. The org
+                # pipeline runs its own QA/security gates afterward; invoking
+                # the engine's repository-wide defaults here would recursively
+                # execute this same integration suite inside its own fixture.
+                gates=[],
             ))
             usage = connector.usage_total
             if any(usage.values()):
