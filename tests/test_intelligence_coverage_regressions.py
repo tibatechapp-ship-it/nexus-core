@@ -20,7 +20,11 @@ def test_sanitizer_handles_nested_values_and_all_supported_secret_forms() -> Non
             "Bearer abc.def.ghi api_key=key-value token:plain-token "
             + token + " " + github_pat + " AKIA1234567890ABCDEF"
         ),
-        "private": "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----",
+        "private": (
+            "-----BEGIN " + "PRIVATE KEY" + "-----"
+            + "\nsecret-material\n"
+            + "-----END " + "PRIVATE KEY" + "-----"
+        ),
     }
     clean = sanitize_payload(payload)
     assert clean["nested"][0]["safe"] == "ok"
