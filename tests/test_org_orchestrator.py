@@ -157,7 +157,11 @@ class TestPhaseGates:
     def test_missing_repo_fails_loudly(
             self, orchestrator: ExecutiveOrchestrator) -> None:
         mission = orchestrator.execute(Mission(
-            title="t", objective="o", repo_path="/nonexistent/repo"))
+            title="t", objective="o", repo_path="/nonexistent/repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.status == "failed"
         rows = [r for r in orchestrator.org_store.tail_audit(20)
                 if r["action"] == "mission.failed"]
@@ -206,7 +210,11 @@ class TestRevisionLoop:
             title="دورة مراجعة",
             objective=("أضف حارس قسمة على صفر إلى دالة divide في وحدة "
                        "calc.mathops مع اختبارات"),
-            repo_path="examples/org_demo/fixture_repo"))
+            repo_path="examples/org_demo/fixture_repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.status == "failed"
         assert mission.revision_loops >= 1
 
@@ -370,7 +378,8 @@ class TestExplicitMissionResume:
 
         ctx = MissionContext(
             mission=mission,
-            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+                              "execution_mode": "process", "trusted_local": True},
         )
         save_mission_context_snapshot(
             orchestrator.org_store, ctx, state_root)
