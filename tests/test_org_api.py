@@ -123,6 +123,41 @@ class TestWriteEndpointsAuth:
         stored = org.mission_get(mission_id)
         assert stored is not None and stored.status == "created"
 
+    def test_resume_endpoint_requires_operator_and_forwards_audit_context(
+            self, client: tuple[TestClient, OrgStore],
+            monkeypatch: pytest.MonkeyPatch) -> None:
+        http, org = client
+        created = http.post("/org/missions", json={
+            "title": "resume route", "objective": "forward operator audit context",
+        }, headers=AUTH)
+        mission_id = created.json()["id"]
+        from src.org.orchestrator import ExecutiveOrchestrator
+        captured: dict[str, object] = {}
+
+        def fake_resume(self, mission_id: str, *, actor: str, reason: str,
+                        expected_repo_root: str | None = None) -> Mission:
+            captured.update({
+                "mission_id": mission_id, "actor": actor, "reason": reason,
+                "expected_repo_root": expected_repo_root,
+            })
+            mission = org.mission_get(mission_id)
+            assert mission is not None
+            return mission
+
+        monkeypatch.setattr(ExecutiveOrchestrator, "resume_mission", fake_resume)
+        response = http.post(
+            f"/org/missions/{mission_id}/resume",
+            json={"actor": "release-operator", "reason": "validated checkpoint",
+                  "expected_repo_root": "/workspace/repo"},
+            headers=AUTH,
+        )
+        assert response.status_code == 200
+        assert captured == {
+            "mission_id": mission_id, "actor": "release-operator",
+            "reason": "validated checkpoint",
+            "expected_repo_root": "/workspace/repo",
+        }
+
     def test_run_maps_invalid_execution_policy_to_client_error(
             self, client: tuple[TestClient, OrgStore]) -> None:
         http, org = client
