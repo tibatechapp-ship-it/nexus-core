@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 
 import pytest
 
@@ -26,7 +27,7 @@ def test_learn_from_pr_review_persists_normalized_findings(tmp_path):
     assert len(records) == 1
     assert records[0]["agent"] == "pr-review-learner"
     assert records[0]["tags"] == ["pr-review", "review-learning"]
-    assert "Missing authorization check" in records[0]["input_hash"] or records[0]["input_size"] > 0
+    expected_payload = json.dumps(\n        [\n            {"description": "Missing authorization check", "severity": "high"},\n            {"description": "Potential resource leak", "severity": "info"},\n        ],\n        ensure_ascii=False,\n        sort_keys=True,\n    )\n    assert records[0]["input_hash"] == hashlib.sha256(expected_payload.encode()).hexdigest()
 
 
 def test_learn_from_pr_review_empty_findings_do_not_write(tmp_path):
