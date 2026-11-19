@@ -35,8 +35,9 @@ def _observation(
 
 
 def _compare(observations: tuple[BehaviorObservation, ...], verifier=lambda _: True):
+    references = (_OBS_EVIDENCE,) if observations else ()
     return compare_behavior(
-        _baseline(), observations, observation_evidence=(_OBS_EVIDENCE,),
+        _baseline(), observations, observation_evidence=references,
         verify_evidence=verifier,
     )
 
@@ -230,3 +231,43 @@ def test_combined_gate_requires_human_for_partial_assurance() -> None:
 def test_combined_gate_rejects_invalid_inputs() -> None:
     decision = evaluate_behavior_gate(None, None)
     assert decision.verdict is BehaviorGateVerdict.REJECTED
+
+
+
+def test_baseline_rejects_reused_or_orphaned_evidence_references() -> None:
+    with pytest.raises(BehaviorContractError, match="distinct evidence"):
+        BehaviorBaseline(
+            "repo", "rev",
+            (
+                BehaviorCase("one", _INPUT, _OUTPUT, "base-ev"),
+                BehaviorCase("two", _INPUT, _OUTPUT, "base-ev"),
+            ),
+            (_EVIDENCE,),
+        )
+    orphan = EvidenceReference("orphan", "baseline", "orphan.json", "c" * 64, "test")
+    with pytest.raises(BehaviorContractError, match="one-to-one"):
+        BehaviorBaseline(
+            "repo", "rev",
+            (BehaviorCase("one", _INPUT, _OUTPUT, "base-ev"),),
+            (_EVIDENCE, orphan),
+        )
+
+
+def test_candidate_evidence_must_map_one_to_one_to_observations() -> None:
+    orphan = EvidenceReference("orphan", "observation", "orphan.json", "c" * 64, "test")
+    result = compare_behavior(
+        _baseline(), (_observation(),), observation_evidence=(_OBS_EVIDENCE, orphan),
+        verify_evidence=lambda _: True,
+    )
+    assert result.verdict is BehaviorVerdict.INVALID
+
+
+def test_duplicate_candidate_evidence_reference_is_invalid() -> None:
+    duplicate = BehaviorObservation(
+        "other-case", _INPUT, _OUTPUT, ObservationStatus.PASSED, "run-ev"
+    )
+    result = compare_behavior(
+        _baseline(), (_observation(), duplicate),
+        observation_evidence=(_OBS_EVIDENCE,), verify_evidence=lambda _: True,
+    )
+    assert result.verdict is BehaviorVerdict.INVALID
