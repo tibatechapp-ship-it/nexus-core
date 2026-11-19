@@ -547,9 +547,20 @@ def test_d12_mizan_evidence_job_is_read_only() -> None:
     steps = job["steps"]
     assert not any("secrets." in str(step) for step in steps)
     assert not any("token:" in str(step).lower() for step in steps)
-    checkout = next(step for step in steps
-                    if step.get("name") == "Checkout exact PR revision")
-    assert checkout["with"]["persist-credentials"] is False
+    trusted_checkout = next(
+        step for step in steps
+        if step.get("name") == "Checkout trusted evidence adapter"
+    )
+    candidate_checkout = next(
+        step for step in steps
+        if step.get("name") == "Checkout exact PR revision as scan input"
+    )
+    assert trusted_checkout["with"]["persist-credentials"] is False
+    assert candidate_checkout["with"]["persist-credentials"] is False
+    assert trusted_checkout["with"]["path"] != candidate_checkout["with"]["path"]
+    adapter_step = next(step for step in steps if step.get("id") == "scan")
+    assert "mizan-tool/scripts/mizan/build_pr_evidence.py" in adapter_step["run"]
+    assert "--repo target" in adapter_step["run"]
     runs_text = " ".join(str(step.get("run", "")) for step in steps)
     assert "git push" not in runs_text
     assert "git commit" not in runs_text
