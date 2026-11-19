@@ -89,6 +89,26 @@ class TestPlan:
 
 
 class TestExecutionPolicy:
+    def test_execute_rejects_mission_that_is_not_new(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="already running", objective="must not execute twice",
+        ))
+        running = Mission(
+            title=mission.title, objective=mission.objective,
+            repo_path=mission.repo_path, phase=mission.phase,
+            status="running", id=mission.id,
+        )
+        orchestrator.org_store.mission_update(running)
+        with pytest.raises(OrgError, match="cannot be executed from status"):
+            orchestrator.execute(
+                running,
+                execution_policy={
+                    "schema_version": 1, "execution_mode": "process",
+                    "trusted_local": True,
+                },
+            )
+
     def test_container_requires_approved_image_bound_record(
             self, orchestrator: ExecutiveOrchestrator) -> None:
         from src.org.contracts import Approval
