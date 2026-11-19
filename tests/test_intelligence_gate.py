@@ -75,7 +75,7 @@ def test_empty_authorized_scope_is_rejected() -> None:
 
 def test_missing_evidence_is_rejected() -> None:
     decision = evaluate_assurance(
-        _result(evidence=()), authorized_scope=("src/",), verify_evidence=_verify
+        _result(evidence=(), findings=()), authorized_scope=("src/",), verify_evidence=_verify
     )
     assert decision.verdict is AssuranceVerdict.REJECTED
     assert "no verifiable evidence" in decision.reasons[0]
