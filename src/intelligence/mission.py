@@ -452,7 +452,8 @@ def run_mission_behavior_replay(
         return result
     except Exception as exc:
         store.audit("behavior.replay.failed", mission_id, {
-            "error_type": type(exc).__name__, "error": str(exc)[:500],
+            "error_type": type(exc).__name__,
+            "error": str(sanitize_payload(str(exc)))[:500],
         })
         if isinstance(exc, MissionBehaviorError):
             raise
