@@ -49,11 +49,11 @@ class DeterministicCoderConnector:
                     "file": "calc/mathops.py",
                     "action": "edit",
                     "reason": "Reject zero divisor",
-                    "find": "def divide(a, b):\\n    return a / b",
+                    "find": "def divide(a, b):\n    return a / b",
                     "patch_hint": (
-                        "def divide(a, divisor):\\n"
-                        "    if divisor == 0:\\n"
-                        "        raise ZeroDivisionError('division by zero')\\n"
+                        "def divide(a, divisor):\n"
+                        "    if divisor == 0:\n"
+                        "        raise ZeroDivisionError('division by zero')\n"
                         "    return a / divisor"
                     ),
                     "risk": "low",
@@ -281,15 +281,15 @@ class TestRepairPlanWorktreeTransfer:
         from src.org.sandbox import Worktree
 
         wt = Worktree.from_source(tmp_path, files=[])
-        wt.write("pkg/mod.py", "VALUE = 1\\n")
+        wt.write("pkg/mod.py", "VALUE = 1\n")
         applied = wt.apply_repair_steps([
             {"file": "pkg/mod.py", "action": "edit", "find": "VALUE = 1",
              "patch_hint": "VALUE = 2"},
-            {"file": "pkg/new.py", "action": "create", "patch_hint": "NEW = True\\n"},
+            {"file": "pkg/new.py", "action": "create", "patch_hint": "NEW = True\n"},
         ])
         assert applied == ["pkg/mod.py", "pkg/new.py"]
-        assert wt.read("pkg/mod.py") == "VALUE = 2\\n"
-        assert wt.read("pkg/new.py") == "NEW = True\\n"
+        assert wt.read("pkg/mod.py") == "VALUE = 2\n"
+        assert wt.read("pkg/new.py") == "NEW = True\n"
         deleted = wt.apply_repair_steps([
             {"file": "pkg/new.py", "action": "delete"}
         ])
@@ -301,8 +301,8 @@ class TestRepairPlanWorktreeTransfer:
         from src.org.sandbox import Worktree
 
         wt = Worktree.from_source(tmp_path, files=[])
-        wt.write("first.py", "VALUE = 1\\n")
-        wt.write("second.py", "VALUE = 1\\nVALUE = 1\\n")
+        wt.write("first.py", "VALUE = 1\n")
+        wt.write("second.py", "VALUE = 1\nVALUE = 1\n")
         with pytest.raises(ValueError, match="exactly once"):
             wt.apply_repair_steps([
                 {"file": "first.py", "action": "edit", "find": "VALUE = 1",
@@ -310,7 +310,7 @@ class TestRepairPlanWorktreeTransfer:
                 {"file": "second.py", "action": "edit", "find": "VALUE = 1",
                  "patch_hint": "VALUE = 2"},
             ])
-        assert wt.read("first.py") == "VALUE = 1\\n"
+        assert wt.read("first.py") == "VALUE = 1\n"
 
     @pytest.mark.parametrize("path", ["../escape.py", "/tmp/escape.py", "a/../../escape.py"])
     def test_path_escape_is_rejected(self, tmp_path: Path, path: str) -> None:
