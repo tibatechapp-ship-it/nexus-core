@@ -309,6 +309,12 @@ class DevelopmentDept:
                 raise DepartmentError("Coder Engine لم يُرجع RepairPlan قابلة للتطبيق")
 
             repo_root = Path(repo_path).resolve()
+            allowed_paths = set(ctx.originals)
+            for key in ("direct", "transitive", "test_files"):
+                values = ctx.affected.get(key, [])
+                if isinstance(values, list):
+                    allowed_paths.update(str(value) for value in values)
+            allowed_dirs = {str(Path(value).parent.as_posix()) for value in allowed_paths}
             for step in plan["steps"]:
                 if not isinstance(step, dict):
                     raise DepartmentError("RepairPlan تحتوي خطوة غير صالحة")
@@ -318,6 +324,12 @@ class DevelopmentDept:
                 source = (repo_root / rel).resolve()
                 if not source.is_relative_to(repo_root):
                     raise DepartmentError(f"مسار خارج المستودع مرفوض: {rel}")
+                if step.get("action") in {"edit", "delete"} and rel not in allowed_paths:
+                    raise DepartmentError(f"الملف خارج نطاق المهمة المعلن: {rel}")
+                if step.get("action") == "create":
+                    parent = Path(rel).parent.as_posix()
+                    if parent not in allowed_dirs:
+                        raise DepartmentError(f"إنشاء ملف خارج نطاق المهمة مرفوض: {rel}")
                 if rel not in ctx.originals:
                     try:
                         ctx.originals[rel] = (
