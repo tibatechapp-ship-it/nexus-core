@@ -144,3 +144,49 @@ def test_decision_serialization_is_stable() -> None:
     result = _compare((_observation(),))
     assert result.to_dict()["verdict"] == "equivalent"
     assert result.to_dict()["equivalent"] is True
+
+
+
+def test_baseline_round_trip_serialization() -> None:
+    baseline = _baseline()
+    assert BehaviorBaseline.from_dict(baseline.to_dict()) == baseline
+
+
+def test_baseline_rejects_unknown_serialized_fields() -> None:
+    payload = _baseline().to_dict()
+    payload["untrusted"] = True
+    with pytest.raises(BehaviorContractError):
+        BehaviorBaseline.from_dict(payload)
+
+
+def test_observation_round_trip_serialization() -> None:
+    observation = _observation()
+    assert BehaviorObservation.from_dict(observation.to_dict()) == observation
+
+
+def test_observation_rejects_unknown_serialized_fields() -> None:
+    payload = _observation().to_dict()
+    payload["extra"] = "ignored?"
+    with pytest.raises(BehaviorContractError):
+        BehaviorObservation.from_dict(payload)
+
+
+def test_baseline_and_candidate_evidence_ids_cannot_collide() -> None:
+    colliding = EvidenceReference("base-ev", "observation", "run.json", "b" * 64, "test")
+    result = compare_behavior(
+        _baseline(), (_observation(),), observation_evidence=(colliding,),
+        verify_evidence=lambda _: True,
+    )
+    assert result.verdict is BehaviorVerdict.INVALID
+
+
+def test_observation_evidence_count_is_bounded() -> None:
+    refs = tuple(
+        EvidenceReference(f"run-{i}", "observation", f"run-{i}.json", "b" * 64, "test")
+        for i in range(5001)
+    )
+    result = compare_behavior(
+        _baseline(), (_observation(),), observation_evidence=refs,
+        verify_evidence=lambda _: True,
+    )
+    assert result.verdict is BehaviorVerdict.INVALID

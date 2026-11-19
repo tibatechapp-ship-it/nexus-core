@@ -17,6 +17,7 @@ from .contracts import EvidenceReference
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MAX_CASES = 1000
+_MAX_EVIDENCE = 5000
 _MAX_PAYLOAD_BYTES = 1024 * 1024
 
 
@@ -94,8 +95,8 @@ class BehaviorBaseline:
             raise BehaviorContractError("baseline must contain between 1 and 1000 cases")
         if any(not isinstance(item, BehaviorCase) for item in self.cases):
             raise BehaviorContractError("baseline contains an invalid case")
-        if not isinstance(self.evidence, (tuple, list)) or not self.evidence:
-            raise BehaviorContractError("baseline evidence is required")
+        if not isinstance(self.evidence, (tuple, list)) or not 1 <= len(self.evidence) <= _MAX_EVIDENCE:
+            raise BehaviorContractError("baseline must contain between 1 and 5000 evidence references")
         if any(not isinstance(item, EvidenceReference) for item in self.evidence):
             raise BehaviorContractError("baseline contains invalid evidence")
         ids = [item.case_id for item in self.cases]
@@ -108,6 +109,52 @@ class BehaviorBaseline:
             raise BehaviorContractError("baseline case references unknown evidence")
         object.__setattr__(self, "cases", tuple(self.cases))
         object.__setattr__(self, "evidence", tuple(self.evidence))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target": self.target,
+            "revision": self.revision,
+            "cases": [
+                {
+                    "case_id": item.case_id,
+                    "input_sha256": item.input_sha256,
+                    "output_sha256": item.output_sha256,
+                    "evidence_id": item.evidence_id,
+                }
+                for item in self.cases
+            ],
+            "evidence": [item.to_dict() for item in self.evidence],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "BehaviorBaseline":
+        if not isinstance(data, Mapping) or set(data) != {"target", "revision", "cases", "evidence"}:
+            raise BehaviorContractError("baseline must contain exactly target, revision, cases, and evidence")
+        raw_cases = data["cases"]
+        raw_evidence = data["evidence"]
+        if not isinstance(raw_cases, (tuple, list)) or not isinstance(raw_evidence, (tuple, list)):
+            raise BehaviorContractError("baseline cases and evidence must be arrays")
+        cases: list[BehaviorCase] = []
+        for item in raw_cases:
+            if not isinstance(item, Mapping) or set(item) != {"case_id", "input_sha256", "output_sha256", "evidence_id"}:
+                raise BehaviorContractError("baseline case has unknown or missing fields")
+            try:
+                cases.append(BehaviorCase(**dict(item)))
+            except TypeError as exc:
+                raise BehaviorContractError(f"invalid baseline case: {exc}") from exc
+        evidence = tuple(
+            item if isinstance(item, EvidenceReference) else EvidenceReference.from_dict(item)
+            for item in raw_evidence
+        )
+        try:
+            return cls(
+                target=data["target"],
+                revision=data["revision"],
+                cases=tuple(cases),
+                evidence=evidence,
+            )
+        except (KeyError, TypeError) as exc:
+            raise BehaviorContractError(f"invalid baseline fields: {exc}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +174,25 @@ class BehaviorObservation:
             object.__setattr__(self, "status", ObservationStatus(self.status))
         except (TypeError, ValueError) as exc:
             raise BehaviorContractError(f"unsupported observation status: {exc}") from exc
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "case_id": self.case_id,
+            "input_sha256": self.input_sha256,
+            "output_sha256": self.output_sha256,
+            "status": self.status.value,
+            "evidence_id": self.evidence_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "BehaviorObservation":
+        expected = {"case_id", "input_sha256", "output_sha256", "status", "evidence_id"}
+        if not isinstance(data, Mapping) or set(data) != expected:
+            raise BehaviorContractError("observation has unknown or missing fields")
+        try:
+            return cls(**dict(data))
+        except TypeError as exc:
+            raise BehaviorContractError(f"invalid observation fields: {exc}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,9 +254,14 @@ def compare_behavior(
     observed_ids = [item.case_id for item in observations]
     if len(observed_ids) != len(set(observed_ids)):
         return BehaviorComparison(BehaviorVerdict.INVALID, ("duplicate observation case IDs",))
+    if len(observation_evidence) > _MAX_EVIDENCE:
+        return BehaviorComparison(BehaviorVerdict.INVALID, ("too many observation evidence references",))
     evidence_ids = [item.evidence_id for item in observation_evidence]
+    baseline_evidence_ids = {item.evidence_id for item in baseline.evidence}
     if len(evidence_ids) != len(set(evidence_ids)):
         return BehaviorComparison(BehaviorVerdict.INVALID, ("duplicate observation evidence IDs",))
+    if baseline_evidence_ids.intersection(evidence_ids):
+        return BehaviorComparison(BehaviorVerdict.INVALID, ("baseline and observation evidence IDs must be distinct",))
     known_observation_evidence = set(evidence_ids)
     if any(item.evidence_id not in known_observation_evidence for item in observations):
         return BehaviorComparison(BehaviorVerdict.INVALID, ("observation references unknown evidence",))
