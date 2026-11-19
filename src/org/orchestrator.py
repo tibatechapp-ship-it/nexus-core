@@ -142,6 +142,53 @@ class ExecutiveOrchestrator:
         self.max_revision_loops = max_revision_loops
         self.state_root = Path(state_root or Path.home() / ".nexus-core" / "missions")
 
+    def _validated_execution_policy(
+            self, mission_id: str,
+            supplied: dict[str, Any] | None, *,
+            require_approval: bool) -> dict[str, Any]:
+        """Validate and normalize the security decision; never infer trust."""
+        if not isinstance(supplied, dict):
+            raise OrgError("execution_policy is required; execution fails closed")
+        policy = dict(supplied)
+        if policy.get("schema_version", 1) != 1:
+            raise OrgError("unsupported execution policy schema")
+        mode = policy.get("execution_mode")
+        if mode == "process":
+            if policy.get("trusted_local") is not True:
+                raise OrgError("process mode requires explicit trusted_local=true")
+            forbidden = {"container_enabled", "container_approved", "approval_id"}
+            if any(key in policy for key in forbidden):
+                raise OrgError("process mode cannot carry container approval fields")
+        elif mode == "container":
+            image = policy.get("container_image")
+            approval_id = policy.get("approval_id")
+            if policy.get("container_enabled") is not True:
+                raise OrgError("container mode requires explicit enablement")
+            if (not isinstance(image, str) or "@sha256:" not in image
+                    or len(image.rsplit("@sha256:", 1)[-1]) != 64
+                    or any(ch not in "0123456789abcdefABCDEF"
+                           for ch in image.rsplit("@sha256:", 1)[-1])):
+                raise OrgError("container mode requires a valid immutable sha256 image digest")
+            if not isinstance(approval_id, str) or not approval_id.strip():
+                raise OrgError("container mode requires a recorded human approval_id")
+            if require_approval:
+                approvals = self.org_store.approvals_for(mission_id)
+                approval = next((item for item in approvals
+                                 if item.id == approval_id), None)
+                if (approval is None or approval.kind != "run_untrusted"
+                        or approval.approved is not True
+                        or not approval.decided_by
+                        or approval.subject != image):
+                    raise OrgError(
+                        "container execution requires an approved run_untrusted "
+                        "record bound to the exact image digest"
+                    )
+        else:
+            raise OrgError("execution_mode must be process or container")
+        policy["schema_version"] = 1
+        policy["max_revision_loops"] = self.max_revision_loops
+        return policy
+
     # ── التخطيط ───────────────────────────────────────────────────────────
 
     def plan(self, mission: Mission) -> ExecutionPlan:
