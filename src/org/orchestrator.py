@@ -21,7 +21,7 @@ import json
 import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from src.org.contracts import (
@@ -399,6 +399,7 @@ class ExecutiveOrchestrator:
                 out = self.depts.qa.patched(ctx)
             elif spec.dept == "release":
                 out = self.depts.release.run(ctx)
+                self._persist_release_artifacts(ctx.mission.id, out)
             else:
                 raise DepartmentError(f"قسم بلا منفّذ في هذا الطور: {spec.dept}")
             self._persist_claims(ctx)
@@ -754,6 +755,51 @@ class ExecutiveOrchestrator:
             # the immutable checkpoint copy.
             if ctx.worktree is not None and getattr(ctx.worktree, "_owned", False):
                 ctx.worktree.cleanup()
+
+    def _persist_release_artifacts(
+            self, mission_id: str, output: Any) -> None:
+        """Persist release artifact pointers before the release task is committed."""
+        if not isinstance(output, dict):
+            raise OrgError("release department returned a non-object result")
+        required = ("branch", "patch_path", "report_path", "ticket_id")
+        missing = [
+            key for key in required
+            if not isinstance(output.get(key), str) or not output[key].strip()
+        ]
+        if missing:
+            raise OrgError(
+                "release result is missing required artifact metadata: "
+                + ", ".join(missing)
+            )
+        if output.get("publish_allowed") is not False:
+            raise OrgError("release result must keep publish_allowed=false")
+
+        stored = self.org_store.mission_get(mission_id)
+        if stored is None:
+            raise OrgError("cannot persist release artifacts for a missing mission")
+        ticket_ids = list(stored.ticket_ids)
+        ticket_id = output["ticket_id"].strip()
+        if ticket_id not in ticket_ids:
+            ticket_ids.append(ticket_id)
+        updated = replace(
+            stored,
+            branch=output["branch"].strip(),
+            patch_path=output["patch_path"].strip(),
+            report_path=output["report_path"].strip(),
+            ticket_ids=ticket_ids,
+        )
+        self.org_store.mission_update(updated)
+        self.org_store.audit(
+            "mission.release_artifacts.persisted", mission_id,
+            {
+                "branch": updated.branch,
+                "patch_path": updated.patch_path,
+                "report_path": updated.report_path,
+                "ticket_id": ticket_id,
+                "approval_id": str(output.get("approval_id", ""))[:128],
+                "publish_allowed": False,
+            },
+        )
 
     def _persist_claims(self, ctx: MissionContext) -> None:
         """تخزين ادعاءات جديدة فقط — لا تكرار للادعاء المخزن."""
