@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 import json
 import time
 import math
@@ -24,7 +25,7 @@ class MemoryManager:
         self._init_db()
 
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS memories (
@@ -73,7 +74,7 @@ class MemoryManager:
         embedding = await self._get_embedding(content)
         timestamp = time.time()
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO memories (session_id, role, content, embedding, metadata, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
@@ -82,7 +83,7 @@ class MemoryManager:
             conn.commit()
 
     def get_recent_history(self, session_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT role, content FROM memories WHERE session_id = ? ORDER BY timestamp DESC LIMIT ?",
@@ -93,7 +94,7 @@ class MemoryManager:
 
     async def recall_semantic_memories(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         query_vec = await self._get_embedding(query)
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id, session_id, role, content, embedding, metadata FROM memories")
             rows = cursor.fetchall()
