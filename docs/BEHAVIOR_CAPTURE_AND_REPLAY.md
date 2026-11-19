@@ -85,9 +85,12 @@ observations, evidence = capture_observations(
 )
 ```
 
-The caller must stage the sanitized fixture in the case workspace and make the
-declared command consume that fixture. `input_payload` is the canonical evidence
-representation and digest source; it is not implicitly sent to the process as stdin.
+Each case declaration must contain exactly one `{behavior_input}` argv token.
+The mission adapter replaces it with the in-container path
+`/workspace/.nexus-behavior/input.json` and stages the canonical JSON fixture
+inside that case's disposable workspace. This avoids shell interpolation and
+makes the exact input payload available to the declared command without stdin
+ambiguity. The fixture is limited to 1 MiB and receives owner-only permissions.
 Each case workspace must be independently prepared from the same candidate snapshot,
 not reused after another case has executed.
 

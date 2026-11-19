@@ -86,6 +86,9 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
         assert len(set(workspaces)) == 2
         assert all((path / "app.py").is_file() for path in workspaces)
         assert all(path != source for path in workspaces)
+        for case in kwargs["cases"]:
+            assert case.argv[-1] == "/workspace/.nexus-behavior/input.json"
+            assert (case.workspace / ".nexus-behavior" / "input.json").is_file()
         return (
             CapturedCase("health", {"path": "/health"}, {"status": 200}),
             CapturedCase("extra", {"path": "/extra"}, {"status": 404}),
@@ -96,8 +99,8 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
         store=store, mission_id="mission-1", state_root=state,
         baseline=baseline,
         cases=[
-            BehaviorCaseSpec("health", ("python", "-V"), {"path": "/health"}),
-            BehaviorCaseSpec("extra", ("python", "-V"), {"path": "/extra"}),
+            BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"}),
+            BehaviorCaseSpec("extra", ("cat", "{behavior_input}"), {"path": "/extra"}),
         ],
         run_id="candidate-run", collected_by="replay-harness",
         evidence_sink=sink,
@@ -129,7 +132,7 @@ def test_mission_replay_rejects_noncompleted_mission_before_restore(tmp_path, mo
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("python", "-V"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -177,7 +180,7 @@ def test_mission_replay_verifies_baseline_before_invoking_runner(tmp_path, monke
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=baseline,
-            cases=[BehaviorCaseSpec("health", ("python", "-V"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: False,
         )
@@ -208,8 +211,14 @@ def test_mission_replay_rejects_checkpoint_from_earlier_phase(tmp_path, monkeypa
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("python", "-V"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
     assert store.audit_events[-1][0] == "behavior.replay.failed"
+
+
+
+def test_behavior_case_spec_requires_fixture_placeholder():
+    with pytest.raises(MissionBehaviorError, match="behavior_input"):
+        BehaviorCaseSpec("health", ("python", "-V"), {})

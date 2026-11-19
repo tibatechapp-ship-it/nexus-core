@@ -6,6 +6,7 @@ observations, and appends audit events. Never invoked automatically.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -62,6 +63,10 @@ class BehaviorCaseSpec:
             for part in argv
         ):
             raise MissionBehaviorError("command contains an invalid argument")
+        if sum(part == "{behavior_input}" for part in argv) != 1:
+            raise MissionBehaviorError(
+                "command must contain exactly one {behavior_input} argument"
+            )
         object.__setattr__(self, "argv", argv)
         if isinstance(self.timeout, bool) or not isinstance(self.timeout, int) or not 1 <= self.timeout <= 300:
             raise MissionBehaviorError("timeout must be an integer between 1 and 300 seconds")
@@ -139,6 +144,26 @@ def _copy_verified_snapshot(source: Path, destination: Path) -> None:
             os.chmod(target, 0o600)
     for current, _dirs, _files in os.walk(destination, topdown=False):
         os.chmod(current, 0o700)
+
+
+def _stage_behavior_input(workspace: Path, payload: Any) -> str:
+    """Write a canonical, bounded input fixture into the disposable workspace."""
+    directory = workspace / ".nexus-behavior"
+    directory.mkdir(mode=0o700, exist_ok=False)
+    try:
+        encoded = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise MissionBehaviorError("behavior input fixture is not canonical JSON") from exc
+    if len(encoded) > 1024 * 1024:
+        raise MissionBehaviorError("behavior input fixture exceeds the 1 MiB limit")
+    fixture = directory / "input.json"
+    with fixture.open("xb") as stream:
+        stream.write(encoded)
+    os.chmod(fixture, 0o600)
+    return "/workspace/.nexus-behavior/input.json"
 
 
 def run_mission_behavior_replay(
@@ -237,8 +262,13 @@ def run_mission_behavior_replay(
             for index, case in enumerate(cases):
                 workspace = root / f"case-{index:04d}"
                 _copy_verified_snapshot(Path(context.worktree.root), workspace)
+                fixture_path = _stage_behavior_input(workspace, case.input_payload)
+                command = tuple(
+                    fixture_path if part == "{behavior_input}" else part
+                    for part in case.argv
+                )
                 replay_cases.append(ReplayCommandCase(
-                    case_id=case.case_id, argv=case.argv,
+                    case_id=case.case_id, argv=command,
                     workspace=workspace, input_payload=case.input_payload,
                     timeout=case.timeout,
                 ))
