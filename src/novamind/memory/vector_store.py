@@ -1,5 +1,6 @@
 """Vector store — numpy + sqlite."""
 import json, logging, os, sqlite3, threading
+from contextlib import closing
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import numpy as np
@@ -15,7 +16,7 @@ class VectorStore:
         self._lock = threading.Lock()
         self._init_db()
     def _init_db(self):
-        with self._conn() as con:
+        with closing(self._conn()) as con, con:
             con.execute("""CREATE TABLE IF NOT EXISTS vectors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, namespace TEXT NOT NULL,
                 text TEXT NOT NULL, embedding BLOB NOT NULL,
@@ -34,7 +35,7 @@ class VectorStore:
         if not query_emb: return []
         q = np.asarray(query_emb, dtype=np.float32)
         q_norm = q / (np.linalg.norm(q) + 1e-9)
-        with self._conn() as con:
+        with closing(self._conn()) as con, con:
             rows = con.execute("SELECT id,text,embedding,meta,at FROM vectors WHERE namespace=?",
                 (namespace,)).fetchall()
         if not rows: return []
@@ -51,7 +52,7 @@ class VectorStore:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
     def count(self, namespace=None):
-        with self._conn() as con:
+        with closing(self._conn()) as con, con:
             r = con.execute("SELECT COUNT(*) FROM vectors WHERE namespace=?" if namespace
                 else "SELECT COUNT(*) FROM vectors", (namespace,) if namespace else ()).fetchone()
             return r[0] if r else 0
@@ -60,7 +61,7 @@ class VectorStore:
             cur = con.execute("DELETE FROM vectors WHERE namespace=?", (namespace,))
             return cur.rowcount
     def namespaces(self):
-        with self._conn() as con:
+        with closing(self._conn()) as con, con:
             return [r[0] for r in con.execute("SELECT DISTINCT namespace FROM vectors").fetchall()]
 
 _store = None
