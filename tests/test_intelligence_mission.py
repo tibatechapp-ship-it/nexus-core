@@ -45,11 +45,11 @@ class Store:
         self.audit_events.append((action, ref, details or {}))
 
 
-def _baseline(sink, mission_id="mission-1"):
+def _baseline(sink, mission_id="mission-1", cases=None):
     return capture_baseline(
         target=f"mission:{mission_id}", revision="baseline-rev",
         run_id="baseline-run",
-        cases=[CapturedCase("health", {"path": "/health"}, {"status": 200})],
+        cases=cases or [CapturedCase("health", {"path": "/health"}, {"status": 200})],
         collected_by="baseline-harness", sink=sink,
     )
 
@@ -83,12 +83,16 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     mission = SimpleNamespace(id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo), report_path=str(report))
     store = Store(mission)
     sink = Sink()
-    baseline = _baseline(sink)
+    baseline = _baseline(sink, cases=[
+        CapturedCase("health", {"path": "/health"}, {"status": 200}),
+        CapturedCase("extra", {"path": "/extra"}, {"status": 404}),
+    ])
     monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: _context(source))
 
     def fake_execute(**kwargs):
         workspaces = [item.workspace for item in kwargs["cases"]]
-        assert len(set(workspaces)) == 1
+        assert len(workspaces) == 2
+        assert len(set(workspaces)) == 2
         assert all((path / "app.py").is_file() for path in workspaces)
         assert all(path != source for path in workspaces)
         for case in kwargs["cases"]:
@@ -105,6 +109,7 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
         baseline=baseline,
         cases=[
             BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"}),
+            BehaviorCaseSpec("extra", ("cat", "{behavior_input}"), {"path": "/extra"}),
         ],
         run_id="candidate-run", collected_by="replay-harness",
         evidence_sink=sink,
@@ -113,9 +118,9 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
             and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
         ),
     )
-    assert result.comparison.verdict is BehaviorVerdict.INVALID
+    assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
     assert result.assurance.accepted is True
-    assert result.gate_decision.verdict.value == "rejected"
+    assert result.gate_decision.verdict.value == "assured"
     assert [item[0] for item in store.audit_events] == [
         "behavior.replay.requested",
         "behavior.replay.report_persisted",
@@ -123,7 +128,7 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     ]
     report_text = report.read_text(encoding="utf-8")
     assert "## التحقق السلوكي" in report_text
-    assert '"verdict": "invalid"' in report_text
+    assert '"verdict": "equivalent"' in report_text
     assert result.candidate_revision in report_text
     assert not list(state.glob("behavior-*"))
 
