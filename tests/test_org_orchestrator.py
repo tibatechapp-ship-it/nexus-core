@@ -96,7 +96,11 @@ class TestPhaseGates:
             title="حارس قسمة",
             objective=("أضف حارس قسمة على صفر إلى دالة divide في وحدة "
                        "calc.mathops مع اختبارات للحدية"),
-            repo_path="examples/org_demo/fixture_repo"))
+            repo_path="examples/org_demo/fixture_repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.phase == "G_RELEASE"
         assert mission.status == "done"
         claimed_depts = {"executive", "repo_intel", "development",
@@ -134,7 +138,11 @@ class TestPhaseGates:
         mission = orchestrator.execute(Mission(
             title="تعطل بوابة التحقق",
             objective="تحقق من إصلاح تجريبي",
-            repo_path="examples/org_demo/fixture_repo"))
+            repo_path="examples/org_demo/fixture_repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.status == "failed"
         verify_tasks = [
             row for row in orchestrator.org_store.tasks_for_mission(mission.id)
@@ -579,6 +587,7 @@ class TestProcessInterruptionRecovery:
         assert checkpoint is not None
         assert checkpoint["payload"]["context"]["execution_policy"] == {
             "schema_version": 1, "max_revision_loops": 1,
+            "execution_mode": "process", "trusted_local": True,
         }
         initial_tasks = first_store.tasks_for_mission(mission.id)
         mission_id = mission.id
@@ -822,6 +831,7 @@ class TestCheckpointLedgerDrift:
             first_store,
             MissionContext(mission=mission, execution_policy={
                 "schema_version": 1, "max_revision_loops": 2,
+                "execution_mode": "process", "trusted_local": True,
             }),
             state_root,
         )
