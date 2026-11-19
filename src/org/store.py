@@ -2127,6 +2127,17 @@ class OrgStore:
                 "SELECT * FROM mission_token_reservations WHERE id=?",
                 (reservation_id,)).fetchone())
 
+    def mission_token_reservations_for(self, mission_id: str) -> list[dict[str, Any]]:
+        """Return a mission's append-preserving token reservation ledger."""
+        if not isinstance(mission_id, str) or not mission_id.strip():
+            raise OrgError("هوية المهمة مطلوبة لقراءة حجوزات التوكنات")
+        rows = self._conn.execute(
+            "SELECT * FROM mission_token_reservations "
+            "WHERE mission_id=? ORDER BY created_at, id",
+            (mission_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def mission_token_budget_get(self, mission_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM mission_token_budgets WHERE mission_id=?",
