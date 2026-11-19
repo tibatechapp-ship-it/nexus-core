@@ -122,6 +122,10 @@ class TestPipelineBudgetLifecycle:
                        "calc.mathops مع اختبارات للحدية"),
             repo_path="examples/org_demo/fixture_repo",
             output_token_limit=200000,
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            },
         )
 
         assert report.mission.status == "done"
