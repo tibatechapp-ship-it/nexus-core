@@ -97,7 +97,7 @@ def test_rag_engine_add_retrieve_generate_with_and_without_context(monkeypatch, 
     engine.store.docs.clear()
     empty = engine.generate("unknown")
     assert empty["provider"] == "local-rag"
-    assert empty["text"] == "[RAG Context]\\n\\n\\n[Query]\\nunknown"
+    assert empty["text"] == "[RAG Context]\n\n\n[Query]\nunknown"
 
     calls = []
     engine.llm = SimpleNamespace(generate_for_task=lambda **kw: calls.append(kw) or {"ok": True})
