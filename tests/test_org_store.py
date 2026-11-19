@@ -186,6 +186,61 @@ class TestTasks:
         assert attempts[0]["status"] == "failed"
 
 
+    def test_heartbeat_renews_only_current_owner_and_generation(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="heartbeat", objective="renew"))
+        task = store.add_task(TaskSpec(
+            mission_id=mission.id, dept="qa", kind="test", description="long run"))
+        claim = store.claim_task(task.id, "worker-a", lease_seconds=120)
+        assert claim is not None
+        assert claim["lease_generation"] == 1
+        assert claim["lease_heartbeat_at"]
+        renewed = store.heartbeat_task(
+            task.id, "worker-a", claim["lease_token"],
+            claim["lease_generation"], lease_seconds=240)
+        assert renewed["lease_generation"] == 1
+        assert renewed["lease_expires_at"] > claim["lease_expires_at"]
+        assert store.task_attempts_for(task.id)[0]["lease_generation"] == 1
+        with pytest.raises(OrgError, match="heartbeat"):
+            store.heartbeat_task(
+                task.id, "worker-b", claim["lease_token"],
+                claim["lease_generation"], lease_seconds=240)
+        with pytest.raises(OrgError, match="heartbeat"):
+            store.heartbeat_task(
+                task.id, "worker-a", claim["lease_token"],
+                claim["lease_generation"] + 1, lease_seconds=240)
+
+    def test_heartbeat_cannot_resurrect_expired_lease(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="expired", objective="no resurrection"))
+        task = store.add_task(TaskSpec(
+            mission_id=mission.id, dept="qa", kind="test", description="stopped"))
+        claim = store.claim_task(task.id, "worker-a", lease_seconds=60)
+        assert claim is not None
+        expired = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
+        with store._conn:
+            store._conn.execute(
+                "UPDATE tasks SET lease_expires_at=? WHERE id=?", (expired, task.id))
+        with pytest.raises(OrgError, match="انتهت lease"):
+            store.heartbeat_task(
+                task.id, "worker-a", claim["lease_token"],
+                claim["lease_generation"], lease_seconds=300)
+
+    def test_fencing_generation_rejects_old_worker_finalization(self, store: OrgStore) -> None:
+        mission = store.create_mission(Mission(title="fencing", objective="reject stale generation"))
+        task = store.add_task(TaskSpec(
+            mission_id=mission.id, dept="qa", kind="test", description="stale"))
+        claim = store.claim_task(task.id, "worker-a")
+        assert claim is not None
+        with store._conn:
+            store._conn.execute(
+                "UPDATE tasks SET lease_generation=lease_generation+1 WHERE id=?",
+                (task.id,))
+        with pytest.raises(OrgError, match="fencing"):
+            store.finish_claimed_task(
+                task.id, claim["lease_token"], {"ok": True},
+                lease_generation=claim["lease_generation"])
+        assert store.task_get(task.id)["state"] == "running"
+
+
 class TestClaimsAndEvidence:
     def test_resolve_verified_requires_evidence(self, store: OrgStore) -> None:
         m = store.create_mission(Mission(title="t", objective="o"))
@@ -343,7 +398,7 @@ class TestLessonsMetrics:
         assert counts["missions"] == 1 and counts["tasks"] == 0
 
     def test_schema_version_declared(self, store: OrgStore) -> None:
-        assert ORG_SCHEMA_VERSION == 10
+        assert ORG_SCHEMA_VERSION == 11
 
 
 class TestReviewsAndFindings:
