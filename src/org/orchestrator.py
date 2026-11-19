@@ -1013,16 +1013,9 @@ class ExecutiveOrchestrator:
         assert stored is not None
         status = "failed" if failed else "done"
         branch = stored.branch or (f"org/{stored.id}" if not failed else "")
-        from src.org.contracts import Claim
-        final = Mission(
-            title=stored.title, objective=stored.objective,
-            repo_path=stored.repo_path,
-            acceptance_criteria=stored.acceptance_criteria,
-            constraints=stored.constraints, ambiguities=stored.ambiguities,
-            phase=stored.phase, status=status, id=stored.id, branch=branch,
-            patch_path=stored.patch_path, report_path=stored.report_path,
-            ticket_ids=stored.ticket_ids,
-            revision_loops=stored.revision_loops)
+        # Preserve release artifact pointers and every other mission field
+        # (including output limits and timestamps) at the terminal transition.
+        final = replace(stored, status=status, branch=branch)
         stored = self.org_store.mission_update(final)
         self.org_store.audit("mission.finished", stored.id,
                              {"status": status, "error": error[:200],
