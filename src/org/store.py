@@ -99,8 +99,32 @@ class OrgStore:
         )
         raw.row_factory = sqlite3.Row
         self._conn = _LockedConnection(raw, self._lock)
+        self._closed = False
+        try:
+            with self._lock:
+                self._migrate()
+        except BaseException:
+            raw.close()
+            self._closed = True
+            raise
+
+    def close(self) -> None:
+        """Close the owned SQLite connection; repeated calls are harmless."""
         with self._lock:
-            self._migrate()
+            if self._closed:
+                return
+            self._conn._conn.close()
+            self._closed = True
+
+    def __enter__(self) -> "OrgStore":
+        """Return this store from a managed resource scope."""
+        if self._closed:
+            raise RuntimeError("organization store is closed")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release the owned connection when the scope exits."""
+        self.close()
 
     # ── المخطط والهجرة ────────────────────────────────────────────────────
 
