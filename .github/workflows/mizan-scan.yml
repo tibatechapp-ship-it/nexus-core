@@ -91,7 +91,17 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          python mizan-tool/scripts/mizan/build_pr_evidence.py --repo target --output reports/mizan/pr-evidence.json
+          # The adapter currently captures MIZAN stdout/stderr before emitting them.
+          # Suppress raw output: scanner diagnostics may contain source-derived values.
+          set +e
+          python mizan-tool/scripts/mizan/build_pr_evidence.py --repo target --output reports/mizan/pr-evidence.json > "$RUNNER_TEMP/mizan-adapter.log" 2>&1
+          adapter_status=$?
+          set -e
+          echo "MIZAN evidence adapter exit code: $adapter_status"
+          if [ "$adapter_status" -ne 0 ]; then
+            echo "::error::MIZAN evidence generation failed; raw scanner output was suppressed to prevent secret disclosure."
+          fi
+          exit "$adapter_status"
 
       - name: Upload MIZAN evidence
         id: upload
