@@ -308,7 +308,7 @@ class DevelopmentDept:
         container_image = execution_policy.get("container_image")
         container_enabled = execution_policy.get("container_enabled") is True
         approval_id = execution_policy.get("approval_id")
-        approvals = self.org_store.approvals_for(ctx.mission.id)
+        approvals = self.runtime.store.approvals_for(ctx.mission.id)
         container_approved = any(
             item.id == approval_id
             and item.kind == "run_untrusted"
