@@ -20,7 +20,7 @@ from typing import Any
 from src.org.contracts import Approval, Mission
 from src.org.dashboard import OrgDashboard
 from src.org.pipeline import MissionPipeline
-from src.org.store import OrgStore
+from src.org.store import OrgError, OrgStore
 from src.ops.store import OpsStore
 
 __all__ = ["build_org_router", "org_router_available"]
@@ -150,12 +150,23 @@ if _FASTAPI_OK:
             mission = org_store.mission_get(mission_id)
             if mission is None:
                 raise HTTPException(status_code=404, detail="مهمة غير موجودة")
-            report = pipeline.run(title=mission.title,
+            if mission.status != "created":
+                raise HTTPException(
+                    status_code=409,
+                    detail="المهمة ليست في حالة created؛ استخدم مسار الاستئناف الصريح",
+                )
+            try:
+                report = pipeline.run(title=mission.title,
                                   objective=mission.objective,
                                   repo_path=mission.repo_path,
                                   output_token_limit=mission.output_token_limit,
                                   execution_policy=payload.dict(exclude_unset=True),
                                   existing_mission=mission)
+            except OrgError as exc:
+                status_code = 403 if "approval" in str(exc).lower() else 422
+                raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             return report.to_dict()
 
         @router.post("/approvals/{approval_id}/decide")
