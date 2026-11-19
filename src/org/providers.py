@@ -282,13 +282,13 @@ class MockProvider(Provider):
         bounded source context.
         """
         blocks = re.findall(
-            r"(?ms)^FILE: ([^\\n]+)\\n(.*?)(?=^FILE: |\\Z)", prompt
+            r"(?ms)^FILE: ([^\n]+)\n(.*?)(?=^FILE: |\Z)", prompt
         )
         source_entry = next(
             ((path.strip(), body) for path, body in blocks
              if path.strip().endswith(".py")
              and "test" not in path.lower()
-             and re.search(r"(?m)^def divide\\(", body)),
+             and re.search(r"(?m)^def divide\(", body)),
             None,
         )
         if source_entry is None:
@@ -296,7 +296,7 @@ class MockProvider(Provider):
                                "defects": [], "steps": [], "tests_to_run": []})
         source_path, source = source_entry
         function = re.search(
-            r"(?ms)^def divide\\(([^)]*)\\):\\n.*?(?=^(?:def |class )|\\Z)",
+            r"(?ms)^def divide\(([^)]*)\):\n.*?(?=^(?:def |class )|\Z)",
             source,
         )
         if function is None:
@@ -306,14 +306,14 @@ class MockProvider(Provider):
         params = [item.strip().split("=")[0].strip()
                   for item in function.group(1).split(",")]
         divisor = params[1] if len(params) > 1 and params[1].isidentifier() else "b"
-        return_line = re.search(r"(?m)^(?P<indent>[ \\t]*)return .+/.+$", original)
+        return_line = re.search(r"(?m)^(?P<indent>[ \t]*)return .+/.+$", original)
         if return_line is None:
             return json.dumps({"goal": "No division expression found",
                                "defects": [], "steps": [], "tests_to_run": []})
         indent = return_line.group("indent")
         guarded = (
-            f"{indent}if {divisor} == 0:\\n"
-            f"{indent}    raise ZeroDivisionError('division by zero')\\n"
+            f"{indent}if {divisor} == 0:\n"
+            f"{indent}    raise ZeroDivisionError('division by zero')\n"
             f"{return_line.group(0)}"
         )
         patched = original[:return_line.start()] + guarded + original[return_line.end():]
@@ -332,19 +332,19 @@ class MockProvider(Provider):
         if test_entry is not None:
             test_path, test_source = test_entry
             test_match = re.search(
-                r"(?ms)^def test_divide_normal\\(\\):\\n.*?(?=^(?:def |class )|\\Z)",
+                r"(?ms)^def test_divide_normal\(\):\n.*?(?=^(?:def |class )|\Z)",
                 test_source,
             )
             if test_match is not None:
                 test_original = test_match.group(0)
                 test_patch = (
-                    test_original.rstrip() + "\\n\\n\\n"
-                    "def test_divide_zero_guard():\\n"
-                    "    try:\\n"
-                    "        divide(1, 0)\\n"
-                    "    except ZeroDivisionError:\\n"
-                    "        return\\n"
-                    "    raise AssertionError('zero divisor was accepted')\\n"
+                    test_original.rstrip() + "\n\n\n"
+                    "def test_divide_zero_guard():\n"
+                    "    try:\n"
+                    "        divide(1, 0)\n"
+                    "    except ZeroDivisionError:\n"
+                    "        return\n"
+                    "    raise AssertionError('zero divisor was accepted')\n"
                 )
                 steps.append({
                     "file": test_path, "action": "edit",
