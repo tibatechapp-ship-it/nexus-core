@@ -2270,13 +2270,3 @@ class OrgStore:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         """Release the owned connection when the scope exits."""
         self.close()
-
-    def __enter__(self) -> "OrgStore":
-        """Return this store from a managed resource scope."""
-        if self._closed:
-            raise RuntimeError("organization store is closed")
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """Release the owned connection when the scope exits."""
-        self.close()
