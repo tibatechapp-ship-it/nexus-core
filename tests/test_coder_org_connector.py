@@ -76,7 +76,7 @@ def test_adapter_contains_provider_failure() -> None:
     result = asyncio.run(connector.generate("request"))
 
     assert result["ok"] is False
-    assert "RuntimeError" in result["error"]
+    assert "ProviderError" in result["error"]
 
 
 @pytest.mark.parametrize(
