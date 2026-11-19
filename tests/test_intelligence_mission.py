@@ -259,3 +259,188 @@ def test_snapshot_copy_rejects_nonregular_file(tmp_path):
     os.mkfifo(source / "pipe")
     with pytest.raises(MissionBehaviorError, match="non-regular file"):
         module._copy_verified_snapshot(source, tmp_path / "copy")
+
+
+def test_behavior_case_spec_rejects_invalid_identity_args_timeout_and_fixture() -> None:
+    with pytest.raises(MissionBehaviorError, match="non-empty"):
+        BehaviorCaseSpec(" ", ("cat", "{behavior_input}"), {})
+    with pytest.raises(MissionBehaviorError, match="invalid argument"):
+        BehaviorCaseSpec("case", ("cat", 7, "{behavior_input}"), {})
+    with pytest.raises(MissionBehaviorError, match="timeout"):
+        BehaviorCaseSpec("case", ("cat", "{behavior_input}"), {}, timeout=True)
+    with pytest.raises(MissionBehaviorError, match="fixture is invalid"):
+        BehaviorCaseSpec("case", ("cat", "{behavior_input}"), object())
+
+
+def test_report_append_handles_missing_duplicate_and_oversized_report(tmp_path) -> None:
+    from src.intelligence.behavior import BehaviorComparison
+    from src.intelligence.mission import (
+        MissionBehaviorReplayResult, _append_behavior_report,
+    )
+    result = MissionBehaviorReplayResult(
+        "mission-1", "base", "candidate",
+        BehaviorComparison(BehaviorVerdict.EQUIVALENT, ("matched",)),
+        ("ev-1",),
+    )
+    assert _append_behavior_report(SimpleNamespace(), result, "run-1") is False
+
+    missing = tmp_path / "missing.md"
+    with pytest.raises(MissionBehaviorError, match="missing or is not a regular file"):
+        _append_behavior_report(SimpleNamespace(report_path=str(missing)), result, "run-1")
+
+    report = tmp_path / "report.md"
+    report.write_text("# Report\n", encoding="utf-8")
+    assert _append_behavior_report(SimpleNamespace(report_path=str(report)), result, "run-1")
+    with pytest.raises(MissionBehaviorError, match="already present"):
+        _append_behavior_report(SimpleNamespace(report_path=str(report)), result, "run-1")
+
+    huge = tmp_path / "huge.md"
+    huge.write_text("x" * (2 * 1024 * 1024 + 1), encoding="utf-8")
+    with pytest.raises(MissionBehaviorError, match="2 MiB"):
+        _append_behavior_report(SimpleNamespace(report_path=str(huge)), result, "run-2")
+
+
+def test_snapshot_copy_skips_generated_dirs_and_rejects_sensitive_suffix(tmp_path) -> None:
+    import src.intelligence.mission as module
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "app.py").write_text("print('ok')", encoding="utf-8")
+    generated = source / "node_modules"
+    generated.mkdir()
+    (generated / "ignored.js").write_text("ignored", encoding="utf-8")
+    destination = tmp_path / "copy"
+    module._copy_verified_snapshot(source, destination)
+    assert (destination / "app.py").is_file()
+    assert not (destination / "node_modules").exists()
+
+    (source / "private.pem").write_text("private", encoding="utf-8")
+    with pytest.raises(MissionBehaviorError, match="credential-like"):
+        module._copy_verified_snapshot(source, tmp_path / "copy-2")
+
+
+def test_stage_behavior_input_rejects_non_json_oversized_and_existing_path(tmp_path) -> None:
+    import src.intelligence.mission as module
+    with pytest.raises(MissionBehaviorError, match="canonical JSON"):
+        module._stage_behavior_input(tmp_path, object())
+
+    too_large = tmp_path / "large"
+    too_large.mkdir()
+    with pytest.raises(MissionBehaviorError, match="1 MiB"):
+        module._stage_behavior_input(too_large, "x" * (1024 * 1024 + 1))
+
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    (existing / ".nexus-behavior").mkdir()
+    with pytest.raises(FileExistsError):
+        module._stage_behavior_input(existing, {})
+
+
+def test_mission_replay_rejects_state_root_inside_repository(tmp_path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = repo / ".nexus-state"
+    state.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    with pytest.raises(MissionBehaviorError, match="outside the target repository"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    assert store.audit_events[-1][0] == "behavior.replay.failed"
+
+
+def test_mission_replay_rejects_missing_checkpoint_worktree(tmp_path, monkeypatch) -> None:
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    context = _context(checkpoint)
+    context.worktree = None
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: context)
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    with pytest.raises(MissionBehaviorError, match="no verified worktree"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    assert store.audit_events[-1][0] == "behavior.replay.failed"
+
+
+def test_mission_replay_wraps_runner_failure_and_cleans_workspace(tmp_path, monkeypatch) -> None:
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "app.py").write_text("pass", encoding="utf-8")
+    state = tmp_path / "state"
+    state.mkdir()
+    context = _context(checkpoint)
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: context)
+    monkeypatch.setattr(
+        module, "execute_authorized_cases",
+        lambda **kwargs: (_ for _ in ()).throw(OSError("runner unavailable")),
+    )
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    with pytest.raises(MissionBehaviorError, match="failed closed"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    assert store.audit_events[-1][0] == "behavior.replay.failed"
+    assert not list(state.glob("behavior-*"))
+
+
+def test_mission_replay_reports_unavailable_for_legacy_mission(tmp_path, monkeypatch) -> None:
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "app.py").write_text("pass", encoding="utf-8")
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: _context(checkpoint))
+    monkeypatch.setattr(
+        module, "execute_authorized_cases",
+        lambda **kwargs: (
+            CapturedCase("health", {"path": "/health"}, {"status": 200}),
+        ),
+    )
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    result = run_mission_behavior_replay(
+        store=store, mission_id="mission-1", state_root=state,
+        baseline=_baseline(sink),
+        cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
+        run_id="candidate-run", collected_by="test", evidence_sink=sink,
+        verify_evidence=lambda ref: (
+            ref.evidence_id in sink.items
+            and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
+        ),
+    )
+    assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
+    assert any(event[0] == "behavior.replay.report_unavailable" for event in store.audit_events)
