@@ -46,10 +46,19 @@ jobs:
 
       - name: Start and verify Rootless Docker
         run: |
-          export XDG_RUNTIME_DIR="$HOME/.docker/run"
-          mkdir -p "$XDG_RUNTIME_DIR"
-          chmod 700 "$XDG_RUNTIME_DIR"
-          export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+          user_id="$(id -u)"
+          sudo loginctl enable-linger "$USER"
+          sudo systemctl start "user-runtime-dir@${user_id}.service"
+          sudo systemctl start "user@${user_id}.service"
+          export XDG_RUNTIME_DIR="/run/user/${user_id}"
+          export DBUS_SESSION_BUS_ADDRESS="unix://${XDG_RUNTIME_DIR}/bus"
+          if [ ! -S "${XDG_RUNTIME_DIR}/bus" ]; then
+            echo "systemd user bus was not created for the runner account"
+            sudo systemctl status "user@${user_id}.service" --no-pager || true
+            exit 1
+          fi
+          export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/docker.sock"
+          systemctl --user show-environment >/dev/null
           dockerd-rootless.sh > "$RUNNER_TEMP/rootless-dockerd.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/rootless-dockerd.pid"
           ready=0
