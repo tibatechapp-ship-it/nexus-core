@@ -399,7 +399,7 @@ class ExecutiveOrchestrator:
                 out = self.depts.qa.patched(ctx)
             elif spec.dept == "release":
                 out = self.depts.release.run(ctx)
-                self._persist_release_artifacts(ctx.mission.id, out)
+                self._persist_release_artifacts(ctx, out)
             else:
                 raise DepartmentError(f"قسم بلا منفّذ في هذا الطور: {spec.dept}")
             self._persist_claims(ctx)
@@ -757,8 +757,9 @@ class ExecutiveOrchestrator:
                 ctx.worktree.cleanup()
 
     def _persist_release_artifacts(
-            self, mission_id: str, output: Any) -> None:
+            self, ctx: MissionContext, output: Any) -> None:
         """Persist release artifact pointers before the release task is committed."""
+        mission_id = ctx.mission.id
         if not isinstance(output, dict):
             raise OrgError("release department returned a non-object result")
         required = ("branch", "patch_path", "report_path", "ticket_id")
@@ -789,6 +790,7 @@ class ExecutiveOrchestrator:
             ticket_ids=ticket_ids,
         )
         self.org_store.mission_update(updated)
+        ctx.mission = updated
         self.org_store.audit(
             "mission.release_artifacts.persisted", mission_id,
             {
