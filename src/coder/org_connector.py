@@ -43,6 +43,9 @@ class OrgRuntimeConnector:
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.timeout_s = timeout_s
+        self.usage_total = {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
+        self.providers_used: set[str] = set()
+        self.models_used: set[str] = set()
 
     @staticmethod
     def _role_for(prompt: str) -> str:
@@ -73,6 +76,11 @@ class OrgRuntimeConnector:
             )
         except (ProviderError, ValueError, asyncio.TimeoutError) as exc:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:400]}
+        self.usage_total["tokens_in"] += response.usage.in_tokens
+        self.usage_total["tokens_out"] += response.usage.out_tokens
+        self.usage_total["cost_usd"] += response.usage.cost_usd
+        self.providers_used.add(response.provider)
+        self.models_used.add(response.model)
         return {
             "ok": True,
             "reply": response.text,
