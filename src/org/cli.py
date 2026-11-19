@@ -22,6 +22,7 @@ from src.org.dashboard import OrgDashboard
 from src.org.learning import LessonsEngine
 from src.org.metrics import OrgMetrics
 from src.org.pipeline import MissionPipeline
+from src.org.orchestrator import ExecutiveOrchestrator
 from src.org.store import OrgStore
 from src.ops.store import OpsStore
 
@@ -74,6 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--objective", required=True)
     c.add_argument("--repo", default="")
     c.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None)
+
+    resume = sub.add_parser(
+        "resume", help="استئناف مهمة متوقفة من checkpoint بعد قرار مشغّل صريح")
+    resume.add_argument("mission_id")
+    resume.add_argument("--by", required=True, help="هوية المشغّل")
+    resume.add_argument("--reason", required=True, help="سبب الاستئناف للتدقيق")
+    resume.add_argument("--expected-repo-root", default=None)
 
     s = sub.add_parser("show", help="عرض مهمة مخزنة")
     s.add_argument("mission_id")
@@ -170,6 +178,18 @@ def _cmd_create_mission(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_resume(args: argparse.Namespace) -> int:
+    org, ops = _stores(args)
+    orchestrator = ExecutiveOrchestrator(
+        org, ops, outdir=args.outdir)
+    mission = orchestrator.resume_mission(
+        args.mission_id, actor=args.by, reason=args.reason,
+        expected_repo_root=args.expected_repo_root,
+    )
+    _emit(mission.to_dict())
+    return 0 if mission.status == "done" else 1
+
+
 def _cmd_show(args: argparse.Namespace) -> int:
     org, _ = _stores(args)
     mission = org.mission_get(args.mission_id)
@@ -259,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
         "mission": _cmd_mission, "create-mission": _cmd_create_mission,
-        "show": _cmd_show,
+        "show": _cmd_show, "resume": _cmd_resume,
         "dashboard": _cmd_dashboard, "lessons": _cmd_lessons,
         "metrics": _cmd_metrics,
         "request-run-approval": _cmd_request_run_approval,
