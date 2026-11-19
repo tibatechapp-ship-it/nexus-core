@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import json
 import time
-from threading import Event, Thread
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 
 from src.org.contracts import (
