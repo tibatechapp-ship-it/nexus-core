@@ -96,7 +96,7 @@ class TestGreenPath:
 class TestRejectedPaths:
     def test_broken_patch_rejected_at_verification(
             self, tmp_path: Path) -> None:
-        """رقعة تعطّل الاختبارات لا تصل للإصدار إطلاقًا."""
+        """رقعة تعطّل اختبارات المحرك لا تنتج ادعاء إصلاح أو تذكرة إصدار."""
 
         class BrokenDevProvider(MockProvider):
             def _coder_plan_reply(self, prompt: str) -> str:
@@ -120,9 +120,11 @@ class TestRejectedPaths:
         assert report.mission.status == "failed"
         assert report.mission.phase == "FAILED"
         assert report.ticket_id == ""  # لا تذكرة لمهمة رفضها التحقق
-        claims = {c.statement: c.status
-                  for c in org.claims_for(report.mission.id)}
-        assert any(status == "rejected" for status in claims.values())
+        claims = org.claims_for(report.mission.id)
+        # Coder Engine must reject a failed test gate before DevelopmentDept
+        # can create a fix claim. Verification cannot reject a claim that was
+        # correctly never emitted by an unsuccessful development stage.
+        assert not any(claim.claim_kind == "fix" for claim in claims)
 
     def test_todo_patch_rejected_at_review(self, tmp_path: Path) -> None:
         """رقعة بـTODO تُرفض مراجعةً وتُنهى المهمة بسقف الدورة."""
