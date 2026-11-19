@@ -64,6 +64,13 @@ if _FASTAPI_OK:
 
         container_image: str
 
+    class ResumeIn(BaseModel):
+        """Explicit operator identity and reason for checkpoint resume."""
+
+        actor: str
+        reason: str
+        expected_repo_root: str | None = None
+
     class ApprovalIn(BaseModel):
         """مُدخل قرار موافقة — قرار واسم صانع القرار إلزاميًا."""
 
@@ -173,6 +180,25 @@ if _FASTAPI_OK:
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             return report.to_dict()
+
+        @router.post("/missions/{mission_id}/resume")
+        def resume_mission(
+                mission_id: str, payload: ResumeIn,
+                authorization: str | None = Header(default=None)
+                ) -> dict[str, Any]:
+            _require_operator(authorization)
+            if org_store.mission_get(mission_id) is None:
+                raise HTTPException(status_code=404, detail="مهمة غير موجودة")
+            try:
+                mission = pipeline.orchestrator.resume_mission(
+                    mission_id, actor=payload.actor, reason=payload.reason,
+                    expected_repo_root=payload.expected_repo_root,
+                )
+            except OrgError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            return mission.to_dict()
 
         @router.post("/approvals/{approval_id}/decide")
         def decide_approval(approval_id: str, payload: ApprovalIn,
