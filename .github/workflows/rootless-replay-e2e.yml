@@ -47,9 +47,12 @@ jobs:
       - name: Start and verify Rootless Docker
         run: |
           user_id="$(id -u)"
+          sudo mkdir -p /etc/systemd/system/user@.service.d
+          printf '[Service]\\nDelegate=cpu cpuset io memory pids\\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf > /dev/null
+          sudo systemctl daemon-reload
           sudo loginctl enable-linger "$USER"
           sudo systemctl start "user-runtime-dir@${user_id}.service"
-          sudo systemctl start "user@${user_id}.service"
+          sudo systemctl restart "user@${user_id}.service"
           export XDG_RUNTIME_DIR="/run/user/${user_id}"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
           if [ ! -S "${XDG_RUNTIME_DIR}/bus" ]; then
@@ -59,6 +62,13 @@ jobs:
           fi
           export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/docker.sock"
           systemctl --user show-environment >/dev/null
+          controllers="$(cat "/sys/fs/cgroup/user.slice/user-${user_id}.slice/user@${user_id}.service/cgroup.controllers")"
+          for controller in cpu cpuset io memory pids; do
+            case " ${controllers} " in
+              *" ${controller} "*) ;;
+              *) echo "required cgroup controller is not delegated: ${controller}"; exit 1 ;;
+            esac
+          done
           dockerd-rootless.sh > "$RUNNER_TEMP/rootless-dockerd.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/rootless-dockerd.pid"
           ready=0
