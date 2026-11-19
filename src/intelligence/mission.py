@@ -130,7 +130,7 @@ def _append_behavior_report(
     if marker in original:
         raise MissionBehaviorError("behavior replay run is already present in the final report")
     section = (
-        f"\n\n## التحقق السلوكي — {run_id}\n\n{marker}\n"
+        f"\n\n## التحقق السلوكي\n\n{marker}\n"
         f"\n```json\n{encoded}\n```\n"
     )
     updated = original.rstrip() + section
