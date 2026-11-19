@@ -4,7 +4,7 @@
 
 The behavior layer has three deliberately separate responsibilities:
 
-1. `capture.py` records already-collected, sanitized input/output fixtures as bounded evidence.
+1. `capture.py` records already-collected input/output fixtures as bounded evidence, applying defense-in-depth redaction of common credential fields and recognizable secret patterns before hashing and persistence.
 2. `replay.py` executes explicitly declared test commands only after checking a persisted mission approval and delegates to the existing rootless container sandbox.
 3. `behavior.py` compares the resulting evidence-backed observations with a baseline. It never executes code.
 
@@ -40,7 +40,7 @@ token, bearer, assignment, and private-key patterns before hashing or persisting
 the fixture. The stored artifact declares the redaction contract version. This is
 defense in depth, not a complete data-loss-prevention system: callers must still
 provide sanitized test fixtures and must never submit credentials, personal data,
-or unrestricted production payloads. Unknown secret formats may not be recognized.
+or unrestricted production payloads. Unknown secret formats may not be recognized. Callers remain responsible for pre-sanitizing fixtures; do not submit credentials, personal data, or unrestricted production payloads. The mission adapter applies the same sanitizer before baseline-input comparison and before staging replay fixtures. Exception details from evidence-sink and runner failures are sanitized before replay failure audit persistence.
 
 ## Executing candidate cases
 
