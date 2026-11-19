@@ -149,6 +149,10 @@ class TestDevelopment:
             repo_path=str(fixture_repo), id=stored.id,
             phase=stored.phase, status=stored.status))
         ctx = MissionContext(mission=stored)
+        ctx.execution_policy = {
+            "schema_version": 1, "execution_mode": "process",
+            "trusted_local": True,
+        }
         intel.run(ctx)
         out = depts.development.run(ctx)
         assert out["status"] == "ok" and out["applied"]
@@ -180,6 +184,10 @@ class TestDevelopment:
             repo_path=str(fixture_repo), id=stored.id,
             phase=stored.phase, status=stored.status))
         ctx = MissionContext(mission=stored)
+        ctx.execution_policy = {
+            "schema_version": 1, "execution_mode": "process",
+            "trusted_local": True,
+        }
         depts.intel.run(ctx)
 
         class InvalidPlanConnector:
