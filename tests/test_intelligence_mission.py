@@ -629,7 +629,7 @@ def test_mission_replay_redacts_secret_from_failure_audit(tmp_path, monkeypatch)
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="audit-redaction", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
