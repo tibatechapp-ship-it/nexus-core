@@ -117,7 +117,7 @@ if _FASTAPI_OK:
                         output_token_limit=payload.output_token_limit))
             return mission.to_dict()
 
-        @router.post("/missions/{mission_id}/run")
+        @router.post("/missions/{mission_id}/approvals/run-untrusted")
         def request_container_approval(
                 mission_id: str, payload: ContainerApprovalIn,
                 authorization: str | None = Header(default=None)
