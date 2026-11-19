@@ -35,7 +35,7 @@ _SECRET_PATTERNS = (
     re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*"),
     re.compile(
         r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|"
-        r"client[_-]?secret|password|passwd|secret)\s*([=:])\s*"
+        r"client[_-]?secret|password|passwd|secret|token)\s*([=:])\s*"
         r"(['\"]?)[^\s,'\";}]+"
     ),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
