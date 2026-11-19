@@ -10,7 +10,6 @@ import pytest
 def test_novamind_memory_adapters_close_schema_connections(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from novamind import memory as legacy_memory
     from novamind.core import memory as core_memory
     from novamind.core.company.memory import CompanyMemory
     from novamind.core.company.reflective_rag import LocalVectorStore
@@ -28,7 +27,6 @@ def test_novamind_memory_adapters_close_schema_connections(
 
     monkeypatch.setattr(sqlite3, "connect", tracked_connect)
 
-    legacy_memory.MemoryManager(str(tmp_path / "legacy-memory.db"))
     core_memory.MemoryManager(str(tmp_path / "core-memory.db"))
     SimpleRAG(str(tmp_path / "rag.db"))
     CompanyMemory(str(tmp_path / "company-memory.db"))
