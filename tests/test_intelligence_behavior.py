@@ -106,8 +106,15 @@ def test_changed_input_is_invalid_comparison() -> None:
 
 
 def test_unexpected_case_is_invalid() -> None:
-    extra = BehaviorObservation("extra", _INPUT, _OUTPUT, ObservationStatus.PASSED, "run-ev")
-    result = _compare((_observation(), extra))
+    extra = BehaviorObservation("extra", _INPUT, _OUTPUT, ObservationStatus.PASSED, "extra-ev")
+    extra_evidence = EvidenceReference(
+        "extra-ev", "observation", "extra.json", "c" * 64, "test"
+    )
+    result = compare_behavior(
+        _baseline(), (_observation(), extra),
+        observation_evidence=(_OBS_EVIDENCE, extra_evidence),
+        verify_evidence=lambda _: True,
+    )
     assert result.verdict is BehaviorVerdict.INVALID
     assert result.unexpected_case_ids == ("extra",)
 
