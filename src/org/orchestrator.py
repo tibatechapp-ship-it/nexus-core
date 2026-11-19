@@ -145,7 +145,8 @@ class ExecutiveOrchestrator:
     def _validated_execution_policy(
             self, mission_id: str,
             supplied: dict[str, Any] | None, *,
-            require_approval: bool) -> dict[str, Any]:
+            require_approval: bool,
+            allow_checkpoint_limit: bool = False) -> dict[str, Any]:
         """Validate and normalize the security decision; never infer trust."""
         if not isinstance(supplied, dict):
             raise OrgError("execution_policy is required; execution fails closed")
@@ -155,10 +156,11 @@ class ExecutiveOrchestrator:
             raise OrgError("unsupported execution policy schema")
         mode = policy.get("execution_mode")
         common_keys = {"schema_version", "execution_mode", "max_revision_loops"}
-        if "max_revision_loops" in policy and (
-                type(policy["max_revision_loops"]) is not int
-                or policy["max_revision_loops"] != self.max_revision_loops):
-            raise OrgError("max_revision_loops is controlled by the orchestrator")
+        if "max_revision_loops" in policy:
+            if not allow_checkpoint_limit:
+                raise OrgError("max_revision_loops is controlled by the orchestrator")
+            if type(policy["max_revision_loops"]) is not int or policy["max_revision_loops"] < 0:
+                raise OrgError("checkpoint max_revision_loops is invalid")
         if mode == "process":
             allowed = common_keys | {"trusted_local"}
             if set(policy) - allowed:
@@ -201,7 +203,8 @@ class ExecutiveOrchestrator:
         else:
             raise OrgError("execution_mode must be process or container")
         policy["schema_version"] = 1
-        policy["max_revision_loops"] = self.max_revision_loops
+        if "max_revision_loops" not in policy:
+            policy["max_revision_loops"] = self.max_revision_loops
         return policy
 
     # ── التخطيط ───────────────────────────────────────────────────────────
@@ -667,7 +670,8 @@ class ExecutiveOrchestrator:
         # Resume uses only the policy restored from the immutable checkpoint;
         # never accept a caller override or silently switch execution modes.
         self._validated_execution_policy(
-            mission_id, policy, require_approval=True)
+            mission_id, policy, require_approval=True,
+            allow_checkpoint_limit=True)
         plan = self._load_persisted_plan(mission_id)
         mission = self.org_store.mission_get(mission_id)
         if mission is None:
