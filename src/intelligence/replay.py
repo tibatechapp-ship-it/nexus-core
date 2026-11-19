@@ -13,7 +13,7 @@ from typing import Any, Mapping, Sequence
 
 from .behavior import _required_text, digest_payload
 from .capture import CapturedCase
-from .container_sandbox import ContainerSandboxError, run_in_container
+from ..coder.container_sandbox import ContainerSandboxError, run_in_container
 from .behavior import ObservationStatus
 
 _IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/:+-]*@sha256:[a-f0-9]{64}$")
@@ -92,6 +92,8 @@ def _approved_image(
         approvals = approvals_for(mission_id)
     except Exception as exc:
         raise BehaviorReplayError("could not retrieve mission approval records") from exc
+    if not isinstance(approvals, (tuple, list)):
+        raise BehaviorReplayError("approval store returned malformed records")
     matches = [
         item for item in approvals
         if getattr(item, "id", None) == approval_id
@@ -150,21 +152,31 @@ def execute_authorized_cases(
             raise BehaviorReplayError(
                 f"isolated replay failed closed for case {case.case_id}: {exc}"
             ) from exc
-        if not isinstance(result, Mapping):
+        required = {"ok", "exit_code", "timeout", "truncated", "stdout", "stderr"}
+        if not isinstance(result, Mapping) or not required.issubset(result):
             raise BehaviorReplayError("container runner returned a malformed result")
-        stdout = result.get("stdout", "")
-        stderr = result.get("stderr", "")
+        if (
+            not isinstance(result["ok"], bool)
+            or not isinstance(result["timeout"], bool)
+            or not isinstance(result["truncated"], bool)
+            or (result["exit_code"] is not None and (
+                isinstance(result["exit_code"], bool) or not isinstance(result["exit_code"], int)
+            ))
+        ):
+            raise BehaviorReplayError("container runner returned invalid status fields")
+        stdout = result["stdout"]
+        stderr = result["stderr"]
         if (
             not isinstance(stdout, str) or len(stdout.encode("utf-8")) > _MAX_OUTPUT_LENGTH
             or not isinstance(stderr, str) or len(stderr.encode("utf-8")) > _MAX_OUTPUT_LENGTH
         ):
             raise BehaviorReplayError("container runner output exceeded its bounded contract")
-        exit_code = result.get("exit_code")
-        timed_out = result.get("timeout") is True
-        truncated = result.get("truncated") is True
+        exit_code = result["exit_code"]
+        timed_out = result["timeout"]
+        truncated = result["truncated"]
         passed = (
-            result.get("ok") is True and exit_code == 0
-            and not timed_out and not truncated
+            result["ok"] is True and exit_code == 0
+            and timed_out is False and truncated is False
         )
         output = {
             "runner": "nexus.rootless-container/v1",
