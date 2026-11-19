@@ -2,7 +2,6 @@ name: MIZAN Pull Request Security Scan
 
 on:
   pull_request:
-    branches: ["main"]
   workflow_dispatch:
 
 # Untrusted pull-request code is analyzed without executing repository scripts,
