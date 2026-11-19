@@ -169,6 +169,41 @@ class TestDevelopment:
             depts.development.run(MissionContext(mission=mission),  # type: ignore[arg-type]
                                   dev_kind="magic")
 
+    def test_engine_failure_never_transfers_partial_changes(
+            self, depts: Departments, mission: object,
+            fixture_repo: Path) -> None:
+        from src.org.contracts import Mission
+
+        stored = depts.org_store.mission_get(mission.id)  # type: ignore[attr-defined]
+        stored = depts.org_store.mission_update(Mission(  # type: ignore[arg-type]
+            title=stored.title, objective=stored.objective,
+            repo_path=str(fixture_repo), id=stored.id,
+            phase=stored.phase, status=stored.status))
+        ctx = MissionContext(mission=stored)
+        depts.intel.run(ctx)
+
+        class InvalidPlanConnector:
+            usage_total = {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
+            providers_used: set[str] = set()
+            models_used: set[str] = set()
+
+            async def generate(self, prompt: str) -> dict:
+                if "defect-discovery stage" in prompt:
+                    return {"ok": True, "reply": "[]"}
+                return {"ok": True, "reply": (
+                    '{"goal":"invalid","steps":[],"tests_to_run":[]}'
+                )}
+
+        depts.development.connector_factory = (
+            lambda runtime, mission_id: InvalidPlanConnector()
+        )
+        before = ctx.worktree.read("calc/mathops.py")  # type: ignore[union-attr]
+        with pytest.raises(DepartmentError, match="Coder Engine"):
+            depts.development.run(ctx)
+        assert ctx.worktree.read("calc/mathops.py") == before  # type: ignore[union-attr]
+        assert (fixture_repo / "calc" / "mathops.py").read_text() == before
+
+
 
 class TestSecurity:
     def test_clean_repo_no_blockers(self, depts: Departments,
