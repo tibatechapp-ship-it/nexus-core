@@ -85,8 +85,8 @@ observations, evidence = capture_observations(
 )
 ```
 
-Each case declaration must contain exactly one `{behavior_input}` argv token.
-The mission adapter replaces it with the in-container path
+For the mission lifecycle adapter, each `BehaviorCaseSpec` must contain exactly
+one `{behavior_input}` argv token. The mission adapter replaces it with the in-container path
 `/workspace/.nexus-behavior/input.json` and stages the canonical JSON fixture
 inside that case's disposable workspace. This avoids shell interpolation and
 makes the exact input payload available to the declared command without stdin
@@ -108,13 +108,13 @@ evidence. Then combine its result with `evaluate_assurance` using
 The comparator only proves agreement over the recorded test corpus. It does not
 prove equivalence for unobserved inputs.
 
-## Remaining integration
+## Remaining validation
 
-The adapter is implemented and independently testable. The remaining integration
-work is to construct per-case disposable workspaces from a mission snapshot, connect
-the adapter to the orchestrator's mission lifecycle and durable audit records, and
-run the complete workflow against a controlled fixture repository. No automatic
-replay is wired into arbitrary missions yet.
+The mission lifecycle adapter and durable audit wiring are implemented. Remaining
+validation is an end-to-end run against a controlled fixture repository using a real
+rootless Docker daemon and a preloaded digest-pinned runner image, followed by
+connecting the behavior verdict into the final mission assurance report. No
+automatic replay is wired into arbitrary missions.
 
 
 ## Mission lifecycle adapter
