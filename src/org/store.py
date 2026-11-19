@@ -1857,14 +1857,26 @@ class OrgStore:
                 "SELECT * FROM mission_token_budgets WHERE mission_id=?",
                 (mission_id,)).fetchone())
 
-    def reserve_mission_output_tokens(self, mission_id: str, agent_role: str,
-                                      amount: int) -> dict[str, Any]:
-        """حجز ذري قبل استدعاء المزوّد؛ يحسب المحجوز والمتأكد معًا."""
+    def reserve_mission_output_tokens(
+            self, mission_id: str, agent_role: str, amount: int, *,
+            task_id: str = "", attempt_no: int = 0,
+            lease_generation: int = 0, lease_owner: str = "",
+            lease_token: str = "") -> dict[str, Any]:
+        """Reserve output tokens and optionally bind them to a live fenced task lease."""
         if (not isinstance(amount, int) or isinstance(amount, bool)
                 or amount <= 0 or amount > 2**63 - 1):
             raise OrgError("حجم حجز التوكنات يجب أن يكون عددًا صحيحًا موجبًا ضمن حد SQLite")
         if not isinstance(agent_role, str) or not agent_role.strip():
             raise OrgError("هوية الوكيل مطلوبة لحجز التوكنات")
+        lease_values = (task_id, attempt_no, lease_generation, lease_owner, lease_token)
+        bound = any(bool(value) for value in lease_values)
+        if bound and (not task_id or not lease_owner or not lease_token
+                      or not isinstance(attempt_no, int) or isinstance(attempt_no, bool)
+                      or attempt_no < 1
+                      or not isinstance(lease_generation, int)
+                      or isinstance(lease_generation, bool) or lease_generation < 1):
+            raise OrgError("ربط الحجز يتطلب هوية المهمة والمحاولة والمالك والجيل ورمز lease")
+        token_digest = hashlib.sha256(lease_token.encode("utf-8")).hexdigest() if bound else ""
         reservation_id = new_id("org-token-res", mission_id, agent_role,
                                 secrets.token_urlsafe(24))
         now = self._now()
@@ -1875,6 +1887,24 @@ class OrgStore:
                 (mission_id,)).fetchone()
             if row is None:
                 raise OrgError("ميزانية توكنات المهمة غير مهيأة")
+            if bound:
+                task = self._conn.execute(
+                    "SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+                if (task is None or task["mission_id"] != mission_id
+                        or task["state"] != "running"
+                        or int(task["attempts"]) != attempt_no
+                        or int(task["lease_generation"]) != lease_generation
+                        or task["lease_owner"] != lease_owner
+                        or not secrets.compare_digest(
+                            hashlib.sha256(str(task["lease_token"]).encode("utf-8")).hexdigest(),
+                            token_digest)):
+                    raise OrgError("رفض حجز التوكنات: مطالبة المهمة لا تطابق المالك الحالي")
+                try:
+                    expiry = datetime.fromisoformat(str(task["lease_expires_at"]))
+                except ValueError as exc:
+                    raise OrgError("تاريخ lease غير صالح لحجز التوكنات") from exc
+                if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+                    raise OrgError("انتهت lease؛ لا يمكن ربط حجز جديد بها")
             remaining = (int(row["output_token_limit"])
                          - int(row["reserved_output_tokens"])
                          - int(row["consumed_output_tokens"]))
@@ -1888,9 +1918,11 @@ class OrgStore:
                 raise OrgError("تم إيقاف المهمة: ميزانية توكنات الخرج غير كافية")
             self._conn.execute(
                 "INSERT INTO mission_token_reservations "
-                "(id, mission_id, agent_role, reserved_tokens, status, created_at) "
-                "VALUES (?, ?, ?, ?, 'reserved', ?)",
-                (reservation_id, mission_id, agent_role, amount, now))
+                "(id, mission_id, agent_role, reserved_tokens, status, created_at, "
+                "task_id, attempt_no, lease_generation, lease_owner, lease_token_digest) "
+                "VALUES (?, ?, ?, ?, 'reserved', ?, ?, ?, ?, ?, ?)",
+                (reservation_id, mission_id, agent_role, amount, now,
+                 task_id, attempt_no, lease_generation, lease_owner, token_digest))
             self._conn.execute(
                 "UPDATE mission_token_budgets SET reserved_output_tokens="
                 "reserved_output_tokens+?, updated_at=? WHERE mission_id=?",
@@ -1904,6 +1936,30 @@ class OrgStore:
             return dict(self._conn.execute(
                 "SELECT * FROM mission_token_reservations WHERE id=?",
                 (reservation_id,)).fetchone())
+
+    def _assert_token_reservation_lease_current(
+            self, reservation: Any) -> None:
+        """Reject stale workers; uncertain reservations remain held for reconciliation."""
+        if not reservation["task_id"]:
+            return
+        task = self._conn.execute(
+            "SELECT * FROM tasks WHERE id=?", (reservation["task_id"],)).fetchone()
+        digest = hashlib.sha256(
+            str(task["lease_token"] if task is not None else "").encode("utf-8")
+        ).hexdigest()
+        if (task is None or task["state"] != "running"
+                or int(task["attempts"]) != int(reservation["attempt_no"])
+                or int(task["lease_generation"]) != int(reservation["lease_generation"])
+                or task["lease_owner"] != reservation["lease_owner"]
+                or not secrets.compare_digest(
+                    digest, str(reservation["lease_token_digest"]))):
+            raise OrgError("رفض التسوية: حجز التوكنات مرتبط بعامل أو جيل قديم")
+        try:
+            expiry = datetime.fromisoformat(str(task["lease_expires_at"]))
+        except ValueError as exc:
+            raise OrgError("تاريخ lease غير صالح؛ الحجز يتطلب مصالحة") from exc
+        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+            raise OrgError("انتهت lease؛ الحجز يبقى معلقًا للمصالحة")
 
     def settle_mission_output_tokens(self, reservation_id: str,
                                      actual_tokens: int) -> dict[str, Any]:
@@ -1919,6 +1975,7 @@ class OrgStore:
                 (reservation_id,)).fetchone()
             if reservation is None or reservation["status"] != "reserved":
                 raise OrgError("حجز التوكنات غير موجود أو تمت تسويته مسبقًا")
+            self._assert_token_reservation_lease_current(reservation)
             reserved = int(reservation["reserved_tokens"])
             if actual_tokens > reserved:
                 raise OrgError("الاستهلاك الفعلي تجاوز الحجز؛ التسوية مرفوضة للمصالحة")
@@ -1962,6 +2019,7 @@ class OrgStore:
                 (reservation_id,)).fetchone()
             if reservation is None or reservation["status"] != "reserved":
                 raise OrgError("حجز التوكنات غير موجود أو تمت معالجته")
+            self._assert_token_reservation_lease_current(reservation)
             reservation_update = self._conn.execute(
                 "UPDATE mission_token_reservations SET status='released', finished_at=? "
                 "WHERE id=? AND status='reserved'", (now, reservation_id))
