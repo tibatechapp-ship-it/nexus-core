@@ -6,6 +6,7 @@ import logging
 import math
 import re
 import sqlite3
+from contextlib import closing
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,7 +26,7 @@ class LocalVectorStore:
         self._init_db()
     
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS vectors (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +65,7 @@ class LocalVectorStore:
     def store(self, specialty: str, task: str, response: str, success: bool, score: float = 1.0):
         emb = self._embed(task)
         task_hash = hashlib.md5(task[:200].encode(), usedforsecurity=False).hexdigest()[:16]
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 "INSERT INTO vectors (specialty, task, task_hash, response, embedding, success, score, timestamp) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -74,7 +75,7 @@ class LocalVectorStore:
     
     def search(self, specialty: str, task: str, top_k: int = 5) -> List[Dict]:
         query_vec = self._embed(task)
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute(
                 "SELECT task, response, embedding, success, score FROM vectors "
                 "WHERE specialty = ? ORDER BY timestamp DESC LIMIT 200",
@@ -102,7 +103,7 @@ class LocalVectorStore:
         return scored[:top_k]
     
     def stats(self) -> Dict[str, Any]:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute("SELECT COUNT(*) FROM vectors")
             total = cur.fetchone()[0]
             cur = conn.execute("SELECT COUNT(*) FROM vectors WHERE success = 1")

@@ -1,6 +1,7 @@
 """Self-Learning Memory - يحفظ الدروس من كل مهمة."""
 import json
 import sqlite3
+from contextlib import closing
 import hashlib
 import logging
 from pathlib import Path
@@ -18,7 +19,7 @@ class CompanyMemory:
         self._init_db()
     
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS lessons (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +59,7 @@ class CompanyMemory:
     ):
         """يحفظ درساً من مهمة."""
         pattern = self._hash(task[:200])
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 "INSERT INTO lessons (specialty, task_pattern, lesson, success, agent_id, timestamp) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -98,7 +99,7 @@ class CompanyMemory:
     def get_best_response(self, specialty: str, task: str) -> Optional[str]:
         """يجد أفضل رد سابق لمهمة مشابهة."""
         pattern = self._hash(task[:200])
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute(
                 "SELECT best_response, success_count, failure_count FROM patterns "
                 "WHERE specialty = ? AND pattern_hash = ? AND success_count > failure_count",
@@ -111,7 +112,7 @@ class CompanyMemory:
     
     def get_recent_lessons(self, specialty: str = None, limit: int = 5) -> List[Dict]:
         """آخر الدروس المستفادة."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             if specialty:
                 cur = conn.execute(
                     "SELECT specialty, lesson, success, timestamp FROM lessons "
@@ -130,7 +131,7 @@ class CompanyMemory:
             ]
     
     def stats(self) -> Dict[str, Any]:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute("SELECT COUNT(*) FROM lessons")
             lessons_count = cur.fetchone()[0]
             cur = conn.execute("SELECT COUNT(*) FROM patterns WHERE success_count > failure_count")
