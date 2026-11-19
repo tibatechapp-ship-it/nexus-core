@@ -108,8 +108,14 @@ class OpsStore:
         )
         raw.row_factory = sqlite3.Row
         self._conn = _LockedConnection(raw, self._lock)
-        with self._lock:
-            self._migrate()
+        self._closed = False
+        try:
+            with self._lock:
+                self._migrate()
+        except BaseException:
+            raw.close()
+            self._closed = True
+            raise
 
     # ── المخطط والهجرة ────────────────────────────────────────────────────
 
@@ -563,6 +569,19 @@ class OpsStore:
         return {r["state"]: int(r["n"]) for r in rows}
 
     def close(self) -> None:
-        """إغلاق الاتصال — للاستدعاء الصريح في نهاية العمليات الطويلة."""
+        """إغلاق الاتصال — آمن عند التكرار."""
         with self._lock:
+            if self._closed:
+                return
             self._conn._raw.close()
+            self._closed = True
+
+    def __enter__(self) -> "OpsStore":
+        """Return this store from a managed resource scope."""
+        if self._closed:
+            raise RuntimeError("operations store is closed")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release the owned connection when the scope exits."""
+        self.close()
