@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Any, Callable, Mapping, Sequence
 
 from .contracts import EvidenceReference
+from .gate import AssuranceDecision, AssuranceVerdict
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MAX_CASES = 1000
@@ -222,6 +223,68 @@ class BehaviorComparison:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class BehaviorGateDecision:
+    """Combined assurance/behavior outcome; never grants execution or release authority."""
+
+    verdict: "BehaviorGateVerdict"
+    reasons: tuple[str, ...]
+
+    @property
+    def accepted(self) -> bool:
+        return self.verdict is BehaviorGateVerdict.ASSURED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "verdict": self.verdict.value,
+            "accepted": self.accepted,
+            "reasons": list(self.reasons),
+        }
+
+
+class BehaviorGateVerdict(StrEnum):
+    ASSURED = "assured"
+    NEEDS_HUMAN = "needs_human"
+    REJECTED = "rejected"
+
+
+def evaluate_behavior_gate(
+    assurance: AssuranceDecision,
+    comparison: BehaviorComparison,
+) -> BehaviorGateDecision:
+    """Combine independent evidence assurance and behavior comparison.
+
+    This is a review verdict only. It never authorizes code execution, merging,
+    releasing, or deploying a change.
+    """
+    if not isinstance(assurance, AssuranceDecision) or not isinstance(comparison, BehaviorComparison):
+        return BehaviorGateDecision(BehaviorGateVerdict.REJECTED, ("invalid gate input",))
+    if assurance.verdict is AssuranceVerdict.REJECTED:
+        return BehaviorGateDecision(
+            BehaviorGateVerdict.REJECTED,
+            ("evidence assurance rejected the result", *assurance.reasons),
+        )
+    if comparison.verdict in (BehaviorVerdict.INVALID, BehaviorVerdict.REGRESSION):
+        return BehaviorGateDecision(
+            BehaviorGateVerdict.REJECTED,
+            ("behavior verification rejected the candidate", *comparison.reasons),
+        )
+    if (
+        assurance.verdict is AssuranceVerdict.NEEDS_HUMAN
+        or comparison.verdict is BehaviorVerdict.INCOMPLETE
+    ):
+        return BehaviorGateDecision(
+            BehaviorGateVerdict.NEEDS_HUMAN,
+            ("independent human review is required", *assurance.reasons, *comparison.reasons),
+        )
+    if assurance.verdict is AssuranceVerdict.ASSURED and comparison.verdict is BehaviorVerdict.EQUIVALENT:
+        return BehaviorGateDecision(
+            BehaviorGateVerdict.ASSURED,
+            ("evidence assurance and recorded behavior comparison passed",),
+        )
+    return BehaviorGateDecision(BehaviorGateVerdict.REJECTED, ("unrecognized gate state",))
+
+
 EvidenceVerifier = Callable[[EvidenceReference], bool]
 
 
@@ -352,6 +415,6 @@ def compare_behavior(
 
 __all__ = [
     "BehaviorBaseline", "BehaviorCase", "BehaviorComparison", "BehaviorContractError",
-    "BehaviorObservation", "BehaviorVerdict", "ObservationStatus", "compare_behavior",
-    "digest_payload",
+    "BehaviorGateDecision", "BehaviorGateVerdict", "BehaviorObservation", "BehaviorVerdict",
+    "ObservationStatus", "compare_behavior", "digest_payload", "evaluate_behavior_gate",
 ]

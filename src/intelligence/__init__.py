@@ -10,8 +10,8 @@ from .gate import (
 )
 from .behavior import (
     BehaviorBaseline, BehaviorCase, BehaviorComparison, BehaviorContractError,
-    BehaviorObservation, BehaviorVerdict, ObservationStatus, compare_behavior,
-    digest_payload,
+    BehaviorGateDecision, BehaviorGateVerdict, BehaviorObservation, BehaviorVerdict,
+    ObservationStatus, compare_behavior, digest_payload, evaluate_behavior_gate,
 )
 
 __all__ = [
@@ -19,6 +19,7 @@ __all__ = [
     "EvidenceReference", "Finding", "FindingStatus", "IntelligenceResult",
     "ResultStatus", "Severity", "AssuranceDecision", "AssuranceVerdict",
     "EvidenceVerifier", "evaluate_assurance", "BehaviorBaseline", "BehaviorCase",
-    "BehaviorComparison", "BehaviorContractError", "BehaviorObservation",
-    "BehaviorVerdict", "ObservationStatus", "compare_behavior", "digest_payload",
+    "BehaviorComparison", "BehaviorContractError", "BehaviorGateDecision",
+    "BehaviorGateVerdict", "BehaviorObservation", "BehaviorVerdict", "ObservationStatus",
+    "compare_behavior", "digest_payload", "evaluate_behavior_gate",
 ]

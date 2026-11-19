@@ -7,8 +7,10 @@ import pytest
 from src.intelligence import EvidenceReference
 from src.intelligence.behavior import (
     BehaviorBaseline, BehaviorCase, BehaviorContractError, BehaviorObservation,
-    BehaviorVerdict, ObservationStatus, compare_behavior, digest_payload,
+    BehaviorGateVerdict, BehaviorVerdict, ObservationStatus, compare_behavior,
+    digest_payload, evaluate_behavior_gate,
 )
+from src.intelligence.gate import AssuranceDecision, AssuranceVerdict
 
 
 _INPUT = "1" * 64
@@ -190,3 +192,41 @@ def test_observation_evidence_count_is_bounded() -> None:
         verify_evidence=lambda _: True,
     )
     assert result.verdict is BehaviorVerdict.INVALID
+
+
+
+def test_combined_gate_assures_only_when_both_gates_pass() -> None:
+    assurance = AssuranceDecision(AssuranceVerdict.ASSURED, ("evidence verified",), ("base-ev", "run-ev"))
+    behavior = _compare((_observation(),))
+    decision = evaluate_behavior_gate(assurance, behavior)
+    assert decision.verdict is BehaviorGateVerdict.ASSURED
+    assert decision.accepted
+
+
+def test_combined_gate_rejects_behavior_regression() -> None:
+    assurance = AssuranceDecision(AssuranceVerdict.ASSURED, ("evidence verified",), ("base-ev", "run-ev"))
+    behavior = _compare((_observation(output_hash="3" * 64),))
+    assert evaluate_behavior_gate(assurance, behavior).verdict is BehaviorGateVerdict.REJECTED
+
+
+def test_combined_gate_requires_human_for_incomplete_behavior() -> None:
+    assurance = AssuranceDecision(AssuranceVerdict.ASSURED, ("evidence verified",), ("base-ev",))
+    decision = evaluate_behavior_gate(assurance, _compare(()))
+    assert decision.verdict is BehaviorGateVerdict.NEEDS_HUMAN
+
+
+def test_combined_gate_rejects_unassured_evidence() -> None:
+    assurance = AssuranceDecision(AssuranceVerdict.REJECTED, ("digest mismatch",), ())
+    decision = evaluate_behavior_gate(assurance, _compare((_observation(),)))
+    assert decision.verdict is BehaviorGateVerdict.REJECTED
+
+
+def test_combined_gate_requires_human_for_partial_assurance() -> None:
+    assurance = AssuranceDecision(AssuranceVerdict.NEEDS_HUMAN, ("partial result",), ("base-ev",))
+    decision = evaluate_behavior_gate(assurance, _compare((_observation(),)))
+    assert decision.verdict is BehaviorGateVerdict.NEEDS_HUMAN
+
+
+def test_combined_gate_rejects_invalid_inputs() -> None:
+    decision = evaluate_behavior_gate(None, None)
+    assert decision.verdict is BehaviorGateVerdict.REJECTED
