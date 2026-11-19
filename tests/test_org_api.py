@@ -135,7 +135,8 @@ class TestWriteEndpointsAuth:
             json={"execution_mode": "unknown"}, headers=AUTH,
         )
         assert response.status_code == 422
-        assert org.mission_get(mission_id).status == "created"
+        stored = org.mission_get(mission_id)
+        assert stored is not None and stored.status == "created"
 
     def test_run_rejects_already_started_mission_with_conflict(
             self, client: tuple[TestClient, OrgStore]) -> None:
