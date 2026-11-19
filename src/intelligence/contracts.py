@@ -90,7 +90,7 @@ class EvidenceReference:
     def __post_init__(self) -> None:
         for field in ("evidence_id", "kind", "locator", "collected_by"):
             object.__setattr__(self, field, _text(getattr(self, field), field))
-        if not _SHA256_RE.fullmatch(self.sha256):
+        if not isinstance(self.sha256, str) or not _SHA256_RE.fullmatch(self.sha256):
             raise ContractError("sha256 must be a lowercase 64-character SHA-256 digest")
 
     def to_dict(self) -> dict[str, str]:
@@ -131,7 +131,7 @@ class Finding:
         try:
             object.__setattr__(self, "severity", Severity(self.severity))
             object.__setattr__(self, "status", FindingStatus(self.status))
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             raise ContractError(f"unsupported finding classification: {exc}") from exc
         if isinstance(self.confidence, bool) or not isinstance(self.confidence, (int, float)):
             raise ContractError("confidence must be a number between 0 and 1")
@@ -194,7 +194,7 @@ class IntelligenceResult:
             raise ContractError(f"unsupported contract_version: {self.contract_version}")
         try:
             object.__setattr__(self, "status", ResultStatus(self.status))
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             raise ContractError(f"unsupported result status: {self.status}") from exc
 
         for field, limit in (("scope", 256), ("limitations", 256), ("recommendations", 256)):
