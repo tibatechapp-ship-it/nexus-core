@@ -497,3 +497,15 @@ def test_mission_replay_rejects_state_root_file(tmp_path) -> None:
             verify_evidence=lambda _: True,
         )
     assert store.audit_events[-1][0] == "behavior.replay.failed"
+
+
+@pytest.mark.parametrize("sensitive_dir", [".aws", ".ssh", ".kube", ".docker"])
+def test_snapshot_copy_rejects_credential_bearing_directories(tmp_path, sensitive_dir):
+    import src.intelligence.mission as module
+    source = tmp_path / "source"
+    source.mkdir()
+    secret_dir = source / sensitive_dir
+    secret_dir.mkdir()
+    (secret_dir / "credentials").write_text("not-for-replay", encoding="utf-8")
+    with pytest.raises(MissionBehaviorError, match="credential-bearing directory"):
+        module._copy_verified_snapshot(source, tmp_path / "copy")
