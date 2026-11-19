@@ -153,3 +153,31 @@ def test_snapshot_copy_rejects_symlink(tmp_path):
     (source / "linked").symlink_to(outside)
     with pytest.raises(MissionBehaviorError, match="symlink"):
         module._copy_verified_snapshot(source, tmp_path / "copy")
+
+
+
+def test_mission_replay_verifies_baseline_before_invoking_runner(tmp_path, monkeypatch):
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    store = Store(SimpleNamespace(id="mission-1", status="done", repo_path=str(repo)))
+    sink = Sink()
+    baseline = _baseline(sink)
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: _context(checkpoint))
+    monkeypatch.setattr(
+        module, "execute_authorized_cases",
+        lambda **kwargs: pytest.fail("candidate must not execute with unverified baseline"),
+    )
+    with pytest.raises(MissionBehaviorError, match="baseline evidence"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=baseline,
+            cases=[BehaviorCaseSpec("health", ("python", "-V"), {})],
+            run_id="candidate-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: False,
+        )
+    assert store.audit_events[-1][0] == "behavior.replay.failed"

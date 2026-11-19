@@ -200,6 +200,17 @@ def run_mission_behavior_replay(
         "execution_mode": "container",
     })
     try:
+        # Verify the baseline before executing any candidate code. The
+        # comparator repeats verification when producing the final verdict.
+        for reference in baseline.evidence:
+            try:
+                baseline_verified = verify_evidence(reference)
+            except Exception:
+                baseline_verified = False
+            if baseline_verified is not True:
+                raise MissionBehaviorError(
+                    "baseline evidence failed independent verification"
+                )
         context = restore_mission_context(
             store, mission_id, state_path, expected_repo_root=repo_path
         )
