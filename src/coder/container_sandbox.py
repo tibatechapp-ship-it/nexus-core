@@ -167,7 +167,7 @@ def run_in_container(
     timeout = min(max(int(timeout), 1), MAX_TIMEOUT_S)
     with tempfile.TemporaryDirectory(prefix="nexus-container-cid-") as cid_dir:
         cidfile = Path(cid_dir) / "container.id"
-        argv[1:1] = ["--cidfile", str(cidfile)]
+        argv[2:2] = ["--cidfile", str(cidfile)]
         try:
             proc = subprocess.Popen(
                 argv,

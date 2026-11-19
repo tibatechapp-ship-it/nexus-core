@@ -98,6 +98,7 @@ def _timeout_runner(monkeypatch, cidfile_contents="a" * 64, cleanup_returncode=0
     import src.coder.container_sandbox as sandbox
 
     calls = []
+    processes = []
 
     class FakeProcess:
         pid = 4242
@@ -107,6 +108,7 @@ def _timeout_runner(monkeypatch, cidfile_contents="a" * 64, cleanup_returncode=0
 
         def __init__(self, command, **kwargs):
             calls.append(("popen", command))
+            processes.append(self)
             cid_path = Path(command[command.index("--cidfile") + 1])
             if cidfile_contents is not None:
                 cid_path.write_text(cidfile_contents, encoding="ascii")
@@ -128,7 +130,10 @@ def _timeout_runner(monkeypatch, cidfile_contents="a" * 64, cleanup_returncode=0
     monkeypatch.setattr(sandbox.subprocess, "Popen", FakeProcess)
     monkeypatch.setattr(sandbox.subprocess, "run", fake_run)
     monkeypatch.setattr(sandbox.os, "getpgid", lambda pid: pid)
-    monkeypatch.setattr(sandbox.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(
+        sandbox.os, "killpg",
+        lambda pid, sig: setattr(processes[0], "returncode", -9),
+    )
     return calls, FakeProcess
 
 
