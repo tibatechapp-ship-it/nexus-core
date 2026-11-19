@@ -316,6 +316,9 @@ class ExecutiveOrchestrator:
                 return self._final(mission, ctx, failed=True)
             self._advance_phase(mission, "F_VERIFICATION", "G_RELEASE")
             self._run_wave(plan, ctx, phase="G_RELEASE", dept="release")
+            # Persist the final candidate worktree and completed task ledger
+            # before cleanup. Explicit behavior replay restores this checkpoint.
+            self._checkpoint_context(ctx)
             mission = self._final(mission, ctx, failed=False)
             return mission
         except (DepartmentError, OrgError, PlanError) as exc:

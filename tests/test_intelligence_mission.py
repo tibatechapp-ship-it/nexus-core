@@ -53,6 +53,7 @@ def _baseline(sink, mission_id="mission-1"):
 
 def _context(worktree):
     return SimpleNamespace(
+        mission=SimpleNamespace(status="running", phase="G_RELEASE"),
         execution_policy={
             "schema_version": 1, "execution_mode": "container",
             "container_enabled": True,
@@ -74,7 +75,7 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     state.mkdir()
     repo = tmp_path / "repo"
     repo.mkdir()
-    mission = SimpleNamespace(id="mission-1", status="done", repo_path=str(repo))
+    mission = SimpleNamespace(id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo))
     store = Store(mission)
     sink = Sink()
     baseline = _baseline(sink)

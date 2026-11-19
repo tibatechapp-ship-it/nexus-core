@@ -216,6 +216,14 @@ def run_mission_behavior_replay(
         )
         if context.worktree is None:
             raise MissionBehaviorError("completed mission has no verified worktree checkpoint")
+        checkpoint_mission = context.mission
+        if (
+            getattr(checkpoint_mission, "status", None) != "running"
+            or getattr(checkpoint_mission, "phase", None) != mission.phase
+        ):
+            raise MissionBehaviorError(
+                "latest checkpoint is not the final pre-completion mission state"
+            )
         policy = context.execution_policy
         candidate_revision = str(
             fingerprint_directory(context.worktree.root, include_git=False)["digest"]
