@@ -303,7 +303,6 @@ class MockProvider(Provider):
         if function is None:
             return json.dumps({"goal": "No deterministic function found",
                                "defects": [], "steps": [], "tests_to_run": []})
-        original = function.group(0)
         params = [item.strip().split("=")[0].strip()
                   for item in function.group(1).split(",")]
         divisor = params[1] if len(params) > 1 and params[1].isidentifier() else "b"
@@ -317,7 +316,7 @@ class MockProvider(Provider):
             f"{indent}    raise ZeroDivisionError('division by zero')\n"
             f"{return_line.group(0)}"
         )
-        patched = original[:return_line.start()] + guarded + original[return_line.end():]
+        find_block = return_line.group(0)
         test_entry = next(
             ((path.strip(), body) for path, body in blocks
              if path.strip().endswith(".py") and "test" in path.lower()
@@ -334,7 +333,7 @@ class MockProvider(Provider):
             "steps": [{
                 "file": source_path, "action": "edit",
                 "reason": "Reject a zero divisor before division",
-                "find": original, "patch_hint": patched, "risk": "low",
+                "find": find_block, "patch_hint": guarded, "risk": "low",
             }],
             "tests_to_run": [test_path],
         }, ensure_ascii=False)
