@@ -189,6 +189,9 @@ def execute_authorized_cases(
             "truncated": truncated,
             "stdout": stdout,
             "stderr": stderr,
+            "cleanup_attempted": result.get("cleanup_attempted", False),
+            "cleanup_ok": result.get("cleanup_ok"),
+            "cleanup_error": result.get("cleanup_error", ""),
         }
         captured.append(
             CapturedCase(
