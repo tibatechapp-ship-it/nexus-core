@@ -282,6 +282,7 @@ A clean scan is not proof that a system is defect-free. A passing replay is not 
 - [x] Reject credential-bearing directories (.aws, .ssh, .azure, .gcloud, .kube, .gnupg, .docker) and additional key-store suffixes during replay snapshot preparation.
 - [x] Compare requested replay case IDs and canonical input digests with the trusted baseline before checkpoint restore or candidate execution; apply the same sanitizer before hashing and before staging fixtures into disposable workspaces.
 - [x] Add negative-path tests for the above controls, including proof that secret-like fixture values do not reach the staged replay input.
+- [x] Apply the same credential sanitizer to evidence-sink and rootless-runner exception details before they can enter replay failure audit records; add a regression test proving a provider-token-shaped value is not persisted.
 - [x] Restore a genuine two-case workspace-isolation test: two cases must receive two distinct disposable workspaces copied from the same verified checkpoint.
 - [ ] Run the complete Python 3.11/3.12/3.13 matrix, exact 95% framework coverage gate, report freshness, MIZAN and all security checks on the same final PR head.
 - [ ] Run the real Rootless Docker E2E on that same final PR head.
