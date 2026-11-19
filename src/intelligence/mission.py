@@ -58,7 +58,7 @@ class BehaviorCaseSpec:
             raise MissionBehaviorError("command must contain between 1 and 128 argv items")
         argv = tuple(self.argv)
         if any(
-            not isinstance(part, str) or not part or len(part) > 4096 or "\\x00" in part
+            not isinstance(part, str) or not part or len(part) > 4096 or "\x00" in part
             for part in argv
         ):
             raise MissionBehaviorError("command contains an invalid argument")
