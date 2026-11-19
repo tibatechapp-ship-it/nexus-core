@@ -306,7 +306,7 @@ class MockProvider(Provider):
         params = [item.strip().split("=")[0].strip()
                   for item in function.group(1).split(",")]
         divisor = params[1] if len(params) > 1 and params[1].isidentifier() else "b"
-        return_line = re.search(r"(?m)^(?P<indent>[ \t]*)return .+/.+$", original)
+        return_line = re.search(r"(?m)^(?P<indent>[ \t]*)return .+/.+$", function.group(0))
         if return_line is None:
             return json.dumps({"goal": "No division expression found",
                                "defects": [], "steps": [], "tests_to_run": []})
