@@ -19,7 +19,7 @@ from .behavior import (
     BehaviorBaseline, BehaviorComparison, BehaviorGateDecision, _required_text,
     compare_behavior, digest_payload, evaluate_behavior_gate,
 )
-from .capture import EvidenceSink, capture_observations
+from .capture import EvidenceSink, capture_observations, sanitize_payload
 from .contracts import IntelligenceResult, ResultStatus
 from .gate import AssuranceDecision, evaluate_assurance
 from .replay import ReplayCommandCase, execute_authorized_cases
@@ -308,8 +308,12 @@ def run_mission_behavior_replay(
             raise MissionBehaviorError(
                 "replay case IDs must exactly match the trusted baseline before execution"
             )
-        for case_id, case in requested_cases.items():
-            if digest_payload(case.input_payload) != baseline_cases[case_id].input_sha256:
+        sanitized_inputs = {
+            case_id: sanitize_payload(case.input_payload)
+            for case_id, case in requested_cases.items()
+        }
+        for case_id, sanitized_input in sanitized_inputs.items():
+            if digest_payload(sanitized_input) != baseline_cases[case_id].input_sha256:
                 raise MissionBehaviorError(
                     f"replay input fixture differs from the trusted baseline: {case_id}"
                 )
@@ -362,14 +366,15 @@ def run_mission_behavior_replay(
             for index, case in enumerate(cases):
                 workspace = root / f"case-{index:04d}"
                 _copy_verified_snapshot(Path(context.worktree.root), workspace)
-                fixture_path = _stage_behavior_input(workspace, case.input_payload)
+                sanitized_input = sanitized_inputs[case.case_id]
+                fixture_path = _stage_behavior_input(workspace, sanitized_input)
                 command = tuple(
                     fixture_path if part == "{behavior_input}" else part
                     for part in case.argv
                 )
                 replay_cases.append(ReplayCommandCase(
                     case_id=case.case_id, argv=command,
-                    workspace=workspace, input_payload=case.input_payload,
+                    workspace=workspace, input_payload=sanitized_input,
                     timeout=case.timeout,
                 ))
             captured = execute_authorized_cases(
