@@ -1,14 +1,15 @@
 """Safe recording adapters for externally collected behavior fixtures.
 
 This module never executes a target or launches a process. It accepts already
-collected, sanitized fixtures and stores bounded evidence through an injected
-evidence sink. A future execution adapter must obtain mission authorization
-and use the approved isolated runner before calling these recording functions.
+collected fixtures, redacts common credential forms before hashing or storage,
+and stores bounded evidence through an injected immutable evidence sink.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -25,6 +26,26 @@ from .contracts import EvidenceReference
 _MAX_CASES = 1000
 _MAX_ARTIFACT_BYTES = 1024 * 1024
 _CAPTURE_VERSION = "nexus.behavior-capture/v1"
+_REDACTED = "[REDACTED]"
+_SECRET_KEY_SUFFIXES = (
+    "password", "passwd", "secret", "token", "apikey", "accesskey",
+    "privatekey", "clientsecret", "authorization", "cookie", "credential",
+)
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*"),
+    re.compile(
+        r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|"
+        r"client[_-]?secret|password|passwd|secret)\s*([=:])\s*"
+        r"(['\"]?)[^\s,'\";}]+"
+    ),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+        re.DOTALL,
+    ),
+)
 
 
 class CaptureError(ValueError):
@@ -48,7 +69,7 @@ class EvidenceSink(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class CapturedCase:
-    """Already-collected, sanitized input/output fixture; no runner is invoked."""
+    """Already-collected input/output fixture; common credentials are redacted."""
 
     case_id: str
     input_payload: Any
@@ -64,6 +85,47 @@ class CapturedCase:
             object.__setattr__(self, "status", ObservationStatus(self.status))
         except (TypeError, ValueError) as exc:
             raise CaptureError(f"unsupported capture status: {exc}") from exc
+
+
+def _is_secret_key(key: Any) -> bool:
+    if not isinstance(key, str):
+        return False
+    compact = re.sub(r"[^a-z0-9]", "", key.casefold())
+    return any(compact.endswith(suffix) for suffix in _SECRET_KEY_SUFFIXES)
+
+
+def _redact_string(value: str) -> str:
+    result = value
+    for pattern in _SECRET_PATTERNS:
+        if pattern.groups:
+            if pattern.pattern.startswith("(?i)\\b(Bearer"):
+                result = pattern.sub(lambda match: match.group(1) + _REDACTED, result)
+            elif "api[_-]?" in pattern.pattern:
+                result = pattern.sub(
+                    lambda match: match.group(1) + match.group(2) + _REDACTED,
+                    result,
+                )
+            else:
+                result = pattern.sub(_REDACTED, result)
+        else:
+            result = pattern.sub(_REDACTED, result)
+    return result
+
+
+def _sanitize_payload(value: Any, *, field_name: Any = None) -> Any:
+    """Return a JSON-shaped copy with credential-bearing fields and strings redacted."""
+    if _is_secret_key(field_name):
+        return _REDACTED
+    if isinstance(value, Mapping):
+        return {
+            key: _sanitize_payload(item, field_name=key)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_payload(item) for item in value]
+    if isinstance(value, str):
+        return _redact_string(value)
+    return value
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -93,9 +155,11 @@ def _store_case(
     collected_by: str,
     sink: EvidenceSink,
 ) -> tuple[str, str, str, EvidenceReference]:
+    sanitized_input = _sanitize_payload(case.input_payload)
+    sanitized_output = _sanitize_payload(case.output_payload)
     try:
-        input_hash = digest_payload(case.input_payload)
-        output_hash = digest_payload(case.output_payload)
+        input_hash = digest_payload(sanitized_input)
+        output_hash = digest_payload(sanitized_output)
     except ValueError as exc:
         raise CaptureError(f"case {case.case_id} contains an invalid or oversized payload: {exc}") from exc
     artifact = {
@@ -104,11 +168,12 @@ def _store_case(
         "target": target,
         "revision": revision,
         "case_id": case.case_id,
-        "input": case.input_payload,
-        "output": case.output_payload,
+        "input": sanitized_input,
+        "output": sanitized_output,
         "input_sha256": input_hash,
         "output_sha256": output_hash,
         "status": case.status.value,
+        "redaction": "nexus.secret-redaction/v1",
     }
     payload = _canonical_bytes(artifact)
     evidence_id = _evidence_id(run_id, case.case_id)
@@ -139,10 +204,10 @@ def capture_baseline(
     collected_by: str,
     sink: EvidenceSink,
 ) -> BehaviorBaseline:
-    """Record successful, pre-collected fixtures as a behavior baseline.
+    """Record successful pre-collected fixtures after credential redaction.
 
-    Input/output fixtures must be sanitized test data. This function does not
-    run the commands or functions that produced them.
+    Redaction is defense in depth, not a guarantee that arbitrary personal or
+    confidential data is safe. Callers must still provide sanitized test data.
     """
     target = _required_text(target, "target")
     revision = _required_text(revision, "revision")
@@ -180,7 +245,7 @@ def capture_observations(
     collected_by: str,
     sink: EvidenceSink,
 ) -> tuple[tuple[BehaviorObservation, ...], tuple[EvidenceReference, ...]]:
-    """Record candidate observations from an already-authorized external harness."""
+    """Record candidate observations after credential redaction."""
     target = _required_text(target, "target")
     revision = _required_text(revision, "revision")
     run_id = _required_text(run_id, "run_id")
