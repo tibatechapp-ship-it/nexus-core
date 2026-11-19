@@ -82,7 +82,26 @@ class InteractionStore:
         self._clock = clock
         self._lock = RLock()
         self._conn = connect(self.path)
+        self._closed = False
         self._init_schema()
+
+    def close(self) -> None:
+        """Close the SQLite connection; safe to call more than once."""
+        with self._lock:
+            if self._closed:
+                return
+            self._conn.close()
+            self._closed = True
+
+    def __enter__(self) -> "InteractionStore":
+        """Return this store for use as a context manager."""
+        if self._closed:
+            raise RuntimeError("interaction store is closed")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release the SQLite connection at the end of a managed scope."""
+        self.close()
 
     # -- schema ------------------------------------------------------------
     def _init_schema(self) -> None:
@@ -252,6 +271,7 @@ class InteractionStore:
 
 
 _STORE: InteractionStore | None = None
+_STORE_LOCK = RLock()
 
 
 def get_interaction_store(
@@ -259,12 +279,17 @@ def get_interaction_store(
 ) -> InteractionStore:
     """Process-wide singleton (idempotent; first path wins)."""
     global _STORE
-    if _STORE is None:
-        _STORE = InteractionStore(db_path)
-    return _STORE
+    with _STORE_LOCK:
+        if _STORE is None:
+            _STORE = InteractionStore(db_path)
+        return _STORE
 
 
 def reset_interaction_store() -> None:
-    """Drop the singleton (tests / deliberate re-open)."""
+    """Close and drop the singleton (tests / deliberate re-open)."""
     global _STORE
-    _STORE = None
+    with _STORE_LOCK:
+        previous = _STORE
+        _STORE = None
+        if previous is not None:
+            previous.close()
