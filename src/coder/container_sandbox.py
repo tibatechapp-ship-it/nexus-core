@@ -126,7 +126,7 @@ def run_in_container(
         f"--user={container_user}",
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
         "--mount",
-        f"type=bind,src={root},dst=/workspace,rw",
+        f"type=bind,src={root},dst=/workspace",
         "--workdir=/workspace",
         "--entrypoint",
         command[0],
