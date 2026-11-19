@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from src.org.recovery_context import fingerprint_directory, restore_mission_context
-from .behavior import BehaviorBaseline, BehaviorComparison, compare_behavior, digest_payload
+from .behavior import (
+    BehaviorBaseline, BehaviorComparison, _required_text, compare_behavior,
+    digest_payload,
+)
 from .capture import EvidenceSink, capture_observations
 from .replay import ReplayCommandCase, execute_authorized_cases
 
@@ -45,6 +48,27 @@ class BehaviorCaseSpec:
     argv: tuple[str, ...]
     input_payload: Any
     timeout: int = 120
+
+    def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "case_id", _required_text(self.case_id, "case_id"))
+        except ValueError as exc:
+            raise MissionBehaviorError(str(exc)) from exc
+        if not isinstance(self.argv, (tuple, list)) or not 1 <= len(self.argv) <= 128:
+            raise MissionBehaviorError("command must contain between 1 and 128 argv items")
+        argv = tuple(self.argv)
+        if any(
+            not isinstance(part, str) or not part or len(part) > 4096 or "\\x00" in part
+            for part in argv
+        ):
+            raise MissionBehaviorError("command contains an invalid argument")
+        object.__setattr__(self, "argv", argv)
+        if isinstance(self.timeout, bool) or not isinstance(self.timeout, int) or not 1 <= self.timeout <= 300:
+            raise MissionBehaviorError("timeout must be an integer between 1 and 300 seconds")
+        try:
+            digest_payload(self.input_payload)
+        except ValueError as exc:
+            raise MissionBehaviorError(f"input fixture is invalid: {exc}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +174,13 @@ def run_mission_behavior_replay(
         raise MissionBehaviorError("replay contains duplicate case IDs")
     if not callable(verify_evidence):
         raise MissionBehaviorError("independent evidence verifier is required")
+    try:
+        _required_text(run_id, "run_id")
+        _required_text(collected_by, "collected_by")
+    except ValueError as exc:
+        raise MissionBehaviorError(str(exc)) from exc
+    if not callable(getattr(evidence_sink, "put", None)):
+        raise MissionBehaviorError("immutable evidence sink is required")
 
     mission = store.mission_get(mission_id)
     if mission is None or mission.status != "done":
