@@ -47,7 +47,8 @@ class TestGreenPath:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "reports")
         return pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                            repo_path="examples/org_demo/fixture_repo",\n                            execution_policy=LOCAL_EXECUTION_POLICY)
+                            repo_path="examples/org_demo/fixture_repo",
+                            execution_policy=LOCAL_EXECUTION_POLICY)
 
     def test_mission_done_at_release(self, report: object) -> None:
         assert report.mission.status == "done"  # type: ignore[attr-defined]
