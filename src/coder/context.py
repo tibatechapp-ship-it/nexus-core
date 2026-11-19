@@ -100,7 +100,7 @@ def _lexical_rank(
         if len(raw) > MAX_INDEX_FILE_BYTES:
             raw = raw[:MAX_INDEX_FILE_BYTES]
         try:
-            source = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+            source = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").replace("\r\n", "\n").replace("\r", "\n")
         except UnicodeDecodeError:
             continue
         tokens = _tokens(relative + " " + source)
