@@ -127,8 +127,13 @@ if _FASTAPI_OK:
             if mission is None:
                 raise HTTPException(status_code=404, detail="مهمة غير موجودة")
             image = payload.container_image
-            digest = image.rsplit("@sha256:", 1)[-1] if "@sha256:" in image else ""
-            if (len(digest) != 64
+            digest = (
+                image.rsplit("@sha256:", 1)[-1]
+                if image.count("@sha256:") == 1 else ""
+            )
+            if (image != image.strip()
+                    or not image.split("@sha256:", 1)[0].strip()
+                    or len(digest) != 64
                     or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
                 raise HTTPException(
                     status_code=422,
