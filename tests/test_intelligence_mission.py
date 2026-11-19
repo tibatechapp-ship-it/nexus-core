@@ -120,7 +120,7 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     report_text = report.read_text(encoding="utf-8")
     assert "## التحقق السلوكي" in report_text
     assert '"verdict": "invalid"' in report_text
-    assert "candidate-rev" in report_text
+    assert result.candidate_revision in report_text
     assert not list(state.glob("behavior-*"))
 
 
