@@ -21,6 +21,9 @@ from src.ops.store import OpsStore
 
 OBJECTIVE = ("أضف حارس قسمة على صفر إلى دالة divide في وحدة calc.mathops "
              "مع اختبارات للحدية")
+LOCAL_EXECUTION_POLICY = {
+    "schema_version": 1, "execution_mode": "process", "trusted_local": True,
+}
 
 
 def _patched_pool(provider_cls: type[MockProvider]) -> ProviderPool:
@@ -44,7 +47,7 @@ class TestGreenPath:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "reports")
         return pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                            repo_path="examples/org_demo/fixture_repo")
+                            repo_path="examples/org_demo/fixture_repo",\n                            execution_policy=LOCAL_EXECUTION_POLICY)
 
     def test_mission_done_at_release(self, report: object) -> None:
         assert report.mission.status == "done"  # type: ignore[attr-defined]
