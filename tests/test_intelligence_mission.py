@@ -75,7 +75,9 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     state.mkdir()
     repo = tmp_path / "repo"
     repo.mkdir()
-    mission = SimpleNamespace(id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo))
+    report = tmp_path / "REPORT.md"
+    report.write_text("# Mission report\n", encoding="utf-8")
+    mission = SimpleNamespace(id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo), report_path=str(report))
     store = Store(mission)
     sink = Sink()
     baseline = _baseline(sink)
@@ -111,8 +113,14 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     )
     assert result.comparison.verdict is BehaviorVerdict.INVALID
     assert [item[0] for item in store.audit_events] == [
-        "behavior.replay.requested", "behavior.replay.completed"
+        "behavior.replay.requested",
+        "behavior.replay.report_persisted",
+        "behavior.replay.completed",
     ]
+    report_text = report.read_text(encoding="utf-8")
+    assert "## التحقق السلوكي" in report_text
+    assert '"verdict": "invalid"' in report_text
+    assert "candidate-rev" in report_text
     assert not list(state.glob("behavior-*"))
 
 
