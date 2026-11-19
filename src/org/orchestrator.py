@@ -307,6 +307,7 @@ class ExecutiveOrchestrator:
         if claim is None:
             raise OrgError(f"المهمة غير معلّقة أو مملوكة لعامل آخر: {spec.id}")
         lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
         t0 = time.time()
         try:
             if spec.dept == "executive":
@@ -336,10 +337,12 @@ class ExecutiveOrchestrator:
                 duration_ms=round((time.time() - t0) * 1000, 2))
         except Exception as exc:  # noqa: BLE001 — الفشل يُسجَّل ثم يُرفع
             self.org_store.fail_claimed_task(
-                spec.id, lease_token, f"{type(exc).__name__}: {exc}")
+                spec.id, lease_token, f"{type(exc).__name__}: {exc}",
+                lease_generation=lease_generation)
             raise
         self.org_store.finish_claimed_task(
-            spec.id, lease_token, result.output)
+            spec.id, lease_token, result.output,
+            lease_generation=lease_generation)
         self._checkpoint_context(ctx)
         return result
 
@@ -745,6 +748,7 @@ class ExecutiveOrchestrator:
         if claim is None:
             raise OrgError(f"مهمة المراجعة غير متاحة للمطالبة: {review_task.id}")
         lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
         try:
             decision, reviews = self.depts.council.review_with_debate(
                 ctx.mission.id, review_task.id,
@@ -771,13 +775,15 @@ class ExecutiveOrchestrator:
             }
             self.org_store.audit("gate.review", ctx.mission.id, result)
             self.org_store.finish_claimed_task(
-                review_task.id, lease_token, result)
+                review_task.id, lease_token, result,
+                lease_generation=lease_generation)
             self._checkpoint_context(ctx)
             return decision.verdict == "approve"
         except Exception as exc:  # noqa: BLE001 — المطالبة تُنهى أو تفشل صراحة
             self.org_store.fail_claimed_task(
                 review_task.id, lease_token,
-                f"{type(exc).__name__}: {exc}")
+                f"{type(exc).__name__}: {exc}",
+                lease_generation=lease_generation)
             raise
 
     def _run_verification_gate(self, mission: Mission, plan: ExecutionPlan,
@@ -792,6 +798,7 @@ class ExecutiveOrchestrator:
         if claim is None:
             raise OrgError(f"مهمة التحقق غير متاحة للمطالبة: {verify_task.id}")
         lease_token = str(claim["lease_token"])
+        lease_generation = int(claim["lease_generation"])
         try:
             test_target = (ctx.affected.get("test_files") or [""])[0]
             report = self.verification.verify_mission(
@@ -806,13 +813,15 @@ class ExecutiveOrchestrator:
             self.org_store.audit(
                 "gate.verification", mission.id, report.to_dict())
             self.org_store.finish_claimed_task(
-                verify_task.id, lease_token, result)
+                verify_task.id, lease_token, result,
+                lease_generation=lease_generation)
             self._checkpoint_context(ctx)
             return not report.rejected
         except Exception as exc:  # noqa: BLE001 — لا نترك بوابة بلا نتيجة دائمة
             self.org_store.fail_claimed_task(
                 verify_task.id, lease_token,
-                f"{type(exc).__name__}: {exc}")
+                f"{type(exc).__name__}: {exc}",
+                lease_generation=lease_generation)
             raise
 
     # ── أدوات الحالة ──────────────────────────────────────────────────────
