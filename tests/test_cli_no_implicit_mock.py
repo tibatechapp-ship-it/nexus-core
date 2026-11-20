@@ -33,6 +33,7 @@ def test_all_mock_cli_tools_are_explicit_and_use_isolated_memory():
         source = (ROOT / "scripts" / name).read_text(encoding="utf-8")
         assert marker in source
         assert ".cache/nexus-core/simulations/" in source
+        assert "simulated" in source
     example = (ROOT / "examples" / "02_agent_run.py").read_text(encoding="utf-8")
     assert "SIMULATION ONLY" in example
     assert "nexus-core-example-simulation" in example
