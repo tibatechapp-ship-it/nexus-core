@@ -164,16 +164,24 @@ class AgentOutcome:
     model_used: str = ""
     provider_used: str = ""
     error: str = ""
+    simulated: bool = False
 
 
 class AgentRuntime:
-    """وقت التشغيل الموحّد — يستدعي النماذج ويسجل كل محاولة في المتجر."""
+    """وقت تشغيل موحد يرفض MockProvider افتراضيًا. allow_simulated=True للاختبارات والعروض المعزولة فقط، وليس لإثبات نجاح إنتاجي أو جودة نموذج حي."""
 
-    def __init__(self, pool: ProviderPool, tools: ToolRegistry,
-                 store: OrgStore) -> None:
+    def __init__(
+        self,
+        pool: ProviderPool,
+        tools: ToolRegistry,
+        store: OrgStore,
+        *,
+        allow_simulated: bool = False,
+    ) -> None:
         self.pool = pool
         self.tools = tools
         self.store = store
+        self.allow_simulated = allow_simulated
 
     # ── استدعاء النموذج بعقد الوكيل ───────────────────────────────────────
 
@@ -205,7 +213,12 @@ class AgentRuntime:
             self._settle_output_budget(
                 reservation, fallback_charge + resp.usage.out_tokens)
             latency = (time.time() - t0) * 1000.0
-            self._record(spec, resp, attempt, latency, "ok")
+            simulated = resp.simulated or resp.provider.strip().lower() == "mock"
+            if simulated and not self.allow_simulated:
+                last_error = "simulated provider response rejected"
+                self._record(spec, resp, attempt, latency, "simulated_rejected")
+                break
+            self._record(spec, resp, attempt, latency, "simulated" if simulated else "ok")
             return resp
         raise ProviderError(
             f"الوكيل {spec.role} استنفد محاولاته ({spec.max_retries + 1}): "
@@ -218,6 +231,8 @@ class AgentRuntime:
             {"role": "user", "content": user_prompt},
         ]
         last_error = ""
+        last_provider = ""
+        last_model = ""
         for attempt in range(1, spec.max_retries + 2):
             t0 = time.time()
             reservation = self._reserve_output_budget(spec)
@@ -235,9 +250,17 @@ class AgentRuntime:
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
                 continue
+            last_provider = resp.provider
+            last_model = resp.model
             fallback_charge = len(self.pool.last_errors) * spec.max_tokens
             self._settle_output_budget(
                 reservation, fallback_charge + resp.usage.out_tokens)
+            latency = (time.time() - t0) * 1000.0
+            simulated = resp.simulated or resp.provider.strip().lower() == "mock"
+            if simulated and not self.allow_simulated:
+                last_error = "simulated provider response rejected"
+                self._record(spec, resp, attempt, latency, "simulated_rejected")
+                break
             data, parse_error = self._parse_json(resp.text)
             if data is None:
                 last_error = parse_error
@@ -251,10 +274,13 @@ class AgentRuntime:
                 attempts=attempt, tokens_in=resp.usage.in_tokens,
                 tokens_out=resp.usage.out_tokens, cost_usd=resp.usage.cost_usd,
                 latency_ms=latency, model_used=resp.model,
-                provider_used=resp.provider,
+                provider_used=resp.provider, simulated=(resp.simulated or resp.provider.lower() == "mock"),
             )
         return AgentOutcome(
             spec_role=spec.role, success=False, attempts=spec.max_retries + 1,
+            provider_used=last_provider,
+            model_used=last_model,
+            simulated=last_error == "simulated provider response rejected",
             error=last_error or "رد غير قابل للتحليل",
         )
 

@@ -637,8 +637,15 @@ class ReleaseDept:
 class Departments:
     """مجمّع الأقسام الثمانية — بناء واحد بأسلاك مشتركة معلنة."""
 
-    def __init__(self, pool: ProviderPool, org_store: OrgStore,
-                 ops_store: OpsStore, outdir: str | Path = "reports/org") -> None:
+    def __init__(
+        self,
+        pool: ProviderPool,
+        org_store: OrgStore,
+        ops_store: OpsStore,
+        outdir: str | Path = "reports/org",
+        *,
+        allow_simulated: bool = False,
+    ) -> None:
         self.pool = pool
         self.org_store = org_store
         self.ops_store = ops_store
@@ -646,7 +653,9 @@ class Departments:
         self.guard = InjectionGuard()
         self.tools = build_tool_registry(Path("."), self.guard)
         self.runner = WorkspaceRunner()
-        self.runtime = AgentRuntime(pool, self.tools, org_store)
+        self.runtime = AgentRuntime(
+            pool, self.tools, org_store, allow_simulated=allow_simulated
+        )
         self.requirements = RequirementsOffice(self.runtime)
         self.intel = RepoIntelDept(self.runtime, self.guard)
         self.development = DevelopmentDept(self.runtime)

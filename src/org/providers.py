@@ -47,8 +47,8 @@ __all__ = [
 class ProviderConfig:
     """إعداد مزوّد واحد — الاسم والنموذج ونقطة النهاية والمفتاح."""
 
-    name: str = "mock"
-    model: str = "mock-1"
+    name: str = "openai-compat"
+    model: str = ""
     base_url: str = ""
     api_key: str = ""
     timeout_s: float = 120.0
@@ -73,6 +73,7 @@ class ModelResponse:
     usage: Usage
     latency_ms: float
     finish_reason: str = "stop"
+    simulated: bool = False
 
 
 class ProviderError(RuntimeError):
@@ -210,7 +211,7 @@ class MockProvider(Provider):
         usage = Usage(in_tokens=max(1, len(prompt.split())),
                       out_tokens=max(1, len(text.split())), cost_usd=0.0)
         return ModelResponse(text=text, provider=self.name, model=self.model,
-                             usage=usage, latency_ms=latency)
+                             usage=usage, latency_ms=latency, simulated=True)
 
     # ── بناء الردود حسب الدور ─────────────────────────────────────────────
 
@@ -384,16 +385,20 @@ class ProviderPool:
     """حوض مزوّدين مع سلسلة بدائل وحساب استهلاك موحّد.
 
     ``cfgs`` قائمة إعدادات بالترتيب المعلن؛ ``complete_with_fallback``
-    يجربها واحدًا بعد الآخر على ``ProviderError`` — كل محاولة تسجَّل
-    في ``last_errors`` لشريحة التدقيق.
+    يجرب المزودين المعلنين فقط على ``ProviderError``. لا يُنشأ مزود تلقائيًا عند غياب الإعدادات، وMockProvider لا يستخدم إلا إذا أُضيف صراحةً.
     """
 
     def __init__(self, cfgs: list[ProviderConfig] | None = None) -> None:
-        self._cfgs = cfgs or [ProviderConfig(name="mock", model="mock-1")]
+        # No implicit provider: missing configuration must fail closed.
+        self._cfgs = list(cfgs) if cfgs is not None else []
         self._cache: dict[str, Provider] = {}
         self.last_errors: list[str] = []
 
     def get(self, name: str = "", model: str = "") -> Provider:
+        if not self._cfgs:
+            raise ProviderError(
+                "لا يوجد مزوّد مهيأ؛ اضبط ORG_LLM_BASE_URL وORG_LLM_MODEL"
+            )
         for cfg in self._cfgs:
             if cfg.name == (name or self._cfgs[0].name):
                 key = f"{cfg.name}:{model or cfg.model}"
@@ -424,6 +429,11 @@ class ProviderPool:
                                max_tokens: int = 2000) -> ModelResponse:
         """تجربة السلسلة بالترتيب — فشل كلها يرفع بخلاصة الأخطاء."""
         self.last_errors = []
+        if not self._cfgs:
+            self.last_errors.append("no providers configured")
+            raise ProviderError(
+                "لا يوجد مزوّد مهيأ؛ اضبط ORG_LLM_BASE_URL وORG_LLM_MODEL"
+            )
         for cfg in self._cfgs:
             try:
                 return self.get(cfg.name, cfg.model).complete(
@@ -435,8 +445,8 @@ class ProviderPool:
 
 
 def default_pool() -> ProviderPool:
-    """الحوض الافتراضي — حتمي محلي بلا شبكة ولا مفاتيح."""
-    return ProviderPool([ProviderConfig(name="mock", model="mock-1")])
+    """الحوض الافتراضي من الإعدادات الحقيقية — بلا بديل وهمي تلقائي."""
+    return pool_from_env_vars()
 
 
 def pool_from_env_vars(env: dict[str, str] | None = None) -> ProviderPool:
@@ -450,5 +460,9 @@ def pool_from_env_vars(env: dict[str, str] | None = None) -> ProviderPool:
     if base_url and model:
         cfgs.append(ProviderConfig(name="openai-compat", model=model,
                                    base_url=base_url, api_key=api_key))
-    cfgs.append(ProviderConfig(name="mock", model="mock-1"))
+    elif base_url or model or api_key:
+        raise ProviderError(
+            "ORG_LLM_BASE_URL وORG_LLM_MODEL يجب ضبطهما معًا؛ "
+            "لا يُضاف MockProvider تلقائيًا"
+        )
     return ProviderPool(cfgs)

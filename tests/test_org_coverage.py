@@ -166,8 +166,8 @@ class TestAgentEdges:
                                      latency_ms=0.1)
 
         store = OrgStore(":memory:")
-        runtime = AgentRuntime(ProviderPool([ProviderConfig()]),
-                               ToolRegistry(), store)
+        runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+                               ToolRegistry(), store, allow_simulated=True)
         flaky = FlakyProvider()
         runtime.pool.get = lambda name="", model="": flaky  # type: ignore[assignment, return-value]
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m",
@@ -176,7 +176,7 @@ class TestAgentEdges:
         assert out.success is True and out.attempts == 2
 
     def test_pool_unknown_provider_raises(self) -> None:
-        pool = ProviderPool([ProviderConfig()])
+        pool = ProviderPool([ProviderConfig(name="mock", model="mock-1")])
         with pytest.raises(ProviderError):
             pool.get("unknown-provider")
 

@@ -13,6 +13,8 @@
   ``max_revision_loops`` — تجاوز السقف فشل صريح بمخاطر موثّقة لا صمت.
 * **كل شيء يُدقَّق**: إنشاء مهمة، انتقال طور، نتيجة قسم — سطر تدقيق
   في المتجر غير قابل للحذف.
+* **لا محاكاة ضمنية**: غياب مزود حقيقي يوقف التنفيذ؛ allow_simulated=True
+  مخصص للاختبارات والعروض المعزولة فقط.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from src.org.departments import (
     DepartmentError,
     MissionContext,
 )
-from src.org.providers import ProviderPool
+from src.org.providers import ProviderPool, default_pool
 from src.org.recovery import assess_mission_resume
 from src.org.recovery_context import (
     restore_mission_context,
@@ -127,11 +129,14 @@ class ExecutiveOrchestrator:
                  outdir: str = "reports/org",
                  max_workers: int = MAX_WORKERS,
                  max_revision_loops: int = 2,
-                 state_root: str | Path | None = None) -> None:
+                 state_root: str | Path | None = None,
+                 allow_simulated: bool = False) -> None:
         self.org_store = org_store
         self.ops_store = ops_store
-        self.depts = Departments(pool or ProviderPool(), org_store,
-                                 ops_store, outdir)
+        self.depts = Departments(
+            pool if pool is not None else default_pool(), org_store, ops_store, outdir,
+            allow_simulated=allow_simulated,
+        )
         self.verification = VerificationEngine(
             self.depts.runtime, org_store, self.depts.runner)
         if not isinstance(max_revision_loops, int) or max_revision_loops < 0:

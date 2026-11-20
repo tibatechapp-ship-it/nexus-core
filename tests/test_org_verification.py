@@ -30,8 +30,8 @@ def mission(store: OrgStore) -> Mission:
 
 @pytest.fixture()
 def engine(store: OrgStore) -> VerificationEngine:
-    runtime = AgentRuntime(ProviderPool([ProviderConfig()]), ToolRegistry(),
-                           store)
+    runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(),
+                           store, allow_simulated=True)
     return VerificationEngine(runtime, store, WorkspaceRunner())
 
 

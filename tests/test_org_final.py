@@ -148,7 +148,7 @@ class TestOrchestratorEdgePaths:
         org = OrgStore(":memory:")
         ops = OpsStore(":memory:")
         orch = ExecutiveOrchestrator(
-            org, ops, pool=ProviderPool([ProviderConfig()]),
+            org, ops, pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]), allow_simulated=True,
             outdir=str(tmp_path))
         plan = ExecutionPlan(mission_id="m")
         plan.add("security", "scan", "فحص أول")
@@ -165,7 +165,7 @@ class TestOrchestratorEdgePaths:
         org = OrgStore(":memory:")
         ops = OpsStore(":memory:")
         orch = ExecutiveOrchestrator(
-            org, ops, pool=ProviderPool([ProviderConfig()]),
+            org, ops, pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]), allow_simulated=True,
             outdir=str(tmp_path))
         m = org.create_mission(Mission(title="t", objective="o"))
         ctx = MissionContext(mission=m)
@@ -186,7 +186,7 @@ class TestOrchestratorEdgePaths:
         org = OrgStore(":memory:")
         ops = OpsStore(":memory:")
         orch = ExecutiveOrchestrator(
-            org, ops, pool=ProviderPool([ProviderConfig()]),
+            org, ops, pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]), allow_simulated=True,
             outdir=str(tmp_path))
         orch._fail(Mission(title="t", objective="o", id="org-m-ghost"),
                    "سبب")  # بلا مهمة مخزنة — لا خطأ ولا كتابة
@@ -306,8 +306,8 @@ class TestSmallGaps:
             "gunicorn==21.2.0\n", encoding="utf-8")
         ctx = MissionContext(mission=m)
         ctx.originals = {"requirements.txt": "gunicorn==21.2.0\n"}
-        dept = SecurityDept(AgentRuntime(ProviderPool([ProviderConfig()]),
-                                         ToolRegistry(), store),
+        dept = SecurityDept(AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+                                         ToolRegistry(), store, allow_simulated=True),
                             InjectionGuard())
         out = dept.run(ctx)
         assert out["report"]["counts"]["vulnerable_dependencies"] == 1
