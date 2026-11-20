@@ -548,3 +548,28 @@ def test_json_result_recorded_in_history(tmp_path: Path, monkeypatch: pytest.Mon
     rec = json.loads((tmp_path / f"{rec_id}.json").read_text(encoding="utf-8"))
     assert rec["verdict"] == "approve"
     assert len(rec["transcript"]) == 3
+
+
+def test_engine_rejects_simulated_provider_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    router = FakeRouter([{
+        "ok": True,
+        "simulated": True,
+        "provider": "mock",
+        "text": "[الحكم: موافق]",
+    }])
+    eng = _engine(monkeypatch, router)
+    result = eng.deliberate("هل نوافق؟")
+    assert result.execution_ok is False
+    assert result.verdict == "human_review"
+    assert "simulated provider response rejected" in result.errors[0]
+
+
+def test_engine_requires_provider_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    router = FakeRouter([{
+        "ok": True,
+        "text": "[الحكم: موافق]",
+    }])
+    eng = _engine(monkeypatch, router)
+    result = eng.deliberate("هل نوافق؟")
+    assert result.execution_ok is False
+    assert "did not identify its provider" in result.errors[0]
