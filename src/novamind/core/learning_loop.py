@@ -44,12 +44,12 @@ def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
     text = re.sub(
         r"""(?i)(authorization\s*[:=]\s*(?:bearer|basic)\s+)[A-Za-z0-9._~+/-]+=*""",
         r"\1[REDACTED]",
-        text,
+        value,
     )
     text = re.sub(
         r"""(?i)(["']?(?:api[_-]?key|secret|password|token|authorization)["']?\s*[:=]\s*["']?)[^\s,"']+""",
         r"\1[REDACTED]",
-        value,
+        text,
     )
     text = re.sub(
         r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b",
