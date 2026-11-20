@@ -138,6 +138,7 @@ class LearningLoop:
             summary = output.get("summary") or output.get("verdict") or str(output)[:200]
         else:
             summary = str(output)[:200]
+        summary = str(summary)
 
         exp = Experience(
             experience_id="",
