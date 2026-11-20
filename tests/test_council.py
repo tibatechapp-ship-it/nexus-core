@@ -249,16 +249,55 @@ def test_no_judge_injected_means_no_calls() -> None:
     assert result["influence"] == {}
 
 
-def test_a_broken_judge_cannot_break_a_debate() -> None:
+def test_a_broken_judge_cannot_break_a_live_debate() -> None:
     def boom(stances: dict) -> None:
         raise RuntimeError("genome offline")
 
-    council = Council(
-        router=None, store=None, judge=boom, allow_offline_simulation=True
-    )
+    class _Provider:
+        name = "unit-test-provider"
+        api_key = "test-key"
+        enabled = True
+
+    class _Router:
+        providers = [_Provider()]
+
+        def generate(self, *args, **kwargs):
+            return {
+                "ok": True,
+                "provider": "unit-test-provider",
+                "text": "الموقف: أوافق بعد مراجعة الأدلة.",
+            }
+
+    council = Council(router=_Router(), store=None, judge=boom)
     result = council.debate("موضوع", rounds=1)
-    assert result["simulated"] is True
-    assert result["influence"] == {}
+    assert result["simulated"] is False
+    assert result["decision"] == "human_review"
+    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}
+
+
+def test_live_debate_feeds_the_injected_judge() -> None:
+    seen: list[dict] = []
+
+    class _Provider:
+        name = "unit-test-provider"
+        api_key = "test-key"
+        enabled = True
+
+    class _Router:
+        providers = [_Provider()]
+
+        def generate(self, *args, **kwargs):
+            return {
+                "ok": True,
+                "provider": "unit-test-provider",
+                "text": "الموقف: أوافق بعد مراجعة الأدلة.",
+            }
+
+    council = Council(router=_Router(), store=None, judge=seen.append)
+    result = council.debate("موضوع", rounds=1)
+    assert result["simulated"] is False
+    assert len(seen) == 1
+    assert set(seen[0]) == {m.id for m in COUNCIL_MEMBERS}
 
 
 def test_council_requires_real_provider_by_default(store: SessionStore) -> None:
