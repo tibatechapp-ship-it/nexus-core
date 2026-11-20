@@ -61,11 +61,14 @@ class MissionPipeline:
 
     def __init__(self, org_store: OrgStore, ops_store: OpsStore,
                  pool: ProviderPool | None = None,
-                 outdir: str | Path = "reports/org") -> None:
+                 outdir: str | Path = "reports/org",
+                 *,
+                 allow_simulated: bool = False) -> None:
         self.org_store = org_store
         self.ops_store = ops_store
         self.orchestrator = ExecutiveOrchestrator(
-            org_store, ops_store, pool=pool, outdir=str(outdir))
+            org_store, ops_store, pool=pool, outdir=str(outdir),
+            allow_simulated=allow_simulated)
         self.metrics = OrgMetrics(org_store)
         self.lessons = LessonsEngine(org_store)
         self.outdir = Path(outdir)
