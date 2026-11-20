@@ -302,3 +302,15 @@ def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch) -> No
     assert result["ok"] is True
     assert result["provider"] == "gemini_2"
     assert called["provider"] == "gemini_2"
+
+
+def test_router_uses_mock_only_when_explicitly_injected(monkeypatch) -> None:
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    router = LLMRouter()
+    router.providers = [MockProvider()]
+
+    result = router.generate("test-only mock request")
+
+    assert result["ok"] is True
+    assert result["provider"] == "mock"
+    assert result["simulated"] is True
