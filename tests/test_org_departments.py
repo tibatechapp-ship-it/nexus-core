@@ -51,7 +51,7 @@ def depts(tmp_path: Path) -> Departments:
     org = OrgStore(":memory:")
     ops = OpsStore(":memory:")
     return Departments(ProviderPool([ProviderConfig(name="mock", model="mock-1")]), org, ops,
-                       outdir=tmp_path / "reports")
+                       outdir=tmp_path / "reports", allow_simulated=True)
 
 
 @pytest.fixture()
