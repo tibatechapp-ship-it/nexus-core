@@ -91,6 +91,7 @@ def test_provider_config_fields_unchanged() -> None:
 def test_result_success_shape() -> None:
     result = MockProvider().generate("hello")
     assert result["ok"] is True
+    assert result["simulated"] is True
     for key in ("text", "provider", "model", "elapsed"):
         assert key in result
 
@@ -102,12 +103,32 @@ def test_result_unknown_provider_is_failure_dict_not_exception() -> None:
     assert "error" in result
 
 
+def test_no_provider_is_explicit_failure_not_mock(monkeypatch) -> None:
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    router = LLMRouter()
+    result = router.generate("must not be simulated")
+    assert router.providers == []
+    assert result["ok"] is False
+    assert result["provider"] == ""
+    assert result["error"] == "no LLM providers configured"
+
+
 # ═══ 3. عقد قاطع الدارة — docs/CONTRACTS.md §1.3 ════════════════════════════════
 
 
 @pytest.fixture()
 def router() -> LLMRouter:
-    return LLMRouter()
+    instance = LLMRouter()
+    if not instance.providers:
+        instance.providers.append(
+            ProviderConfig(
+                name="contract-test-provider",
+                api_key="test-only",
+                base_url="https://provider.invalid/v1",
+                models={"fast": "test-model", "smart": "test-model"},
+            )
+        )
+    return instance
 
 
 def test_circuit_breaker_constants_unchanged() -> None:
