@@ -71,7 +71,12 @@ class LearningLoop:
             str(Path(__file__).resolve().parent.parent),
         )
         if storage_path is None:
-            storage_path = Path(base) / "memory" / "experiences.jsonl"
+            configured_path = os.environ.get("NOVAMIND_LEARNING_LOOP_PATH")
+            storage_path = (
+                Path(configured_path)
+                if configured_path
+                else Path(base) / "memory" / "experiences.jsonl"
+            )
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
