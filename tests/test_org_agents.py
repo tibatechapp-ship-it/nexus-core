@@ -237,7 +237,7 @@ def test_runtime_rejects_simulated_provider_by_default(store: OrgStore) -> None:
     outcome = runtime.ask_json(_spec(max_retries=0), "أجب JSON")
 
     assert outcome.success is False
-    assert outcome.simulated is False
+    assert outcome.simulated is True
     assert "simulated provider response rejected" in outcome.error
 
 
