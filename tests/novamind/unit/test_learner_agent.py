@@ -103,3 +103,17 @@ def test_record_feedback_validates_input(tmp_path, monkeypatch, pattern, liked, 
     monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
     with pytest.raises(error):
         LearnerAgent().record_feedback(pattern, liked)
+
+def test_learning_loop_does_not_acknowledge_failed_storage(tmp_path):
+    blocked_path = tmp_path / "experiences.jsonl"
+    blocked_path.mkdir()
+    ledger = LearningLoop(blocked_path)
+
+    with pytest.raises(IsADirectoryError):
+        ledger.record(
+            agent="unit-test",
+            task="persist",
+            input_data="input",
+            output="output",
+            outcome="success",
+        )
