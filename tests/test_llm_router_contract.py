@@ -274,3 +274,31 @@ def test_get_router_does_not_install_mock_implicitly(monkeypatch) -> None:
     router = lr.get_router()
     assert router.providers == []
     assert router.generate("test")["ok"] is False
+
+
+def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch) -> None:
+    gemini = ProviderConfig(
+        name="gemini_2",
+        api_key="test-key",
+        base_url="https://generativelanguage.googleapis.com",
+        models={"fast": "gemini-flash-latest", "smart": "gemini-pro-latest"},
+        priority=1,
+    )
+    router.providers = [gemini]
+    called = {}
+
+    def native_call(provider, model, prompt, system, temperature, max_tokens):
+        called["provider"] = provider.name
+        return "gemini response"
+
+    def incompatible_openai_call(*args, **kwargs):
+        raise AssertionError("Gemini must not use the OpenAI-compatible path")
+
+    monkeypatch.setattr(router, "_call_gemini", native_call)
+    monkeypatch.setattr(router, "_call_openai_compatible", incompatible_openai_call)
+
+    result = router.generate("probe")
+
+    assert result["ok"] is True
+    assert result["provider"] == "gemini_2"
+    assert called["provider"] == "gemini_2"
