@@ -73,6 +73,11 @@ def make_llm_call(
 ) -> Callable:
     """Build an async callable. Mock fallback is disabled unless explicitly requested."""
 
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError("timeout must be a positive number")
+    if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+        raise ValueError("max_retries must be a non-negative integer")
+
     async def _llm_call(prompt: Dict[str, str]) -> Dict[str, Any]:
         started = time.time()
         system = prompt.get("system", "") if isinstance(prompt, dict) else ""
@@ -128,10 +133,10 @@ def make_llm_call(
                         "mock", "mock-provider", "offline"
                     }:
                         raise RuntimeError("simulated provider response rejected")
+                    if provider == "unknown":
+                        raise RuntimeError("router response did not identify the real provider")
                 else:
-                    text = str(response or "")
-                    provider = "unknown"
-                    model_name = model
+                    raise RuntimeError("router returned an unstructured response without provider metadata")
 
                 if not isinstance(text, str) or not text.strip():
                     last_error = "provider returned an empty response"
