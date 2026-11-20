@@ -63,3 +63,18 @@ async def test_make_llm_call_without_router_fails_closed_by_default():
     assert result["simulated"] is False
     assert result["text"] == ""
     assert "no real LLM provider configured" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_make_llm_call_does_not_mock_router_signature_errors():
+    class BrokenRouter:
+        def generate(self, prompt):
+            raise TypeError("unsupported router contract")
+
+    call_fn = llm_wrapper.make_llm_call(router=BrokenRouter())
+    result = await call_fn("Do not synthesize a result")
+
+    assert result["ok"] is False
+    assert result["simulated"] is False
+    assert result["text"] == ""
+    assert "unsupported router contract" in result["error"]
