@@ -692,3 +692,30 @@ def test_execute_sequential_stops_after_first_failed_agent(
     assert calls == ["first"]
     assert result["ok"] is False
     assert result["status"] == "failed"
+
+
+def test_execute_council_provider_failure_is_not_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.council.rag_bridge as bridge_mod
+
+    class _FailedVerdict:
+        verdict = "human_review"
+        score = 0.0
+        rounds = 0
+        execution_ok = False
+        errors = ["no real provider configured"]
+
+    class _Bridge:
+        def deliberate_with_memory(self, prompt: str) -> _FailedVerdict:
+            return _FailedVerdict()
+
+    monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
+    s = _sup(_StrAgent())
+    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
+        strategy="council", complexity="critical", category="security",
+        agents=["a"], reason="", risk_level="high"))
+
+    result = s.execute("deploy production")
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["results"][0]["status"] == "execution_failed"
