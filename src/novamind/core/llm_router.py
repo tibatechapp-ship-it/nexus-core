@@ -95,6 +95,7 @@ class MockProvider:
             "provider": "mock",
             "model": "mock",
             "elapsed": 0.0,
+            "simulated": True,
         }
 
 
@@ -308,10 +309,12 @@ class LLMRouter:
         self._load_cooldowns()
 
         if not self.providers:
-            logger.warning("No LLM providers configured — using MockProvider")
-            self.providers.append(MockProvider())
+            logger.error(
+                "No real LLM providers configured; generation is disabled "
+                "until a valid provider is configured."
+            )
 
-        logger.info("loaded " + str(len(self.providers)) + " providers")
+        logger.info("loaded %s real LLM providers", len(self.providers))
 
     def _get_client(self, provider: ProviderConfig):
         if provider.name in self._clients:
@@ -426,7 +429,20 @@ class LLMRouter:
         if not allow_fallback:
             candidates = candidates[:1]
 
+        if not candidates:
+            if provider and not any(p.name == provider for p in self.providers):
+                error = "provider not found: " + provider
+            elif not self.providers:
+                error = "no LLM providers configured"
+            else:
+                error = "no enabled provider supports role: " + role
+            return {
+                "ok": False, "text": "", "provider": "", "model": "",
+                "error": error, "elapsed": 0.0,
+            }
+
         last_error = ""
+        attempted = 0
 
         for p in candidates:
             if not self._is_cooled_down(p.name):
@@ -438,6 +454,7 @@ class LLMRouter:
             if not model:
                 continue
 
+            attempted += 1
             start = time.time()
             try:
                 if p.name == "gemini":
@@ -478,8 +495,17 @@ class LLMRouter:
                         pass
                 logger.warning("provider " + p.name + " failed: " + str(e)[:120])
 
-        return {"ok": False, "text": "", "provider": "", "model": "",
-                "error": last_error or "all providers failed", "elapsed": 0.0}
+        return {
+            "ok": False,
+            "text": "",
+            "provider": "",
+            "model": "",
+            "error": last_error or (
+                "all eligible providers are cooling down or unavailable"
+                if attempted == 0 else "all providers failed"
+            ),
+            "elapsed": 0.0,
+        }
 
     # ─────────────────────────────────────────────────────
     # Smart task-based routing
@@ -746,25 +772,26 @@ _router: Optional[LLMRouter] = None
 
 
 def get_router() -> LLMRouter:
-    """يُعيد الـ singleton router.
-
-    إذا كان الـ singleton موجوداً لكن فيه mock فقط (1 provider),
-    يُعيد إنشاءه لتحميل الـ providers الحقيقية.
-
-    هذا يمنع مشكلة "الترتيب" — عندما يُحمَّل الـ singleton مبكراً
-    بدون keys.
-    """
+    """Return the process-wide router without silently installing a mock."""
     global _router
-    # أعِد الإنشاء إذا:
-    # - لم يكن موجوداً
-    # - أو فيه mock فقط (1 provider اسمه "mock")
-    needs_reload = _router is None
-    if not needs_reload and hasattr(_router, "providers"):
-        providers = _router.providers
-        # 1 provider فقط = غالباً mock
-        if len(providers) <= 1:
-            needs_reload = True
-
-    if needs_reload:
+    if _router is None:
         _router = LLMRouter()
     return _router
+
+
+def refresh_router() -> LLMRouter:
+    """Rebuild the router after provider credentials/configuration change."""
+    global _router
+    _router = LLMRouter()
+    return _router
+
+
+__all__ = [
+    "DEFAULT_TIMEOUT",
+    "DEFAULT_RETRIES",
+    "ProviderConfig",
+    "MockProvider",
+    "LLMRouter",
+    "get_router",
+    "refresh_router",
+]
