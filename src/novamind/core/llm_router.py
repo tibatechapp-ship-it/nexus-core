@@ -83,17 +83,6 @@ class LLMRouter:
     _COOLDOWN_BRIEF = 30
 
     def __init__(self):
-
-        # --- Z.ai GLM Auto-Registration ---
-        import os
-        from pathlib import Path
-        env_f = Path(".env")
-        e_vars = {}
-        if env_f.exists():
-            for l in env_f.read_text().splitlines():
-                if "=" in l and not l.strip().startswith("#"):
-                    k, v = l.strip().split("=", 1)
-                    e_vars[k.strip()] = v.strip().strip("'").strip('"')
         self.providers: List[ProviderConfig] = []
         self._clients: Dict[str, Any] = {}
         self._cooldowns: Dict[str, float] = {}  # provider -> cooldown_until
@@ -101,14 +90,19 @@ class LLMRouter:
 
     def _load_from_env(self):
         """تحميل كل المزودين من البيئة — 60 مزود كامل."""
-        env_path = Path(os.environ.get("NOVAMIND_HOME", "/public")) / ".env"
-        if env_path.exists():
-            for line in env_path.read_text(encoding="utf-8").split("\n"):
+        home_env = Path(os.environ.get("NOVAMIND_HOME", "/public")) / ".env"
+        root_env = Path.cwd() / ".env"
+        env_files = list(dict.fromkeys((home_env, root_env)))
+        for env_path in env_files:
+            if not env_path.is_file():
+                continue
+            for line in env_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, val = line.split("=", 1)
-                os.environ.setdefault(key.strip(), val.strip())
+                value = val.strip().strip("'").strip('"')
+                os.environ.setdefault(key.strip(), value)
 
         # 1. GEMINI — 21 مفتاح
         gemini_keys = []
