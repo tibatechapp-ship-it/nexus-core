@@ -27,7 +27,7 @@ class LearnerAgent:
         self._lock = _FEEDBACK_LOCK
         self.feedback = self._load_feedback()
 
-    def _load_feedback(self) -> Dict:
+    def _load_feedback(self, strict: bool = False) -> Dict:
         if FEEDBACK_FILE.exists():
             try:
                 data = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8"))
@@ -37,8 +37,13 @@ class LearnerAgent:
                     and isinstance(data.get("pattern_weights"), dict)
                 ):
                     return data
+                message = "Malformed learner feedback structure"
+                if strict:
+                    raise ValueError(message)
                 logger.warning("Ignoring malformed learner feedback structure")
             except (OSError, json.JSONDecodeError) as exc:
+                if strict:
+                    raise RuntimeError("Could not read learner feedback; refusing overwrite") from exc
                 logger.warning("Could not load learner feedback: %s", exc)
         return {"entries": [], "pattern_weights": {}}
 
@@ -165,7 +170,12 @@ class LearnerAgent:
 
         with self._lock:
             previous_feedback = self.feedback
-            candidate = copy.deepcopy(previous_feedback)
+            base_feedback = (
+                self._load_feedback(strict=True)
+                if FEEDBACK_FILE.exists()
+                else previous_feedback
+            )
+            candidate = copy.deepcopy(base_feedback)
             candidate["entries"].append(entry)
 
             key = self._normalize_pattern(normalized_pattern)
