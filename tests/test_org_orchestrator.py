@@ -34,7 +34,7 @@ def orchestrator(org_store: OrgStore, ops_store: OpsStore,
                  tmp_path: object) -> ExecutiveOrchestrator:
     return ExecutiveOrchestrator(
         org_store, ops_store,
-        pool=ProviderPool([ProviderConfig()]),
+        pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
         outdir=str(tmp_path),  # type: ignore[arg-type]
         max_revision_loops=1)
 
@@ -181,7 +181,7 @@ class TestRevisionLoop:
                     c["content"] += "\n# TODO: لاحقًا\n"
                 return json.dumps(base, ensure_ascii=False)
 
-        pool = ProviderPool([ProviderConfig()])
+        pool = ProviderPool([ProviderConfig(name="mock", model="mock-1")])
         original_get = pool.get
 
         def patched_get(name: str = "", model: str = "") -> object:
@@ -537,7 +537,7 @@ class TestProcessInterruptionRecovery:
         first_store = OrgStore(database)
         first = ExecutiveOrchestrator(
             first_store, OpsStore(":memory:"),
-            pool=ProviderPool([ProviderConfig()]),
+            pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
             outdir=str(root / "first-run"), max_revision_loops=1,
             state_root=state_root,
         )
@@ -589,7 +589,7 @@ class TestProcessInterruptionRecovery:
         second_store = OrgStore(database)
         second = ExecutiveOrchestrator(
             second_store, OpsStore(":memory:"),
-            pool=ProviderPool([ProviderConfig()]),
+            pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
             outdir=str(root / "second-run"), max_revision_loops=99,
             state_root=state_root,
         )
@@ -674,7 +674,7 @@ state = Path(os.environ["NEXUS_TEST_STATE"])
 repo = Path(os.environ["NEXUS_TEST_REPO"])
 store = OrgStore(db)
 orchestrator = ExecutiveOrchestrator(
-    store, OpsStore(":memory:"), pool=ProviderPool([ProviderConfig()]),
+    store, OpsStore(":memory:"), pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
     outdir=str(db.parent / "first-run"), max_revision_loops=1,
     state_root=state,
 )
@@ -739,7 +739,7 @@ state = Path(os.environ["NEXUS_TEST_STATE"])
 repo = Path(os.environ["NEXUS_TEST_REPO"])
 store = OrgStore(db)
 orchestrator = ExecutiveOrchestrator(
-    store, OpsStore(":memory:"), pool=ProviderPool([ProviderConfig()]),
+    store, OpsStore(":memory:"), pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
     outdir=str(db.parent / "second-run"), max_revision_loops=99,
     state_root=state,
 )
@@ -809,7 +809,7 @@ class TestCheckpointLedgerDrift:
         first_store = OrgStore(database)
         first = ExecutiveOrchestrator(
             first_store, OpsStore(":memory:"),
-            pool=ProviderPool([ProviderConfig()]),
+            pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
             outdir=str(root / "first-run"), state_root=state_root,
         )
         mission = first_store.create_mission(Mission(
@@ -842,7 +842,7 @@ class TestCheckpointLedgerDrift:
         second_store = OrgStore(database)
         second = ExecutiveOrchestrator(
             second_store, OpsStore(":memory:"),
-            pool=ProviderPool([ProviderConfig()]),
+            pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
             outdir=str(root / "second-run"), state_root=state_root,
         )
         before = second_store.tasks_for_mission(mission.id)
@@ -886,7 +886,7 @@ class TestCheckpointBeforePhaseTransition:
         first_store = OrgStore(database)
         first = ExecutiveOrchestrator(
             first_store, OpsStore(":memory:"),
-            pool=ProviderPool([ProviderConfig()]),
+            pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
             outdir=str(root / "first-run"), state_root=state_root,
         )
         mission = first_store.create_mission(Mission(
@@ -925,7 +925,7 @@ class TestCheckpointBeforePhaseTransition:
         second_store = OrgStore(database)
         second = ExecutiveOrchestrator(
             second_store, OpsStore(":memory:"),
-            pool=ProviderPool([ProviderConfig()]),
+            pool=ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
             outdir=str(root / "second-run"), state_root=state_root,
         )
         resumed = second.resume_mission(
