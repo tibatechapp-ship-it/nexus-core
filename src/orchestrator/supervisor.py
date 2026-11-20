@@ -62,17 +62,18 @@ class Supervisor:
         import inspect
 
         # ═══ CACHE GET ═══
-        try:
-            from src.orchestrator.agent_cache import get as cache_get
-            cache_prompt = f"[result-contract:v2] {prompt}"
-            cached = cache_get(agent_name, cache_prompt)
-            if cached:
-                return {
-                    "ok": True, "status": "cached_success", "agent": agent_name,
-                    "method": "cached", "result": cached, "elapsed": 0.01,
-                }
-        except Exception:
-            pass
+        if self.use_cache:
+            try:
+                from src.orchestrator.agent_cache import get as cache_get
+                cache_prompt = f"[result-contract:v2] {prompt}"
+                cached = cache_get(agent_name, cache_prompt)
+                if cached:
+                    return {
+                        "ok": True, "status": "cached_success", "agent": agent_name,
+                        "method": "cached", "result": cached, "elapsed": 0.01,
+                    }
+            except Exception:
+                pass
 
         start = time.time()
         try:
@@ -197,11 +198,12 @@ class Supervisor:
                 }
 
         # Cache only validated successes, under a versioned contract key.
-        try:
-            from src.orchestrator.agent_cache import set as cache_set
-            cache_set(agent_name, f"[result-contract:v2] {prompt}", result_str)
-        except Exception:
-            pass
+        if self.use_cache:
+            try:
+                from src.orchestrator.agent_cache import set as cache_set
+                cache_set(agent_name, f"[result-contract:v2] {prompt}", result_str)
+            except Exception:
+                pass
 
         return {
             "ok": True,
