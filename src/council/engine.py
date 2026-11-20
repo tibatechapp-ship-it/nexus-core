@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))
 from src.council.trust import TrustBoundary  # noqa: E402
 from src.council.gatekeeper import CouncilGatekeeper  # noqa: E402
 from src.council.isolation import IsolationManager  # noqa: E402
-from src.council.members import PROFILER, ANALYST, CRITIC, JUDGE_CONFIG  # noqa: E402
+from src.council.members import PROFILER, ANALYST, CRITIC  # noqa: E402
 
 EventCallback = Callable[[str, Any], None]
 
