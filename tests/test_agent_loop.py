@@ -46,10 +46,15 @@ class _ScriptedLoop(AgentLoop):
         self.calls += 1
         if not self._script:
             # keep answering forever → exercises the max_iterations guard
-            return {"ok": True,
-                    "message": _msg(content="sto",
-                                    tool_calls=[_tc("get_time", {})])}
-        return {"ok": True, "message": self._script.pop(0)}
+            return {
+                "ok": True, "simulated": False, "provider": "test-provider",
+                "model": "test-model",
+                "message": _msg(content="sto", tool_calls=[_tc("get_time", {})]),
+            }
+        return {
+            "ok": True, "simulated": False, "provider": "test-provider",
+            "model": "test-model", "message": self._script.pop(0),
+        }
 
 
 # ───────────────────────────── loop ─────────────────────────────
@@ -80,14 +85,13 @@ def test_loop_tool_then_answer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 
-def test_loop_bad_json_args_falls_back_to_empty() -> None:
-    # arguments that are not valid JSON → args = {} → get_time runs with no args
+def test_loop_bad_json_tool_arguments_fail_closed() -> None:
     loop = _ScriptedLoop(
         [_msg(tool_calls=[_tc("get_time", "{broken")]), _msg(content="ok")],
         verbose=False)
     r = loop.run("time?")
-    assert r["ok"] is True and r["iterations"] == 2
-    assert any("get_time" in t["text"] for t in r["trace"])
+    assert r["ok"] is False
+    assert r["status"] == "invalid_tool_arguments"
 
 
 def test_loop_unknown_tool_reports_error() -> None:
@@ -190,7 +194,7 @@ def test_call_llm_provider_selection_and_error(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr("openai.OpenAI", _FakeOpenAI, raising=False)
     out = loop._call_llm([{"role": "user", "content": "x"}])
-    assert out["ok"] is False and "no network" in out["error"]
+    assert out["ok"] is False and "RuntimeError" in out["error"]
 
 
 # ───────────────────────────── tools ─────────────────────────────
@@ -347,3 +351,24 @@ def test_tool_agents_exception_branches(monkeypatch: pytest.MonkeyPatch) -> None
     assert reg.call("run_agent", {"agent": "x", "prompt": "y"}).startswith("خطأ")
 
 
+
+
+def test_loop_rejects_simulated_provider_output() -> None:
+    class _Simulated(_ScriptedLoop):
+        def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+            return {
+                "ok": True,
+                "simulated": True,
+                "provider": "mock",
+                "message": _msg(content="synthetic answer"),
+            }
+
+    result = _Simulated([_msg()], verbose=False).run("x")
+    assert result["ok"] is False
+    assert result["status"] == "simulated_or_unidentified_provider"
+
+
+def test_loop_empty_final_answer_is_not_success() -> None:
+    result = _ScriptedLoop([_msg(content="")], verbose=False).run("x")
+    assert result["ok"] is False
+    assert result["status"] == "empty_llm_response"
