@@ -59,6 +59,8 @@ def main() -> int:
     agent = REGISTRY.load_agent("coder")
     print("\nالوكيل:", type(agent).__name__)
     outcome = agent.build("اصنع دالة بايثون تجمع رقمين")
+    if isinstance(outcome, dict):
+        outcome["simulated"] = True
     ok = bool(outcome.get("ok")) if isinstance(outcome, dict) else False
     print("نجاح المحاكاة:", ok)
     print("الكود الناتج:")
