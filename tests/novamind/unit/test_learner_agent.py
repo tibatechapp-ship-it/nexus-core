@@ -21,6 +21,7 @@ def test_learn_persists_session_lesson(tmp_path, monkeypatch):
     assert records[0].agent == "learner"
     assert records[0].task == "Learn from unit-test"
     assert records[0].output_summary == "Fix retry handling"
+    assert records[0].input_summary == "Fix retry handling"
     assert records[0].input_size > 0
     assert records[0].outcome == "success"
 
@@ -43,7 +44,9 @@ def test_learning_loop_review_api_persists_and_skips_empty(tmp_path):
         [{"description": "Missing authorization check", "severity": "high"}],
     )
     assert result["learned"] == 1
-    assert len(ledger.load_all()) == 1
+    records = ledger.load_all()
+    assert len(records) == 1
+    assert "Missing authorization check" in records[0].input_summary
 
 
 def test_learning_loop_feedback_api_persists(tmp_path):
@@ -55,6 +58,7 @@ def test_learning_loop_feedback_api_persists(tmp_path):
     record = ledger.load_all()[0]
     assert record.agent == "feedback"
     assert record.user_feedback == "liked"
+    assert record.input_summary == "safer retries"
 
 
 def test_record_feedback_reports_secondary_failure(tmp_path, monkeypatch):
@@ -178,3 +182,60 @@ def test_feedback_reports_directory_fsync_uncertainty_after_atomic_replace(
     assert "directory fsync failed" in result["warning"]
     assert len(json.loads(feedback_file.read_text(encoding="utf-8"))["entries"]) == 1
     assert agent.stats()["total_feedback"] == 1
+
+
+def test_learning_loop_persists_sanitized_review_context(tmp_path):
+    ledger = LearningLoop(tmp_path / "experiences.jsonl")
+    secret = "super-secret-value-123"
+    token = "sk-" + "A" * 30
+
+    ledger.learn_from_pr_review(
+        "org/repo",
+        9,
+        [{
+            "description": f"Leaked api_key={secret} and provider token {token}",
+            "severity": "critical",
+        }],
+    )
+
+    record = ledger.load_all()[0]
+    assert "[REDACTED]" in record.input_summary
+    assert secret not in record.input_summary
+    assert token not in record.input_summary
+
+
+def test_learning_loop_redacts_other_persisted_text_fields(tmp_path):
+    ledger = LearningLoop(tmp_path / "experiences.jsonl")
+    secret = "another-secret-987"
+
+    ledger.record(
+        agent="unit-test",
+        task=f"Investigate password={secret}",
+        input_data="hashed-only input",
+        output={"summary": f"token={secret}"},
+        outcome="success",
+        error=f"authorization={secret}",
+    )
+
+    record = ledger.load_all()[0]
+    assert secret not in record.task
+    assert secret not in record.output_summary
+    assert secret not in record.error
+    assert "[REDACTED]" in record.task
+    assert "[REDACTED]" in record.output_summary
+    assert "[REDACTED]" in record.error
+
+
+def test_learner_feedback_redacts_secrets_before_primary_save(tmp_path, monkeypatch):
+    feedback_file = tmp_path / "feedback.json"
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", feedback_file)
+    agent = LearnerAgent()
+    secret = "feedback-secret-987"
+
+    result = agent.record_feedback(f"api_key={secret}", True, context=f"token={secret}")
+
+    saved = json.loads(feedback_file.read_text(encoding="utf-8"))
+    assert result["feedback_saved"] is True
+    assert secret not in feedback_file.read_text(encoding="utf-8")
+    assert "[REDACTED]" in saved["entries"][0]["pattern"]
+    assert "[REDACTED]" in saved["entries"][0]["context"]
