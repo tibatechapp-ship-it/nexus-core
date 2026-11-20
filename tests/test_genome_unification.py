@@ -52,7 +52,24 @@ def test_council_session_writes_to_the_v2_store_only(stores) -> None:
     def judge(agent_id: str, verdict: str) -> None:  # pragma: no cover - must not run
         calls.append(agent_id)
 
-    council = Council(router=None, store=None, genome=genome, judge=judge,
+    class _Provider:
+        name = "unit-test-provider"
+        api_key = "test-key"
+        enabled = True
+
+    class _Router:
+        providers = [_Provider()]
+
+        def generate(self, *args, **kwargs):
+            return {
+                "ok": True,
+                "simulated": False,
+                "provider": "unit-test-provider",
+                "model": "unit-test-model",
+                "text": "الموقف: أوافق على القرار بعد مراجعة الأدلة.",
+            }
+
+    council = Council(router=_Router(), store=None, genome=genome, judge=judge,
                       members=COUNCIL_MEMBERS)
     council.debate("كيف نقسّم ميزانية الأداء بين الواجهة والخادم؟", rounds=1)
 
