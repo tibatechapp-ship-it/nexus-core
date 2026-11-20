@@ -65,7 +65,10 @@ class AgentLoop:
                 getattr(provider, "api_key", None)
                 or str(getattr(provider, "name", "")).split("_", 1)[0].lower() == "ollama"
             )
-            and getattr(provider, "base_url", None)
+            and (
+                getattr(provider, "base_url", None)
+                or str(getattr(provider, "name", "")).split("_", 1)[0].lower() == "openai"
+            )
         ]
         if not providers:
             return {
@@ -92,7 +95,7 @@ class AgentLoop:
             try:
                 client = OpenAI(
                     api_key=getattr(provider, "api_key", None) or "ollama",
-                    base_url=provider.base_url,
+                    base_url=getattr(provider, "base_url", None) or "https://api.openai.com/v1",
                     timeout=30.0,
                     max_retries=0,
                 )
