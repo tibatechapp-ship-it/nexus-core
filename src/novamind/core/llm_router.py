@@ -432,17 +432,31 @@ class LLMRouter:
             attempted += 1
             start = time.time()
             try:
-                if p.name == "gemini" or p.name.startswith("gemini_"):
+                simulated = False
+                if p.name == "mock":
+                    mock_result = p.generate(
+                        prompt, system=system, temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    text = mock_result.get("text", "")
+                    simulated = bool(mock_result.get("simulated", True))
+                elif p.name == "gemini" or p.name.startswith("gemini_"):
                     text = self._call_gemini(p, model, prompt, system, temperature, max_tokens)
                 else:
                     text = self._call_openai_compatible(p, model, prompt, system, temperature, max_tokens)
+
+                if not isinstance(text, str) or not text.strip():
+                    raise RuntimeError("provider returned an empty response")
 
                 elapsed = time.time() - start
                 p.calls += 1
                 p.last_call_at = time.time()
 
-                return {"ok": True, "text": text, "provider": p.name,
-                        "model": model, "error": "", "elapsed": round(elapsed, 2)}
+                return {
+                    "ok": True, "text": text, "provider": p.name,
+                    "model": model, "error": "", "elapsed": round(elapsed, 2),
+                    "simulated": simulated,
+                }
 
             except Exception as e:
                 elapsed = time.time() - start
