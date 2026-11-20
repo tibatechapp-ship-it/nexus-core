@@ -396,6 +396,11 @@ class Council:
         rounds = max(1, min(rounds, MAX_ROUNDS))
         active = list(members)[:MAX_MEMBERS] if members else self.members[:MAX_MEMBERS]
 
+        if (not self._live or self._is_offline()) and not self.allow_offline_simulation:
+            raise CouncilProviderUnavailable(
+                "Council requires an enabled real provider; offline simulation is opt-in only"
+            )
+
         session: Optional[Dict[str, Any]] = None
         if self.store is not None:
             session = self.store.create_council_session(
@@ -414,6 +419,7 @@ class Council:
         elapsed_map: Dict[str, float] = {}
         rounds_data: List[Dict[str, Any]] = []
         score = 0.0
+        simulated_run = False
         for r in range(1, rounds + 1):
             yield {"type": "round", "round": r, "total": rounds}
             # Members are independent within a round: each speaks once and the
@@ -423,12 +429,26 @@ class Council:
             prompts = {m.id: self._round_prompt(topic, m, r, rounds, latest)
                        for m in active}
             results: Dict[str, Dict[str, Any]] = {}
-            with ThreadPoolExecutor(max_workers=min(len(active), MAX_MEMBERS)) as pool:
-                futures = {pool.submit(self._generate, m, prompts[m.id]): m
-                           for m in active}
-                for fut in futures:
-                    m = futures[fut]
-                    results[m.id] = fut.result()
+            try:
+                with ThreadPoolExecutor(max_workers=min(len(active), MAX_MEMBERS)) as pool:
+                    futures = {pool.submit(self._generate, m, prompts[m.id]): m
+                               for m in active}
+                    for fut in futures:
+                        m = futures[fut]
+                        results[m.id] = fut.result()
+            except Exception as exc:
+                if self.store is not None and sid:
+                    self.store.update_council_session(
+                        sid, status="failed", verdict="human_review", consensus=0.0
+                    )
+                yield {
+                    "type": "error",
+                    "session_id": sid,
+                    "error": f"{type(exc).__name__}: {str(exc)[:180]}",
+                }
+                return
+            round_simulated = any(bool(item.get("simulated")) for item in results.values())
+            simulated_run = simulated_run or round_simulated
             msgs: List[Dict[str, Any]] = []
             for m in active:
                 yield {"type": "member_start", "agent": m.id,
@@ -439,27 +459,69 @@ class Council:
                 if self.store is not None and sid:
                     self.store.add_council_message(
                         sid, r, m.id, out["text"], role="opinion",
-                        meta={"provider": out["provider"], "elapsed": out["elapsed"]},
+                        meta={
+                            "provider": out["provider"],
+                            "model": out.get("model", ""),
+                            "simulated": bool(out.get("simulated", False)),
+                            "elapsed": out["elapsed"],
+                        },
                     )
                 ev = {"type": "member_message", "agent": m.id, "name": m.name,
                       "emoji": m.emoji, "round": r, "content": out["text"],
-                      "provider": out["provider"], "elapsed": out["elapsed"]}
+                      "provider": out["provider"], "elapsed": out["elapsed"],
+                      "simulated": bool(out.get("simulated", False))}
                 yield ev
                 msgs.append(ev)
             score = consensus([latest[m.id] for m in active])
-            early = score >= CONSENSUS_THRESHOLD and r >= EARLY_MIN_ROUND
-            yield {"type": "consensus", "round": r, "score": round(score, 3),
-                   "early_stop": early}
+            if round_simulated:
+                score = 0.0
+            early = (
+                not round_simulated
+                and score >= CONSENSUS_THRESHOLD
+                and r >= EARLY_MIN_ROUND
+            )
+            yield {
+                "type": "consensus", "round": r, "score": round(score, 3),
+                "early_stop": early, "simulated": round_simulated,
+            }
             rounds_data.append({"round": r, "consensus": round(score, 3),
                                 "messages": msgs})
             if early:
                 break
 
-        verdict = self._verdict(topic, latest)
-        inf = influence(active, latest, verdict["text"])
+        try:
+            verdict = self._verdict(topic, latest)
+        except Exception as exc:
+            if self.store is not None and sid:
+                self.store.update_council_session(
+                    sid, status="failed", verdict="human_review", consensus=0.0
+                )
+            yield {
+                "type": "error",
+                "session_id": sid,
+                "error": f"{type(exc).__name__}: {str(exc)[:180]}",
+            }
+            return
+
+        simulated_run = simulated_run or bool(verdict.get("simulated"))
+        if simulated_run:
+            score = 0.0
+            verdict = {
+                "text": (
+                    "محاكاة فقط — لا يصدر المجلس قرارًا إنتاجيًا. "
+                    "يلزم تشغيل حقيقي بمزوّد موثّق ومراجعة بشرية."
+                ),
+                "provider": "offline",
+                "offline": True,
+                "simulated": True,
+                "decision": "human_review",
+            }
+            inf = {}
+        else:
+            inf = influence(active, latest, verdict["text"])
         # Feed each member's verdict-alignment into its genome so standing
         # genuinely rises / falls across sessions (the Agent Genome loop).
-        if self.genome is not None and inf:
+        if not simulated_run and self.genome is not None and inf:
             for m in active:
                 d = inf.get(m.id, {})
                 self.genome.outcome_from_influence(
@@ -478,15 +540,15 @@ class Council:
         # calling the judge too would count every judgement twice in one session.
         # One session, one store, one write.
         v2_backed = bool(getattr(self.genome, "is_genome_v2", False))
-        if self.judge is not None and inf and not v2_backed:
+        if not simulated_run and self.judge is not None and inf and not v2_backed:
             try:
                 self.judge(judgement_stances(inf))
             except Exception:  # a broken sink must never break a debate
                 pass
         if self.store is not None and sid:
             self.store.update_council_session(
-                sid, status="done", verdict=verdict["text"],
-                consensus=round(score, 3),
+                sid, status="simulated" if simulated_run else "done",
+                verdict=verdict["text"], consensus=round(score, 3),
             )
         result = {
             "session_id": sid, "topic": topic, "rounds": rounds,
@@ -494,10 +556,14 @@ class Council:
             "rounds_data": rounds_data, "consensus": round(score, 3),
             "verdict": verdict["text"], "verdict_provider": verdict["provider"],
             "offline": verdict["offline"], "influence": inf,
+            "simulated": simulated_run,
+            "decision": "human_review",
+            "consensus_reached": (not simulated_run and score >= CONSENSUS_THRESHOLD),
         }
         yield {"type": "verdict", "verdict": verdict["text"],
                "consensus": round(score, 3), "influence": inf,
-               "provider": verdict["provider"]}
+               "provider": verdict["provider"], "simulated": simulated_run,
+               "decision": "human_review"}
         yield {"type": "done", "session_id": sid, "result": result}
 
     def debate(self, topic: str, rounds: int = 3,
@@ -505,6 +571,8 @@ class Council:
         """Run a full debate synchronously and return the final result."""
         result: Dict[str, Any] = {}
         for ev in self.debate_stream(topic, rounds=rounds, members=members):
+            if ev.get("type") == "error":
+                raise CouncilProviderUnavailable(str(ev.get("error", "council execution failed")))
             if ev.get("type") == "done":
                 result = ev["result"]
         return result
