@@ -7,6 +7,7 @@ export NEXUS_AGENT="$1"
 export NEXUS_PROMPT="${@:2}"
 export NEXUS_RAG="1"
 cd "$HOME/nexus-core"
+mkdir -p "$NOVAMIND_HOME" "$WORKSPACE_DIR"
 
 python3 << 'PYEOF'
 import os, sys
