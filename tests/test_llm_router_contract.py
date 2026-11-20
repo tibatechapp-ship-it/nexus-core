@@ -276,7 +276,7 @@ def test_get_router_does_not_install_mock_implicitly(monkeypatch) -> None:
     assert router.generate("test")["ok"] is False
 
 
-def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch) -> None:
+def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch, tmp_path) -> None:
     gemini = ProviderConfig(
         name="gemini_2",
         api_key="test-key",
@@ -285,6 +285,7 @@ def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch) -> No
         priority=1,
     )
     router.providers = [gemini]
+    monkeypatch.setattr(LLMRouter, "_cooldown_path", lambda self: tmp_path / "cooldowns.json")
     called = {}
 
     def native_call(provider, model, prompt, system, temperature, max_tokens):
@@ -304,8 +305,9 @@ def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch) -> No
     assert called["provider"] == "gemini_2"
 
 
-def test_router_uses_mock_only_when_explicitly_injected(monkeypatch) -> None:
+def test_router_uses_mock_only_when_explicitly_injected(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.setattr(LLMRouter, "_cooldown_path", lambda self: tmp_path / "cooldowns.json")
     router = LLMRouter()
     router.providers = [MockProvider()]
 
