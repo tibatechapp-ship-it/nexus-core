@@ -307,7 +307,7 @@ class TestSmallGaps:
         ctx = MissionContext(mission=m)
         ctx.originals = {"requirements.txt": "gunicorn==21.2.0\n"}
         dept = SecurityDept(AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
-                                         ToolRegistry(), store),
+                                         ToolRegistry(), store, allow_simulated=True),
                             InjectionGuard())
         out = dept.run(ctx)
         assert out["report"]["counts"]["vulnerable_dependencies"] == 1
