@@ -109,13 +109,15 @@ class LearnerAgent:
             raise ValueError("min_confidence must be between 0 and 1")
 
         try:
-            from novamind.core.learning_loop import learning_loop
+            from novamind.core.learning_loop import learning_loop, sanitize_learning_text
 
+            safe_summary = sanitize_learning_text(summary.strip(), max_length=4000)
             experience = learning_loop.record(
                 agent="learner",
                 task=f"Learn from {source.strip()[:100]}",
-                input_data=summary.strip(),
-                output={"summary": summary.strip()[:200]},
+                input_data=safe_summary,
+                output={"summary": safe_summary[:200]},
+                input_summary=safe_summary,
                 outcome="success",
                 tags=["session-learning"],
             )
@@ -146,11 +148,14 @@ class LearnerAgent:
         if not isinstance(source, str) or not source.strip():
             raise ValueError("source must be a non-empty string")
 
-        normalized_pattern = pattern.strip()
+        from novamind.core.learning_loop import sanitize_learning_text
+
+        normalized_pattern = sanitize_learning_text(pattern.strip(), max_length=200)
+        safe_context = sanitize_learning_text(context, max_length=200)
         entry = {
             "pattern": normalized_pattern,
             "liked": liked,
-            "context": context[:200],
+            "context": safe_context,
             "source": source.strip(),
             "at": datetime.now(timezone.utc).isoformat(),
         }
