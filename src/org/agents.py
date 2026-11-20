@@ -170,11 +170,18 @@ class AgentOutcome:
 class AgentRuntime:
     """وقت التشغيل الموحّد — يستدعي النماذج ويسجل كل محاولة في المتجر."""
 
-    def __init__(self, pool: ProviderPool, tools: ToolRegistry,
-                 store: OrgStore) -> None:
+    def __init__(
+        self,
+        pool: ProviderPool,
+        tools: ToolRegistry,
+        store: OrgStore,
+        *,
+        allow_simulated: bool = False,
+    ) -> None:
         self.pool = pool
         self.tools = tools
         self.store = store
+        self.allow_simulated = allow_simulated
 
     # ── استدعاء النموذج بعقد الوكيل ───────────────────────────────────────
 
@@ -206,7 +213,12 @@ class AgentRuntime:
             self._settle_output_budget(
                 reservation, fallback_charge + resp.usage.out_tokens)
             latency = (time.time() - t0) * 1000.0
-            self._record(spec, resp, attempt, latency, "ok")
+            simulated = resp.simulated or resp.provider.strip().lower() == "mock"
+            if simulated and not self.allow_simulated:
+                last_error = "simulated provider response rejected"
+                self._record(spec, resp, attempt, latency, "simulated_rejected")
+                break
+            self._record(spec, resp, attempt, latency, "simulated" if simulated else "ok")
             return resp
         raise ProviderError(
             f"الوكيل {spec.role} استنفد محاولاته ({spec.max_retries + 1}): "
@@ -239,6 +251,12 @@ class AgentRuntime:
             fallback_charge = len(self.pool.last_errors) * spec.max_tokens
             self._settle_output_budget(
                 reservation, fallback_charge + resp.usage.out_tokens)
+            latency = (time.time() - t0) * 1000.0
+            simulated = resp.simulated or resp.provider.strip().lower() == "mock"
+            if simulated and not self.allow_simulated:
+                last_error = "simulated provider response rejected"
+                self._record(spec, resp, attempt, latency, "simulated_rejected")
+                break
             data, parse_error = self._parse_json(resp.text)
             if data is None:
                 last_error = parse_error
