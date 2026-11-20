@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # nexus-rag-mock — RAG + Agent + Mock LLM (no keys)
-export NOVAMIND_HOME="$HOME/nexus-core"
+export NOVAMIND_HOME="$HOME/.cache/nexus-core/simulations/rag-mock"
 export PYTHONPATH="src:$PYTHONPATH"
-export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+export WORKSPACE_DIR="$HOME/.cache/nexus-core/simulations/rag-mock/workspace"
 export NEXUS_AGENT="$1"
 export NEXUS_PROMPT="${@:2}"
 export NEXUS_RAG="1"
@@ -20,7 +20,7 @@ from novamind.core.llm_router import LLMRouter
 
 def mock_generate(self, prompt="", system="", **kwargs):
     return {"ok": True, "text": f"# Mock code for: {str(prompt)[:100]}\n\ndef solution():\n    return 42\n",
-            "provider": "mock", "model": "mock", "elapsed": 0.01}
+            "provider": "mock", "model": "mock", "simulated": True, "elapsed": 0.01}
 
 def mock_gft(self, task_type="", prompt="", system="", **kwargs):
     return mock_generate(self, prompt, system, **kwargs)
@@ -30,6 +30,8 @@ LLMRouter.generate_for_task = mock_gft
 LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
 LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
 LLMRouter._is_cooled_down = lambda self, n: True
+
+print("⚠️ SIMULATION ONLY — ذاكرة RAG معزولة عن ذاكرة الإنتاج")
 
 # ═══ RAG ═══
 from src.memory.agent_rag_bridge import get_bridge
