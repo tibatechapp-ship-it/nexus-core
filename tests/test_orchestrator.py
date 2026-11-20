@@ -801,3 +801,14 @@ def test_hybrid_router_loop_rejects_simulated_success(
 
     assert result["ok"] is False
     assert result["status"] == "simulated_or_unidentified_provider"
+
+
+class _MockTextAgent:
+    def run(self, prompt: str) -> str:
+        return "[Mock] generated answer"
+
+
+def test_run_single_rejects_mock_prefixed_text(no_cache: None) -> None:
+    result = _sup(_MockTextAgent())._run_single("coder", "write code")
+    assert result["ok"] is False
+    assert result["status"] == "simulated_result_rejected"
