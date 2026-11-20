@@ -18,7 +18,9 @@ def test_learn_persists_session_lesson(tmp_path, monkeypatch):
     assert result["learned"] == 1
     records = ledger.load_all()
     assert len(records) == 1
-    assert records[0].agent == "pr-review-learner"
+    assert records[0].agent == "learner"
+    assert records[0].task == "Learn from unit-test"
+    assert records[0].output_summary == "Fix retry handling"
     assert records[0].input_size > 0
     assert records[0].outcome == "success"
 
