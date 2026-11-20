@@ -61,3 +61,23 @@ def test_canonical_executor_fails_when_no_real_provider_is_configured() -> None:
     assert result["success"] is False
     assert result["status"] == "llm_unavailable"
     assert "no simulated output" in result["error"]
+
+
+def test_canonical_executor_rejects_explicit_simulated_provider_output() -> None:
+    from novamind.factory.executor import execute_agent
+
+    async def simulated_llm(_prompt):
+        return {
+            "ok": True,
+            "simulated": True,
+            "text": "synthetic successful response",
+            "provider": "mock",
+            "tokens": 0,
+        }
+
+    result = asyncio.run(
+        execute_agent("coder", "write a parser", llm_call=simulated_llm)
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "simulated_provider_rejected"
