@@ -28,7 +28,7 @@ def mission(store: OrgStore) -> Mission:
 @pytest.fixture()
 def council(store: OrgStore) -> ReviewCouncil:
     runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(),
-                           store)
+                           store, allow_simulated=True)
     return ReviewCouncil(runtime, store)
 
 
@@ -140,7 +140,7 @@ class TestDebate:
                    verdict="approve", score=84),
         ]
         runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
-                               ToolRegistry(), store)
+                               ToolRegistry(), store, allow_simulated=True)
         c1 = ReviewCouncil(runtime, store).decide(mission.id, "t1", reviews)
         c2 = ReviewCouncil(runtime, store).decide(mission.id, "t1", reviews)
         assert (c1.verdict, c1.mean_score) == (c2.verdict, c2.mean_score)
