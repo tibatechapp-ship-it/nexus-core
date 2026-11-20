@@ -15,26 +15,16 @@ except Exception:
     _record_cost = None
 
 logger = logging.getLogger(__name__)
-_router_cache: Dict[str, Any] = {}
 
 
 def _load_router():
-    """Return a configured real router; an empty router is unavailable."""
-    cached = _router_cache.get("router")
-    if cached is not None and getattr(cached, "providers", None):
-        return cached
+    """Return the current configured singleton; an empty router is unavailable."""
     try:
         from novamind.core.llm_router import get_router
 
         router = get_router()
-        if getattr(router, "providers", None):
-            _router_cache["router"] = router
-            _router_cache.pop("error", None)
-            return router
-        _router_cache.pop("router", None)
-        return None
+        return router if getattr(router, "providers", None) else None
     except Exception as exc:
-        _router_cache["error"] = f"{type(exc).__name__}: {exc}"
         logger.warning("Could not load configured LLM router: %s", type(exc).__name__)
         return None
 
