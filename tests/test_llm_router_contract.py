@@ -324,3 +324,22 @@ def test_rotated_gemini_key_is_not_disabled_by_its_slot(monkeypatch, tmp_path) -
     router = LLMRouter()
     provider = next(p for p in router.providers if p.name == "gemini_8")
     assert provider.enabled is True
+
+
+def test_provider_env_loading_honors_novamind_home_then_root(
+    monkeypatch, tmp_path
+) -> None:
+    root = tmp_path / "repo"
+    home = tmp_path / "novamind-home"
+    root.mkdir()
+    home.mkdir()
+    (root / ".env").write_text("GEMINI_API_KEY=" + "r" * 40 + "\\n")
+    (home / ".env").write_text("GEMINI_API_KEY=" + "h" * 40 + "\\n")
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("NOVAMIND_HOME", str(home))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    router = LLMRouter()
+
+    gemini = next(provider for provider in router.providers if provider.name == "gemini")
+    assert gemini.api_key == "h" * 40
