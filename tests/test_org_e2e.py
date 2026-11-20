@@ -24,7 +24,7 @@ OBJECTIVE = ("أضف حارس قسمة على صفر إلى دالة divide في
 
 
 def _patched_pool(provider_cls: type[MockProvider]) -> ProviderPool:
-    pool = ProviderPool([ProviderConfig()])
+    pool = ProviderPool([ProviderConfig(name="mock", model="mock-1")])
     original_get = pool.get
 
     def patched_get(name: str = "", model: str = "") -> object:
