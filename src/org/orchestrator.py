@@ -37,7 +37,7 @@ from src.org.departments import (
     DepartmentError,
     MissionContext,
 )
-from src.org.providers import ProviderPool
+from src.org.providers import ProviderPool, default_pool
 from src.org.recovery import assess_mission_resume
 from src.org.recovery_context import (
     restore_mission_context,
@@ -132,7 +132,7 @@ class ExecutiveOrchestrator:
         self.org_store = org_store
         self.ops_store = ops_store
         self.depts = Departments(
-            pool or ProviderPool(), org_store, ops_store, outdir,
+            pool if pool is not None else default_pool(), org_store, ops_store, outdir,
             allow_simulated=allow_simulated,
         )
         self.verification = VerificationEngine(
