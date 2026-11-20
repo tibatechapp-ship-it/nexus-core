@@ -167,7 +167,7 @@ class TestAgentEdges:
 
         store = OrgStore(":memory:")
         runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
-                               ToolRegistry(), store)
+                               ToolRegistry(), store, allow_simulated=True)
         flaky = FlakyProvider()
         runtime.pool.get = lambda name="", model="": flaky  # type: ignore[assignment, return-value]
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m",
