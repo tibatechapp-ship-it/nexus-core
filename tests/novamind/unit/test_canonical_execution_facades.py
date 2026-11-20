@@ -81,3 +81,33 @@ def test_canonical_executor_rejects_explicit_simulated_provider_output() -> None
 
     assert result["success"] is False
     assert result["status"] == "simulated_provider_rejected"
+
+
+def test_canonical_executor_retries_provider_failures_with_bounded_attempts() -> None:
+    from novamind.factory.executor import execute_agent
+
+    calls = {"count": 0}
+
+    async def unavailable(_prompt):
+        calls["count"] += 1
+        return {
+            "ok": False,
+            "simulated": False,
+            "text": "",
+            "provider": "groq_01",
+            "error": "temporary upstream failure",
+        }
+
+    result = asyncio.run(
+        execute_agent(
+            "coder",
+            "write a parser",
+            llm_call=unavailable,
+            max_retries=2,
+        )
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "llm_provider_error"
+    assert result["attempts"] == 3
+    assert calls["count"] == 3
