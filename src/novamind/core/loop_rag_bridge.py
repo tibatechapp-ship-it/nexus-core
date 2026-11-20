@@ -171,8 +171,7 @@ class LoopRAGBridge:
                     final_status = "simulated_result_rejected"
                 elif explicit_failure:
                     success = False
-                    if status in {"llm_unavailable", "simulated_provider_rejected"}:
-                        final_status = status
+                    final_status = status or "agent_reported_failure"
                 else:
                     flags = [result[key] for key in ("ok", "success") if key in result]
                     if not flags or not all(flag is True for flag in flags):
