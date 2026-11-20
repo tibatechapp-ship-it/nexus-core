@@ -104,17 +104,18 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 - v1.5 headless-CDP gotcha: a synthetic `blur()` is a no-op (the element is not
   truly focused in headless), so an onblur-commit never runs and tests lie —
   commit on `keydown`/Enter directly. Real browsers do fire the blur.
-- v1.5 perf note: with dead ZAI keys a chat takes ~22s (5 providers × 7 retries
-  before the MockProvider fallback). Provider retry/budget control is a v2.0
-  (offline / provider-admin) target.
+- Historical v1.5 perf note: dead ZAI keys once caused long fallback chains.
+  Current policy: no configured real provider means explicit failure; mock
+  providers are test doubles and must be injected/opted into deliberately.
 - `unified_agent.py` (legacy root server) was BROKEN post-merge: `from core.*`
   imports (16 refs) but no top-level `core/` — novamind's modules live at
   `src/novamind/core/`. FIXED 2026-10-12 (option 1): added
   `sys.path.insert(0, ROOT/"src")` + all `core.*` → `novamind.core.*`.
   Verified: `python3 -c "import unified_agent"` → OUTPUT "OK — NovaMind
-  Unified 10.0.0". NOTE: with no keys → MockProvider fallback; needs `.env`
-  at ROOT (dotenv IS installed) or NOVAMIND_HOME/.env. `_load_from_env`
-  defaults NOVAMIND_HOME to `/public`. Env vars: GEMINI_API_KEY(0-20),
+  Unified 10.0.0". NOTE: without valid keys, no real LLM provider is available
+  and generation must fail explicitly. MockProvider is test-only and is never
+  auto-registered. Configure `.env` at ROOT or NOVAMIND_HOME/.env.
+  `_load_from_env` defaults NOVAMIND_HOME to `/public`. Env vars: GEMINI_API_KEY(0-20),
   GROQ_API_KEY_1..20, ZAI_API_KEY_1..4, OPENROUTER_API_KEY_1..5,
   MISTRAL_API_KEY_1..9, OLLAMA_HOST. NO plain GROQ_API_KEY.
 
