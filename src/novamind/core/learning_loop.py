@@ -120,8 +120,11 @@ class LearningLoop:
                         os.fsync(f.fileno())
                     finally:
                         self._release_file_lock(f)
-        except Exception as e:
-            logger.error(f"record failed: {e}")
+        except Exception:
+            # Returning an Experience acknowledges durable persistence. Do not
+            # manufacture that acknowledgement when append, flush, or fsync fails.
+            logger.exception("record failed")
+            raise
 
         return exp
 
