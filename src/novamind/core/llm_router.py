@@ -130,17 +130,9 @@ class LLMRouter:
                 },
                 priority=10 + idx,
             ))
-        # تعطيل المفاتيح المعطوبة تلقائياً (503 من Google)
-        broken_gemini_ids = {8, 13, 15, 16, 17, 19}
-        for p in self.providers:
-            if p.name.startswith("gemini_"):
-                try:
-                    idx = int(p.name.replace("gemini_", ""))
-                    if idx in broken_gemini_ids:
-                        p.enabled = False
-                except ValueError:
-                    pass
-        logger.info(f"Gemini: {len(gemini_keys)} keys loaded ({len(broken_gemini_ids)} disabled)")
+        # Provider health is learned from real request outcomes and cooldowns.
+        # Never permanently disable a key by slot number: credentials rotate.
+        logger.info("Gemini: %s keys loaded", len(gemini_keys))
 
         # 2. GROQ — 20 مفتاح
         groq_keys = []
