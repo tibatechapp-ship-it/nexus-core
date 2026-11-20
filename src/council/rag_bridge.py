@@ -106,6 +106,7 @@ class CouncilRAGBridge:
                         consensus=bool(_cached_consensus(cached)), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
+                        execution_ok=True, execution_contract=2, errors=[],
                     )
             except Exception as e:
                 print("CACHE GET ERROR: " + str(e))
