@@ -73,6 +73,8 @@ try:
     print("─" * 60)
 
     result = getattr(agent, method)(prompt)
+    if isinstance(result, dict):
+        result["simulated"] = True
     print(str(result)[:1500])
     print("─" * 60)
     print("⚠️ انتهت المحاكاة — ليست نتيجة تشغيل حقيقي")
