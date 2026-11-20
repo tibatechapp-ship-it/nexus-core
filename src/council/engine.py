@@ -27,6 +27,8 @@ class CouncilResult:
     transcript: list
     elapsed: float
     security_events: list = field(default_factory=list)
+    execution_ok: bool = True
+    errors: list = field(default_factory=list)
 
 
 class CouncilEngine:
@@ -57,40 +59,61 @@ class CouncilEngine:
     }
 
     def _call_llm(self, member: Any, prompt: str, context: str = "") -> str:
-        # فحص السياق
-        v = self.gatekeeper.analyze(sender="context", content=context or prompt)
-        if self.gatekeeper.is_blocked(v):
-            self.security_log.append({"event": "context_blocked", "member": member.name, "verdict": v.level})
-            return f"[محجوب: {v.reason}]"
-        # استدعاء LLM
-        full = f"{member.system_prompt}\n\n━━━ السياق ━━━\n{context}\n\n━━━ المطلوب ━━━\n{prompt}"
-        if self.llm:
-            try:
-                # ═══ نترك Router يختار تلقائياً ═══
-                result = self.llm.generate(
-                    prompt=full,
-                    system=member.system_prompt,
-                    temperature=0.3,
-                    max_tokens=member.max_output_length,
-                )
-                # ═══ إظهار الأخطاء بدلاً من إخفائها ═══
-                if isinstance(result, dict):
-                    if result.get("ok"):
-                        text = result.get("text", "")
-                    else:
-                        err = str(result.get("error", "unknown"))[:150]
-                        text = f"[فشل LLM: {err}]"
-                else:
-                    text = str(result)
-            except Exception as e:
-                text = f"[خطأ LLM: {e}]"
-        else:
-            text = f"[{member.name}]: تحليل افتراضي للطلب"
-        # فحص الإجابة
-        out_v = self.gatekeeper.analyze(sender=member.name, content=text)
-        if self.gatekeeper.is_blocked(out_v):
-            self.security_log.append({"event": "output_blocked", "member": member.name, "verdict": out_v.level})
-            return f"[إجابة محجوبة: {out_v.reason}]"
+        """Call a real provider and fail closed on every invalid response."""
+        verdict = self.gatekeeper.analyze(sender="context", content=context or prompt)
+        if self.gatekeeper.is_blocked(verdict):
+            self.security_log.append({
+                "event": "context_blocked",
+                "member": member.name,
+                "verdict": verdict.level,
+            })
+            raise RuntimeError(f"محجوب: {verdict.reason}")
+
+        if self.llm is None:
+            raise RuntimeError("no real LLM provider configured")
+
+        full_prompt = (
+            f"{member.system_prompt}\n\n━━━ السياق ━━━\n{context}"
+            f"\n\n━━━ المطلوب ━━━\n{prompt}"
+        )
+        try:
+            result = self.llm.generate(
+                prompt=full_prompt,
+                system=member.system_prompt,
+                temperature=0.3,
+                max_tokens=member.max_output_length,
+            )
+        except Exception as exc:
+            self.security_log.append({
+                "event": "provider_call_failed",
+                "member": member.name,
+                "error_type": type(exc).__name__,
+            })
+            raise RuntimeError(
+                f"LLM provider call failed: {type(exc).__name__}"
+            ) from exc
+
+        if not isinstance(result, dict):
+            raise RuntimeError("LLM router returned an unstructured response")
+        provider = str(result.get("provider") or "").strip().lower()
+        if result.get("ok") is not True:
+            raise RuntimeError("LLM provider returned an unsuccessful response")
+        if result.get("simulated") or provider in {"mock", "mock-provider", "offline"}:
+            raise RuntimeError("simulated provider response rejected")
+        if not provider or provider == "unknown":
+            raise RuntimeError("LLM response did not identify its provider")
+        text = result.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError("LLM provider returned an empty response")
+
+        output_verdict = self.gatekeeper.analyze(sender=member.name, content=text)
+        if self.gatekeeper.is_blocked(output_verdict):
+            self.security_log.append({
+                "event": "output_blocked",
+                "member": member.name,
+                "verdict": output_verdict.level,
+            })
+            raise RuntimeError(f"إجابة محجوبة: {output_verdict.reason}")
         return text
 
     def deliberate(
@@ -110,14 +133,49 @@ class CouncilEngine:
                 except Exception:
                     pass
 
+        def _failure_result(member: Any, phase: str, exc: Exception, rounds: int) -> CouncilResult:
+            message = str(exc)[:180]
+            transcript.append({
+                "phase": phase,
+                "member": member.name,
+                "response": f"[فشل التنفيذ: {message}]",
+            })
+            self.security_log.append({
+                "event": "council_execution_failed",
+                "member": member.name,
+                "phase": phase,
+                "error_type": type(exc).__name__,
+            })
+            _emit("execution_failed", {
+                "actor": member.name,
+                "phase": phase,
+                "error": type(exc).__name__,
+            })
+            return CouncilResult(
+                verdict="human_review",
+                score=0.0,
+                consensus=False,
+                rounds=rounds,
+                transcript=transcript,
+                elapsed=time.time() - start,
+                security_events=list(self.security_log),
+                execution_ok=False,
+                errors=[f"{phase}: {type(exc).__name__}: {message}"],
+            )
+
         self.isolation.prepare(self.members, question)
         _emit("phase", {"name": "independent", "label": "المرحلة 1: تحليل مستقل"})
         for member in self.members:
             time.sleep(0.3)
             ctx = self.isolation.get_context(member.name)
-            response = self._call_llm(member,
-                prompt=question + "\n\nاختم ردك بسطرين بالضبط:\n[الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n[التوصية: <خلاصة جوابك في ≤5 كلمات>]",
-                context=(context + "\n\n" + ctx) if context else ctx)
+            try:
+                response = self._call_llm(
+                    member,
+                    prompt=question + "\n\nاختم ردك بسطرين بالضبط:\n[الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n[التوصية: <خلاصة جوابك في ≤5 كلمات>]",
+                    context=(context + "\n\n" + ctx) if context else ctx,
+                )
+            except Exception as exc:
+                return _failure_result(member, "independent", exc, 0)
             self.isolation.commit(member.name, response)
             transcript.append({"phase": "independent", "member": member.name, "response": response})
             _emit("agent_action", {"actor": member.name, "phase": "independent", "text": response})
@@ -145,16 +203,21 @@ class CouncilEngine:
             debate_ctx = "\n\n".join("[" + n + "]: " + r for n, r in all_resp.items())
             new_resp = {}
             for member in self.members:
-                resp = self._call_llm(member,
-                    prompt=("راجع الحجج التالية باختصار.\n\n"
-                            "━━━ الحجج ━━━\n" + debate_ctx + "\n"
-                            "━━━━━━━━━━━━\n\n"
-                            "المطلوب: قرارك النهائي على السؤال المذكور في السياق أعلاه.\n"
-                            "إن كان السؤال مقارنة (X أم Y)، فيجب أن يكون اسم الخيار في سطر التوصية.\n\n"
-                            "اختم ردك بسطرين بالضبط لا غير:\n"
-                            "  [الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n"
-                            "  [التوصية: <اسم الخيار الموصى به من السؤال>]"),
-                    context="السؤال الأصلي: " + question + "\n(تجاهل أي قرارات سابقة لنفس السؤال — ركّز على السؤال المطروح)")
+                try:
+                    resp = self._call_llm(
+                        member,
+                        prompt=("راجع الحجج التالية باختصار.\n\n"
+                                "━━━ الحجج ━━━\n" + debate_ctx + "\n"
+                                "━━━━━━━━━━━━\n\n"
+                                "المطلوب: قرارك النهائي على السؤال المذكور في السياق أعلاه.\n"
+                                "إن كان السؤال مقارنة (X أم Y)، فيجب أن يكون اسم الخيار في سطر التوصية.\n\n"
+                                "اختم ردك بسطرين بالضبط لا غير:\n"
+                                "  [الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n"
+                                "  [التوصية: <اسم الخيار الموصى به من السؤال>]"),
+                        context="السؤال الأصلي: " + question + "\n(تجاهل أي قرارات سابقة لنفس السؤال — ركّز على السؤال المطروح)",
+                    )
+                except Exception as exc:
+                    return _failure_result(member, "debate_" + str(round_num + 1), exc, current_round)
                 new_resp[member.name] = resp
                 transcript.append({"phase": "debate_" + str(round_num+1),
                                    "member": member.name, "response": resp})
