@@ -343,3 +343,16 @@ def test_provider_env_loading_honors_novamind_home_then_root(
 
     gemini = next(provider for provider in router.providers if provider.name == "gemini")
     assert gemini.api_key == "h" * 40
+
+
+def test_router_refresh_is_explicit_and_replaces_singleton(monkeypatch) -> None:
+    monkeypatch.setattr(lr.LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.setattr(lr, "_router", None)
+
+    first = lr.get_router()
+    assert lr.get_router() is first
+
+    refreshed = lr.refresh_router()
+
+    assert refreshed is not first
+    assert lr.get_router() is refreshed
