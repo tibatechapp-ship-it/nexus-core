@@ -266,3 +266,11 @@ def test_module_reloads_cleanly() -> None:
     """إعادة تحميل الوحدة لا تفشل — أساس استقرار الاختبارات الأخرى."""
     fresh = importlib.reload(lr)
     assert hasattr(fresh, "LLMRouter") and hasattr(fresh, "get_router")
+
+
+def test_get_router_does_not_install_mock_implicitly(monkeypatch) -> None:
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.setattr(lr, "_router", None)
+    router = get_router()
+    assert router.providers == []
+    assert router.generate("test")["ok"] is False
