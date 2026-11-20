@@ -51,13 +51,6 @@ class CouncilEngine:
         # ═══ Genome v2 observer (v1.14.0) — None → the shared default ═══
         self._genome: Any = genome
 
-    # خريطة توزيع المفاتيح على الأعضاء
-    PROVIDER_MAP = {
-        "profiler": "groq_01",
-        "analyst": "groq_02",
-        "critic": "groq_03",
-    }
-
     def _call_llm(self, member: Any, prompt: str, context: str = "") -> str:
         """Call a real provider and fail closed on every invalid response."""
         verdict = self.gatekeeper.analyze(sender="context", content=context or prompt)
