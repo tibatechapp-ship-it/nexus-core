@@ -60,11 +60,11 @@ for entry in result.transcript:
     print(f"\n─── {entry['phase']} | {entry['member']} ───")
     print(f"{entry['response'][:250]}")
 
-if result.verdict != "approve":
-    sys.exit(4)
-
 if result.security_events:
     print(f"\n🛡️ أحداث أمنية: {len(result.security_events)}")
     for e in result.security_events[:5]:
         print(f"   • {e}")
+
+if result.verdict != "approve":
+    sys.exit(4)
 PYEOF
