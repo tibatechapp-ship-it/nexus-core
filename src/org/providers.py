@@ -385,8 +385,7 @@ class ProviderPool:
     """حوض مزوّدين مع سلسلة بدائل وحساب استهلاك موحّد.
 
     ``cfgs`` قائمة إعدادات بالترتيب المعلن؛ ``complete_with_fallback``
-    يجربها واحدًا بعد الآخر على ``ProviderError`` — كل محاولة تسجَّل
-    في ``last_errors`` لشريحة التدقيق.
+    يجرب المزودين المعلنين فقط على ``ProviderError``. لا يُنشأ مزود تلقائيًا عند غياب الإعدادات، وMockProvider لا يستخدم إلا إذا أُضيف صراحةً.
     """
 
     def __init__(self, cfgs: list[ProviderConfig] | None = None) -> None:
