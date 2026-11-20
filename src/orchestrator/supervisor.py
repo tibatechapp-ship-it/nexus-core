@@ -64,10 +64,13 @@ class Supervisor:
         # ═══ CACHE GET ═══
         try:
             from src.orchestrator.agent_cache import get as cache_get
-            cached = cache_get(agent_name, prompt)
+            cache_prompt = f"[result-contract:v2] {prompt}"
+            cached = cache_get(agent_name, cache_prompt)
             if cached:
-                return {"ok": True, "agent": agent_name, "method": "cached",
-                        "result": cached, "elapsed": 0.01}
+                return {
+                    "ok": True, "status": "cached_success", "agent": agent_name,
+                    "method": "cached", "result": cached, "elapsed": 0.01,
+                }
         except Exception:
             pass
 
@@ -143,17 +146,56 @@ class Supervisor:
                 return {"ok": False, "agent": agent_name, "error": str(e),
                         "elapsed": round(time.time() - start, 3)}
 
-        result_str = str(result)[:2000]
+        # A returned object is not automatically a successful execution.
+        if isinstance(result, dict):
+            provider = str(result.get("provider", "")).strip().lower()
+            status = str(result.get("status", "")).strip().lower()
+            simulated = bool(result.get("simulated")) or provider in {
+                "mock", "mock-provider", "offline"
+            }
+            explicit_failure = (
+                result.get("ok") is False
+                or result.get("success") is False
+                or bool(result.get("error"))
+                or status in {"failed", "error", "llm_unavailable", "llm_provider_error"}
+            )
+            flags = [result[key] for key in ("ok", "success") if key in result]
+            reported_success = all(flag is True for flag in flags) if flags else bool(result)
+            if simulated or explicit_failure or not reported_success:
+                result_str = str(result)[:2000]
+                reason = (
+                    "simulated result rejected" if simulated
+                    else str(result.get("error") or status or "agent reported failure")[:300]
+                )
+                return {
+                    "ok": False,
+                    "status": "simulated_result_rejected" if simulated else "agent_reported_failure",
+                    "agent": agent_name,
+                    "method": method,
+                    "error": reason,
+                    "result": result_str,
+                    "elapsed": round(time.time() - start, 3),
+                }
+            result_str = str(result)[:2000]
+        else:
+            if result is None or not str(result).strip():
+                return {
+                    "ok": False, "status": "empty_agent_result", "agent": agent_name,
+                    "method": method, "error": "Agent returned no result",
+                    "elapsed": round(time.time() - start, 3),
+                }
+            result_str = str(result)[:2000]
 
-        # ═══ CACHE SET ═══
+        # Cache only validated successes, under a versioned contract key.
         try:
             from src.orchestrator.agent_cache import set as cache_set
-            cache_set(agent_name, prompt, result_str)
+            cache_set(agent_name, f"[result-contract:v2] {prompt}", result_str)
         except Exception:
             pass
 
         return {
             "ok": True,
+            "status": "success",
             "agent": agent_name,
             "method": method,
             "result": result_str,
@@ -202,7 +244,9 @@ class Supervisor:
                     print(f"  ▶️  [{i}/{len(decision.agents)}] {agent_name}")
                 r = self._run_single(agent_name, current_input)
                 results.append(r)
-                if r.get("ok") and i < len(decision.agents):
+                if not r.get("ok"):
+                    break
+                if i < len(decision.agents):
                     current_input = f"{prompt}\n\n---\nنتيجة {agent_name}:\n{r['result'][:500]}"
 
         elif decision.strategy == "parallel":
@@ -230,7 +274,8 @@ class Supervisor:
                 council = get_council_bridge()
                 cr = council.deliberate_with_memory(prompt)
                 results.append({
-                    "ok": cr.verdict != "reject",
+                    "ok": bool(getattr(cr, "execution_ok", True)),
+                    "status": "success" if bool(getattr(cr, "execution_ok", True)) else "execution_failed",
                     "agent": "council",
                     "verdict": cr.verdict,
                     "score": cr.score,
@@ -243,7 +288,9 @@ class Supervisor:
         elapsed_total = time.time() - start_total
 
         # حفظ النتيجة في الذاكرة
-        if self.use_rag and any(r.get("ok") for r in results):
+        all_succeeded = bool(results) and all(r.get("ok") is True for r in results)
+        any_succeeded = any(r.get("ok") is True for r in results)
+        if self.use_rag and all_succeeded:
             rag = self._get_rag()
             if rag:
                 try:
@@ -252,7 +299,9 @@ class Supervisor:
                     pass
 
         return {
-            "ok": any(r.get("ok") for r in results),
+            "ok": all_succeeded,
+            "status": "success" if all_succeeded else ("partial" if any_succeeded else "failed"),
+            "partial": any_succeeded and not all_succeeded,
             "decision": {
                 "strategy": decision.strategy,
                 "category": decision.category,
