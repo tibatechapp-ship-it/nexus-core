@@ -48,7 +48,7 @@ from pydantic import BaseModel
 # NovaMind core
 from novamind.core.llm_router import LLMRouter
 from novamind.core.orchestrator import Orchestrator
-from novamind.council import COUNCIL_MEMBERS, Council
+from novamind.council import COUNCIL_MEMBERS, Council, CouncilProviderUnavailable
 from novamind.genome import Genome
 TASK_TEMPLATES = {}
 from novamind.core.observability import metrics
@@ -1073,9 +1073,12 @@ async def council_debate(req: CouncilRequest):
     import asyncio as _aio
 
     loop = _aio.get_event_loop()
-    return await loop.run_in_executor(
-        None, lambda: get_council().debate(req.topic, rounds=req.rounds)
-    )
+    try:
+        return await loop.run_in_executor(
+            None, lambda: get_council().debate(req.topic, rounds=req.rounds)
+        )
+    except CouncilProviderUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/council/stream")
