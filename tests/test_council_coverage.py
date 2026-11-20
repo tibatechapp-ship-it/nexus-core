@@ -573,3 +573,69 @@ def test_engine_requires_provider_identity(monkeypatch: pytest.MonkeyPatch) -> N
     result = eng.deliberate("هل نوافق؟")
     assert result.execution_ok is False
     assert "did not identify its provider" in result.errors[0]
+
+
+def test_council_rag_bridge_does_not_persist_failed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.council.rag_bridge import CouncilRAGBridge
+
+    class _Rag:
+        def recall(self, question, k=5):
+            return []
+
+    class _FailedEngine:
+        def deliberate(self, question, context=""):
+            return CouncilResult(
+                verdict="human_review",
+                score=0.0,
+                consensus=False,
+                rounds=0,
+                transcript=[],
+                elapsed=0.0,
+                execution_ok=False,
+                errors=["provider unavailable"],
+            )
+
+    bridge = CouncilRAGBridge(rag_bridge=_Rag())
+    bridge.engine = _FailedEngine()
+    monkeypatch.setattr(bridge, "_past_hint", lambda question: "")
+
+    result = bridge.deliberate_with_memory("question", use_cache=False)
+
+    assert result.execution_ok is False
+    assert result.errors == ["provider unavailable"]
+
+
+def test_council_streaming_bridge_does_not_persist_failed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.council.rag_bridge import CouncilRAGBridge
+
+    class _Rag:
+        def recall(self, question, k=5):
+            return []
+
+    class _FailedEngine:
+        def deliberate(self, question, context="", on_event=None):
+            return CouncilResult(
+                verdict="human_review",
+                score=0.0,
+                consensus=False,
+                rounds=0,
+                transcript=[],
+                elapsed=0.0,
+                execution_ok=False,
+                errors=["simulated provider rejected"],
+            )
+
+    bridge = CouncilRAGBridge(rag_bridge=_Rag())
+    bridge.engine = _FailedEngine()
+    monkeypatch.setattr(bridge, "_past_hint", lambda question: "")
+
+    result = bridge.deliberate_streaming(
+        "question", on_event=lambda event, payload: None, use_cache=False
+    )
+
+    assert result.execution_ok is False
+    assert result.errors == ["simulated provider rejected"]
