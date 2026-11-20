@@ -62,6 +62,11 @@ class CouncilRAGBridge:
                     return rec.get(name, default)
                 return getattr(rec, name, default)
 
+            recent = [
+                rec for rec in recent
+                if _fld(rec, "execution_ok", False) is True
+                and _fld(rec, "execution_contract", 0) == 2
+            ]
             scored = []
             for rec in recent:
                 rq = (_fld(rec, "query", "") or "").lower()
@@ -185,7 +190,7 @@ class CouncilRAGBridge:
                         consensus=bool(_cached_consensus(cached)), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
-                        execution_ok=True, errors=[],
+                        execution_ok=True, execution_contract=2, errors=[],
                     )
             except Exception:
                 pass
