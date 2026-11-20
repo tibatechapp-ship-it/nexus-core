@@ -121,7 +121,7 @@ class LearnerAgent:
                 outcome="success",
                 tags=["session-learning"],
             )
-            logger.info("learned session lesson: %s", summary[:100])
+            logger.info("learned session lesson: %s", safe_summary[:100])
             return {
                 "ok": True,
                 "learned": 1,
