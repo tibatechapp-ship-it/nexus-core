@@ -238,6 +238,7 @@ def test_runtime_rejects_simulated_provider_by_default(store: OrgStore) -> None:
 
     assert outcome.success is False
     assert outcome.simulated is True
+    assert outcome.provider_used == "mock"
     assert "simulated provider response rejected" in outcome.error
 
 
