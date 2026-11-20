@@ -196,6 +196,7 @@ class TestAskJson:
     def test_outcome_carries_usage(self, runtime: AgentRuntime) -> None:
         out = runtime.ask_json(_spec(), "أجب JSON")
         assert out.tokens_in > 0 and out.attempts == 1
+        assert out.simulated is True
 
 
 class TestProviderFailure:
@@ -225,3 +226,30 @@ class TestProviderFailure:
         runtime.pool.get = lambda name="", model="": ListProvider()  # type: ignore[assignment, return-value]
         out = runtime.ask_json(_spec(max_retries=1), "أجب")
         assert out.success is False
+
+
+def test_runtime_rejects_simulated_provider_by_default(store: OrgStore) -> None:
+    runtime = AgentRuntime(
+        ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+        ToolRegistry(),
+        store,
+    )
+    outcome = runtime.ask_json(_spec(max_retries=0), "أجب JSON")
+
+    assert outcome.success is False
+    assert outcome.simulated is False
+    assert "simulated provider response rejected" in outcome.error
+
+
+def test_runtime_allows_simulation_only_with_explicit_opt_in(store: OrgStore) -> None:
+    runtime = AgentRuntime(
+        ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+        ToolRegistry(),
+        store,
+        allow_simulated=True,
+    )
+    outcome = runtime.ask_json(_spec(max_retries=0), "أجب JSON")
+
+    assert outcome.success is True
+    assert outcome.simulated is True
+    assert outcome.provider_used == "mock"
