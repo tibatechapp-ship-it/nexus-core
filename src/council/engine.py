@@ -294,7 +294,21 @@ class CouncilEngine:
         """Decide only from explicit member verdicts; otherwise require human review."""
         explicit: dict[str, str] = {}
         known_members = {"profiler", "analyst", "critic"}
+        debate_phases = []
         for entry in transcript:
+            phase = str(entry.get("phase", ""))
+            if phase.startswith("debate_"):
+                try:
+                    debate_phases.append((int(phase.split("_", 1)[1]), phase))
+                except ValueError:
+                    continue
+        latest_phase = max(debate_phases)[1] if debate_phases else None
+        relevant_entries = (
+            [entry for entry in transcript if entry.get("phase") == latest_phase]
+            if latest_phase
+            else transcript
+        )
+        for entry in relevant_entries:
             member = entry.get("member")
             if member not in known_members:
                 continue
