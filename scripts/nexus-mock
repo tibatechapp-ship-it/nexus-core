@@ -1,15 +1,33 @@
 #!/data/data/com.termux/files/usr/bin/bash
-export NOVAMIND_HOME=~/nexus-core
+export NOVAMIND_HOME="$HOME/.cache/nexus-core/simulations/nexus-mock"
+export WORKSPACE_DIR="$NOVAMIND_HOME/workspace"
+export NEXUS_AGENT_WORKSPACE="$WORKSPACE_DIR"
 export PYTHONPATH=src:$PYTHONPATH
 cd ~/nexus-core
+mkdir -p "$NOVAMIND_HOME"
 
 python3 -c "
 import sys
 sys.path.insert(0, 'src')
 
-# Force Mock
-from novamind.core.llm_router import LLMRouter, MockProvider
-LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [MockProvider()])
+# Explicit deterministic simulation only. Never use this command as a production run.
+from novamind.core.llm_router import LLMRouter
+
+def mock_gen(self, prompt="", system="", **kwargs):
+    return {
+        "ok": True,
+        "simulated": True,
+        "text": f"[SIMULATION ONLY] {str(prompt)[:200]}",
+        "provider": "mock",
+        "model": "mock",
+        "elapsed": 0.0,
+    }
+
+LLMRouter.generate = mock_gen
+LLMRouter.generate_for_task = lambda self, *args, **kwargs: mock_gen(self, *args, **kwargs)
+LLMRouter._load_from_env = lambda self: setattr(self, "providers", [])
+LLMRouter._cooldown_provider = lambda self, name, seconds=300: None
+LLMRouter._is_cooled_down = lambda self, name: True
 
 from nova.registry import REGISTRY
 agent_name = sys.argv[1]
@@ -17,5 +35,8 @@ prompt = ' '.join(sys.argv[2:])
 agent = REGISTRY.load_agent(agent_name)
 method = 'build' if hasattr(agent, 'build') else 'run'
 result = getattr(agent, method)(prompt)
+if isinstance(result, dict):
+    result["simulated"] = True
+print("[SIMULATION ONLY — NOT A REAL MODEL RESULT]")
 print(result)
 " "$@"

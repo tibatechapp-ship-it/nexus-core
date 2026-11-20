@@ -135,14 +135,69 @@ class LoopRAGBridge:
 
             elapsed = time.time() - iter_start
 
-            # 3. تحديد النجاح
-            if success_criteria:
-                try:
-                    success = success_criteria(result)
-                except Exception:
-                    success = False
+            # 3. Determine success without allowing simulated or failed results.
+            if not isinstance(result, dict):
+                success = False
+                result = {
+                    "ok": False,
+                    "status": "invalid_agent_result",
+                    "error": "Agent returned an unstructured result",
+                    "raw_result": str(result)[:300],
+                }
+                final_status = "invalid_agent_result"
             else:
-                success = result.get("ok") is True or result.get("success") is True
+                provider = str(result.get("provider", "")).strip().lower()
+                status = str(result.get("status", "")).strip().lower()
+                output_text = str(
+                    result.get("text") or result.get("answer") or result.get("code") or ""
+                )
+                simulated = (
+                    bool(result.get("simulated"))
+                    or provider in {"mock", "mock-provider", "offline"}
+                    or output_text.lstrip().lower().startswith(
+                        ("[mock]", "[simulation only]", "mock:")
+                    )
+                )
+                explicit_failure = (
+                    result.get("ok") is False
+                    or result.get("success") is False
+                    or bool(result.get("error"))
+                    or status in {
+                        "failed", "error", "llm_unavailable",
+                        "llm_provider_error", "simulated_provider_rejected",
+                    }
+                )
+                if simulated:
+                    success = False
+                    result = {
+                        **result,
+                        "ok": False,
+                        "status": "simulated_result_rejected",
+                        "error": "Simulated output cannot satisfy a real execution goal",
+                    }
+                    final_status = "simulated_result_rejected"
+                elif explicit_failure:
+                    success = False
+                    final_status = status or "agent_reported_failure"
+                else:
+                    flags = [result[key] for key in ("ok", "success") if key in result]
+                    if not flags or not all(flag is True for flag in flags):
+                        success = False
+                        final_status = "missing_explicit_success"
+                        result = {
+                            **result,
+                            "ok": False,
+                            "status": "missing_explicit_success",
+                            "error": "Agent result must explicitly report ok=True or success=True",
+                        }
+                    elif success_criteria:
+                        try:
+                            success = bool(success_criteria(result))
+                        except Exception:
+                            success = False
+                    else:
+                        success = True
+
 
             # 4. تسجيل النتيجة
             entry = LoopMemoryEntry(
@@ -169,6 +224,12 @@ class LoopRAGBridge:
             if success:
                 final_status = "success"
                 print(f"✅ تحقق الهدف في الدورة {iteration}")
+                break
+
+            # A simulated response is terminal; repeating it cannot create real evidence.
+            if final_status in {
+                "simulated_result_rejected", "invalid_agent_result", "missing_explicit_success"
+            }:
                 break
 
             # إضافة تأخير بسيط

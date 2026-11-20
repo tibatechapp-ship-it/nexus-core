@@ -87,7 +87,7 @@ app = _wb.app  # ← نفس تطبيق الوورك‌بنش: خادم واحد 
 COUNCIL_OK = False
 COUNCIL_ERR = ""
 try:
-    from novamind.council import COUNCIL_MEMBERS, Council  # noqa: E402
+    from novamind.council import COUNCIL_MEMBERS, Council, CouncilProviderUnavailable  # noqa: E402
     from novamind.core.llm_router import LLMRouter  # noqa: E402
     from novamind.core.session_store import get_store  # noqa: E402
     from novamind.genome import Genome  # noqa: E402
@@ -846,8 +846,16 @@ async def api_council_debate(req: CouncilRequest) -> Dict[str, Any]:
         result = await asyncio.to_thread(
             lambda: get_council().debate(topic, rounds=rounds))
         return {"ok": True, "rounds": rounds, "result": result}
+    except CouncilProviderUnavailable as e:
+        return JSONResponse(
+            {"ok": False, "error": str(e), "status": "provider_unavailable"},
+            status_code=503,
+        )
     except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {e}"},
+            status_code=500,
+        )
 
 
 @app.post("/api/council/stream")

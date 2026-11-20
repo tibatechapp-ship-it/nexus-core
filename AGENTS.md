@@ -82,11 +82,12 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
   design). Do NOT widen to src/novamind.
 - 2026-10-12: Council lives in `src/novamind/council` (excluded from framework
   gates) but its tests (`tests/test_council.py`) are stdlib-only so they run on
-  the phone gate too — pure helpers + the offline-simulation path, never a live
-  provider.
-- 2026-10-12: Council offline-fallback is FAILURE-DRIVEN (a live error flips a
-  process-wide 60s offline window), NOT a pre-flight probe. A probe on slow-but-
-  live `zai_glm` calls (15–48s) misclassified them as dead and forced offline.
+  the phone gate too — pure helpers plus an explicitly opted-in simulation
+  path. The simulation is not production evidence and cannot approve.
+- Historical 2026-10-12 behavior: Council offline-fallback was failure-driven.
+  Superseded 2026-11-20: live provider failure now fails closed by default;
+  deterministic simulation requires `allow_offline_simulation=True`, is
+  marked simulated, and cannot approve or update genome evidence.
 
 ## Lessons
 - `git ls-files` only copies TRACKED files — new uncommitted work (Phase 11) was
@@ -104,17 +105,18 @@ python -m pytest --cov                     # 1218 tests @ 99%, floor 95%
 - v1.5 headless-CDP gotcha: a synthetic `blur()` is a no-op (the element is not
   truly focused in headless), so an onblur-commit never runs and tests lie —
   commit on `keydown`/Enter directly. Real browsers do fire the blur.
-- v1.5 perf note: with dead ZAI keys a chat takes ~22s (5 providers × 7 retries
-  before the MockProvider fallback). Provider retry/budget control is a v2.0
-  (offline / provider-admin) target.
+- Historical v1.5 perf note: with dead ZAI keys a chat took ~22s before a
+  MockProvider fallback. The production fallback has since been removed;
+  retries must end in an explicit provider failure, not a synthetic answer.
 - `unified_agent.py` (legacy root server) was BROKEN post-merge: `from core.*`
   imports (16 refs) but no top-level `core/` — novamind's modules live at
   `src/novamind/core/`. FIXED 2026-10-12 (option 1): added
   `sys.path.insert(0, ROOT/"src")` + all `core.*` → `novamind.core.*`.
   Verified: `python3 -c "import unified_agent"` → OUTPUT "OK — NovaMind
-  Unified 10.0.0". NOTE: with no keys → MockProvider fallback; needs `.env`
-  at ROOT (dotenv IS installed) or NOVAMIND_HOME/.env. `_load_from_env`
-  defaults NOVAMIND_HOME to `/public`. Env vars: GEMINI_API_KEY(0-20),
+  Unified 10.0.0". Current contract: without valid provider credentials the
+  router fails closed; no MockProvider fallback is created. Configure `.env`
+  at ROOT or NOVAMIND_HOME/.env. `_load_from_env` defaults NOVAMIND_HOME to
+  `/public`. Env vars: GEMINI_API_KEY(0-20),
   GROQ_API_KEY_1..20, ZAI_API_KEY_1..4, OPENROUTER_API_KEY_1..5,
   MISTRAL_API_KEY_1..9, OLLAMA_HOST. NO plain GROQ_API_KEY.
 

@@ -62,6 +62,11 @@ class CouncilRAGBridge:
                     return rec.get(name, default)
                 return getattr(rec, name, default)
 
+            recent = [
+                rec for rec in recent
+                if _fld(rec, "execution_ok", False) is True
+                and _fld(rec, "execution_contract", 0) == 2
+            ]
             scored = []
             for rec in recent:
                 rq = (_fld(rec, "query", "") or "").lower()
@@ -87,12 +92,13 @@ class CouncilRAGBridge:
     def deliberate_with_memory(self: Any, question: Any, context: Any ="", use_cache: Any =True) -> Any:
         # ═══ احفظ الحالة الأصلية قبل RAG ═══
         original_context_empty = not context
+        cache_key = f"[council-execution-contract:v2] {question}"
 
         # ═══ CACHE GET ═══
         if use_cache and original_context_empty:
             try:
                 from src.council.cache import get_cache
-                cached = get_cache().get(question)
+                cached = get_cache().get(cache_key)
                 if cached:
                     print("CACHE HIT hits=" + str(cached.hits))
                     return CouncilResult(
@@ -100,6 +106,7 @@ class CouncilRAGBridge:
                         consensus=bool(_cached_consensus(cached)), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
+                        execution_ok=True, execution_contract=2, errors=[],
                     )
             except Exception as e:
                 print("CACHE GET ERROR: " + str(e))
@@ -130,6 +137,8 @@ class CouncilRAGBridge:
         aug_context = (context + "\n\n" + past_hint).strip() if past_hint else context
         # ═══ DELIBERATE ═══
         result = self.engine.deliberate(question, aug_context)
+        if not getattr(result, "execution_ok", False):
+            return result
 
         # ═══ SAVE TO RAG ═══
         # (RAG write removed — single source is history.save, v1.7.0)
@@ -146,7 +155,7 @@ class CouncilRAGBridge:
         if use_cache and original_context_empty:
             try:
                 from src.council.cache import get_cache
-                get_cache().set(question, result)
+                get_cache().set(cache_key, result)
                 print("CACHE SAVED: " + question[:40])
             except Exception as e:
                 print("CACHE SET ERROR: " + str(e))
@@ -165,12 +174,13 @@ class CouncilRAGBridge:
                 pass
 
         original_context_empty = not context
+        cache_key = f"[council-execution-contract:v2] {question}"
 
         # CACHE GET
         if use_cache and original_context_empty:
             try:
                 from src.council.cache import get_cache
-                cached = get_cache().get(question)
+                cached = get_cache().get(cache_key)
                 if cached:
                     emit("status", {"phase": "cache",
                          "message": "نتيجة من الذاكرة المؤقتة (hits=" + str(getattr(cached, 'hits', '?')) + ")"})
@@ -181,6 +191,7 @@ class CouncilRAGBridge:
                         consensus=bool(_cached_consensus(cached)), rounds=cached.rounds,  # type: ignore[call-overload]
                         transcript=(getattr(cached, "transcript", None) or [{"phase": "cached", "member": "cache", "response": cached.transcript_summary}]),
                         elapsed=0.05, security_events=[],
+                        execution_ok=True, execution_contract=2, errors=[],
                     )
             except Exception:
                 pass
@@ -215,6 +226,9 @@ class CouncilRAGBridge:
             emit("status", {"phase": "past", "message": "قرارات سابقة مشابهة: حُقنت"})
 
         result = self.engine.deliberate(question, context, on_event=emit)
+        if not getattr(result, "execution_ok", False):
+            emit("execution_failed", {"errors": getattr(result, "errors", [])})
+            return result
 
         # SAVE TO RAG
         # (RAG write removed — single source is history.save, v1.7.0)
@@ -232,7 +246,7 @@ class CouncilRAGBridge:
         if use_cache and original_context_empty:
             try:
                 from src.council.cache import get_cache
-                get_cache().set(question, result)
+                get_cache().set(cache_key, result)
             except Exception:
                 pass
 

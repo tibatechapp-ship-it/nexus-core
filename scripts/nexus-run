@@ -12,24 +12,20 @@ import os, sys
 sys.path.insert(0, '.')
 sys.path.insert(0, 'src')
 
-# Mock LLM
-from novamind.core.llm_router import LLMRouter
-def mock_gen(self, prompt="", system="", **kw):
-    s = str(system); p = str(prompt)
-    if "أنت الناقد" in s:
-        t = "مقبول مع التحفظ."
-    elif "أنت المحلل المتشكك" in s:
-        t = "خطر: نقص السياق."
-    elif "أنت المحلل المدافع" in s:
-        t = "آمن: الطلب مقبول."
-    else:
-        t = f"[Mock] {p[:150]}"
-    return {"ok": True, "text": t, "provider": "mock", "elapsed": 0.01}
-LLMRouter.generate = mock_gen
-LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
-LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
-LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
-LLMRouter._is_cooled_down = lambda self, n: True
+from novamind.core.llm_router import get_router
+
+def require_real_provider():
+    router = get_router()
+    providers = [
+        provider for provider in router.providers
+        if getattr(provider, "name", "") != "mock"
+        and getattr(provider, "enabled", True)
+    ]
+    if not providers:
+        print("خطأ: لا يوجد مزود LLM حقيقي مهيأ.")
+        print("أضف مفاتيح مزود صالح إلى .env أو NOVAMIND_HOME/.env ثم أعد المحاولة.")
+        sys.exit(2)
+    return providers
 
 from src.orchestrator.supervisor import Supervisor
 
@@ -46,8 +42,10 @@ if not prompt:
     print("  NEXUS_STRATEGY=parallel nexus-run 'تحليل شامل'")
     sys.exit(1)
 
+require_real_provider()
+
 print("=" * 60)
-print("🧠 Nexus Smart Router")
+print("🧠 Nexus Smart Router — REAL PROVIDER MODE")
 print("=" * 60)
 print(f"📝 الطلب: {prompt[:120]}")
 print()

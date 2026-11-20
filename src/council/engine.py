@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))
 from src.council.trust import TrustBoundary  # noqa: E402
 from src.council.gatekeeper import CouncilGatekeeper  # noqa: E402
 from src.council.isolation import IsolationManager  # noqa: E402
-from src.council.members import PROFILER, ANALYST, CRITIC, JUDGE_CONFIG  # noqa: E402
+from src.council.members import PROFILER, ANALYST, CRITIC  # noqa: E402
 
 EventCallback = Callable[[str, Any], None]
 
@@ -27,6 +27,9 @@ class CouncilResult:
     transcript: list
     elapsed: float
     security_events: list = field(default_factory=list)
+    execution_ok: bool = True
+    execution_contract: int = 2
+    errors: list = field(default_factory=list)
 
 
 class CouncilEngine:
@@ -49,48 +52,62 @@ class CouncilEngine:
         # ═══ Genome v2 observer (v1.14.0) — None → the shared default ═══
         self._genome: Any = genome
 
-    # خريطة توزيع المفاتيح على الأعضاء
-    PROVIDER_MAP = {
-        "profiler": "groq_01",
-        "analyst": "groq_02",
-        "critic": "groq_03",
-    }
-
     def _call_llm(self, member: Any, prompt: str, context: str = "") -> str:
-        # فحص السياق
-        v = self.gatekeeper.analyze(sender="context", content=context or prompt)
-        if self.gatekeeper.is_blocked(v):
-            self.security_log.append({"event": "context_blocked", "member": member.name, "verdict": v.level})
-            return f"[محجوب: {v.reason}]"
-        # استدعاء LLM
-        full = f"{member.system_prompt}\n\n━━━ السياق ━━━\n{context}\n\n━━━ المطلوب ━━━\n{prompt}"
-        if self.llm:
-            try:
-                # ═══ نترك Router يختار تلقائياً ═══
-                result = self.llm.generate(
-                    prompt=full,
-                    system=member.system_prompt,
-                    temperature=0.3,
-                    max_tokens=member.max_output_length,
-                )
-                # ═══ إظهار الأخطاء بدلاً من إخفائها ═══
-                if isinstance(result, dict):
-                    if result.get("ok"):
-                        text = result.get("text", "")
-                    else:
-                        err = str(result.get("error", "unknown"))[:150]
-                        text = f"[فشل LLM: {err}]"
-                else:
-                    text = str(result)
-            except Exception as e:
-                text = f"[خطأ LLM: {e}]"
-        else:
-            text = f"[{member.name}]: تحليل افتراضي للطلب"
-        # فحص الإجابة
-        out_v = self.gatekeeper.analyze(sender=member.name, content=text)
-        if self.gatekeeper.is_blocked(out_v):
-            self.security_log.append({"event": "output_blocked", "member": member.name, "verdict": out_v.level})
-            return f"[إجابة محجوبة: {out_v.reason}]"
+        """Call a real provider and fail closed on every invalid response."""
+        verdict = self.gatekeeper.analyze(sender="context", content=context or prompt)
+        if self.gatekeeper.is_blocked(verdict):
+            self.security_log.append({
+                "event": "context_blocked",
+                "member": member.name,
+                "verdict": verdict.level,
+            })
+            raise RuntimeError(f"محجوب: {verdict.reason}")
+
+        if self.llm is None:
+            raise RuntimeError("no real LLM provider configured")
+
+        full_prompt = (
+            f"{member.system_prompt}\n\n━━━ السياق ━━━\n{context}"
+            f"\n\n━━━ المطلوب ━━━\n{prompt}"
+        )
+        try:
+            result = self.llm.generate(
+                prompt=full_prompt,
+                system=member.system_prompt,
+                temperature=0.3,
+                max_tokens=member.max_output_length,
+            )
+        except Exception as exc:
+            self.security_log.append({
+                "event": "provider_call_failed",
+                "member": member.name,
+                "error_type": type(exc).__name__,
+            })
+            raise RuntimeError(
+                f"LLM provider call failed: {type(exc).__name__}"
+            ) from exc
+
+        if not isinstance(result, dict):
+            raise RuntimeError("LLM router returned an unstructured response")
+        provider = str(result.get("provider") or "").strip().lower()
+        if result.get("ok") is not True:
+            raise RuntimeError("LLM provider returned an unsuccessful response")
+        if result.get("simulated") or provider in {"mock", "mock-provider", "offline"}:
+            raise RuntimeError("simulated provider response rejected")
+        if not provider or provider == "unknown":
+            raise RuntimeError("LLM response did not identify its provider")
+        text = result.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError("LLM provider returned an empty response")
+
+        output_verdict = self.gatekeeper.analyze(sender=member.name, content=text)
+        if self.gatekeeper.is_blocked(output_verdict):
+            self.security_log.append({
+                "event": "output_blocked",
+                "member": member.name,
+                "verdict": output_verdict.level,
+            })
+            raise RuntimeError(f"إجابة محجوبة: {output_verdict.reason}")
         return text
 
     def deliberate(
@@ -110,14 +127,49 @@ class CouncilEngine:
                 except Exception:
                     pass
 
+        def _failure_result(member: Any, phase: str, exc: Exception, rounds: int) -> CouncilResult:
+            message = str(exc)[:180]
+            transcript.append({
+                "phase": phase,
+                "member": member.name,
+                "response": f"[فشل التنفيذ: {message}]",
+            })
+            self.security_log.append({
+                "event": "council_execution_failed",
+                "member": member.name,
+                "phase": phase,
+                "error_type": type(exc).__name__,
+            })
+            _emit("execution_failed", {
+                "actor": member.name,
+                "phase": phase,
+                "error": type(exc).__name__,
+            })
+            return CouncilResult(
+                verdict="human_review",
+                score=0.0,
+                consensus=False,
+                rounds=rounds,
+                transcript=transcript,
+                elapsed=time.time() - start,
+                security_events=list(self.security_log),
+                execution_ok=False,
+                errors=[f"{phase}: {type(exc).__name__}: {message}"],
+            )
+
         self.isolation.prepare(self.members, question)
         _emit("phase", {"name": "independent", "label": "المرحلة 1: تحليل مستقل"})
         for member in self.members:
             time.sleep(0.3)
             ctx = self.isolation.get_context(member.name)
-            response = self._call_llm(member,
-                prompt=question + "\n\nاختم ردك بسطرين بالضبط:\n[الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n[التوصية: <خلاصة جوابك في ≤5 كلمات>]",
-                context=(context + "\n\n" + ctx) if context else ctx)
+            try:
+                response = self._call_llm(
+                    member,
+                    prompt=question + "\n\nاختم ردك بسطرين بالضبط:\n[الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n[التوصية: <خلاصة جوابك في ≤5 كلمات>]",
+                    context=(context + "\n\n" + ctx) if context else ctx,
+                )
+            except Exception as exc:
+                return _failure_result(member, "independent", exc, 0)
             self.isolation.commit(member.name, response)
             transcript.append({"phase": "independent", "member": member.name, "response": response})
             _emit("agent_action", {"actor": member.name, "phase": "independent", "text": response})
@@ -145,16 +197,21 @@ class CouncilEngine:
             debate_ctx = "\n\n".join("[" + n + "]: " + r for n, r in all_resp.items())
             new_resp = {}
             for member in self.members:
-                resp = self._call_llm(member,
-                    prompt=("راجع الحجج التالية باختصار.\n\n"
-                            "━━━ الحجج ━━━\n" + debate_ctx + "\n"
-                            "━━━━━━━━━━━━\n\n"
-                            "المطلوب: قرارك النهائي على السؤال المذكور في السياق أعلاه.\n"
-                            "إن كان السؤال مقارنة (X أم Y)، فيجب أن يكون اسم الخيار في سطر التوصية.\n\n"
-                            "اختم ردك بسطرين بالضبط لا غير:\n"
-                            "  [الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n"
-                            "  [التوصية: <اسم الخيار الموصى به من السؤال>]"),
-                    context="السؤال الأصلي: " + question + "\n(تجاهل أي قرارات سابقة لنفس السؤال — ركّز على السؤال المطروح)")
+                try:
+                    resp = self._call_llm(
+                        member,
+                        prompt=("راجع الحجج التالية باختصار.\n\n"
+                                "━━━ الحجج ━━━\n" + debate_ctx + "\n"
+                                "━━━━━━━━━━━━\n\n"
+                                "المطلوب: قرارك النهائي على السؤال المذكور في السياق أعلاه.\n"
+                                "إن كان السؤال مقارنة (X أم Y)، فيجب أن يكون اسم الخيار في سطر التوصية.\n\n"
+                                "اختم ردك بسطرين بالضبط لا غير:\n"
+                                "  [الحكم: موافق] أو [الحكم: مرفوض] أو [الحكم: محايد]\n"
+                                "  [التوصية: <اسم الخيار الموصى به من السؤال>]"),
+                        context="السؤال الأصلي: " + question + "\n(تجاهل أي قرارات سابقة لنفس السؤال — ركّز على السؤال المطروح)",
+                    )
+                except Exception as exc:
+                    return _failure_result(member, "debate_" + str(round_num + 1), exc, current_round)
                 new_resp[member.name] = resp
                 transcript.append({"phase": "debate_" + str(round_num+1),
                                    "member": member.name, "response": resp})
@@ -185,27 +242,20 @@ class CouncilEngine:
         return None
 
     def _consensus(self, responses: dict[str, str]) -> bool:
-        """أغلبية الأحكام الصريحة (2/3) — والطريقة الكلمية احتياط."""
+        """Require explicit structured verdicts; keyword similarity is not consensus."""
         if len(responses) < 2:
-            return True
+            return False
         verdicts = [
-            v for v in (self._explicit_verdict(r) for r in responses.values()) if v is not None
+            verdict
+            for verdict in (self._explicit_verdict(response) for response in responses.values())
+            if verdict is not None
         ]
-        if len(verdicts) == len(responses):
-            counts: dict[str, int] = {}
-            for v in verdicts:
-                counts[v] = counts.get(v, 0) + 1
-            return max(counts.values()) >= len(verdicts) // 2 + 1
-        # fallback كلمي
-        positive = ["مقبول", "آمن", "موافق", "approve", "safe"]
-        negative = ["مرفوض", "خطر", "reject", "danger"]
-        old: list[str] = []
-        for r in responses.values():
-            rl = r.lower()
-            pos = sum(1 for w in positive if w in rl)
-            neg = sum(1 for w in negative if w in rl)
-            old.append("yes" if pos > neg else "no" if neg > pos else "mid")
-        return len(set(old)) == 1
+        if len(verdicts) != len(responses):
+            return False
+        counts: dict[str, int] = {}
+        for verdict in verdicts:
+            counts[verdict] = counts.get(verdict, 0) + 1
+        return max(counts.values(), default=0) >= 2
 
     def _genome_v2(self) -> Any:
         """العضو المراقب للجينوم v2 — يُستورد تأخيرياً، ولا يُسقط المجلس أبداً."""
@@ -242,57 +292,43 @@ class CouncilEngine:
         return verdict, score
 
     def _judge_verdict(self, transcript: list[dict[str, Any]]) -> tuple[str, float]:
-        """الحكم النهائي بناءً على الأحكام الصريحة (fallback كلمي)."""
-        scores: dict[str, float] = {"profiler": 0.5, "analyst": 0.5, "critic": 0.5}
-        vmap = {"yes": 0.9, "mid": 0.5, "no": 0.1}
-
-        # اجمع الأحكام الصريحة من كل عضو
+        """Decide only from explicit member verdicts; otherwise require human review."""
         explicit: dict[str, str] = {}
+        known_members = {"profiler", "analyst", "critic"}
+        debate_phases = []
         for entry in transcript:
-            try:
-                m = entry.get("member")
-                if m not in scores:
+            phase = str(entry.get("phase", ""))
+            if phase.startswith("debate_"):
+                try:
+                    debate_phases.append((int(phase.split("_", 1)[1]), phase))
+                except ValueError:
                     continue
-                v = self._explicit_verdict(entry.get("response", ""))
-                if v:
-                    explicit[m] = v
-            except Exception:
-                pass
+        latest_phase = max(debate_phases)[1] if debate_phases else None
+        relevant_entries = (
+            [entry for entry in transcript if entry.get("phase") == latest_phase]
+            if latest_phase
+            else transcript
+        )
+        for entry in relevant_entries:
+            member = entry.get("member")
+            if member not in known_members:
+                continue
+            verdict = self._explicit_verdict(entry.get("response", ""))
+            if verdict is not None:
+                explicit[member] = verdict
 
-        if len(explicit) >= 2:
-            # استخدم الأحكام الصريحة
-            for m, v in explicit.items():
-                scores[m] = vmap[v]
-            # ═══ أغلبية صريحة 2/3 → قرار حاسم مباشرة ═══
-            counts: dict[str, int] = {}
-            for v in explicit.values():
-                counts[v] = counts.get(v, 0) + 1
-            top = max(counts, key=lambda k: counts[k])
-            if counts[top] >= 2:
-                if top == "yes":
-                    return "approve", 0.85
-                if top == "no":
-                    return "reject", 0.15
-                # محايد → human_review
-                return "human_review", 0.5
-        else:
-            # fallback كلمي
-            for entry in transcript:
-                m = entry.get("member")
-                if m not in scores:
-                    continue
-                r = entry.get("response", "").lower()
-                pos = sum(1 for w in ["آمن", "موافق", "مقبول", "safe", "approve"] if w in r)
-                neg = sum(1 for w in ["خطر", "مرفوض", "غير آمن", "danger", "reject"] if w in r)
-                scores[m] += (pos - neg) * 0.1
+        if len(explicit) < 2:
+            return "human_review", 0.5
 
-        w = JUDGE_CONFIG["weights"]
-        final = sum(scores[k] * w[k] for k in scores)  # type: ignore[index]
-        final = max(0.0, min(1.0, final))  # type: ignore[assignment]
+        counts: dict[str, int] = {}
+        for verdict in explicit.values():
+            counts[verdict] = counts.get(verdict, 0) + 1
 
-        t = JUDGE_CONFIG["thresholds"]
-        if final >= t["approve"]:  # type: ignore[index]
-            return "approve", final
-        if final <= t["reject"]:  # type: ignore[index]
-            return "reject", final
-        return "human_review", final
+        top = max(counts, key=lambda value: counts[value])
+        if counts[top] < 2:
+            return "human_review", 0.5
+        if top == "yes":
+            return "approve", 0.85
+        if top == "no":
+            return "reject", 0.15
+        return "human_review", 0.5

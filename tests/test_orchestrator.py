@@ -577,7 +577,8 @@ def test_hybrid_run_loop_real(monkeypatch: pytest.MonkeyPatch) -> None:
             self.verbose = verbose
 
         def run(self, prompt: str) -> dict:
-            return {"ok": True, "iterations": 3, "trace": [{"icon": "i", "text": "t"}],
+            return {"ok": True, "simulated": False, "provider": "test-provider",
+                    "iterations": 3, "trace": [{"icon": "i", "text": "t"}],
                     "answer": "loop answer", "error": ""}
 
     monkeypatch.setattr("src.agent_loop.loop.AgentLoop", _Loop)
@@ -625,3 +626,208 @@ def test_cache_set_failure_is_silent(tmp_cache: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(cache, "_CACHE_DIR", str(tmp_cache / "missing" / "deeper"))
     cache.set("a", "p", "x")
     assert cache.get("a", "p") is None
+
+
+class _FailedResultAgent:
+    def run(self, prompt: str) -> dict:
+        return {"ok": False, "error": "provider unavailable"}
+
+
+class _SimulatedResultAgent:
+    def run(self, prompt: str) -> dict:
+        return {
+            "ok": True,
+            "simulated": True,
+            "provider": "mock",
+            "text": "synthetic output",
+        }
+
+
+def test_run_single_does_not_promote_agent_failure(no_cache: None) -> None:
+    out = _sup(_FailedResultAgent())._run_single("coder", "write code")
+    assert out["ok"] is False
+    assert out["status"] == "agent_reported_failure"
+    assert "provider unavailable" in out["error"]
+
+
+def test_run_single_rejects_simulated_success(no_cache: None) -> None:
+    out = _sup(_SimulatedResultAgent())._run_single("coder", "write code")
+    assert out["ok"] is False
+    assert out["status"] == "simulated_result_rejected"
+
+
+def test_execute_reports_partial_instead_of_full_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    s = _sup(_StrAgent())
+    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
+        strategy="parallel", complexity="complex", category="code_generation",
+        agents=["good", "bad"], reason=""))
+    monkeypatch.setattr(
+        s,
+        "_run_single",
+        lambda agent, prompt: {"ok": agent == "good", "agent": agent, "result": "r"},
+    )
+
+    out = s.execute("run both")
+
+    assert out["ok"] is False
+    assert out["status"] == "partial"
+    assert out["partial"] is True
+
+
+def test_execute_sequential_stops_after_first_failed_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s = _sup(_StrAgent())
+    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
+        strategy="sequential", complexity="standard", category="code_generation",
+        agents=["first", "second"], reason=""))
+    calls = []
+
+    def run(agent, prompt):
+        calls.append(agent)
+        return {"ok": False, "agent": agent, "error": "provider unavailable"}
+
+    monkeypatch.setattr(s, "_run_single", run)
+    result = s.execute("run chain")
+
+    assert calls == ["first"]
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+
+
+def test_execute_council_provider_failure_is_not_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.council.rag_bridge as bridge_mod
+
+    class _FailedVerdict:
+        verdict = "human_review"
+        score = 0.0
+        rounds = 0
+        execution_ok = False
+        errors = ["no real provider configured"]
+
+    class _Bridge:
+        def deliberate_with_memory(self, prompt: str) -> _FailedVerdict:
+            return _FailedVerdict()
+
+    monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
+    s = _sup(_StrAgent())
+    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
+        strategy="council", complexity="critical", category="security",
+        agents=["a"], reason="", risk_level="high"))
+
+    result = s.execute("deploy production")
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["results"][0]["status"] == "execution_failed"
+
+
+def test_hybrid_router_council_does_not_promote_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.council.rag_bridge as bridge_mod
+    from types import SimpleNamespace
+    from src.orchestrator.hybrid_router import HybridRouter
+
+    failed = SimpleNamespace(
+        execution_ok=False,
+        verdict="human_review",
+        score=0.0,
+        rounds=0,
+        elapsed=0.0,
+        transcript=[],
+        errors=["provider unavailable"],
+    )
+    class _Bridge:
+        def deliberate_with_memory(self, prompt):
+            return failed
+
+    monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
+    result = HybridRouter()._run_council("deploy safely")
+
+    assert result["ok"] is False
+    assert result["status"] == "execution_failed"
+    assert result["errors"] == ["provider unavailable"]
+
+
+def test_hybrid_router_requires_council_approval_for_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.council.rag_bridge as bridge_mod
+    from types import SimpleNamespace
+    from src.orchestrator.hybrid_router import HybridRouter
+
+    rejected = SimpleNamespace(
+        execution_ok=True,
+        verdict="reject",
+        score=0.1,
+        rounds=1,
+        elapsed=0.1,
+        transcript=[],
+        errors=[],
+    )
+    class _Bridge:
+        def deliberate_with_memory(self, prompt):
+            return rejected
+
+    monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
+    result = HybridRouter()._run_council("deploy safely")
+
+    assert result["ok"] is False
+    assert result["status"] == "decision_rejected"
+
+
+def test_hybrid_router_loop_rejects_simulated_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.orchestrator.hybrid_router import HybridRouter
+
+    class _SimulatedLoop:
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self, prompt):
+            return {
+                "ok": True,
+                "simulated": True,
+                "provider": "mock",
+                "answer": "synthetic",
+                "iterations": 1,
+                "trace": [],
+            }
+
+    monkeypatch.setattr("src.agent_loop.loop.AgentLoop", _SimulatedLoop)
+    result = HybridRouter()._run_loop("do work")
+
+    assert result["ok"] is False
+    assert result["status"] == "simulated_or_unidentified_provider"
+
+
+class _MockTextAgent:
+    def run(self, prompt: str) -> str:
+        return "[Mock] generated answer"
+
+
+def test_run_single_rejects_mock_prefixed_text(no_cache: None) -> None:
+    result = _sup(_MockTextAgent())._run_single("coder", "write code")
+    assert result["ok"] is False
+    assert result["status"] == "simulated_result_rejected"
+
+
+def test_supervisor_can_disable_cache_for_benchmark_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.orchestrator.agent_cache as cache_module
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("cache must not be accessed when use_cache=False")
+
+    monkeypatch.setattr(cache_module, "get", unexpected)
+    monkeypatch.setattr(cache_module, "set", unexpected)
+    s = Supervisor(use_rag=False, verbose=False, use_cache=False)
+    s.agents = {"coder": _StrAgent()}
+
+    result = s._run_single("coder", "fresh benchmark prompt")
+
+    assert result["ok"] is True
+    assert result["status"] == "success"

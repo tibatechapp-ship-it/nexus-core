@@ -51,6 +51,9 @@ class CouncilHistory:
             "topic_id": topic_id or _get("topic_id", ""),
             "category": category,
             "security_events": _get("security_events", []) or [],
+            "execution_ok": bool(_get("execution_ok", False)),
+            "execution_contract": int(_get("execution_contract", 0) or 0),
+            "errors": _get("errors", []) or [],
             "timestamp": time.time(),
         }
 
@@ -123,6 +126,8 @@ class CouncilHistory:
             "score": r.get("score"),
             "topic_id": r.get("topic_id", ""),
             "timestamp": r.get("timestamp", 0),
+            "execution_ok": bool(r.get("execution_ok", False)),
+            "execution_contract": int(r.get("execution_contract", 0) or 0),
         }
 
     def list_recent(self: Any, n: Any =10) -> Any:

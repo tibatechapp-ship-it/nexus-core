@@ -8,10 +8,9 @@ against that verdict (standing rises / falls) — the raw signal the Genome
 (v2.2) aggregates across sessions.
 
 Design goals
-- **Works offline**: with no live LLM provider the council falls back to a
-  deterministic local "simulation" so tests and the phone gate never depend on
-  the network. The first failed provider call flips the run into offline mode so
-  a dead-key deployment stays fast (no 16 slow timeouts).
+- **Fail closed by default**: no provider or a failed provider call raises an
+  explicit provider error. Offline simulation is available only through an
+  explicit test/demo opt-in and is never represented as a production decision.
 - **Pure-Python core**: consensus / influence / position parsing are plain
   functions that can be unit-tested without any backend.
 """
@@ -25,8 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
-__all__ = ["CouncilMember", "COUNCIL_MEMBERS", "Council", "jaccard", "consensus",
-           "position", "influence", "judgement_stances"]
+__all__ = ["CouncilMember", "COUNCIL_MEMBERS", "Council", "CouncilProviderUnavailable",
+           "jaccard", "consensus", "position", "influence", "judgement_stances"]
 
 
 # ── tunables ─────────────────────────────────────────────────────────────────
@@ -36,7 +35,12 @@ EARLY_MIN_ROUND = 2         # never stop before this round
 MAX_ROUNDS = 5
 MAX_MEMBERS = 7
 GENERATE_TIMEOUT = 60.0     # max wait for one live provider reply
-OFFLINE_CACHE = 5.0        # how long a live failure keeps the council offline
+OFFLINE_CACHE = 5.0        # circuit-breaker duration after provider failure
+
+
+class CouncilProviderUnavailable(RuntimeError):
+    """Raised when the council cannot obtain a verified live provider response."""
+
 
 
 @dataclass
@@ -207,11 +211,13 @@ class Council:
 
     def __init__(self, router: Any = None, store: Any = None,
                  members: Optional[List[CouncilMember]] = None,
-                 genome: Any = None, judge: Any = None) -> None:
+                 genome: Any = None, judge: Any = None,
+                 allow_offline_simulation: bool = False) -> None:
         self.router = router
         self.store = store
         self.genome = genome
         self.judge = judge
+        self.allow_offline_simulation = bool(allow_offline_simulation)
         self.members = list(members) if members else list(COUNCIL_MEMBERS)
         self._live = self._has_live_provider(router)
         self._provider_failed = False
@@ -224,7 +230,14 @@ class Council:
             return False
         for p in getattr(router, "providers", []) or []:
             key = (getattr(p, "api_key", "") or "").strip()
-            if getattr(p, "enabled", True) and key and key != "mock":
+            name = str(getattr(p, "name", "")).strip().lower()
+            if (
+                getattr(p, "enabled", True)
+                and key
+                and key.lower() not in {"mock", "offline"}
+                and name not in {"mock", "offline", "mock-provider"}
+                and not bool(getattr(p, "simulated", False))
+            ):
                 return True
         return False
 
@@ -257,21 +270,39 @@ class Council:
         t.join(timeout=GENERATE_TIMEOUT)
         if t.is_alive():
             return None
-        if box.get("ok") and (box.get("text") or "").strip():
+        provider = str(box.get("provider") or "").strip()
+        if (
+            box.get("ok") is True
+            and not box.get("simulated")
+            and provider.lower() not in {"", "mock", "offline", "mock-provider"}
+            and (box.get("text") or "").strip()
+        ):
             return {"text": box["text"].strip(),
-                    "provider": box.get("provider", ""),
-                    "elapsed": float(box.get("elapsed", 0.0))}
+                    "provider": provider,
+                    "model": box.get("model", ""),
+                    "elapsed": float(box.get("elapsed", 0.0)),
+                    "simulated": False}
         return None
 
     def _generate(self, member: CouncilMember, prompt: str) -> Dict[str, Any]:
-        """Return {text, provider, elapsed} — live provider or local fallback."""
+        """Return a verified live response or an explicitly marked simulation."""
         if self.router is not None and self._live and not self._is_offline():
             res = self._live_generate(member, prompt)
             if res is not None:
                 return res
-            self._go_offline()  # first live failure → offline (cached), no retries
-        return {"text": self._fallback(member, prompt), "provider": "offline",
-                "elapsed": 0.0}
+            self._go_offline()
+
+        if not self.allow_offline_simulation:
+            raise CouncilProviderUnavailable(
+                "No verified live council provider response is available"
+            )
+        return {
+            "text": self._fallback(member, prompt),
+            "provider": "offline",
+            "model": "offline-simulation",
+            "elapsed": 0.0,
+            "simulated": True,
+        }
 
     @staticmethod
     def _fallback(member: CouncilMember, prompt: str) -> str:
@@ -321,32 +352,36 @@ class Council:
 
     # -- verdict --------------------------------------------------------------
     def _verdict(self, topic: str, latest: Dict[str, str]) -> Dict[str, Any]:
-        if self.router is not None and self._live and not self._provider_failed:
-            chief = CouncilMember(id="chief", name="رئيس المجلس", emoji="⚖️",
-                                  system="أنت رئيس مجلس حكيم وموجز.")
-            res = self._generate(chief, self._chief_prompt(topic, latest))
-            if res["provider"] != "offline":
-                return {"text": res["text"], "provider": res["provider"],
-                        "offline": False}
-        # offline synthesis — pick the position most shared, list the rest
-        pos = {m.id: position(latest.get(m.id, "")) for m in self.members
-               if latest.get(m.id)}
-        best_id, best_score = None, -1.0
-        for mid, p in pos.items():
-            score = sum(jaccard(p, q) for q in pos.values())
-            if score > best_score:
-                best_id, best_score = mid, score
-        lead = next((m for m in self.members if m.id == best_id), None)
-        lines = ["حكم المجلس (وضع محلي — لا مزوّد متصل):", "الموضوع: " + topic, ""]
-        lines.append("أبرز المواقف:")
-        for m in self.members:
-            if m.id in pos:
-                lines.append(f"- {m.emoji} {m.name}: {pos[m.id][:160]}")
-        if lead is not None:
-            lines.append("")
-            lines.append("القرار: الأقرب إلى إجماع المجلس هو موقف "
-                         f"{lead.name} — {pos.get(lead.id, '')[:160]}")
-        return {"text": "\n".join(lines), "provider": "offline", "offline": True}
+        """Return an advisory live synthesis; simulations can never approve."""
+        chief = CouncilMember(
+            id="chief",
+            name="رئيس المجلس",
+            emoji="⚖️",
+            system="أنت رئيس مجلس حكيم وموجز.",
+        )
+        try:
+            result = self._generate(chief, self._chief_prompt(topic, latest))
+        except CouncilProviderUnavailable:
+            raise
+
+        if result.get("simulated") or result.get("provider") == "offline":
+            return {
+                "text": (
+                    "محاكاة فقط — لا يصدر المجلس قرارًا إنتاجيًا. "
+                    "يلزم تشغيل جولة حقيقية بمزوّد لغوي موثّق ومراجعة بشرية."
+                ),
+                "provider": "offline",
+                "offline": True,
+                "simulated": True,
+                "decision": "human_review",
+            }
+        return {
+            "text": result["text"],
+            "provider": result["provider"],
+            "offline": False,
+            "simulated": False,
+            "decision": "human_review",
+        }
 
     # -- the debate -----------------------------------------------------------
     def debate_stream(self, topic: str, rounds: int = 3,
@@ -360,6 +395,11 @@ class Council:
             rounds = 3
         rounds = max(1, min(rounds, MAX_ROUNDS))
         active = list(members)[:MAX_MEMBERS] if members else self.members[:MAX_MEMBERS]
+
+        if (not self._live or self._is_offline()) and not self.allow_offline_simulation:
+            raise CouncilProviderUnavailable(
+                "Council requires an enabled real provider; offline simulation is opt-in only"
+            )
 
         session: Optional[Dict[str, Any]] = None
         if self.store is not None:
@@ -379,6 +419,7 @@ class Council:
         elapsed_map: Dict[str, float] = {}
         rounds_data: List[Dict[str, Any]] = []
         score = 0.0
+        simulated_run = False
         for r in range(1, rounds + 1):
             yield {"type": "round", "round": r, "total": rounds}
             # Members are independent within a round: each speaks once and the
@@ -388,12 +429,26 @@ class Council:
             prompts = {m.id: self._round_prompt(topic, m, r, rounds, latest)
                        for m in active}
             results: Dict[str, Dict[str, Any]] = {}
-            with ThreadPoolExecutor(max_workers=min(len(active), MAX_MEMBERS)) as pool:
-                futures = {pool.submit(self._generate, m, prompts[m.id]): m
-                           for m in active}
-                for fut in futures:
-                    m = futures[fut]
-                    results[m.id] = fut.result()
+            try:
+                with ThreadPoolExecutor(max_workers=min(len(active), MAX_MEMBERS)) as pool:
+                    futures = {pool.submit(self._generate, m, prompts[m.id]): m
+                               for m in active}
+                    for fut in futures:
+                        m = futures[fut]
+                        results[m.id] = fut.result()
+            except Exception as exc:
+                if self.store is not None and sid:
+                    self.store.update_council_session(
+                        sid, status="failed", verdict="human_review", consensus=0.0
+                    )
+                yield {
+                    "type": "error",
+                    "session_id": sid,
+                    "error": f"{type(exc).__name__}: {str(exc)[:180]}",
+                }
+                return
+            round_simulated = any(bool(item.get("simulated")) for item in results.values())
+            simulated_run = simulated_run or round_simulated
             msgs: List[Dict[str, Any]] = []
             for m in active:
                 yield {"type": "member_start", "agent": m.id,
@@ -404,27 +459,69 @@ class Council:
                 if self.store is not None and sid:
                     self.store.add_council_message(
                         sid, r, m.id, out["text"], role="opinion",
-                        meta={"provider": out["provider"], "elapsed": out["elapsed"]},
+                        meta={
+                            "provider": out["provider"],
+                            "model": out.get("model", ""),
+                            "simulated": bool(out.get("simulated", False)),
+                            "elapsed": out["elapsed"],
+                        },
                     )
                 ev = {"type": "member_message", "agent": m.id, "name": m.name,
                       "emoji": m.emoji, "round": r, "content": out["text"],
-                      "provider": out["provider"], "elapsed": out["elapsed"]}
+                      "provider": out["provider"], "elapsed": out["elapsed"],
+                      "simulated": bool(out.get("simulated", False))}
                 yield ev
                 msgs.append(ev)
             score = consensus([latest[m.id] for m in active])
-            early = score >= CONSENSUS_THRESHOLD and r >= EARLY_MIN_ROUND
-            yield {"type": "consensus", "round": r, "score": round(score, 3),
-                   "early_stop": early}
+            if round_simulated:
+                score = 0.0
+            early = (
+                not round_simulated
+                and score >= CONSENSUS_THRESHOLD
+                and r >= EARLY_MIN_ROUND
+            )
+            yield {
+                "type": "consensus", "round": r, "score": round(score, 3),
+                "early_stop": early, "simulated": round_simulated,
+            }
             rounds_data.append({"round": r, "consensus": round(score, 3),
                                 "messages": msgs})
             if early:
                 break
 
-        verdict = self._verdict(topic, latest)
-        inf = influence(active, latest, verdict["text"])
+        try:
+            verdict = self._verdict(topic, latest)
+        except Exception as exc:
+            if self.store is not None and sid:
+                self.store.update_council_session(
+                    sid, status="failed", verdict="human_review", consensus=0.0
+                )
+            yield {
+                "type": "error",
+                "session_id": sid,
+                "error": f"{type(exc).__name__}: {str(exc)[:180]}",
+            }
+            return
+
+        simulated_run = simulated_run or bool(verdict.get("simulated"))
+        if simulated_run:
+            score = 0.0
+            verdict = {
+                "text": (
+                    "محاكاة فقط — لا يصدر المجلس قرارًا إنتاجيًا. "
+                    "يلزم تشغيل حقيقي بمزوّد موثّق ومراجعة بشرية."
+                ),
+                "provider": "offline",
+                "offline": True,
+                "simulated": True,
+                "decision": "human_review",
+            }
+            inf = {}
+        else:
+            inf = influence(active, latest, verdict["text"])
         # Feed each member's verdict-alignment into its genome so standing
         # genuinely rises / falls across sessions (the Agent Genome loop).
-        if self.genome is not None and inf:
+        if not simulated_run and self.genome is not None and inf:
             for m in active:
                 d = inf.get(m.id, {})
                 self.genome.outcome_from_influence(
@@ -443,15 +540,15 @@ class Council:
         # calling the judge too would count every judgement twice in one session.
         # One session, one store, one write.
         v2_backed = bool(getattr(self.genome, "is_genome_v2", False))
-        if self.judge is not None and inf and not v2_backed:
+        if not simulated_run and self.judge is not None and inf and not v2_backed:
             try:
                 self.judge(judgement_stances(inf))
             except Exception:  # a broken sink must never break a debate
                 pass
         if self.store is not None and sid:
             self.store.update_council_session(
-                sid, status="done", verdict=verdict["text"],
-                consensus=round(score, 3),
+                sid, status="simulated" if simulated_run else "done",
+                verdict=verdict["text"], consensus=round(score, 3),
             )
         result = {
             "session_id": sid, "topic": topic, "rounds": rounds,
@@ -459,10 +556,14 @@ class Council:
             "rounds_data": rounds_data, "consensus": round(score, 3),
             "verdict": verdict["text"], "verdict_provider": verdict["provider"],
             "offline": verdict["offline"], "influence": inf,
+            "simulated": simulated_run,
+            "decision": "human_review",
+            "consensus_reached": (not simulated_run and score >= CONSENSUS_THRESHOLD),
         }
         yield {"type": "verdict", "verdict": verdict["text"],
                "consensus": round(score, 3), "influence": inf,
-               "provider": verdict["provider"]}
+               "provider": verdict["provider"], "simulated": simulated_run,
+               "decision": "human_review"}
         yield {"type": "done", "session_id": sid, "result": result}
 
     def debate(self, topic: str, rounds: int = 3,
@@ -470,6 +571,8 @@ class Council:
         """Run a full debate synchronously and return the final result."""
         result: Dict[str, Any] = {}
         for ev in self.debate_stream(topic, rounds=rounds, members=members):
+            if ev.get("type") == "error":
+                raise CouncilProviderUnavailable(str(ev.get("error", "council execution failed")))
             if ev.get("type") == "done":
                 result = ev["result"]
         return result

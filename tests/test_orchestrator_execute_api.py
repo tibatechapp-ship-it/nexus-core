@@ -60,7 +60,9 @@ def env(tmp_path, monkeypatch):
     store = SessionStore(tmp_path / "sessions.db")
     genome = Genome(store)
     genome.seed()
-    offline = Council(router=None, store=store, genome=genome)
+    offline = Council(
+        router=None, store=store, genome=genome, allow_offline_simulation=True
+    )
 
     monkeypatch.setattr(mod, "get_store_singleton", lambda: store)
     monkeypatch.setattr(mod, "get_genome", lambda: genome)

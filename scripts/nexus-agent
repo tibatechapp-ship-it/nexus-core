@@ -11,6 +11,7 @@ sys.path.insert(0, 'src')
 os.environ["NOVAMIND_HOME"] = os.path.expanduser("~/nexus-core")
 
 import src.nexus
+from novamind.core.llm_router import get_router
 from src.agent_loop.loop import AgentLoop
 
 task = os.environ.get("NEXUS_TASK", "").strip()
@@ -25,8 +26,21 @@ if not task:
     print("  nexus-agent 'شغّل coder لكتابة دالة جمع'")
     sys.exit(1)
 
+router = get_router()
+compatible = {"groq", "zai", "openrouter", "mistral", "deepseek", "qwen", "openai", "ollama"}
+real_providers = [
+    provider for provider in router.providers
+    if getattr(provider, "enabled", False)
+    and str(getattr(provider, "name", "")).split("_", 1)[0].lower() in compatible
+]
+if not real_providers:
+    print("❌ لا يوجد مزود حقيقي يدعم استدعاء الأدوات.")
+    print("أضف مفتاح Groq أو Z.AI أو OpenRouter أو Mistral أو DeepSeek أو Qwen أو OpenAI أو Ollama.")
+    sys.exit(2)
+
 print("=" * 60)
-print("🤖 Nexus Agent Loop (ReAct)")
+print("🤖 Nexus Agent Loop (ReAct) — REAL PROVIDER MODE")
+print("   Providers: " + ", ".join(p.name for p in real_providers))
 print("=" * 60)
 print()
 
@@ -35,8 +49,8 @@ result = loop.run(task)
 
 print()
 print("=" * 60)
-if result.get("ok"):
-    print(f"📊 النتيجة ({result['iterations']} جولة):")
+if result.get("ok") is True and result.get("simulated") is False and result.get("provider"):
+    print(f"📊 النتيجة ({result['iterations']} جولة) — {result['provider']}/{result.get('model')}:")
     print()
     print(result.get("answer", ""))
 else:

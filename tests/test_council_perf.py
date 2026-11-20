@@ -1,10 +1,8 @@
 """حرس أداء للمجلس — معايير T5.3/T5.4 (§5 في تقرير v1.13.4).
 
-القاعدة: معايير زمن المجلس تُقاس على **المسار الحتمي (offline)** —
-`Council(router=None)` — لأن المسار الحيّ مربوط بالشبكة (نداء واحد
-15–48 ثانية حسب المزوّد)، فترتيب زمنه يعتمد على الشبكة لا على الكود.
-هذا الملف يثبّت المعيار على المسار الذي نملكه فعلًا، فيتحوّل من رقم في
-تقرير إلى عقد يُكسر فورًا إن تدهور الأداء.
+القاعدة: هذه اختبارات أداء لمسار **محاكاة صريح ومعزول** —
+`allow_offline_simulation=True`. لا تقيس جودة نموذج حي أو جاهزية إنتاجية.
+المسار الحيّ يقاس في اختبارات تكامل منفصلة بمزوّد حقيقي.
 
 الميزانية: T5.3 = جولة واحدة < 2s، T5.4 = جولتان < 6s.
 الهامش المقيس ~1000× (2–4ms فعليًا)، فالفشل هنا يعني تدهورًا حقيقيًا.
@@ -25,7 +23,7 @@ T54_TWO_ROUNDS = 6.0
 
 def _offline_council() -> Council:
     """مجلس بلا مزوّد ولا مخزن: مسار حتمي، بلا شبكة ولا قرص."""
-    return Council(router=None, store=None)
+    return Council(router=None, store=None, allow_offline_simulation=True)
 
 
 @pytest.mark.parametrize(
@@ -40,6 +38,9 @@ def test_offline_debate_within_budget(rounds: int, budget: float) -> None:
     elapsed = time.perf_counter() - start
 
     assert result["offline"] is True
+    assert result["simulated"] is True
+    assert result["decision"] == "human_review"
+    assert result["consensus"] == 0.0
     assert result["verdict"]
     assert elapsed < budget, (
         f"offline debate ({rounds} round(s)) took {elapsed:.3f}s "
@@ -57,10 +58,13 @@ def test_offline_debate_scales_linearly() -> None:
     assert elapsed < T54_TWO_ROUNDS
 
 
-def test_offline_debate_covers_all_members() -> None:
-    """كل عضو في COUNCIL_MEMBERS له نتيجة تأثير — والعدد عقد v1.13.3 = 6."""
+def test_offline_simulation_emits_all_members_without_genome_evidence() -> None:
+    """المحاكاة تعرض كل الأعضاء لكنها لا تنتج influence أو دليلًا تدريبيًا."""
     council = _offline_council()
     result = council.debate("موضوع", rounds=1)
 
-    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}
+    emitted = {message["agent"] for message in result["rounds_data"][0]["messages"]}
+    assert emitted == {member.id for member in COUNCIL_MEMBERS}
+    assert result["influence"] == {}
+    assert result["simulated"] is True
     assert len(COUNCIL_MEMBERS) == 6

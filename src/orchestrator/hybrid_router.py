@@ -139,13 +139,38 @@ class HybridRouter:
             from src.agent_loop.loop import AgentLoop
             loop = AgentLoop(max_iterations=8, verbose=self.verbose)
             r = loop.run(prompt)
+            if not isinstance(r, dict):
+                return {
+                    "ok": False, "status": "invalid_loop_result",
+                    "method": "agent_loop", "error": "AgentLoop returned an unstructured result",
+                }
+            provider = str(r.get("provider") or "").strip().lower()
+            if r.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "status": r.get("status", "agent_loop_failed"),
+                    "method": "agent_loop",
+                    "iterations": r.get("iterations", 0),
+                    "trace": r.get("trace", []),
+                    "error": str(r.get("error") or "AgentLoop failed")[:300],
+                }
+            if r.get("simulated") or not provider or provider in {"mock", "offline"}:
+                return {
+                    "ok": False,
+                    "status": "simulated_or_unidentified_provider",
+                    "method": "agent_loop",
+                    "error": "AgentLoop result lacks real provider evidence",
+                }
             return {
-                "ok": r.get("ok", False),
+                "ok": True,
+                "status": "success",
                 "method": "agent_loop",
+                "provider": r.get("provider"),
+                "model": r.get("model"),
                 "iterations": r.get("iterations", 0),
+                "steps": len(r.get("trace", [])),
                 "trace": r.get("trace", []),
                 "answer": r.get("answer", ""),
-                "error": r.get("error", ""),
             }
         except Exception as e:
             return {"ok": False, "method": "agent_loop", "error": str(e)}
@@ -157,19 +182,31 @@ class HybridRouter:
             b = get_council_bridge()
             b.engine.MAX_ROUNDS = 1
             r = b.deliberate_with_memory(prompt)
+            execution_ok = bool(getattr(r, "execution_ok", True))
+            verdict = str(getattr(r, "verdict", "human_review"))
+            if not execution_ok:
+                status = "execution_failed"
+            elif verdict == "reject":
+                status = "decision_rejected"
+            elif verdict == "human_review":
+                status = "human_review"
+            else:
+                status = "success"
             return {
-                "ok": r.verdict != "reject",
+                "ok": execution_ok and verdict == "approve",
+                "status": status,
                 "method": "council",
-                "verdict": r.verdict,
+                "verdict": verdict,
                 "score": r.score,
                 "rounds": r.rounds,
+                "errors": list(getattr(r, "errors", [])),
                 "elapsed": r.elapsed,
                 "transcript": [
                     {"phase": e["phase"], "member": e["member"],
                      "response": e["response"][:500]}
                     for e in r.transcript
                 ],
-                "answer": f"القرار: {r.verdict} ({r.score:.2f})",
+                "answer": f"القرار: {verdict} ({r.score:.2f})",
             }
         except Exception as e:
             return {"ok": False, "method": "council", "error": str(e)}

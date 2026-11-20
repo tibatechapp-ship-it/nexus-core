@@ -1,8 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # nexus-offline — 79 agents, Mock LLM, no internet needed
-export NOVAMIND_HOME="$HOME/nexus-core"
+export NOVAMIND_HOME="$HOME/.cache/nexus-core/simulations/offline"
 export PYTHONPATH="src:$PYTHONPATH"
-export WORKSPACE_DIR="$HOME/nexus-core/workspace"
+export WORKSPACE_DIR="$HOME/.cache/nexus-core/simulations/offline/workspace"
+export NEXUS_AGENT_WORKSPACE="$WORKSPACE_DIR"
 export NEXUS_AGENT="$1"
 export NEXUS_PROMPT="${@:2}"
 cd "$HOME/nexus-core"
@@ -21,6 +22,7 @@ def mock_generate(self, prompt="", system="", **kwargs):
         "text": f"# Mock code for: {str(prompt)[:80]}\n\ndef solution():\n    return 42\n",
         "provider": "mock",
         "model": "mock",
+        "simulated": True,
         "elapsed": 0.01,
     }
 
@@ -45,7 +47,8 @@ if not agent_name:
 
 try:
     agent = REGISTRY.load_agent(agent_name)
-    print(f"✅ محمّل: {type(agent).__name__}")
+    print("⚠️ SIMULATION ONLY — لا تستخدم هذه النتيجة كدليل إنتاجي")
+    print(f"محاكاة الوكيل: {type(agent).__name__}")
 
     CANDIDATE_METHODS = [
         "build", "run", "execute", "analyze", "fix", "review",
@@ -70,9 +73,11 @@ try:
     print("─" * 60)
 
     result = getattr(agent, method)(prompt)
+    if isinstance(result, dict):
+        result["simulated"] = True
     print(str(result)[:1500])
     print("─" * 60)
-    print("✅ اكتمل")
+    print("⚠️ انتهت المحاكاة — ليست نتيجة تشغيل حقيقي")
 except Exception as e:
     print(f"❌ {type(e).__name__}: {e}")
 PYEOF
