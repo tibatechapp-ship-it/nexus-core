@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_production_cli_scripts_do_not_patch_router_to_mock():
-    for name in ("nexus-run", "nexus-loop", "nexus-council-topic", "nexus-council"):
+    for name in ("nexus-run", "nexus-loop", "nexus-council-topic", "nexus-council", "nexus-agent", "nexus-compare"):
         source = (ROOT / "scripts" / name).read_text(encoding="utf-8")
         assert "LLMRouter.generate =" not in source
         assert "mock_gen" not in source
@@ -38,3 +38,10 @@ def test_all_mock_cli_tools_are_explicit_and_use_isolated_memory():
     assert "SIMULATION ONLY" in example
     assert "nexus-core-example-simulation" in example
     assert '"simulated": True' in example
+
+
+def test_comparison_script_does_not_claim_model_quality_or_write_production_memory():
+    source = (ROOT / "scripts" / "nexus-compare").read_text(encoding="utf-8")
+    assert "NOT A MODEL-QUALITY BENCHMARK" in source
+    assert ".cache/nexus-core/benchmarks/nexus-compare" in source
+    assert "لا تثبت تفوقًا تنافسيًا أو جودة أعلى" in source
