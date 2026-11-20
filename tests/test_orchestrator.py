@@ -671,3 +671,24 @@ def test_execute_reports_partial_instead_of_full_success(monkeypatch: pytest.Mon
     assert out["ok"] is False
     assert out["status"] == "partial"
     assert out["partial"] is True
+
+
+def test_execute_sequential_stops_after_first_failed_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s = _sup(_StrAgent())
+    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
+        strategy="sequential", complexity="standard", category="code_generation",
+        agents=["first", "second"], reason=""))
+    calls = []
+
+    def run(agent, prompt):
+        calls.append(agent)
+        return {"ok": False, "agent": agent, "error": "provider unavailable"}
+
+    monkeypatch.setattr(s, "_run_single", run)
+    result = s.execute("run chain")
+
+    assert calls == ["first"]
+    assert result["ok"] is False
+    assert result["status"] == "failed"
