@@ -639,3 +639,18 @@ def test_council_streaming_bridge_does_not_persist_failed_execution(
 
     assert result.execution_ok is False
     assert result.errors == ["simulated provider rejected"]
+
+
+def test_engine_provider_exception_fails_closed_without_judging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    router = FakeRouter([RuntimeError("secret-like-provider-error")])
+    eng = _engine(monkeypatch, router)
+
+    result = eng.deliberate("هل نوافق؟")
+
+    assert result.execution_ok is False
+    assert result.verdict == "human_review"
+    assert result.consensus is False
+    assert "RuntimeError" in result.errors[0]
+    assert "secret-like-provider-error" not in result.errors[0]
