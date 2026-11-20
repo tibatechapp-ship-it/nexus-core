@@ -295,7 +295,7 @@ class LLMRouter:
         if provider.name in self._clients:
             return self._clients[provider.name]
 
-        if provider.name == "gemini":
+        if provider.name == "gemini" or provider.name.startswith("gemini_"):
             from google import genai
             client = genai.Client(api_key=provider.api_key)
         else:
@@ -432,7 +432,7 @@ class LLMRouter:
             attempted += 1
             start = time.time()
             try:
-                if p.name == "gemini":
+                if p.name == "gemini" or p.name.startswith("gemini_"):
                     text = self._call_gemini(p, model, prompt, system, temperature, max_tokens)
                 else:
                     text = self._call_openai_compatible(p, model, prompt, system, temperature, max_tokens)
