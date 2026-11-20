@@ -239,6 +239,8 @@ class LearnerAgent:
         """Get weight for a pattern. Higher means more preferred."""
         key = self._normalize_pattern(pattern)
         with self._lock:
+            if FEEDBACK_FILE.exists():
+                self.feedback = self._load_feedback(strict=True)
             weight = dict(self.feedback["pattern_weights"].get(key, {}))
         net = weight.get("net", 0)
         total = weight.get("likes", 0) + weight.get("dislikes", 0)
@@ -266,6 +268,8 @@ class LearnerAgent:
     def stats(self) -> Dict:
         """Return durable feedback statistics."""
         with self._lock:
+            if FEEDBACK_FILE.exists():
+                self.feedback = self._load_feedback(strict=True)
             entries = copy.deepcopy(self.feedback["entries"])
             weights = copy.deepcopy(self.feedback["pattern_weights"])
         liked = sum(1 for entry in entries if entry["liked"])
