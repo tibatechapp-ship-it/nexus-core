@@ -372,3 +372,46 @@ def test_loop_empty_final_answer_is_not_success() -> None:
     result = _ScriptedLoop([_msg(content="")], verbose=False).run("x")
     assert result["ok"] is False
     assert result["status"] == "empty_llm_response"
+
+
+def test_call_llm_fails_over_between_real_compatible_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("openai")
+
+    class _Provider:
+        def __init__(self, name: str):
+            self.name = name
+            self.enabled = True
+            self.api_key = "test-key"
+            self.base_url = "http://localhost:1"
+            self.models = {"fast": f"{name}-model"}
+
+    loop = AgentLoop(
+        llm=_FakeLLM(providers=[_Provider("groq_01"), _Provider("zai_01")]),
+        registry=build_default_registry(),
+        verbose=False,
+    )
+    calls = {"count": 0}
+
+    class _Completions:
+        def create(self, **kwargs):
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="answer", tool_calls=None)
+            )])
+
+    class _Client:
+        chat = SimpleNamespace(completions=_Completions())
+
+    def openai_factory(**kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("first provider unavailable")
+        return _Client()
+
+    monkeypatch.setattr("openai.OpenAI", openai_factory)
+    result = loop._call_llm([{"role": "user", "content": "x"}])
+
+    assert result["ok"] is True
+    assert result["provider"] == "zai_01"
+    assert calls["count"] == 2
