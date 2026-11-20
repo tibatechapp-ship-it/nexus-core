@@ -273,14 +273,26 @@ class Supervisor:
                 from src.council.rag_bridge import get_council_bridge
                 council = get_council_bridge()
                 cr = council.deliberate_with_memory(prompt)
+                execution_ok = bool(getattr(cr, "execution_ok", True))
+                verdict = str(getattr(cr, "verdict", "human_review"))
+                decision_approved = execution_ok and verdict == "approve"
+                if not execution_ok:
+                    council_status = "execution_failed"
+                elif verdict == "reject":
+                    council_status = "decision_rejected"
+                elif verdict == "human_review":
+                    council_status = "human_review"
+                else:
+                    council_status = "success"
                 results.append({
-                    "ok": bool(getattr(cr, "execution_ok", True)),
-                    "status": "success" if bool(getattr(cr, "execution_ok", True)) else "execution_failed",
+                    "ok": decision_approved,
+                    "status": council_status,
                     "agent": "council",
-                    "verdict": cr.verdict,
+                    "verdict": verdict,
                     "score": cr.score,
                     "rounds": cr.rounds,
-                    "result": f"Council: {cr.verdict} (score={cr.score:.2f})",
+                    "errors": list(getattr(cr, "errors", [])),
+                    "result": f"Council: {verdict} (score={cr.score:.2f})",
                 })
             except Exception as e:
                 results.append({"ok": False, "agent": "council", "error": str(e)})
