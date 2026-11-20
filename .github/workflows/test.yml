@@ -86,11 +86,15 @@ jobs:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
 
-      - name: Novamind full suite (non-blocking report)
+      - name: NovaMind repository-wide coverage (non-blocking report)
         if: always()
         continue-on-error: true
+        env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-coverage-learning.jsonl
         run: |
-          pytest tests/novamind --cov=novamind --cov-config=coverage-novamind.ini \
+          # Include root-level tests that exercise NovaMind too; the dedicated
+          # coverage config excludes only framework code and test files.
+          pytest --cov=novamind --cov-config=coverage-novamind.ini \
             --cov-report=term-missing --tb=line || true
         env:
           ZAI_API_KEY_1: test
