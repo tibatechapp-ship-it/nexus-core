@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 os.environ.setdefault("NEXUS_ALLOW_OPEN", "1")
-os.environ.setdefault("NOVAMIND_HOME", str(Path(tempfile.gettempdir()) / "nexus-core-example-simulation"))
+os.environ["NOVAMIND_HOME"] = str(Path(tempfile.gettempdir()) / "nexus-core-example-simulation")
 
 
 def patch_mock_router() -> None:
