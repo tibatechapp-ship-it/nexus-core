@@ -577,7 +577,8 @@ def test_hybrid_run_loop_real(monkeypatch: pytest.MonkeyPatch) -> None:
             self.verbose = verbose
 
         def run(self, prompt: str) -> dict:
-            return {"ok": True, "iterations": 3, "trace": [{"icon": "i", "text": "t"}],
+            return {"ok": True, "simulated": False, "provider": "test-provider",
+                    "iterations": 3, "trace": [{"icon": "i", "text": "t"}],
                     "answer": "loop answer", "error": ""}
 
     monkeypatch.setattr("src.agent_loop.loop.AgentLoop", _Loop)
@@ -774,3 +775,29 @@ def test_hybrid_router_requires_council_approval_for_success(
 
     assert result["ok"] is False
     assert result["status"] == "decision_rejected"
+
+
+def test_hybrid_router_loop_rejects_simulated_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.orchestrator.hybrid_router import HybridRouter
+
+    class _SimulatedLoop:
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self, prompt):
+            return {
+                "ok": True,
+                "simulated": True,
+                "provider": "mock",
+                "answer": "synthetic",
+                "iterations": 1,
+                "trace": [],
+            }
+
+    monkeypatch.setattr("src.agent_loop.loop.AgentLoop", _SimulatedLoop)
+    result = HybridRouter()._run_loop("do work")
+
+    assert result["ok"] is False
+    assert result["status"] == "simulated_or_unidentified_provider"
