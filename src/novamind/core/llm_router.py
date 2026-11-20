@@ -50,7 +50,8 @@ class ProviderConfig:
 
 
 class MockProvider:
-    """Mock LLM provider for CI/testing — no network, deterministic."""
+    """Deterministic test double. Its responses are always marked simulated."""
+
     name = "mock"
     api_key = "mock"
     base_url = ""
@@ -61,32 +62,6 @@ class MockProvider:
     failures = 0
     last_error = ""
     last_call_at = 0.0
-
-    
-    def _get_ordered_candidates(self, role="fast", provider_override=None):
-        import collections
-        if provider_override:
-            return [p for p in self.providers if p.name == provider_override and p.enabled]
-        if not hasattr(self, "_rr_counters"):
-            self._rr_counters = collections.defaultdict(int)
-        unique = {}
-        for p in self.providers:
-            if p.enabled and p.name not in unique:
-                unique[p.name] = p
-        by_prio = collections.defaultdict(list)
-        for p in unique.values():
-            if p.models.get(role) or p.models.get("fast"):
-                by_prio[p.priority].append(p)
-        ordered = []
-        for prio in sorted(by_prio.keys()):
-            group = by_prio[prio]
-            if len(group) > 1:
-                idx = self._rr_counters[prio] % len(group)
-                ordered.extend(group[idx:] + group[:idx])
-                self._rr_counters[prio] = (self._rr_counters[prio] + 1) % len(group)
-            else:
-                ordered.extend(group)
-        return ordered
 
     def generate(self, prompt, system="", **kwargs):
         return {
