@@ -1,5 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 export NOVAMIND_HOME="$HOME/.cache/nexus-core/simulations/nexus-mock"
+export WORKSPACE_DIR="$NOVAMIND_HOME/workspace"
+export NEXUS_AGENT_WORKSPACE="$WORKSPACE_DIR"
 export PYTHONPATH=src:$PYTHONPATH
 cd ~/nexus-core
 mkdir -p "$NOVAMIND_HOME"
