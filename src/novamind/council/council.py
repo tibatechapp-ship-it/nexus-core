@@ -8,10 +8,9 @@ against that verdict (standing rises / falls) — the raw signal the Genome
 (v2.2) aggregates across sessions.
 
 Design goals
-- **Works offline**: with no live LLM provider the council falls back to a
-  deterministic local "simulation" so tests and the phone gate never depend on
-  the network. The first failed provider call flips the run into offline mode so
-  a dead-key deployment stays fast (no 16 slow timeouts).
+- **Fail closed by default**: no provider or a failed provider call raises an
+  explicit provider error. Offline simulation is available only through an
+  explicit test/demo opt-in and is never represented as a production decision.
 - **Pure-Python core**: consensus / influence / position parsing are plain
   functions that can be unit-tested without any backend.
 """
@@ -25,8 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
-__all__ = ["CouncilMember", "COUNCIL_MEMBERS", "Council", "jaccard", "consensus",
-           "position", "influence", "judgement_stances"]
+__all__ = ["CouncilMember", "COUNCIL_MEMBERS", "Council", "CouncilProviderUnavailable",
+           "jaccard", "consensus", "position", "influence", "judgement_stances"]
 
 
 # ── tunables ─────────────────────────────────────────────────────────────────
@@ -36,7 +35,12 @@ EARLY_MIN_ROUND = 2         # never stop before this round
 MAX_ROUNDS = 5
 MAX_MEMBERS = 7
 GENERATE_TIMEOUT = 60.0     # max wait for one live provider reply
-OFFLINE_CACHE = 5.0        # how long a live failure keeps the council offline
+OFFLINE_CACHE = 5.0        # circuit-breaker duration after provider failure
+
+
+class CouncilProviderUnavailable(RuntimeError):
+    """Raised when the council cannot obtain a verified live provider response."""
+
 
 
 @dataclass
@@ -207,11 +211,13 @@ class Council:
 
     def __init__(self, router: Any = None, store: Any = None,
                  members: Optional[List[CouncilMember]] = None,
-                 genome: Any = None, judge: Any = None) -> None:
+                 genome: Any = None, judge: Any = None,
+                 allow_offline_simulation: bool = False) -> None:
         self.router = router
         self.store = store
         self.genome = genome
         self.judge = judge
+        self.allow_offline_simulation = bool(allow_offline_simulation)
         self.members = list(members) if members else list(COUNCIL_MEMBERS)
         self._live = self._has_live_provider(router)
         self._provider_failed = False
@@ -224,7 +230,14 @@ class Council:
             return False
         for p in getattr(router, "providers", []) or []:
             key = (getattr(p, "api_key", "") or "").strip()
-            if getattr(p, "enabled", True) and key and key != "mock":
+            name = str(getattr(p, "name", "")).strip().lower()
+            if (
+                getattr(p, "enabled", True)
+                and key
+                and key.lower() not in {"mock", "offline"}
+                and name not in {"mock", "offline", "mock-provider"}
+                and not bool(getattr(p, "simulated", False))
+            ):
                 return True
         return False
 
@@ -257,21 +270,39 @@ class Council:
         t.join(timeout=GENERATE_TIMEOUT)
         if t.is_alive():
             return None
-        if box.get("ok") and (box.get("text") or "").strip():
+        provider = str(box.get("provider") or "").strip()
+        if (
+            box.get("ok") is True
+            and not box.get("simulated")
+            and provider.lower() not in {"", "mock", "offline", "mock-provider"}
+            and (box.get("text") or "").strip()
+        ):
             return {"text": box["text"].strip(),
-                    "provider": box.get("provider", ""),
-                    "elapsed": float(box.get("elapsed", 0.0))}
+                    "provider": provider,
+                    "model": box.get("model", ""),
+                    "elapsed": float(box.get("elapsed", 0.0)),
+                    "simulated": False}
         return None
 
     def _generate(self, member: CouncilMember, prompt: str) -> Dict[str, Any]:
-        """Return {text, provider, elapsed} — live provider or local fallback."""
+        """Return a verified live response or an explicitly marked simulation."""
         if self.router is not None and self._live and not self._is_offline():
             res = self._live_generate(member, prompt)
             if res is not None:
                 return res
-            self._go_offline()  # first live failure → offline (cached), no retries
-        return {"text": self._fallback(member, prompt), "provider": "offline",
-                "elapsed": 0.0}
+            self._go_offline()
+
+        if not self.allow_offline_simulation:
+            raise CouncilProviderUnavailable(
+                "No verified live council provider response is available"
+            )
+        return {
+            "text": self._fallback(member, prompt),
+            "provider": "offline",
+            "model": "offline-simulation",
+            "elapsed": 0.0,
+            "simulated": True,
+        }
 
     @staticmethod
     def _fallback(member: CouncilMember, prompt: str) -> str:
