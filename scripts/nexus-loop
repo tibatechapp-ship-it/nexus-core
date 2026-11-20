@@ -13,15 +13,18 @@ import os, sys
 sys.path.insert(0, '.')
 sys.path.insert(0, 'src')
 
-# Mock LLM (بدون مفاتيح)
-from novamind.core.llm_router import LLMRouter
-def mock_gen(self, prompt="", system="", **kw):
-    return {"ok": True, "text": f"# Mock: {str(prompt)[:80]}", "provider": "mock", "elapsed": 0.01}
-LLMRouter.generate = mock_gen
-LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
-LLMRouter._load_from_env = lambda self: setattr(self, 'providers', [])
-LLMRouter._cooldown_provider = lambda self, n, seconds=300: None
-LLMRouter._is_cooled_down = lambda self, n: True
+from novamind.core.llm_router import get_router
+
+router = get_router()
+real_providers = [
+    provider for provider in router.providers
+    if getattr(provider, "name", "") != "mock"
+    and getattr(provider, "enabled", True)
+]
+if not real_providers:
+    print("خطأ: nexus-loop يحتاج مزود LLM حقيقياً. لا توجد محاكاة تلقائية.")
+    print("أضف مفاتيح مزود صالح إلى .env أو NOVAMIND_HOME/.env.")
+    sys.exit(2)
 
 from src.novamind.core.loop_rag_bridge import get_loop_bridge
 
