@@ -352,32 +352,36 @@ class Council:
 
     # -- verdict --------------------------------------------------------------
     def _verdict(self, topic: str, latest: Dict[str, str]) -> Dict[str, Any]:
-        if self.router is not None and self._live and not self._provider_failed:
-            chief = CouncilMember(id="chief", name="رئيس المجلس", emoji="⚖️",
-                                  system="أنت رئيس مجلس حكيم وموجز.")
-            res = self._generate(chief, self._chief_prompt(topic, latest))
-            if res["provider"] != "offline":
-                return {"text": res["text"], "provider": res["provider"],
-                        "offline": False}
-        # offline synthesis — pick the position most shared, list the rest
-        pos = {m.id: position(latest.get(m.id, "")) for m in self.members
-               if latest.get(m.id)}
-        best_id, best_score = None, -1.0
-        for mid, p in pos.items():
-            score = sum(jaccard(p, q) for q in pos.values())
-            if score > best_score:
-                best_id, best_score = mid, score
-        lead = next((m for m in self.members if m.id == best_id), None)
-        lines = ["حكم المجلس (وضع محلي — لا مزوّد متصل):", "الموضوع: " + topic, ""]
-        lines.append("أبرز المواقف:")
-        for m in self.members:
-            if m.id in pos:
-                lines.append(f"- {m.emoji} {m.name}: {pos[m.id][:160]}")
-        if lead is not None:
-            lines.append("")
-            lines.append("القرار: الأقرب إلى إجماع المجلس هو موقف "
-                         f"{lead.name} — {pos.get(lead.id, '')[:160]}")
-        return {"text": "\n".join(lines), "provider": "offline", "offline": True}
+        """Return an advisory live synthesis; simulations can never approve."""
+        chief = CouncilMember(
+            id="chief",
+            name="رئيس المجلس",
+            emoji="⚖️",
+            system="أنت رئيس مجلس حكيم وموجز.",
+        )
+        try:
+            result = self._generate(chief, self._chief_prompt(topic, latest))
+        except CouncilProviderUnavailable:
+            raise
+
+        if result.get("simulated") or result.get("provider") == "offline":
+            return {
+                "text": (
+                    "محاكاة فقط — لا يصدر المجلس قرارًا إنتاجيًا. "
+                    "يلزم تشغيل جولة حقيقية بمزوّد لغوي موثّق ومراجعة بشرية."
+                ),
+                "provider": "offline",
+                "offline": True,
+                "simulated": True,
+                "decision": "human_review",
+            }
+        return {
+            "text": result["text"],
+            "provider": result["provider"],
+            "offline": False,
+            "simulated": False,
+            "decision": "human_review",
+        }
 
     # -- the debate -----------------------------------------------------------
     def debate_stream(self, topic: str, rounds: int = 3,
