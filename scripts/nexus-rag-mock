@@ -60,10 +60,12 @@ if not method:
 
 print(f"🔧 الطريقة: {method}")
 result = getattr(agent, method)(enriched)
+if isinstance(result, dict):
+    result["simulated"] = True
 print(str(result)[:800])
 
-# حفظ النتيجة
-if isinstance(result, dict) and result.get("ok"):
+# حفظ النتيجة داخل مساحة RAG المعزولة الخاصة بالمحاكاة فقط
+if isinstance(result, dict) and result.get("ok") and result.get("simulated") is True:
     text = result.get("code") or result.get("text") or str(result)[:200]
     doc_id = bridge.remember(f"Agent {agent_name}: {text[:200]}")
     print(f"💾 حُفظت في الذاكرة: {doc_id}")
