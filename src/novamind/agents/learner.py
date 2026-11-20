@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
@@ -22,6 +23,7 @@ class LearnerAgent:
 
     def __init__(self):
         self.name = "learner"
+        self._lock = threading.RLock()
         self.feedback = self._load_feedback()
 
     def _load_feedback(self) -> Dict:
@@ -160,28 +162,29 @@ class LearnerAgent:
             "at": datetime.now(timezone.utc).isoformat(),
         }
 
-        previous_feedback = self.feedback
-        candidate = copy.deepcopy(previous_feedback)
-        candidate["entries"].append(entry)
-
-        key = self._normalize_pattern(normalized_pattern)
-        weight = candidate["pattern_weights"].setdefault(
-            key, {"likes": 0, "dislikes": 0, "net": 0}
-        )
-        if liked:
-            weight["likes"] += 1
-            weight["net"] += 1
-        else:
-            weight["dislikes"] += 1
-            weight["net"] -= 1
-
-        self.feedback = candidate
-        try:
-            directory_synced = self._save_feedback()
-        except Exception:
-            self.feedback = previous_feedback
-            logger.exception("Primary feedback persistence failed")
-            raise
+        with self._lock:
+            previous_feedback = self.feedback
+            candidate = copy.deepcopy(previous_feedback)
+            candidate["entries"].append(entry)
+    
+            key = self._normalize_pattern(normalized_pattern)
+            weight = candidate["pattern_weights"].setdefault(
+                key, {"likes": 0, "dislikes": 0, "net": 0}
+            )
+            if liked:
+                weight["likes"] += 1
+                weight["net"] += 1
+            else:
+                weight["dislikes"] += 1
+                weight["net"] -= 1
+    
+            self.feedback = candidate
+            try:
+                directory_synced = self._save_feedback()
+            except Exception:
+                self.feedback = previous_feedback
+                logger.exception("Primary feedback persistence failed")
+                raise
 
         learning_recorded = False
         warning = None
@@ -224,7 +227,8 @@ class LearnerAgent:
     def get_pattern_weight(self, pattern: str) -> float:
         """Get weight for a pattern. Higher means more preferred."""
         key = self._normalize_pattern(pattern)
-        weight = self.feedback["pattern_weights"].get(key, {})
+        with self._lock:
+            weight = dict(self.feedback["pattern_weights"].get(key, {}))
         net = weight.get("net", 0)
         total = weight.get("likes", 0) + weight.get("dislikes", 0)
         if total == 0:
@@ -250,8 +254,9 @@ class LearnerAgent:
 
     def stats(self) -> Dict:
         """Return durable feedback statistics."""
-        entries = self.feedback["entries"]
-        weights = self.feedback["pattern_weights"]
+        with self._lock:
+            entries = copy.deepcopy(self.feedback["entries"])
+            weights = copy.deepcopy(self.feedback["pattern_weights"])
         liked = sum(1 for entry in entries if entry["liked"])
         disliked = len(entries) - liked
         top_patterns = sorted(
