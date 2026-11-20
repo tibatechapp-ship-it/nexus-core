@@ -33,7 +33,7 @@ def store() -> OrgStore:
 @pytest.fixture()
 def runtime(store: OrgStore) -> AgentRuntime:
     return AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(),
-                        store)
+                        store, allow_simulated=True)
 
 
 def _spec(**kw: object) -> AgentSpec:
@@ -221,7 +221,7 @@ class TestProviderFailure:
                                      latency_ms=0.1)
 
         runtime = AgentRuntime(
-            ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(), store)
+            ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(), store, allow_simulated=True)
         runtime.pool.get = lambda name="", model="": ListProvider()  # type: ignore[assignment, return-value]
         out = runtime.ask_json(_spec(max_retries=1), "أجب")
         assert out.success is False
