@@ -90,7 +90,8 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          pytest tests/novamind --cov=src/novamind --cov-report=term --tb=line || true
+          pytest tests/novamind --cov=novamind --cov-config=coverage-novamind.ini \
+            --cov-report=term-missing --tb=line || true
         env:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
