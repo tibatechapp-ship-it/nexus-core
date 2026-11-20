@@ -625,3 +625,49 @@ def test_cache_set_failure_is_silent(tmp_cache: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(cache, "_CACHE_DIR", str(tmp_cache / "missing" / "deeper"))
     cache.set("a", "p", "x")
     assert cache.get("a", "p") is None
+
+
+class _FailedResultAgent:
+    def run(self, prompt: str) -> dict:
+        return {"ok": False, "error": "provider unavailable"}
+
+
+class _SimulatedResultAgent:
+    def run(self, prompt: str) -> dict:
+        return {
+            "ok": True,
+            "simulated": True,
+            "provider": "mock",
+            "text": "synthetic output",
+        }
+
+
+def test_run_single_does_not_promote_agent_failure(no_cache: None) -> None:
+    out = _sup(_FailedResultAgent())._run_single("coder", "write code")
+    assert out["ok"] is False
+    assert out["status"] == "agent_reported_failure"
+    assert "provider unavailable" in out["error"]
+
+
+def test_run_single_rejects_simulated_success(no_cache: None) -> None:
+    out = _sup(_SimulatedResultAgent())._run_single("coder", "write code")
+    assert out["ok"] is False
+    assert out["status"] == "simulated_result_rejected"
+
+
+def test_execute_reports_partial_instead_of_full_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    s = _sup(_StrAgent())
+    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
+        strategy="parallel", complexity="complex", category="code_generation",
+        agents=["good", "bad"], reason=""))
+    monkeypatch.setattr(
+        s,
+        "_run_single",
+        lambda agent, prompt: {"ok": agent == "good", "agent": agent, "result": "r"},
+    )
+
+    out = s.execute("run both")
+
+    assert out["ok"] is False
+    assert out["status"] == "partial"
+    assert out["partial"] is True
