@@ -72,6 +72,13 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / f"nexus-test-interactions-{os.getpid()}.db"),
 )
 
+# The NovaMind learning ledger is append-only runtime state. Keep the global
+# singleton and fleet tests on a per-run temp file, never in repo memory/.
+os.environ.setdefault(
+    "NOVAMIND_LEARNING_LOOP_PATH",
+    str(Path(tempfile.gettempdir()) / f"nexus-test-learning-loop-{os.getpid()}.jsonl"),
+)
+
 # The genome store (src/novamind/genome_store.py) resolves its file the same
 # way, so point it at a private temp file too — a test that installs the genome
 # layer must never rewrite the repo's real data/genome.json.
