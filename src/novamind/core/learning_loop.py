@@ -42,12 +42,12 @@ def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
     if not isinstance(value, str):
         raise TypeError("learning text must be a string")
     text = re.sub(
-        r"""(?i)(["']?(?:api[_-]?key|secret|password|token|authorization)["']?\\s*[:=]\\s*["']?)[^\\s,"']+""",
-        r"\\1[REDACTED]",
+        r"""(?i)(["']?(?:api[_-]?key|secret|password|token|authorization)["']?\s*[:=]\s*["']?)[^\s,"']+""",
+        r"\1[REDACTED]",
         value,
     )
     text = re.sub(
-        r"\\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\\b",
+        r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b",
         "[REDACTED]",
         text,
     )
