@@ -248,27 +248,20 @@ class CouncilEngine:
         return None
 
     def _consensus(self, responses: dict[str, str]) -> bool:
-        """أغلبية الأحكام الصريحة (2/3) — والطريقة الكلمية احتياط."""
+        """Require explicit structured verdicts; keyword similarity is not consensus."""
         if len(responses) < 2:
-            return True
+            return False
         verdicts = [
-            v for v in (self._explicit_verdict(r) for r in responses.values()) if v is not None
+            verdict
+            for verdict in (self._explicit_verdict(response) for response in responses.values())
+            if verdict is not None
         ]
-        if len(verdicts) == len(responses):
-            counts: dict[str, int] = {}
-            for v in verdicts:
-                counts[v] = counts.get(v, 0) + 1
-            return max(counts.values()) >= len(verdicts) // 2 + 1
-        # fallback كلمي
-        positive = ["مقبول", "آمن", "موافق", "approve", "safe"]
-        negative = ["مرفوض", "خطر", "reject", "danger"]
-        old: list[str] = []
-        for r in responses.values():
-            rl = r.lower()
-            pos = sum(1 for w in positive if w in rl)
-            neg = sum(1 for w in negative if w in rl)
-            old.append("yes" if pos > neg else "no" if neg > pos else "mid")
-        return len(set(old)) == 1
+        if len(verdicts) != len(responses):
+            return False
+        counts: dict[str, int] = {}
+        for verdict in verdicts:
+            counts[verdict] = counts.get(verdict, 0) + 1
+        return max(counts.values(), default=0) >= 2
 
     def _genome_v2(self) -> Any:
         """العضو المراقب للجينوم v2 — يُستورد تأخيرياً، ولا يُسقط المجلس أبداً."""
@@ -305,57 +298,29 @@ class CouncilEngine:
         return verdict, score
 
     def _judge_verdict(self, transcript: list[dict[str, Any]]) -> tuple[str, float]:
-        """الحكم النهائي بناءً على الأحكام الصريحة (fallback كلمي)."""
-        scores: dict[str, float] = {"profiler": 0.5, "analyst": 0.5, "critic": 0.5}
-        vmap = {"yes": 0.9, "mid": 0.5, "no": 0.1}
-
-        # اجمع الأحكام الصريحة من كل عضو
+        """Decide only from explicit member verdicts; otherwise require human review."""
         explicit: dict[str, str] = {}
+        known_members = {"profiler", "analyst", "critic"}
         for entry in transcript:
-            try:
-                m = entry.get("member")
-                if m not in scores:
-                    continue
-                v = self._explicit_verdict(entry.get("response", ""))
-                if v:
-                    explicit[m] = v
-            except Exception:
-                pass
+            member = entry.get("member")
+            if member not in known_members:
+                continue
+            verdict = self._explicit_verdict(entry.get("response", ""))
+            if verdict is not None:
+                explicit[member] = verdict
 
-        if len(explicit) >= 2:
-            # استخدم الأحكام الصريحة
-            for m, v in explicit.items():
-                scores[m] = vmap[v]
-            # ═══ أغلبية صريحة 2/3 → قرار حاسم مباشرة ═══
-            counts: dict[str, int] = {}
-            for v in explicit.values():
-                counts[v] = counts.get(v, 0) + 1
-            top = max(counts, key=lambda k: counts[k])
-            if counts[top] >= 2:
-                if top == "yes":
-                    return "approve", 0.85
-                if top == "no":
-                    return "reject", 0.15
-                # محايد → human_review
-                return "human_review", 0.5
-        else:
-            # fallback كلمي
-            for entry in transcript:
-                m = entry.get("member")
-                if m not in scores:
-                    continue
-                r = entry.get("response", "").lower()
-                pos = sum(1 for w in ["آمن", "موافق", "مقبول", "safe", "approve"] if w in r)
-                neg = sum(1 for w in ["خطر", "مرفوض", "غير آمن", "danger", "reject"] if w in r)
-                scores[m] += (pos - neg) * 0.1
+        if len(explicit) < 2:
+            return "human_review", 0.5
 
-        w = JUDGE_CONFIG["weights"]
-        final = sum(scores[k] * w[k] for k in scores)  # type: ignore[index]
-        final = max(0.0, min(1.0, final))  # type: ignore[assignment]
+        counts: dict[str, int] = {}
+        for verdict in explicit.values():
+            counts[verdict] = counts.get(verdict, 0) + 1
 
-        t = JUDGE_CONFIG["thresholds"]
-        if final >= t["approve"]:  # type: ignore[index]
-            return "approve", final
-        if final <= t["reject"]:  # type: ignore[index]
-            return "reject", final
-        return "human_review", final
+        top = max(counts, key=lambda value: counts[value])
+        if counts[top] < 2:
+            return "human_review", 0.5
+        if top == "yes":
+            return "approve", 0.85
+        if top == "no":
+            return "reject", 0.15
+        return "human_review", 0.5
