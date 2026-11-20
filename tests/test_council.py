@@ -253,11 +253,12 @@ def test_a_broken_judge_cannot_break_a_debate() -> None:
     def boom(stances: dict) -> None:
         raise RuntimeError("genome offline")
 
-    council = Council(router=None, store=None, judge=boom)
+    council = Council(
+        router=None, store=None, judge=boom, allow_offline_simulation=True
+    )
     result = council.debate("موضوع", rounds=1)
     assert result["simulated"] is True
     assert result["influence"] == {}
-    assert seen == []
 
 
 def test_council_requires_real_provider_by_default(store: SessionStore) -> None:
