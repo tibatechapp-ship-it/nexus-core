@@ -9,13 +9,14 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict
+from typing import Dic
 
 logger = logging.getLogger("agents.learner")
 
 from novamind.core.paths import NOVAMIND_HOME as BASE
 
 FEEDBACK_FILE = BASE / "memory" / "feedback.json"
+_FEEDBACK_LOCK = threading.RLock()
 
 
 class LearnerAgent:
@@ -23,7 +24,7 @@ class LearnerAgent:
 
     def __init__(self):
         self.name = "learner"
-        self._lock = threading.RLock()
+        self._lock = _FEEDBACK_LOCK
         self.feedback = self._load_feedback()
 
     def _load_feedback(self) -> Dict:
@@ -98,7 +99,7 @@ class LearnerAgent:
     ) -> Dict:
         """Persist a session lesson in the append-only learning ledger.
 
-        min_confidence is retained for API compatibility and validated, but
+        min_confidence is retained for API compatibility and validated, bu
         no confidence score is fabricated when the caller supplies none.
         """
         if not isinstance(summary, str) or not summary.strip():
@@ -111,7 +112,7 @@ class LearnerAgent:
             raise ValueError("min_confidence must be between 0 and 1")
 
         try:
-            from novamind.core.learning_loop import learning_loop, sanitize_learning_text
+            from novamind.core.learning_loop import learning_loop, sanitize_learning_tex
 
             safe_summary = sanitize_learning_text(summary.strip(), max_length=4000)
             experience = learning_loop.record(
@@ -150,7 +151,7 @@ class LearnerAgent:
         if not isinstance(source, str) or not source.strip():
             raise ValueError("source must be a non-empty string")
 
-        from novamind.core.learning_loop import sanitize_learning_text
+        from novamind.core.learning_loop import sanitize_learning_tex
 
         normalized_pattern = sanitize_learning_text(pattern.strip(), max_length=200)
         safe_context = sanitize_learning_text(context, max_length=200)
@@ -166,7 +167,7 @@ class LearnerAgent:
             previous_feedback = self.feedback
             candidate = copy.deepcopy(previous_feedback)
             candidate["entries"].append(entry)
-    
+
             key = self._normalize_pattern(normalized_pattern)
             weight = candidate["pattern_weights"].setdefault(
                 key, {"likes": 0, "dislikes": 0, "net": 0}
@@ -177,7 +178,7 @@ class LearnerAgent:
             else:
                 weight["dislikes"] += 1
                 weight["net"] -= 1
-    
+
             self.feedback = candidate
             try:
                 directory_synced = self._save_feedback()
