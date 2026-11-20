@@ -356,7 +356,7 @@ async def execute_agent(
     # 3. A real provider is mandatory unless a callable is explicitly injected.
     if llm_call is None:
         if is_llm_available():
-            llm_call = make_llm_call()
+            llm_call = make_llm_call(max_retries=0)
         else:
             return {
                 "success": False,
@@ -366,6 +366,15 @@ async def execute_agent(
                 "duration_ms": int((time.time() - started) * 1000),
             }
 
+    if not callable(llm_call):
+        return {
+            "success": False,
+            "status": "llm_unavailable",
+            "agent": agent_id,
+            "error": "No callable real LLM provider is available.",
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+
     # 4. Guard chain
     chain = build_default_chain()
     last_error = None
@@ -374,19 +383,17 @@ async def execute_agent(
 
     for attempt in range(max_retries + 1):
         try:
-            if llm_call:
-                response = await llm_call(prompt)
-            else:
-                # Mock للاختبار
-                response = {
-                    "text": f"[mock] Agent {agent_id} processed: {task[:50]}",
-                    "tokens": 100,
-                }
+            response = await llm_call(prompt)
         except Exception as e:
+            last_error = f"LLM failed: {type(e).__name__}: {e}"
+            if attempt < max_retries:
+                continue
             return {
                 "success": False,
+                "status": "llm_provider_error",
                 "agent": agent_id,
-                "error": f"LLM failed: {type(e).__name__}: {e}",
+                "error": last_error[:300],
+                "attempts": attempt + 1,
                 "duration_ms": int((time.time() - started) * 1000),
             }
 
@@ -399,12 +406,16 @@ async def execute_agent(
                 "duration_ms": int((time.time() - started) * 1000),
             }
         if response.get("ok") is False:
+            last_error = str(response.get("error") or "LLM provider request failed")
+            if attempt < max_retries:
+                continue
             return {
                 "success": False,
                 "status": "llm_provider_error",
                 "agent": agent_id,
-                "error": str(response.get("error") or "LLM provider request failed")[:300],
+                "error": last_error[:300],
                 "provider": response.get("provider", "unknown"),
+                "attempts": attempt + 1,
                 "duration_ms": int((time.time() - started) * 1000),
             }
         if response.get("simulated") is True:
@@ -417,12 +428,16 @@ async def execute_agent(
             }
         response_text = response.get("text", "")
         if not isinstance(response_text, str) or not response_text.strip():
+            last_error = "LLM provider returned an empty response."
+            if attempt < max_retries:
+                continue
             return {
                 "success": False,
                 "status": "empty_llm_response",
                 "agent": agent_id,
-                "error": "LLM provider returned an empty response.",
+                "error": last_error,
                 "provider": response.get("provider", "unknown"),
+                "attempts": attempt + 1,
                 "duration_ms": int((time.time() - started) * 1000),
             }
 
