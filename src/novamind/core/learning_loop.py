@@ -119,6 +119,20 @@ class LearningLoop:
     def record(self, agent, task, input_data, output, outcome,
                duration=0.0, provider="", model="", error="",
                user_feedback="", tags=None, input_summary=""):
+        if not isinstance(agent, str) or not agent.strip():
+            raise ValueError("agent must be a non-empty string")
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("task must be a non-empty string")
+        if not isinstance(input_data, str):
+            raise TypeError("input_data must be a string")
+        if not isinstance(outcome, str) or not outcome.strip():
+            raise ValueError("outcome must be a non-empty string")
+        if not all(isinstance(value, str) for value in (provider, model, error, user_feedback, input_summary)):
+            raise TypeError("provider, model, error, user_feedback, and input_summary must be strings")
+        raw_tags = tags or []
+        if not isinstance(raw_tags, (list, tuple)) or any(not isinstance(tag, str) for tag in raw_tags):
+            raise TypeError("tags must be a list of strings")
+
         input_hash = hashlib.sha256(input_data.encode()).hexdigest()
         if isinstance(output, dict):
             summary = output.get("summary") or output.get("verdict") or str(output)[:200]
@@ -126,12 +140,19 @@ class LearningLoop:
             summary = str(output)[:200]
 
         exp = Experience(
-            experience_id="", agent=agent, task=task,
-            input_hash=input_hash, input_size=len(input_data),
-            output_summary=summary, outcome=outcome,
-            duration=duration, provider=provider, model=model,
-            error=error[:500], user_feedback=user_feedback,
-            tags=tags or [],
+            experience_id="",
+            agent=sanitize_learning_text(agent.strip(), max_length=100),
+            task=sanitize_learning_text(task.strip(), max_length=500),
+            input_hash=input_hash,
+            input_size=len(input_data),
+            output_summary=sanitize_learning_text(summary, max_length=500),
+            outcome=outcome.strip(),
+            duration=duration,
+            provider=sanitize_learning_text(provider, max_length=100),
+            model=sanitize_learning_text(model, max_length=100),
+            error=sanitize_learning_text(error, max_length=500),
+            user_feedback=sanitize_learning_text(user_feedback, max_length=200),
+            tags=[sanitize_learning_text(tag, max_length=100) for tag in raw_tags],
             input_summary=sanitize_learning_text(input_summary, max_length=4000),
         )
 
