@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Iterator
@@ -36,6 +37,23 @@ except ImportError:
 logger = logging.getLogger("core.learning_loop")
 
 
+def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
+    """Redact common credential forms before learning data reaches disk."""
+    if not isinstance(value, str):
+        raise TypeError("learning text must be a string")
+    text = re.sub(
+        r"""(?i)(["']?(?:api[_-]?key|secret|password|token|authorization)["']?\\s*[:=]\\s*["']?)[^\\s,"']+""",
+        r"\\1[REDACTED]",
+        value,
+    )
+    text = re.sub(
+        r"\\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\\b",
+        "[REDACTED]",
+        text,
+    )
+    return text[:max_length]
+
+
 @dataclass
 class Experience:
     experience_id: str
@@ -52,6 +70,7 @@ class Experience:
     user_feedback: str = ""
     tags: List[str] = field(default_factory=list)
     timestamp: str = ""
+    input_summary: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
@@ -99,7 +118,7 @@ class LearningLoop:
 
     def record(self, agent, task, input_data, output, outcome,
                duration=0.0, provider="", model="", error="",
-               user_feedback="", tags=None):
+               user_feedback="", tags=None, input_summary=""):
         input_hash = hashlib.sha256(input_data.encode()).hexdigest()
         if isinstance(output, dict):
             summary = output.get("summary") or output.get("verdict") or str(output)[:200]
@@ -113,6 +132,7 @@ class LearningLoop:
             duration=duration, provider=provider, model=model,
             error=error[:500], user_feedback=user_feedback,
             tags=tags or [],
+            input_summary=sanitize_learning_text(input_summary, max_length=4000),
         )
 
         try:
@@ -232,8 +252,8 @@ class LearningLoop:
             if not isinstance(description, str) or not description.strip():
                 continue
             normalized.append({
-                "description": description[:2000],
-                "severity": str(item.get("severity", "info"))[:32],
+                "description": sanitize_learning_text(description, max_length=2000),
+                "severity": sanitize_learning_text(str(item.get("severity", "info")), max_length=32),
             })
 
         if not normalized:
@@ -247,6 +267,7 @@ class LearningLoop:
             output={"summary": f"Recorded {len(normalized)} review findings"},
             outcome="success",
             tags=["pr-review", "review-learning"],
+            input_summary=payload,
         )
         return {"learned": len(normalized), "experience_id": experience.experience_id}
 
@@ -264,6 +285,7 @@ class LearningLoop:
             outcome="success",
             user_feedback="liked" if liked else "disliked",
             tags=["feedback", "positive" if liked else "negative"],
+            input_summary=pattern.strip(),
         )
         return {"ok": True, "experience_id": experience.experience_id}
 
