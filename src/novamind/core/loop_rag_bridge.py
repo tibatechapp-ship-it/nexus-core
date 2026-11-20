@@ -140,9 +140,11 @@ class LoopRAGBridge:
                 success = False
                 result = {
                     "ok": False,
+                    "status": "invalid_agent_result",
                     "error": "Agent returned an unstructured result",
                     "raw_result": str(result)[:300],
                 }
+                final_status = "invalid_agent_result"
             else:
                 provider = str(result.get("provider", "")).strip().lower()
                 status = str(result.get("status", "")).strip().lower()
@@ -171,14 +173,24 @@ class LoopRAGBridge:
                     success = False
                     if status in {"llm_unavailable", "simulated_provider_rejected"}:
                         final_status = status
-                elif success_criteria:
-                    try:
-                        success = bool(success_criteria(result))
-                    except Exception:
-                        success = False
                 else:
                     flags = [result[key] for key in ("ok", "success") if key in result]
-                    success = all(flag is True for flag in flags) if flags else bool(result)
+                    if not flags or not all(flag is True for flag in flags):
+                        success = False
+                        final_status = "missing_explicit_success"
+                        result = {
+                            **result,
+                            "ok": False,
+                            "status": "missing_explicit_success",
+                            "error": "Agent result must explicitly report ok=True or success=True",
+                        }
+                    elif success_criteria:
+                        try:
+                            success = bool(success_criteria(result))
+                        except Exception:
+                            success = False
+                    else:
+                        success = True
 
 
             # 4. تسجيل النتيجة
@@ -209,7 +221,9 @@ class LoopRAGBridge:
                 break
 
             # A simulated response is terminal; repeating it cannot create real evidence.
-            if final_status == "simulated_result_rejected":
+            if final_status in {
+                "simulated_result_rejected", "invalid_agent_result", "missing_explicit_success"
+            }:
                 break
 
             # إضافة تأخير بسيط
