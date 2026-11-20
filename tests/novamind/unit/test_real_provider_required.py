@@ -68,3 +68,24 @@ def test_factory_wrapper_uses_router_adapter_for_real_provider(monkeypatch):
     assert result["simulated"] is False
     assert result["provider"] == "integration-test-provider"
     assert result["text"] == "real-provider-contract-response"
+
+
+def test_factory_wrapper_does_not_fallback_after_real_provider_failure(monkeypatch):
+    class FailingRouter(RealContractRouter):
+        def generate(self, *args, **kwargs):
+            return {
+                "ok": False,
+                "text": "",
+                "provider": "integration-test-provider",
+                "error": "upstream rejected request",
+            }
+
+    monkeypatch.setattr(llm_wrapper, "_load_router", lambda: FailingRouter())
+    result = asyncio.run(
+        llm_wrapper.make_llm_call(max_retries=0)({"user": "must not be mocked"})
+    )
+
+    assert result["ok"] is False
+    assert result["simulated"] is False
+    assert result["text"] == ""
+    assert "upstream rejected request" in result["error"]
