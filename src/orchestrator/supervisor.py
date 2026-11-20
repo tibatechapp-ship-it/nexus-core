@@ -150,9 +150,12 @@ class Supervisor:
         if isinstance(result, dict):
             provider = str(result.get("provider", "")).strip().lower()
             status = str(result.get("status", "")).strip().lower()
-            simulated = bool(result.get("simulated")) or provider in {
-                "mock", "mock-provider", "offline"
-            }
+            output_text = str(result.get("text") or result.get("answer") or "")
+            simulated = (
+                bool(result.get("simulated"))
+                or provider in {"mock", "mock-provider", "offline"}
+                or output_text.lstrip().lower().startswith(("[mock]", "[simulation only]", "mock:"))
+            )
             explicit_failure = (
                 result.get("ok") is False
                 or result.get("success") is False
@@ -185,6 +188,13 @@ class Supervisor:
                     "elapsed": round(time.time() - start, 3),
                 }
             result_str = str(result)[:2000]
+            if result_str.lstrip().lower().startswith(("[mock]", "[simulation only]", "mock:")):
+                return {
+                    "ok": False, "status": "simulated_result_rejected", "agent": agent_name,
+                    "method": method, "error": "simulated result rejected",
+                    "result": result_str,
+                    "elapsed": round(time.time() - start, 3),
+                }
 
         # Cache only validated successes, under a versioned contract key.
         try:
