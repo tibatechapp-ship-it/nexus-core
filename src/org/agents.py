@@ -163,8 +163,8 @@ class AgentOutcome:
     latency_ms: float = 0.0
     model_used: str = ""
     provider_used: str = ""
-    simulated: bool = False
     error: str = ""
+    simulated: bool = False
 
 
 class AgentRuntime:
