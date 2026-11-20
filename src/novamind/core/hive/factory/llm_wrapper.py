@@ -134,10 +134,10 @@ def make_llm_call(
                     if fallback_to_mock:
                         return _mock(model, normalized_prompt)
                     return _failure(model, "simulated provider response rejected")
+                if provider == "unknown":
+                    return _failure(model, "router response did not identify the real provider")
             else:
-                text = str(response or "")
-                provider = "unknown"
-                actual_model = model
+                return _failure(model, "router returned an unstructured response without provider metadata")
 
             if not isinstance(text, str) or not text.strip():
                 return _failure(model, "provider returned an empty response")
