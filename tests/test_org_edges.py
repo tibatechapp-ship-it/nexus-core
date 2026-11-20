@@ -83,7 +83,7 @@ class TestOpenAICompatRealPath:
 class TestAgentEdgePaths:
     def test_complete_returns_raw_response(self) -> None:
         store = OrgStore(":memory:")
-        runtime = AgentRuntime(ProviderPool([ProviderConfig()]),
+        runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
                                ToolRegistry(), store)
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         resp = runtime.complete(spec, "أجب")
@@ -110,7 +110,7 @@ class TestAgentEdgePaths:
     def test_record_failure_never_raises(self) -> None:
         """سجل الوكيل الفاشل لا يُسقط الاستدعاء (حد النظافة المعلن)."""
         store = OrgStore(":memory:")
-        runtime = AgentRuntime(ProviderPool([ProviderConfig()]),
+        runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
                                ToolRegistry(), store)
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         # متجر مكسور عمدًا — السجل يبتلع الخطأ
@@ -150,7 +150,7 @@ class TestDeptFailurePaths:
                                                encoding="utf-8")
         m = org_store.create_mission(Mission(
             title="t", objective="شيء غير مطابق إطلاقًا", repo_path=str(tmp_path)))
-        pool = ProviderPool([ProviderConfig()])
+        pool = ProviderPool([ProviderConfig(name="mock", model="mock-1")])
         runtime = AgentRuntime(pool, ToolRegistry(), org_store)
         from src.org.security import InjectionGuard
         intel = RepoIntelDept(runtime, InjectionGuard())
@@ -160,7 +160,7 @@ class TestDeptFailurePaths:
     def test_dev_requires_worktree(self, org_store: OrgStore) -> None:
         from src.org.departments import DevelopmentDept, DepartmentError
         m = org_store.create_mission(Mission(title="t", objective="o"))
-        dev = DevelopmentDept(AgentRuntime(ProviderPool([ProviderConfig()]),
+        dev = DevelopmentDept(AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
                                            ToolRegistry(), org_store))
         with pytest.raises(DepartmentError, match="نسخة عمل"):
             dev.run(MissionContext(mission=m))
