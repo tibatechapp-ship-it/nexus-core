@@ -50,3 +50,14 @@ def test_hive_executor_preserves_legacy_provider_patching() -> None:
 
     assert result["success"] is True
     assert run.await_args.kwargs["llm_call"] is fake_llm
+
+
+def test_canonical_executor_fails_when_no_real_provider_is_configured() -> None:
+    from novamind.factory import executor as canonical_executor
+
+    with patch.object(canonical_executor, "is_llm_available", return_value=False):
+        result = asyncio.run(canonical_executor.execute_agent("coder", "write a parser"))
+
+    assert result["success"] is False
+    assert result["status"] == "llm_unavailable"
+    assert "no simulated output" in result["error"]
