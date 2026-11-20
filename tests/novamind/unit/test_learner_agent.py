@@ -117,3 +117,13 @@ def test_learning_loop_does_not_acknowledge_failed_storage(tmp_path):
             output="output",
             outcome="success",
         )
+
+
+def test_learning_loop_uses_configured_storage_path(tmp_path, monkeypatch):
+    configured = tmp_path / "isolated" / "experiences.jsonl"
+    monkeypatch.setenv("NOVAMIND_LEARNING_LOOP_PATH", str(configured))
+
+    ledger = LearningLoop()
+
+    assert ledger.storage_path == configured
+    assert configured.parent.is_dir()
