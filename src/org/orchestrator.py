@@ -127,11 +127,14 @@ class ExecutiveOrchestrator:
                  outdir: str = "reports/org",
                  max_workers: int = MAX_WORKERS,
                  max_revision_loops: int = 2,
-                 state_root: str | Path | None = None) -> None:
+                 state_root: str | Path | None = None,
+                 allow_simulated: bool = False) -> None:
         self.org_store = org_store
         self.ops_store = ops_store
-        self.depts = Departments(pool or ProviderPool(), org_store,
-                                 ops_store, outdir)
+        self.depts = Departments(
+            pool or ProviderPool(), org_store, ops_store, outdir,
+            allow_simulated=allow_simulated,
+        )
         self.verification = VerificationEngine(
             self.depts.runtime, org_store, self.depts.runner)
         if not isinstance(max_revision_loops, int) or max_revision_loops < 0:
