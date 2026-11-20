@@ -112,7 +112,13 @@ class RouterAdapter:
                 result["text"] = result.get("raw", str(result))
             if "provider" not in result or not result.get("provider"):
                 result["provider"] = "router"
-            if "model" not in result:
+            reported_model = result.get("model")
+            if model and (
+                not reported_model
+                or str(reported_model).lower() in {"default", role.lower()}
+            ):
+                result["model"] = model
+            elif "model" not in result:
                 result["model"] = model or role
             return result
 
