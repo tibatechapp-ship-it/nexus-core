@@ -25,7 +25,7 @@ T54_TWO_ROUNDS = 6.0
 
 def _offline_council() -> Council:
     """مجلس بلا مزوّد ولا مخزن: مسار حتمي، بلا شبكة ولا قرص."""
-    return Council(router=None, store=None)
+    return Council(router=None, store=None, allow_offline_simulation=True)
 
 
 @pytest.mark.parametrize(
@@ -40,6 +40,9 @@ def test_offline_debate_within_budget(rounds: int, budget: float) -> None:
     elapsed = time.perf_counter() - start
 
     assert result["offline"] is True
+    assert result["simulated"] is True
+    assert result["decision"] == "human_review"
+    assert result["consensus"] == 0.0
     assert result["verdict"]
     assert elapsed < budget, (
         f"offline debate ({rounds} round(s)) took {elapsed:.3f}s "
