@@ -47,7 +47,12 @@ def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
         value,
     )
     text = re.sub(
-        r"""(?i)(["']?(?:api[_-]?key|secret|password|token|authorization)["']?\s*[:=]\s*["']?)[^\s,"']+""",
+        r"""(?i)(["']?(?:api[_-]?key|secret|password|token)["']?\s*[:=]\s*["']?)[^\s,"']+""",
+        r"\1[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"""(?i)(authorization\s*[:=]\s*)(?!bearer\s|basic\s)[^\s,"']+""",
         r"\1[REDACTED]",
         text,
     )
