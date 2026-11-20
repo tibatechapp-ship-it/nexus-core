@@ -150,7 +150,7 @@ class Supervisor:
         if isinstance(result, dict):
             provider = str(result.get("provider", "")).strip().lower()
             status = str(result.get("status", "")).strip().lower()
-            output_text = str(result.get("text") or result.get("answer") or "")
+            output_text = str(result.get("text") or result.get("answer") or result.get("result") or "")
             simulated = (
                 bool(result.get("simulated"))
                 or provider in {"mock", "mock-provider", "offline"}
