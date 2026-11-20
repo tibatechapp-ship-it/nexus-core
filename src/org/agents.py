@@ -163,6 +163,7 @@ class AgentOutcome:
     latency_ms: float = 0.0
     model_used: str = ""
     provider_used: str = ""
+    simulated: bool = False
     error: str = ""
 
 
@@ -251,7 +252,7 @@ class AgentRuntime:
                 attempts=attempt, tokens_in=resp.usage.in_tokens,
                 tokens_out=resp.usage.out_tokens, cost_usd=resp.usage.cost_usd,
                 latency_ms=latency, model_used=resp.model,
-                provider_used=resp.provider,
+                provider_used=resp.provider, simulated=resp.simulated,
             )
         return AgentOutcome(
             spec_role=spec.role, success=False, attempts=spec.max_retries + 1,
