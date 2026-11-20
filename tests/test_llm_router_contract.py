@@ -314,3 +314,11 @@ def test_router_uses_mock_only_when_explicitly_injected(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["provider"] == "mock"
     assert result["simulated"] is True
+
+
+def test_rotated_gemini_key_is_not_disabled_by_its_slot(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("NOVAMIND_HOME", str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY_8", "g" * 40)
+    router = LLMRouter()
+    provider = next(p for p in router.providers if p.name == "gemini_8")
+    assert provider.enabled is True
