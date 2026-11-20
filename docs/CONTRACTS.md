@@ -24,8 +24,9 @@
 | `LLMRouter.async_generate_batch` | `(self, requests: List[Dict]) -> List[Dict]` |
 | `LLMRouter.list_providers` | `(self)` → قائمة قواميس `name/priority/enabled/calls/failures/models/last_error` |
 | `LLMRouter.stats` | `(self)` → `{total_providers, total_calls, total_failures, providers}` |
-| `MockProvider.generate` | `(self, prompt, system='', **kwargs)` → قاموس بدون شبكة |
-| `get_router` | `() -> LLMRouter` (singleton — يُعاد إنشاؤه إن كان mock-فقط) |
+| `MockProvider.generate` | `(self, prompt, system='', **kwargs)` → test double معلّم صراحةً بـ `simulated=True` |
+| `get_router` | `() -> LLMRouter` (singleton؛ لا يضيف mock تلقائيًا) |
+| `refresh_router` | `() -> LLMRouter` (إعادة بناء صريحة بعد تغيير إعدادات المزود) |
 
 ### 1.2 عقد نتيجة `generate`
 
@@ -34,6 +35,9 @@
 * نجاح: `{"ok": True, "text": str, "provider": str, "model": str, "elapsed": float}`
 * فشل: `{"ok": False, "text": "", "provider": "", "model": "", "error": str, "elapsed": float}`
 * المفتاح `ok` هو الحكم الوحيد — المتصل يفحصه ولا يفترض حقولًا أخرى.
+* غياب مزود حقيقي يعيد `ok=False` و`error="no LLM providers configured"`.
+* `MockProvider` لا يُسجَّل تلقائيًا مطلقًا؛ استخدامه محصور بالاختبارات
+  أو مسارات المحاكاة الصريحة، وتحتوي نتيجته `simulated=True`.
 
 ### 1.3 عقد قاطع الدارة (Circuit Breaker v1.46.0+)
 
