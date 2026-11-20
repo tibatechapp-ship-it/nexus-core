@@ -1,5 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
-export NOVAMIND_HOME="$HOME/nexus-core"
+export NOVAMIND_HOME="$HOME/.cache/nexus-core/benchmarks/nexus-compare"
+export WORKSPACE_DIR="$NOVAMIND_HOME/workspace"
+export NEXUS_AGENT_WORKSPACE="$WORKSPACE_DIR"
+mkdir -p "$WORKSPACE_DIR"
 export PYTHONPATH="src:.:$PYTHONPATH"
 cd "$HOME/nexus-core"
 
@@ -10,6 +13,18 @@ sys.path.insert(0, 'src')
 os.environ["NOVAMIND_HOME"] = os.path.expanduser("~/nexus-core")
 
 import src.nexus
+from novamind.core.llm_router import get_router
+
+router = get_router()
+compatible = {"groq", "zai", "openrouter", "mistral", "deepseek", "qwen", "openai", "ollama"}
+real_providers = [
+    provider for provider in router.providers
+    if getattr(provider, "enabled", False)
+    and str(getattr(provider, "name", "")).split("_", 1)[0].lower() in compatible
+]
+if not real_providers:
+    print("❌ المقارنة تحتاج مزودًا حقيقيًا يدعم استدعاء الأدوات.")
+    sys.exit(2)
 
 # ═══ المهام ═══
 TASKS = [
@@ -61,7 +76,10 @@ def run_agent_loop(prompt):
 
 # ═══ التشغيل ═══
 print("=" * 70)
-print("⚔️  مقارنة: Smart Router vs Agent Loop")
+print("⚠️ OPERATIONAL SMOKE COMPARISON — NOT A MODEL-QUALITY BENCHMARK")
+print("⚔️  مقارنة تشغيلية: Smart Router vs Agent Loop")
+print("   Providers: " + ", ".join(p.name for p in real_providers))
+print("   Workspace/memory: isolated under ~/.cache/nexus-core/benchmarks")
 print("=" * 70)
 
 results = []
@@ -136,22 +154,24 @@ print(f"   Agent Loop أسرع:   {loop_wins}/{len(results)}")
 # ═══ الحكم ═══
 print()
 print("=" * 70)
-print("🏆 الحكم النهائي")
+print("📊 النتيجة التشغيلية فقط — لا تقيس جودة الإجابات أو السلامة")
 print("=" * 70)
 
-if smart_ok > loop_ok or smart_time < loop_time:
-    print("✅ Smart Router يتفوق في: السرعة + موثوقية")
-    print("   مناسب لـ: مهام معروفة، سريعة")
+if smart_ok > loop_ok:
+    print("Smart Router سجل عدد نجاحات أعلى في هذه العينة.")
+elif loop_ok > smart_ok:
+    print("Agent Loop سجل عدد نجاحات أعلى في هذه العينة.")
 else:
-    print("✅ Agent Loop يتفوق في: الذكاء + المرونة")
-    print("   مناسب لـ: مهام معقدة، متعددة الخطوات")
+    print("تعادل في عدد النجاحات ضمن هذه العينة.")
 
-if smart_ok == loop_ok:
-    print("\n🤝 تعادل في النجاح — الفرق في الأسلوب")
+if smart_time < loop_time:
+    print("Smart Router كان أسرع إجمالًا في هذه العينة.")
+elif loop_time < smart_time:
+    print("Agent Loop كان أسرع إجمالًا في هذه العينة.")
+else:
+    print("الزمن الإجمالي متساوٍ تقريبًا.")
 
-print()
-print("💡 الخلاصة:")
-print("   • Smart Router = 🏎️ Ferrari (سريع، محدد)")
-print("   • Agent Loop   = 🚙 Jeep (مرن، يصل لأي مكان)")
-print("   • الأفضل = استخدام كلاهما حسب المهمة")
+print("\nهذه العينة الصغيرة لا تثبت تفوقًا تنافسيًا أو جودة أعلى.")
+print("لإعلان التفوق نحتاج مهامًا معيارية، تكرارات متعددة، تقييم جودة/سلامة،")
+print("تسجيل النموذج والمزود والرموز والتكلفة، ومقارنة إحصائية عادلة.")
 PYEOF
