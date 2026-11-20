@@ -812,3 +812,22 @@ def test_run_single_rejects_mock_prefixed_text(no_cache: None) -> None:
     result = _sup(_MockTextAgent())._run_single("coder", "write code")
     assert result["ok"] is False
     assert result["status"] == "simulated_result_rejected"
+
+
+def test_supervisor_can_disable_cache_for_benchmark_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.orchestrator.agent_cache as cache_module
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("cache must not be accessed when use_cache=False")
+
+    monkeypatch.setattr(cache_module, "get", unexpected)
+    monkeypatch.setattr(cache_module, "set", unexpected)
+    s = Supervisor(use_rag=False, verbose=False, use_cache=False)
+    s.agents = {"coder": _StrAgent()}
+
+    result = s._run_single("coder", "fresh benchmark prompt")
+
+    assert result["ok"] is True
+    assert result["status"] == "success"
