@@ -499,18 +499,17 @@ def test_engine_judge_neutral_majority() -> None:
     assert eng._judge(transcript)[0] == "human_review"
 
 
-def test_engine_judge_keyword_fallback() -> None:
+def test_engine_judge_without_explicit_verdict_requires_human_review() -> None:
     eng = CouncilEngine(llm_router=FakeRouter())
-    # no explicit verdicts → weighted keyword scoring
     transcript = [
         {"member": "profiler", "response": "الخطة آمنة ومقبولة"},
         {"member": "analyst", "response": "لا مخاطر"},
         {"member": "critic", "response": "غير آمن وخطر"},
-        {"member": "outsider", "response": "ignored"},  # not in scores map
+        {"member": "outsider", "response": "ignored"},
     ]
     verdict, score = eng._judge(transcript)
-    assert verdict in ("approve", "reject", "human_review")
-    assert 0.0 <= score <= 1.0
+    assert verdict == "human_review"
+    assert score == 0.5
 
 
 def test_engine_explicit_verdict_helper() -> None:
@@ -522,13 +521,20 @@ def test_engine_explicit_verdict_helper() -> None:
     assert eng._explicit_verdict(None) is None
 
 
-def test_engine_consensus_helper_word_fallback() -> None:
+def test_engine_consensus_requires_explicit_verdicts() -> None:
     eng = CouncilEngine(llm_router=FakeRouter())
-    assert eng._consensus({"a": "one response only"}) is True
-    # all "safe/approve" keywords → consensus
-    assert eng._consensus({"a": "هذا آمن وموافق", "b": "approve, safe"}) is True
-    # split → no consensus
-    assert eng._consensus({"a": "danger reject", "b": "آمن وموافق"}) is False
+    assert eng._consensus({"a": "one response only"}) is False
+    # Keywords without a structured verdict are not consensus.
+    assert eng._consensus({"a": "هذا آمن وموافق", "b": "approve, safe"}) is False
+    assert eng._consensus({
+        "a": "[الحكم: موافق]",
+        "b": "[الحكم: موافق]",
+    }) is True
+    # Split explicit verdicts require human review.
+    assert eng._consensus({
+        "a": "[الحكم: مرفوض]",
+        "b": "[الحكم: موافق]",
+    }) is False
 
 
 def test_json_result_recorded_in_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
