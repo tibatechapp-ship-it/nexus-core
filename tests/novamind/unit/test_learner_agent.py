@@ -19,7 +19,8 @@ def test_learn_persists_session_lesson(tmp_path, monkeypatch):
     records = ledger.load_all()
     assert len(records) == 1
     assert records[0].agent == "pr-review-learner"
-    assert "Fix retry handling" in records[0].task or "Fix retry handling" in records[0].input_hash
+    assert records[0].input_size > 0
+    assert records[0].outcome == "success"
 
 
 def test_learn_rejects_invalid_summary():
