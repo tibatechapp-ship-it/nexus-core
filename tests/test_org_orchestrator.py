@@ -960,3 +960,21 @@ class TestCheckpointBeforePhaseTransition:
         assert len(runs) == 1
         assert runs[0]["status"] == "completed"
         second_store.close()
+
+
+def test_default_orchestrator_fails_closed_without_real_provider(tmp_path: Path) -> None:
+    org_store = OrgStore(":memory:")
+    ops_store = OpsStore(":memory:")
+    orchestrator = ExecutiveOrchestrator(
+        org_store, ops_store, outdir=str(tmp_path), max_revision_loops=0
+    )
+    assert orchestrator.depts.runtime.pool.models() == []
+
+    mission = orchestrator.execute(Mission(
+        title="must not use an implicit mock",
+        objective="produce a real requirements analysis",
+    ))
+
+    assert mission.status == "failed"
+    runs = org_store.agent_runs_for(mission.id)
+    assert all(run.get("provider") != "mock" for run in runs)
