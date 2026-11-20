@@ -253,3 +253,24 @@ def test_learning_text_redacts_bearer_and_jwt_tokens():
     assert bearer not in sanitized
     assert jwt not in sanitized
     assert sanitized.count("[REDACTED]") == 2
+
+
+def test_concurrent_feedback_updates_do_not_lose_entries(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    feedback_file = tmp_path / "feedback.json"
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", feedback_file)
+    agent = LearnerAgent()
+
+    def write_feedback(index):
+        return agent.record_feedback("concurrent pattern", index % 2 == 0)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(write_feedback, range(24)))
+
+    saved = json.loads(feedback_file.read_text(encoding="utf-8"))
+    assert len(results) == 24
+    assert len(saved["entries"]) == 24
+    weight = saved["pattern_weights"]["concurrent pattern"]
+    assert weight == {"likes": 12, "dislikes": 12, "net": 0}
+    assert agent.stats()["total_feedback"] == 24
