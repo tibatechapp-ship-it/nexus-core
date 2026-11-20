@@ -239,3 +239,17 @@ def test_learner_feedback_redacts_secrets_before_primary_save(tmp_path, monkeypa
     assert secret not in feedback_file.read_text(encoding="utf-8")
     assert "[REDACTED]" in saved["entries"][0]["pattern"]
     assert "[REDACTED]" in saved["entries"][0]["context"]
+
+
+def test_learning_text_redacts_bearer_and_jwt_tokens():
+    from novamind.core.learning_loop import sanitize_learning_text
+
+    bearer = "Bearer " + "B" * 40
+    jwt = "eyJ" + "a" * 20 + "." + "b" * 20 + "." + "c" * 20
+    sanitized = sanitize_learning_text(
+        f"Authorization: {bearer}; session={jwt}"
+    )
+
+    assert bearer not in sanitized
+    assert jwt not in sanitized
+    assert sanitized.count("[REDACTED]") == 2
