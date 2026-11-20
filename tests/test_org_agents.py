@@ -181,7 +181,7 @@ class TestAskJson:
             return original_get(name, model)
 
         monkeypatch.setattr(pool, "get", get_provider)
-        runtime = AgentRuntime(pool, ToolRegistry(), store)
+        runtime = AgentRuntime(pool, ToolRegistry(), store, allow_simulated=True)
         outcome = runtime.ask_json(
             _spec(mission_id=mission.id, max_tokens=1000, max_retries=0),
             "أجب JSON",
