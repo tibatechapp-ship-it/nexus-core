@@ -149,3 +149,32 @@ def test_learning_loop_propagates_fsync_failure(tmp_path, monkeypatch):
             output="output",
             outcome="success",
         )
+
+
+def test_feedback_reports_directory_fsync_uncertainty_after_atomic_replace(
+    tmp_path, monkeypatch
+):
+    import os
+
+    feedback_file = tmp_path / "feedback.json"
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", feedback_file)
+    agent = LearnerAgent()
+    real_fsync = os.fsync
+    calls = {"count": 0}
+
+    def fail_directory_fsync(fd):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise OSError("directory sync unavailable")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_directory_fsync)
+
+    result = agent.record_feedback("durable writes", True)
+
+    assert result["feedback_saved"] is True
+    assert result["feedback_directory_synced"] is False
+    assert result["learning_recorded"] in (True, False)
+    assert "directory fsync failed" in result["warning"]
+    assert len(json.loads(feedback_file.read_text(encoding="utf-8"))["entries"]) == 1
+    assert agent.stats()["total_feedback"] == 1
