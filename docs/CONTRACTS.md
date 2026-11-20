@@ -157,3 +157,17 @@ acl="team:all")` يعيد دائمًا `{"slices", "tokens_used", "citations"}`
 2. اذكر السبب في الوصف (نمو المواصفة، إصلاح أمني، …).
 3. مرّة واحدة كل إصدار رئيسي (v2.0.0) تُراجع العقود كاملة وتُعلن
    الإهمالات بإطار زمني لإزالتها (دورة إصدار واحد على الأقل).
+
+
+### Live provider verification
+
+Hermetic unit tests and explicit MockProvider tests are not evidence of a live model call.
+To verify credentials, transport, routing, and a real response, run the opt-in smoke test
+from the repository root with provider credentials configured:
+
+```bash
+NEXUS_RUN_LIVE_PROVIDER_TESTS=1 pytest tests/integration/test_live_llm_provider.py -q
+```
+
+Without the explicit opt-in, the test is skipped. With the opt-in but no valid provider,
+it fails; it never silently falls back to a mock.
