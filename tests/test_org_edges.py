@@ -111,7 +111,7 @@ class TestAgentEdgePaths:
         """سجل الوكيل الفاشل لا يُسقط الاستدعاء (حد النظافة المعلن)."""
         store = OrgStore(":memory:")
         runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
-                               ToolRegistry(), store)
+                               ToolRegistry(), store, allow_simulated=True)
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         # متجر مكسور عمدًا — السجل يبتلع الخطأ
         store.add_agent_run = lambda **kw: (_ for _ in ()).throw(  # type: ignore[method-assign]
@@ -151,7 +151,7 @@ class TestDeptFailurePaths:
         m = org_store.create_mission(Mission(
             title="t", objective="شيء غير مطابق إطلاقًا", repo_path=str(tmp_path)))
         pool = ProviderPool([ProviderConfig(name="mock", model="mock-1")])
-        runtime = AgentRuntime(pool, ToolRegistry(), org_store)
+        runtime = AgentRuntime(pool, ToolRegistry(), org_store, allow_simulated=True)
         from src.org.security import InjectionGuard
         intel = RepoIntelDept(runtime, InjectionGuard())
         out = intel.run(MissionContext(mission=m))
@@ -161,7 +161,7 @@ class TestDeptFailurePaths:
         from src.org.departments import DevelopmentDept, DepartmentError
         m = org_store.create_mission(Mission(title="t", objective="o"))
         dev = DevelopmentDept(AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
-                                           ToolRegistry(), org_store))
+                                           ToolRegistry(), org_store, allow_simulated=True))
         with pytest.raises(DepartmentError, match="نسخة عمل"):
             dev.run(MissionContext(mission=m))
 
