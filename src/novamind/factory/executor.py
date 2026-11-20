@@ -278,12 +278,30 @@ async def execute_agent(
         ctx: سياق سابق
         task_id: معرّف المهمة
         max_retries: عدد المحاولات عند فشل verification
-        llm_call: دالة استدعاء LLM. إن None، نستخدم mock.
+        llm_call: مزود LLM حقيقي أو callable اختباري محقون صراحةً.
 
     Returns:
         dict مع success/output/verification/tokens/duration_ms
     """
     started = time.time()
+    if not isinstance(agent_id, str) or not agent_id.strip():
+        return {
+            "success": False, "status": "invalid_request",
+            "agent": str(agent_id), "error": "agent_id must be non-empty",
+            "duration_ms": 0,
+        }
+    if not isinstance(task, str) or not task.strip():
+        return {
+            "success": False, "status": "invalid_request",
+            "agent": agent_id, "error": "task must be non-empty",
+            "duration_ms": 0,
+        }
+    if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+        return {
+            "success": False, "status": "invalid_request",
+            "agent": agent_id, "error": "max_retries must be a non-negative integer",
+            "duration_ms": 0,
+        }
     ctx = ctx or {}
     task_id = task_id or f"exec-{int(started)}"
 
@@ -335,11 +353,18 @@ async def execute_agent(
     # 2. prompt
     prompt = build_prompt(agent, task, ctx)
 
-    # 3. LLM call — استخدم real LLM إذا متاح
+    # 3. A real provider is mandatory unless a callable is explicitly injected.
     if llm_call is None:
         if is_llm_available():
             llm_call = make_llm_call()
-        # لو LLM غير متاح، يبقى None → mock
+        else:
+            return {
+                "success": False,
+                "status": "llm_unavailable",
+                "agent": agent_id,
+                "error": "No real LLM provider is configured; no simulated output was generated.",
+                "duration_ms": int((time.time() - started) * 1000),
+            }
 
     # 4. Guard chain
     chain = build_default_chain()
@@ -365,8 +390,44 @@ async def execute_agent(
                 "duration_ms": int((time.time() - started) * 1000),
             }
 
-        total_tokens += response.get("tokens", 0)
-        output = parse_output(agent_id, response.get("text", ""))
+        if not isinstance(response, dict):
+            return {
+                "success": False,
+                "status": "invalid_llm_response",
+                "agent": agent_id,
+                "error": "LLM callable must return a response dictionary",
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+        if response.get("ok") is False:
+            return {
+                "success": False,
+                "status": "llm_provider_error",
+                "agent": agent_id,
+                "error": str(response.get("error") or "LLM provider request failed")[:300],
+                "provider": response.get("provider", "unknown"),
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+        if response.get("simulated") is True:
+            return {
+                "success": False,
+                "status": "simulated_provider_rejected",
+                "agent": agent_id,
+                "error": "Simulated LLM output cannot be accepted as a real agent execution.",
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+        response_text = response.get("text", "")
+        if not isinstance(response_text, str) or not response_text.strip():
+            return {
+                "success": False,
+                "status": "empty_llm_response",
+                "agent": agent_id,
+                "error": "LLM provider returned an empty response.",
+                "provider": response.get("provider", "unknown"),
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+
+        total_tokens += int(response.get("tokens", 0) or 0)
+        output = parse_output(agent_id, response_text)
 
         # 4. تحقق
         guard_result = chain.check(output, stop_on_error=False)
