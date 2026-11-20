@@ -84,7 +84,7 @@ class TestAgentEdgePaths:
     def test_complete_returns_raw_response(self) -> None:
         store = OrgStore(":memory:")
         runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
-                               ToolRegistry(), store)
+                               ToolRegistry(), store, allow_simulated=True)
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         resp = runtime.complete(spec, "أجب")
         assert isinstance(resp, ModelResponse)
