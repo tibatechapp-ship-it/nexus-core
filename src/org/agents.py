@@ -274,6 +274,7 @@ class AgentRuntime:
             )
         return AgentOutcome(
             spec_role=spec.role, success=False, attempts=spec.max_retries + 1,
+            simulated=last_error == "simulated provider response rejected",
             error=last_error or "رد غير قابل للتحليل",
         )
 
