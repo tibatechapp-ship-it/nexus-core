@@ -654,3 +654,20 @@ def test_engine_provider_exception_fails_closed_without_judging(
     assert result.consensus is False
     assert "RuntimeError" in result.errors[0]
     assert "secret-like-provider-error" not in result.errors[0]
+
+
+def test_judge_does_not_reuse_verdicts_from_older_rounds() -> None:
+    eng = CouncilEngine(llm_router=FakeRouter())
+    transcript = [
+        {"phase": "independent", "member": "profiler", "response": "[الحكم: موافق]"},
+        {"phase": "independent", "member": "analyst", "response": "[الحكم: موافق]"},
+        {"phase": "independent", "member": "critic", "response": "[الحكم: موافق]"},
+        {"phase": "debate_1", "member": "profiler", "response": "[الحكم: موافق]"},
+        {"phase": "debate_1", "member": "analyst", "response": "لا أستطيع إصدار حكم واضح"},
+        {"phase": "debate_1", "member": "critic", "response": "لا أستطيع إصدار حكم واضح"},
+    ]
+
+    verdict, score = eng._judge(transcript)
+
+    assert verdict == "human_review"
+    assert score == 0.5
