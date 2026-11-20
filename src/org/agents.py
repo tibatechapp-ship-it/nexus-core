@@ -231,6 +231,8 @@ class AgentRuntime:
             {"role": "user", "content": user_prompt},
         ]
         last_error = ""
+        last_provider = ""
+        last_model = ""
         for attempt in range(1, spec.max_retries + 2):
             t0 = time.time()
             reservation = self._reserve_output_budget(spec)
@@ -248,6 +250,8 @@ class AgentRuntime:
                              (time.time() - t0) * 1000.0, f"error: {last_error}")
                 time.sleep(min(0.05 * attempt, 0.3))
                 continue
+            last_provider = resp.provider
+            last_model = resp.model
             fallback_charge = len(self.pool.last_errors) * spec.max_tokens
             self._settle_output_budget(
                 reservation, fallback_charge + resp.usage.out_tokens)
@@ -274,6 +278,8 @@ class AgentRuntime:
             )
         return AgentOutcome(
             spec_role=spec.role, success=False, attempts=spec.max_retries + 1,
+            provider_used=last_provider,
+            model_used=last_model,
             simulated=last_error == "simulated provider response rejected",
             error=last_error or "رد غير قابل للتحليل",
         )
