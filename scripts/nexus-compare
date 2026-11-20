@@ -38,7 +38,7 @@ def run_smart_router(prompt):
     """الطريقة 1: Smart Router + Supervisor."""
     try:
         from src.orchestrator.supervisor import Supervisor
-        sup = Supervisor(use_rag=False, verbose=False)
+        sup = Supervisor(use_rag=False, verbose=False, use_cache=False)
         t0 = time.time()
         r = sup.execute(prompt)
         elapsed = time.time() - t0
