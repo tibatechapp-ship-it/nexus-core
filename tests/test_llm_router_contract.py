@@ -333,8 +333,8 @@ def test_provider_env_loading_honors_novamind_home_then_root(
     home = tmp_path / "novamind-home"
     root.mkdir()
     home.mkdir()
-    (root / ".env").write_text("GEMINI_API_KEY=" + "r" * 40 + "\\n")
-    (home / ".env").write_text("GEMINI_API_KEY=" + "h" * 40 + "\\n")
+    (root / ".env").write_text("GEMINI_API_KEY=" + "r" * 40 + chr(10))
+    (home / ".env").write_text("GEMINI_API_KEY=" + "h" * 40 + chr(10))
     monkeypatch.chdir(root)
     monkeypatch.setenv("NOVAMIND_HOME", str(home))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
