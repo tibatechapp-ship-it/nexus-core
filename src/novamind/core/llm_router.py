@@ -89,7 +89,7 @@ class LLMRouter:
         self._load_from_env()
 
     def _load_from_env(self):
-        """تحميل كل المزودين من البيئة — 60 مزود كامل."""
+        """Load configured provider credentials from environment variables and env files."""
         home_env = Path(os.environ.get("NOVAMIND_HOME", "/public")) / ".env"
         root_env = Path.cwd() / ".env"
         env_files = list(dict.fromkeys((home_env, root_env)))
@@ -160,7 +160,7 @@ class LLMRouter:
                 ))
         logger.info("ZAI/GLM loaded")
 
-        # 4. OPENROUTER — 5 مفاتيح
+        # 4. OPENROUTER — up to 11 configured keys
         for i in range(1, 12):
             or_key = os.environ.get(f"OPENROUTER_API_KEY_{i}", "").strip()
             if or_key and len(or_key) > 20:
