@@ -28,6 +28,7 @@ class CouncilResult:
     elapsed: float
     security_events: list = field(default_factory=list)
     execution_ok: bool = True
+    execution_contract: int = 2
     errors: list = field(default_factory=list)
 
 
