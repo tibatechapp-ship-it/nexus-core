@@ -15,6 +15,7 @@ from src.org.providers import (
     ProviderConfig,
     ProviderError,
     ProviderPool,
+    MockProvider,
     Usage,
     estimate_cost,
 )
@@ -34,6 +35,7 @@ class TestMockDeterminism:
         r1 = pool.get().complete(msgs)
         r2 = pool.get().complete(msgs)
         assert r1.text == r2.text
+        assert r1.simulated is True
 
     def test_role_dispatch_dev(self) -> None:
         pool = _mk_pool(["mock-1"])
@@ -118,13 +120,40 @@ class TestRealAdapterGuards:
 
 
 class TestPoolFromEnv:
-    def test_mock_only_without_env(self) -> None:
+    def test_no_env_produces_empty_pool_and_fails_closed(self) -> None:
         from src.org.providers import pool_from_env_vars
         p = pool_from_env_vars({})
-        assert p.models() == ["mock-1"]
+        assert p.models() == []
+        assert p.max_fallback_attempts == 0
+        with pytest.raises(ProviderError, match="لا يوجد مزوّد"):
+            p.get()
+        with pytest.raises(ProviderError, match="لا يوجد مزوّد"):
+            p.complete_with_fallback([{"role": "user", "content": "x"}])
 
-    def test_real_first_mock_fallback(self) -> None:
+    def test_env_configures_only_real_provider(self) -> None:
         from src.org.providers import pool_from_env_vars
         p = pool_from_env_vars({"ORG_LLM_BASE_URL": "http://x/v1",
                                 "ORG_LLM_MODEL": "llama-3"})
-        assert p.models() == ["llama-3", "mock-1"]
+        assert p.models() == ["llama-3"]
+        assert all(name != "mock" for name in p.models())
+
+    def test_partial_env_configuration_fails_fast(self) -> None:
+        from src.org.providers import pool_from_env_vars
+        with pytest.raises(ProviderError, match="يجب ضبطهما معًا"):
+            pool_from_env_vars({"ORG_LLM_BASE_URL": "http://x/v1"})
+
+    def test_default_pool_does_not_create_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.org.providers import default_pool
+        monkeypatch.delenv("ORG_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("ORG_LLM_MODEL", raising=False)
+        monkeypatch.delenv("ORG_LLM_API_KEY", raising=False)
+        assert default_pool().models() == []
+
+    def test_provider_config_default_is_not_mock(self) -> None:
+        assert ProviderConfig().name != "mock"
+
+    def test_mock_provider_requires_explicit_selection_and_marks_output(self) -> None:
+        provider = MockProvider(ProviderConfig(name="mock", model="mock-1"))
+        response = provider.complete([{"role": "user", "content": "hello"}])
+        assert response.provider == "mock"
+        assert response.simulated is True
