@@ -90,3 +90,25 @@ def test_loop_bridge_requires_explicit_success_flag_even_with_custom_criteria(
     assert result["iterations"] == 1
     assert result["final_result"]["ok"] is False
     assert rag.remembered == []
+
+
+def test_loop_bridge_rejects_mock_prefixed_text_without_simulation_flag(
+    monkeypatch, tmp_path
+):
+    rag = _Rag()
+    monkeypatch.setattr(REGISTRY, "load_agent", lambda name: _Agent({
+        "ok": True,
+        "text": "[Mock] synthetic response",
+    }))
+    bridge = LoopRAGBridge(rag_bridge=rag, state_dir=str(tmp_path))
+
+    result = bridge.run_with_memory(
+        goal="build a feature",
+        agent_name="coder",
+        max_iterations=1,
+        enrich_context=False,
+    )
+
+    assert result["status"] == "simulated_result_rejected"
+    assert result["final_result"]["ok"] is False
+    assert rag.remembered == []
