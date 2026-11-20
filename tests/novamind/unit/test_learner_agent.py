@@ -129,3 +129,23 @@ def test_learning_loop_uses_configured_storage_path(tmp_path, monkeypatch):
 
     assert ledger.storage_path == configured
     assert configured.parent.is_dir()
+
+
+def test_learning_loop_propagates_fsync_failure(tmp_path, monkeypatch):
+    import os
+
+    ledger = LearningLoop(tmp_path / "experiences.jsonl")
+
+    def fail_fsync(_fd):
+        raise OSError("disk flush failed")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="disk flush failed"):
+        ledger.record(
+            agent="unit-test",
+            task="fsync",
+            input_data="input",
+            output="output",
+            outcome="success",
+        )
