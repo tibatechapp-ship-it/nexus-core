@@ -962,7 +962,12 @@ class TestCheckpointBeforePhaseTransition:
         second_store.close()
 
 
-def test_default_orchestrator_fails_closed_without_real_provider(tmp_path: Path) -> None:
+def test_default_orchestrator_fails_closed_without_real_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ORG_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("ORG_LLM_MODEL", raising=False)
+    monkeypatch.delenv("ORG_LLM_API_KEY", raising=False)
     org_store = OrgStore(":memory:")
     ops_store = OpsStore(":memory:")
     orchestrator = ExecutiveOrchestrator(
