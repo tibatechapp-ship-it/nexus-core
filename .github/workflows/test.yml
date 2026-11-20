@@ -12,8 +12,8 @@ on:
 permissions:
   # ض8 (v1.58.0): least privilege — the workflow default is READ-only; the
   # only job that commits back (coverage badge + fleet/benchmark reports)
-  # declares its own write permission below. Novamind suites stay explicitly
-  # labelled non-blocking reports (their own env + data, not a merge gate).
+  # declares its own write permission below. NovaMind unit + observability
+  # tests are a required gate; only the full legacy suite is report-only.
   contents: read
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
       - name: Reports freshness (deep regen matches committed)
         run: python scripts/check_reports_fresh.py
 
-      # ── Layer 2: NovaMind reports (explicitly non-blocking; not a merge gate) ─
+      # ── Layer 2: NovaMind unit + observability gate; full suite report-only ─
       - name: Set up novamind test data
         run: |
           mkdir -p data/company
@@ -80,9 +80,8 @@ jobs:
           print('novamind test data ready')
           PY
 
-      - name: Novamind unit + observability (non-blocking report)
+      - name: Novamind unit + observability (required gate)
         run: pytest tests/novamind/unit tests/novamind/observability --tb=short
-        continue-on-error: true
         env:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
