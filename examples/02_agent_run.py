@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 os.environ.setdefault("NEXUS_ALLOW_OPEN", "1")
-os.environ.setdefault("NOVAMIND_HOME", str(ROOT))
+os.environ.setdefault("NOVAMIND_HOME", str(Path(tempfile.gettempdir()) / "nexus-core-example-simulation"))
 
 
 def patch_mock_router() -> None:
@@ -31,7 +32,7 @@ def patch_mock_router() -> None:
         # المُبرمج يطلب «Python code فقط» — نردّ كودًا خامًا صالحًا.
         code = "def add(a, b):\n    return a + b\n"
         return {"ok": True, "text": code,
-                "provider": "mock", "model": "mock", "elapsed": 0.01}
+                "provider": "mock", "model": "mock", "simulated": True, "elapsed": 0.01}
 
     LLMRouter.generate = mock_gen
     LLMRouter.generate_for_task = lambda self, *a, **kw: mock_gen(self, *a, **kw)
@@ -40,6 +41,8 @@ def patch_mock_router() -> None:
 def main() -> int:
     # مجلد عمل المُبرمج (تنفيذ الكود المولَّد بأمان في tmp).
     Path("/tmp/novamind_workspace").mkdir(parents=True, exist_ok=True)
+    print("⚠️ SIMULATION ONLY — هذا المثال لا يستدعي نموذجًا حقيقيًا ولا يثبت جودة النموذج.")
+    Path(os.environ["NOVAMIND_HOME"]).mkdir(parents=True, exist_ok=True)
     patch_mock_router()
 
     from src.fleet.report import build_inventory
@@ -56,7 +59,7 @@ def main() -> int:
     print("\nالوكيل:", type(agent).__name__)
     outcome = agent.build("اصنع دالة بايثون تجمع رقمين")
     ok = bool(outcome.get("ok")) if isinstance(outcome, dict) else False
-    print("نجاح:", ok)
+    print("نجاح المحاكاة:", ok)
     print("الكود الناتج:")
     print(outcome.get("code", ""))
     return 0 if ok else 1
