@@ -156,7 +156,7 @@ class LearnerAgent:
             "pattern": normalized_pattern,
             "liked": liked,
             "context": safe_context,
-            "source": source.strip(),
+            "source": sanitize_learning_text(source.strip(), max_length=100),
             "at": datetime.now(timezone.utc).isoformat(),
         }
 
