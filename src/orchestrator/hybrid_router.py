@@ -157,19 +157,31 @@ class HybridRouter:
             b = get_council_bridge()
             b.engine.MAX_ROUNDS = 1
             r = b.deliberate_with_memory(prompt)
+            execution_ok = bool(getattr(r, "execution_ok", True))
+            verdict = str(getattr(r, "verdict", "human_review"))
+            if not execution_ok:
+                status = "execution_failed"
+            elif verdict == "reject":
+                status = "decision_rejected"
+            elif verdict == "human_review":
+                status = "human_review"
+            else:
+                status = "success"
             return {
-                "ok": r.verdict != "reject",
+                "ok": execution_ok and verdict == "approve",
+                "status": status,
                 "method": "council",
-                "verdict": r.verdict,
+                "verdict": verdict,
                 "score": r.score,
                 "rounds": r.rounds,
+                "errors": list(getattr(r, "errors", [])),
                 "elapsed": r.elapsed,
                 "transcript": [
                     {"phase": e["phase"], "member": e["member"],
                      "response": e["response"][:500]}
                     for e in r.transcript
                 ],
-                "answer": f"القرار: {r.verdict} ({r.score:.2f})",
+                "answer": f"القرار: {verdict} ({r.score:.2f})",
             }
         except Exception as e:
             return {"ok": False, "method": "council", "error": str(e)}
