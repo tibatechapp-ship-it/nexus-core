@@ -174,16 +174,20 @@ except: pass
 }
 
 cmd_council() {
-    [ $# -eq 0 ] && { err "الاستخدام: nexus council \"الموضوع\" [جولات]"; exit 1; }
+    [ $# -eq 0 ] && { err "الاستخدام: nexus council \"الموضوع\" [جولات]"; return 1; }
     local TOPIC="$1"
     local ROUNDS="${2:-2}"
-    local TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    local TIMESTAMP
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
     local REPORT="$PROJECT/reports/council-$TIMESTAMP.md"
+    local STREAM_FILE
+    STREAM_FILE=$(mktemp)
     mkdir -p "$PROJECT/reports"
 
     line; title "  🏛️  مجلس Nexus-Core"; line
     echo "  📋 الموضوع: $TOPIC"
     echo "  🔄 الجولات: $ROUNDS"
+    echo "  🟢 الوضع: مزود حقيقي فقط — لا يوجد fallback وهمي"
     echo ""
 
     {
@@ -192,46 +196,98 @@ cmd_council() {
         echo "**الموضوع:** $TOPIC"
         echo "**التاريخ:** $(date)"
         echo "**الجولات:** $ROUNDS"
+        echo "**نوع النتيجة:** استشارة؛ لا تمنح موافقة تنفيذية تلقائية"
         echo ""
         echo "---"
         echo ""
     } > "$REPORT"
 
-    curl -N -s -X POST "http://127.0.0.1:$PORT/api/council/stream" \
-        -H "Content-Type: application/json" \
-        -d "{\"topic\": \"$TOPIC\", \"rounds\": $ROUNDS}" \
-        2>/dev/null | while IFS= read -r line; do
-            if [[ "$line" == data:* ]]; then
-                echo "${line#data: }" | python3 -c "
-import json, sys
-try:
-    d = json.loads(sys.stdin.read().strip())
-    t = d.get('type', '')
-    if t == 'session':
-        print(f\"## 👥 الأعضاء ({len(d.get('members', []))})\")
-        for m in d.get('members', []):
-            print(f\"- {m.get('emoji', '')} **{m.get('name', '?')}**\")
-        print()
-    elif t == 'round':
-        print(f\"\n## 🔄 الجولة {d.get('round')}/{d.get('total')}\n\")
-    elif t == 'member_message':
-        print(f\"### {d.get('emoji', '')} {d.get('name', '?')} ({d.get('elapsed', 0):.1f}s)\")
-        print()
-        print(d.get('content', ''))
-        print()
-    elif t == 'consensus':
-        print(f\"**🤝 التوافق:** {d.get('score', 0)*100:.0f}%\n\")
-    elif t == 'verdict':
-        print(f\"\n## ✅ الحكم النهائي\n\n**التوافق:** {d.get('consensus', 0)*100:.0f}%\n\")
-        print(d.get('verdict', ''))
-        print()
-except: pass
-" 2>/dev/null | tee -a "$REPORT"
-            fi
-        done
+    local PAYLOAD
+    PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"topic":sys.argv[1],"rounds":int(sys.argv[2])}, ensure_ascii=False))' "$TOPIC" "$ROUNDS") || {
+        rm -f "$STREAM_FILE"
+        err "تعذر تجهيز طلب المجلس"
+        return 1
+    }
 
-    echo ""
-    log "✅ التقرير: $REPORT"
+    if ! curl -f -N -sS -X POST "http://127.0.0.1:$PORT/api/council/stream" \
+        -H "Content-Type: application/json" \
+        -d "$PAYLOAD" -o "$STREAM_FILE"; then
+        rm -f "$STREAM_FILE"
+        err "المجلس غير متاح: لا يوجد مزود حقيقي أو فشل اتصال الخدمة (HTTP/شبكة)."
+        return 3
+    fi
+
+    python3 - "$STREAM_FILE" <<'PY' | tee -a "$REPORT"
+import json, sys
+path = sys.argv[1]
+done = None
+failed = False
+with open(path, encoding="utf-8") as stream:
+    for raw in stream:
+        if not raw.startswith("data:"):
+            continue
+        payload = raw[5:].strip()
+        if payload == "[DONE]":
+            continue
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            print(f"## خطأ في بث المجلس: JSON غير صالح ({exc})")
+            failed = True
+            continue
+        kind = event.get("type", "")
+        if kind == "error":
+            print("## ❌ فشل تنفيذ المجلس")
+            print(event.get("error") or event.get("message") or "provider failure")
+            failed = True
+        elif kind == "session":
+            print(f"## 👥 الأعضاء ({len(event.get('members', []))})")
+            for member in event.get("members", []):
+                print(f"- {member.get('emoji', '')} **{member.get('name', '?')}**")
+            print()
+        elif kind == "round":
+            print(f"\n## 🔄 الجولة {event.get('round')}/{event.get('total')}\n")
+        elif kind == "member_message":
+            print(f"### {event.get('emoji', '')} {event.get('name', '?')} ({event.get('elapsed', 0):.1f}s)")
+            print(f"المزوّد: {event.get('provider', 'غير محدد')}")
+            print(event.get('content', ''))
+            print()
+        elif kind == "consensus":
+            suffix = " — محاكاة" if event.get("simulated") else ""
+            print(f"**🤝 تشابه المواقف:** {event.get('score', 0)*100:.0f}%{suffix}\n")
+        elif kind == "verdict":
+            print("\n## ⚖️ الخلاصة الاستشارية")
+            print(f"المزوّد: {event.get('provider', 'غير محدد')}")
+            print(f"القرار: {event.get('decision', 'human_review')}")
+            print(event.get('verdict', ''))
+            print()
+        elif kind == "done":
+            done = event.get("result")
+if failed or not isinstance(done, dict):
+    print("## ❌ لا توجد نتيجة مكتملة موثوقة")
+    sys.exit(3)
+if done.get("simulated"):
+    print("## ⚠️ محاكاة فقط — ليست نتيجة إنتاجية")
+    sys.exit(4)
+print("## الحالة")
+print(f"- simulated: {done.get('simulated', False)}")
+print(f"- decision: {done.get('decision', 'human_review')}")
+print(f"- consensus_reached: {done.get('consensus_reached', False)}")
+print("- ملاحظة: الخلاصة استشارية وتتطلب مراجعة بشرية.")
+PY
+    local PARSER_STATUS=${PIPESTATUS[0]}
+    rm -f "$STREAM_FILE"
+
+    if [ "$PARSER_STATUS" -eq 4 ]; then
+        err "المخرجات محاكاة فقط؛ لن تُعرض كقرار حقيقي."
+        return 4
+    elif [ "$PARSER_STATUS" -ne 0 ]; then
+        err "فشل المجلس؛ راجع تقرير الخطأ: $REPORT"
+        return 3
+    fi
+
+    log "اكتملت الاستشارة الحقيقية. التقرير: $REPORT"
+    return 0
 }
 
 cmd_agents() { check_project; exec python3 -m src.cli.main agents "$@"; }
