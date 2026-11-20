@@ -77,6 +77,7 @@ class TestOpenAICompatRealPath:
         resp = pool.complete_with_fallback(
             [{"role": "user", "content": "أجب JSON"}])
         assert resp.provider == "mock"
+        assert resp.simulated is True
         assert pool.last_errors  # محاولة الحقيقي مسجلة
 
 
@@ -235,3 +236,18 @@ def test_complete_rejects_simulated_provider_by_default() -> None:
 
     with pytest.raises(ProviderError, match="simulated provider response rejected"):
         runtime.complete(spec, "أجب")
+
+
+    def test_explicit_mock_fallback_is_still_rejected_by_default_runtime(self) -> None:
+        pool = ProviderPool([
+            ProviderConfig(name="openai-compat", model="m",
+                           base_url="http://127.0.0.1:9/v1", timeout_s=1),
+            ProviderConfig(name="mock", model="mock-1"),
+        ])
+        runtime = AgentRuntime(pool, ToolRegistry(), OrgStore(":memory:"))
+        spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m", max_retries=0)
+
+        with pytest.raises(ProviderError, match="simulated provider response rejected"):
+            runtime.complete(spec, "أجب")
+
+        assert pool.last_errors
