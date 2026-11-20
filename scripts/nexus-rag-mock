@@ -3,6 +3,7 @@
 export NOVAMIND_HOME="$HOME/.cache/nexus-core/simulations/rag-mock"
 export PYTHONPATH="src:$PYTHONPATH"
 export WORKSPACE_DIR="$HOME/.cache/nexus-core/simulations/rag-mock/workspace"
+export NEXUS_AGENT_WORKSPACE="$WORKSPACE_DIR"
 export NEXUS_AGENT="$1"
 export NEXUS_PROMPT="${@:2}"
 export NEXUS_RAG="1"
