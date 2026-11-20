@@ -304,3 +304,24 @@ def test_live_provider_response_requires_identity() -> None:
     council = Council(router=_Router())
     with pytest.raises(CouncilProviderUnavailable):
         council.debate("must identify provider", rounds=1)
+
+
+def test_live_provider_failure_marks_session_failed(store: SessionStore) -> None:
+    class _Provider:
+        name = "real-provider"
+        api_key = "test-key"
+        enabled = True
+
+    class _Router:
+        providers = [_Provider()]
+
+        def generate(self, *args, **kwargs):
+            raise RuntimeError("provider unavailable")
+
+    council = Council(router=_Router(), store=store)
+    with pytest.raises(CouncilProviderUnavailable):
+        council.debate("provider failure", rounds=1)
+
+    sessions = store.list_council_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["status"] == "failed"
