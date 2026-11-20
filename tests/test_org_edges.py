@@ -88,6 +88,7 @@ class TestAgentEdgePaths:
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         resp = runtime.complete(spec, "أجب")
         assert isinstance(resp, ModelResponse)
+        assert resp.simulated is True
 
     def test_complete_exhausted_raises(self) -> None:
         class BoomPool(ProviderPool):
