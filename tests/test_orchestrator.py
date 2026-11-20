@@ -719,3 +719,58 @@ def test_execute_council_provider_failure_is_not_success(monkeypatch: pytest.Mon
     assert result["ok"] is False
     assert result["status"] == "failed"
     assert result["results"][0]["status"] == "execution_failed"
+
+
+def test_hybrid_router_council_does_not_promote_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.council.rag_bridge as bridge_mod
+    from types import SimpleNamespace
+    from src.orchestrator.hybrid_router import HybridRouter
+
+    failed = SimpleNamespace(
+        execution_ok=False,
+        verdict="human_review",
+        score=0.0,
+        rounds=0,
+        elapsed=0.0,
+        transcript=[],
+        errors=["provider unavailable"],
+    )
+    class _Bridge:
+        def deliberate_with_memory(self, prompt):
+            return failed
+
+    monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
+    result = HybridRouter()._run_council("deploy safely")
+
+    assert result["ok"] is False
+    assert result["status"] == "execution_failed"
+    assert result["errors"] == ["provider unavailable"]
+
+
+def test_hybrid_router_requires_council_approval_for_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.council.rag_bridge as bridge_mod
+    from types import SimpleNamespace
+    from src.orchestrator.hybrid_router import HybridRouter
+
+    rejected = SimpleNamespace(
+        execution_ok=True,
+        verdict="reject",
+        score=0.1,
+        rounds=1,
+        elapsed=0.1,
+        transcript=[],
+        errors=[],
+    )
+    class _Bridge:
+        def deliberate_with_memory(self, prompt):
+            return rejected
+
+    monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
+    result = HybridRouter()._run_council("deploy safely")
+
+    assert result["ok"] is False
+    assert result["status"] == "decision_rejected"
