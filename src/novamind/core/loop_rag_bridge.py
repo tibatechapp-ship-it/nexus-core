@@ -148,9 +148,16 @@ class LoopRAGBridge:
             else:
                 provider = str(result.get("provider", "")).strip().lower()
                 status = str(result.get("status", "")).strip().lower()
-                simulated = bool(result.get("simulated")) or provider in {
-                    "mock", "mock-provider", "offline"
-                }
+                output_text = str(
+                    result.get("text") or result.get("answer") or result.get("code") or ""
+                )
+                simulated = (
+                    bool(result.get("simulated"))
+                    or provider in {"mock", "mock-provider", "offline"}
+                    or output_text.lstrip().lower().startswith(
+                        ("[mock]", "[simulation only]", "mock:")
+                    )
+                )
                 explicit_failure = (
                     result.get("ok") is False
                     or result.get("success") is False
