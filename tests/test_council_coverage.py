@@ -671,3 +671,55 @@ def test_judge_does_not_reuse_verdicts_from_older_rounds() -> None:
 
     assert verdict == "human_review"
     assert score == 0.5
+
+
+def test_history_persists_execution_contract(tmp_path: Path) -> None:
+    history = CouncilHistory(history_dir=str(tmp_path))
+    result = CouncilResult(
+        verdict="approve",
+        score=0.85,
+        consensus=True,
+        rounds=1,
+        transcript=[],
+        elapsed=0.1,
+        execution_ok=True,
+        execution_contract=2,
+    )
+    record_id = history.save(result, query="deploy production")
+    saved = history.get_full(record_id)
+
+    assert saved["execution_ok"] is True
+    assert saved["execution_contract"] == 2
+
+
+def test_past_hint_excludes_legacy_unverified_decisions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    import src.council.history as history_module
+    from src.council.rag_bridge import CouncilRAGBridge
+
+    records = [
+        {
+            "query": "deploy production legacy decision",
+            "verdict": "approve",
+            "score": 1.0,
+        },
+        {
+            "query": "deploy production reviewed decision",
+            "verdict": "reject",
+            "score": 0.15,
+            "execution_ok": True,
+            "execution_contract": 2,
+        },
+    ]
+    monkeypatch.setattr(
+        history_module,
+        "get_history",
+        lambda: SimpleNamespace(list_recent=lambda n=30: records),
+    )
+    bridge = CouncilRAGBridge(rag_bridge=object())
+    hint = bridge._past_hint("deploy production safely")
+
+    assert "REJECT" in hint
+    assert "APPROVE" not in hint
