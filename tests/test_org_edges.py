@@ -221,3 +221,16 @@ class TestTaskResultValidation:
                         id="org-t-1")
         data = spec.to_dict()
         assert data["id"] == "org-t-1" and data["deps"] == ["a"]
+
+
+def test_complete_rejects_simulated_provider_by_default() -> None:
+    store = OrgStore(":memory:")
+    runtime = AgentRuntime(
+        ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+        ToolRegistry(),
+        store,
+    )
+    spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m", max_retries=0)
+
+    with pytest.raises(ProviderError, match="simulated provider response rejected"):
+        runtime.complete(spec, "أجب")
