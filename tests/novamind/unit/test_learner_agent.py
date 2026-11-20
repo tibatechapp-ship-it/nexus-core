@@ -92,7 +92,7 @@ def test_record_feedback_rolls_back_memory_when_primary_save_fails(tmp_path, mon
     agent = LearnerAgent()
     before = json.dumps(agent.feedback, sort_keys=True)
 
-    with pytest.raises((IsADirectoryError, OSError)):
+    with pytest.raises(RuntimeError, match="refusing overwrite"):
         agent.record_feedback("safe retries", True)
 
     assert json.dumps(agent.feedback, sort_keys=True) == before
