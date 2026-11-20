@@ -675,6 +675,7 @@ def test_judge_does_not_reuse_verdicts_from_older_rounds() -> None:
 
 def test_history_persists_execution_contract(tmp_path: Path) -> None:
     history = CouncilHistory(history_dir=str(tmp_path))
+    history._rag = False
     result = CouncilResult(
         verdict="approve",
         score=0.85,
