@@ -67,3 +67,26 @@ def test_loop_bridge_saves_only_real_success(monkeypatch, tmp_path):
 
     assert result["status"] == "success"
     assert len(rag.remembered) == 1
+
+
+def test_loop_bridge_requires_explicit_success_flag_even_with_custom_criteria(
+    monkeypatch, tmp_path
+):
+    rag = _Rag()
+    monkeypatch.setattr(REGISTRY, "load_agent", lambda name: _Agent({
+        "text": "looks successful",
+    }))
+    bridge = LoopRAGBridge(rag_bridge=rag, state_dir=str(tmp_path))
+
+    result = bridge.run_with_memory(
+        goal="build a feature",
+        agent_name="coder",
+        max_iterations=3,
+        success_criteria=lambda _result: True,
+        enrich_context=False,
+    )
+
+    assert result["status"] == "missing_explicit_success"
+    assert result["iterations"] == 1
+    assert result["final_result"]["ok"] is False
+    assert rag.remembered == []
