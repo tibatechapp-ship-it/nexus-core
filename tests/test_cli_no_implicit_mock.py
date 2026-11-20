@@ -44,4 +44,5 @@ def test_comparison_script_does_not_claim_model_quality_or_write_production_memo
     source = (ROOT / "scripts" / "nexus-compare").read_text(encoding="utf-8")
     assert "NOT A MODEL-QUALITY BENCHMARK" in source
     assert ".cache/nexus-core/benchmarks/nexus-compare" in source
+    assert "use_cache=False" in source
     assert "لا تثبت تفوقًا تنافسيًا أو جودة أعلى" in source
