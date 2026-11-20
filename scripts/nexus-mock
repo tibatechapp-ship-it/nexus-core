@@ -1,7 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
-export NOVAMIND_HOME=~/nexus-core
+export NOVAMIND_HOME="$HOME/.cache/nexus-core/simulations/nexus-mock"
 export PYTHONPATH=src:$PYTHONPATH
 cd ~/nexus-core
+mkdir -p "$NOVAMIND_HOME"
 
 python3 -c "
 import sys
