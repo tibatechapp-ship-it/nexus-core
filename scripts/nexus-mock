@@ -35,6 +35,8 @@ prompt = ' '.join(sys.argv[2:])
 agent = REGISTRY.load_agent(agent_name)
 method = 'build' if hasattr(agent, 'build') else 'run'
 result = getattr(agent, method)(prompt)
+if isinstance(result, dict):
+    result["simulated"] = True
 print("[SIMULATION ONLY — NOT A REAL MODEL RESULT]")
 print(result)
 " "$@"
