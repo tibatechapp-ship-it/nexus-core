@@ -62,12 +62,25 @@ class LearnerAgent:
             temporary_path = None
 
             # Persist the directory entry on POSIX filesystems when supported.
+            directory_synced = None
             if hasattr(os, "O_DIRECTORY"):
-                directory_fd = os.open(FEEDBACK_FILE.parent, os.O_RDONLY | os.O_DIRECTORY)
                 try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                    directory_fd = os.open(FEEDBACK_FILE.parent, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory_fd)
+                        directory_synced = True
+                    finally:
+                        os.close(directory_fd)
+                except OSError as exc:
+                    # os.replace already committed the new file. Do not roll
+                    # back in-memory state after that commit point; report the
+                    # weaker crash-durability guarantee to the caller instead.
+                    directory_synced = False
+                    logger.warning(
+                        "feedback replaced atomically but directory fsync failed: %s",
+                        type(exc).__name__,
+                    )
+            return directory_synced
         finally:
             if temporary_path is not None:
                 try:
@@ -159,7 +172,7 @@ class LearnerAgent:
 
         self.feedback = candidate
         try:
-            self._save_feedback()
+            directory_synced = self._save_feedback()
         except Exception:
             self.feedback = previous_feedback
             logger.exception("Primary feedback persistence failed")
@@ -167,6 +180,11 @@ class LearnerAgent:
 
         learning_recorded = False
         warning = None
+        if directory_synced is False:
+            warning = (
+                "Feedback file was atomically replaced and fsynced, but parent "
+                "directory fsync failed; crash durability of the rename is uncertain."
+            )
         experience_id = None
         try:
             from novamind.core.learning_loop import learning_loop
@@ -177,16 +195,18 @@ class LearnerAgent:
             if not learning_recorded:
                 warning = "Primary feedback saved, but the learning ledger did not acknowledge persistence."
         except Exception as exc:
-            warning = (
+            secondary_warning = (
                 "Primary feedback saved, but secondary learning-ledger persistence failed: "
                 + str(exc)[:160]
             )
+            warning = f"{warning} {secondary_warning}" if warning else secondary_warning
             logger.exception("Secondary learning-ledger persistence failed")
 
         logger.info("feedback persisted for pattern: %s", normalized_pattern[:50])
         response = {
             "ok": True,
             "feedback_saved": True,
+            "feedback_directory_synced": directory_synced,
             "learning_recorded": learning_recorded,
             "entry": entry,
             "weight": dict(weight),
