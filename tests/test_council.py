@@ -15,6 +15,7 @@ from src.novamind.core.session_store import SessionStore
 from src.novamind.council import (
     COUNCIL_MEMBERS,
     Council,
+    CouncilProviderUnavailable,
     CouncilMember,
     consensus,
     influence,
@@ -95,20 +96,22 @@ def test_influence_empty_members() -> None:
 
 
 # ── offline debate ───────────────────────────────────────────────────────────
-def test_debate_offline_produces_full_result() -> None:
-    council = Council(router=None, store=None)
+def test_debate_offline_is_explicit_simulation_not_a_decision() -> None:
+    council = Council(router=None, store=None, allow_offline_simulation=True)
     result = council.debate("هل نبني الميزة الآن؟", rounds=3)
     assert result["topic"] == "هل نبني الميزة الآن؟"
     assert result["rounds"] == 3
     assert len(result["rounds_data"]) == 3
     assert result["offline"] is True
-    assert result["verdict"]
-    assert 0.0 <= result["consensus"] <= 1.0
-    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}
+    assert result["simulated"] is True
+    assert result["decision"] == "human_review"
+    assert result["consensus_reached"] is False
+    assert result["consensus"] == 0.0
+    assert result["influence"] == {}
 
 
 def test_debate_stream_event_order() -> None:
-    council = Council(router=None, store=None)
+    council = Council(router=None, store=None, allow_offline_simulation=True)
     events = list(council.debate_stream("موضوع", rounds=2))
     types = [e["type"] for e in events]
     assert types[0] == "session"
@@ -123,21 +126,21 @@ def test_debate_stream_event_order() -> None:
 
 
 def test_debate_empty_topic_gets_default() -> None:
-    council = Council(router=None, store=None)
+    council = Council(router=None, store=None, allow_offline_simulation=True)
     result = council.debate("   ", rounds=1)
     assert result["topic"] == "موضوع غير محدّد"
 
 
 @pytest.mark.parametrize("rounds,expected", [(0, 1), (1, 1), (3, 3), (9, 5)])
 def test_rounds_clamped(rounds: int, expected: int) -> None:
-    council = Council(router=None, store=None)
+    council = Council(router=None, store=None, allow_offline_simulation=True)
     result = council.debate("t", rounds=rounds)
     assert result["rounds"] == expected
     assert len(result["rounds_data"]) == expected
 
 
 def test_session_event_lists_members() -> None:
-    council = Council(router=None, store=None)
+    council = Council(router=None, store=None, allow_offline_simulation=True)
     events = list(council.debate_stream("t", rounds=1))
     session = events[0]
     assert len(session["members"]) == len(COUNCIL_MEMBERS)
@@ -161,7 +164,7 @@ def test_debate_persists_session_and_messages(store: SessionStore) -> None:
     session = store.get_council_session(sid)
     assert session is not None
     assert session["topic"] == "موضوع محفوظ"
-    assert session["status"] == "done"
+    assert session["status"] == "simulated"
     assert session["verdict"]
     assert len(session["messages"]) == 2 * len(COUNCIL_MEMBERS)
     assert session["meta"]["members"][0]["id"] == COUNCIL_MEMBERS[0].id
@@ -227,21 +230,23 @@ def test_judgement_stances_tolerates_junk_rows() -> None:
         "ok": "reject", "bad": "reject"}
 
 
-def test_debate_feeds_the_injected_judge() -> None:
+def test_simulation_never_feeds_the_injected_judge() -> None:
     seen: list[dict] = []
-    council = Council(router=None, store=None, judge=seen.append)
-    council.debate("هل نبني الميزة الآن؟", rounds=1)
-    assert len(seen) == 1
-    assert set(seen[0]) == {m.id for m in COUNCIL_MEMBERS}
-    assert set(seen[0].values()) <= {"approve", "reject"}
+    council = Council(
+        router=None, store=None, judge=seen.append, allow_offline_simulation=True
+    )
+    result = council.debate("هل نبني الميزة الآن؟", rounds=1)
+    assert result["simulated"] is True
+    assert result["decision"] == "human_review"
+    assert seen == []
 
 
 def test_no_judge_injected_means_no_calls() -> None:
-    council = Council(router=None, store=None)
+    council = Council(router=None, store=None, allow_offline_simulation=True)
     assert council.judge is None
-    # back-compat: the debate still completes with every member ranked
     result = council.debate("موضوع", rounds=1)
-    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}
+    assert result["simulated"] is True
+    assert result["influence"] == {}
 
 
 def test_a_broken_judge_cannot_break_a_debate() -> None:
@@ -250,5 +255,51 @@ def test_a_broken_judge_cannot_break_a_debate() -> None:
 
     council = Council(router=None, store=None, judge=boom)
     result = council.debate("موضوع", rounds=1)
-    assert result["verdict"]
-    assert set(result["influence"]) == {m.id for m in COUNCIL_MEMBERS}
+    assert result["simulated"] is True
+    assert result["influence"] == {}
+    assert seen == []
+
+
+def test_council_requires_real_provider_by_default(store: SessionStore) -> None:
+    council = Council(router=None, store=store)
+    with pytest.raises(CouncilProviderUnavailable, match="real provider"):
+        council.debate("must not simulate", rounds=1)
+    assert store.list_council_sessions() == []
+
+
+def test_mock_named_provider_is_not_accepted_as_live() -> None:
+    class _Provider:
+        name = "mock"
+        api_key = "test-key"
+        enabled = True
+
+    class _Router:
+        providers = [_Provider()]
+
+        def generate(self, *args, **kwargs):
+            return {
+                "ok": True,
+                "provider": "mock",
+                "text": "synthetic council answer",
+            }
+
+    council = Council(router=_Router())
+    with pytest.raises(CouncilProviderUnavailable):
+        council.debate("must not accept mock", rounds=1)
+
+
+def test_live_provider_response_requires_identity() -> None:
+    class _Provider:
+        name = "real-provider"
+        api_key = "test-key"
+        enabled = True
+
+    class _Router:
+        providers = [_Provider()]
+
+        def generate(self, *args, **kwargs):
+            return {"ok": True, "text": "unidentified answer"}
+
+    council = Council(router=_Router())
+    with pytest.raises(CouncilProviderUnavailable):
+        council.debate("must identify provider", rounds=1)
