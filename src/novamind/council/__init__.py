@@ -4,6 +4,7 @@ from .council import (
     COUNCIL_MEMBERS,
     Council,
     CouncilMember,
+    CouncilProviderUnavailable,
     consensus,
     influence,
     jaccard,
@@ -14,6 +15,7 @@ from .council import (
 __all__ = [
     "Council",
     "CouncilMember",
+    "CouncilProviderUnavailable",
     "COUNCIL_MEMBERS",
     "consensus",
     "influence",
