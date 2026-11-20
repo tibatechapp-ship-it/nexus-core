@@ -246,23 +246,22 @@ def test_reset_keeps_agent_and_lineage(genome: Genome) -> None:
 
 
 # ── council ↔ genome integration ─────────────────────────────────────────────
-def test_council_debate_feeds_the_genome(genome: Genome, store: SessionStore) -> None:
+def test_simulated_council_does_not_feed_the_genome(genome: Genome, store: SessionStore) -> None:
     from src.novamind.council import Council
 
-    council = Council(router=None, store=store, genome=genome)  # offline, fast
-    council.debate("هل نطلق v2.0؟", rounds=1)
-    rows = genome.rank()
-    assert any(a["runs"] > 0 for a in rows)
-    analyst = genome.detail("analyst")
-    assert analyst is not None
-    kinds = [e["kind"] for e in analyst["timeline"]]
-    assert "council" in kinds
+    council = Council(
+        router=None, store=store, genome=genome, allow_offline_simulation=True
+    )
+    result = council.debate("هل نطلق v2.0؟", rounds=1)
+    assert result["simulated"] is True
+    assert result["decision"] == "human_review"
+    assert all(agent["runs"] == 0 for agent in genome.rank())
 
 
 def test_council_without_genome_still_works(store: SessionStore) -> None:
     from src.novamind.council import Council
 
-    council = Council(router=None, store=store)  # no genome wired
+    council = Council(router=None, store=store, allow_offline_simulation=True)  # no genome wired
     result = council.debate("topic", rounds=1)
     assert result["consensus"] >= 0.0
     assert store.stats()["council_sessions"] == 1
