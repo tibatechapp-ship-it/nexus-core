@@ -81,7 +81,11 @@ class LearnerAgent:
         source: str = "session",
         min_confidence: float = 0.5,
     ) -> Dict:
-        """Persist a session lesson in the append-only learning ledger."""
+        """Persist a session lesson in the append-only learning ledger.
+
+        min_confidence is retained for API compatibility and validated, but
+        no confidence score is fabricated when the caller supplies none.
+        """
         if not isinstance(summary, str) or not summary.strip():
             raise ValueError("summary must be a non-empty string")
         if not isinstance(source, str) or not source.strip():
@@ -94,13 +98,20 @@ class LearnerAgent:
         try:
             from novamind.core.learning_loop import learning_loop
 
-            result = learning_loop.learn_from_pr_review(
-                repo=source.strip(),
-                pr_num=0,
-                issues=[{"description": summary.strip(), "severity": "info"}],
+            experience = learning_loop.record(
+                agent="learner",
+                task=f"Learn from {source.strip()[:100]}",
+                input_data=summary.strip(),
+                output={"summary": summary.strip()[:200]},
+                outcome="success",
+                tags=["session-learning"],
             )
             logger.info("learned session lesson: %s", summary[:100])
-            return {"ok": True, **result}
+            return {
+                "ok": True,
+                "learned": 1,
+                "experience_id": experience.experience_id,
+            }
         except Exception as exc:
             logger.exception("Session learning failed")
             return {"ok": False, "error": str(exc)[:200]}
