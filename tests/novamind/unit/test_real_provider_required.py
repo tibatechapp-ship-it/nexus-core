@@ -155,3 +155,29 @@ def test_factory_wrapper_awaits_async_router_response(monkeypatch):
     assert result["simulated"] is False
     assert result["provider"] == "integration-test-provider"
     assert result["text"] == "async-real-provider-response"
+
+
+def test_factory_wrapper_forwards_timeout_to_compatible_router(monkeypatch):
+    captured = {}
+
+    class TimeoutRouter(RealContractRouter):
+        def generate(
+            self, prompt, system="", role="fast", timeout=None,
+            temperature=0.2, max_tokens=None, provider=None,
+            allow_fallback=True,
+        ):
+            captured["timeout"] = timeout
+            return {
+                "ok": True,
+                "text": "timeout-forwarded",
+                "provider": "integration-test-provider",
+                "model": "test-model",
+            }
+
+    monkeypatch.setattr(llm_wrapper, "_load_router", lambda: TimeoutRouter())
+    result = asyncio.run(
+        llm_wrapper.make_llm_call(timeout=17, max_retries=0)({"user": "timeout"})
+    )
+
+    assert result["ok"] is True
+    assert captured["timeout"] == 17
