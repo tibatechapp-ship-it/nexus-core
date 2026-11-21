@@ -130,3 +130,28 @@ def test_factory_wrapper_rejects_routing_role_as_model_identity(monkeypatch):
     assert result["simulated"] is False
     assert result["text"] == ""
     assert "model identity" in result["error"]
+
+
+def test_factory_wrapper_awaits_async_router_response(monkeypatch):
+    class AsyncContractRouter(RealContractRouter):
+        async def generate(
+            self, prompt, system="", role="fast", temperature=0.2,
+            max_tokens=None, provider=None, allow_fallback=True,
+        ):
+            return {
+                "ok": True,
+                "text": "async-real-provider-response",
+                "provider": "integration-test-provider",
+                "model": "test-model",
+                "elapsed": 0.01,
+            }
+
+    monkeypatch.setattr(llm_wrapper, "_load_router", lambda: AsyncContractRouter())
+    result = asyncio.run(
+        llm_wrapper.make_llm_call(max_retries=0)({"user": "async contract"})
+    )
+
+    assert result["ok"] is True
+    assert result["simulated"] is False
+    assert result["provider"] == "integration-test-provider"
+    assert result["text"] == "async-real-provider-response"
