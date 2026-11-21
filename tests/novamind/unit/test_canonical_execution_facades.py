@@ -111,3 +111,21 @@ def test_canonical_executor_retries_provider_failures_with_bounded_attempts() ->
     assert result["status"] == "llm_provider_error"
     assert result["attempts"] == 3
     assert calls["count"] == 3
+
+
+def test_canonical_executor_rejects_unverified_provider_metadata() -> None:
+    from novamind.factory.executor import execute_agent
+
+    async def incomplete_response(_prompt):
+        return {
+            "text": "plausible but unverified output",
+            "provider": "router",
+            "model": "unknown",
+        }
+
+    result = asyncio.run(
+        execute_agent("coder", "write a parser", llm_call=incomplete_response)
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "unverified_provider_response"
