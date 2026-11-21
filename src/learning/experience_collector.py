@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from collections import Counter
@@ -60,6 +61,25 @@ KNOWN_ACTION_TYPES = frozenset(
         "run_command", "web_search", "web_fetch", "delegate_task", "write_todos",
     }
 )
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"""(?i)(authorization\\s*[:=]\\s*(?:bearer|basic)\\s+)[A-Za-z0-9._~+/-]+=*"""),
+    re.compile(r"""(?i)([\\"']?(?:api[_-]?key|secret|password|token)[\\"']?\\s*[:=]\\s*[\\"']?)[^\\s,\\"']+"""),
+    re.compile(r"""(?i)(authorization\\s*[:=]\\s*)(?!bearer\\s|basic\\s)[^\\s,\\"']+"""),
+    re.compile(r"\\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\\b"),
+    re.compile(r"\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b"),
+)
+
+
+def _sanitize_experience_text(value: str, max_length: int) -> str:
+    """Redact common credentials and bound free-text experience fields."""
+    if not isinstance(value, str):
+        raise TypeError("experience text fields must be strings")
+    text = value
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(r"\\1[REDACTED]" if pattern.groups else "[REDACTED]", text)
+    return text[:max_length]
 
 
 class Outcome(StrEnum):
@@ -114,8 +134,8 @@ class Experience:
             agent_role=str(data["agent_role"]),
             action_type=str(data["action_type"]),
             outcome=Outcome(str(data["outcome"])),
-            action=str(data.get("action", "")),
-            result=str(data.get("result", "")),
+            action=_sanitize_experience_text(data.get("action", ""), 4000),
+            result=_sanitize_experience_text(data.get("result", ""), 4000),
             ts=float(data.get("ts", 0.0)),
         )
 
@@ -153,14 +173,16 @@ class ExperienceCollector:
         canonical lowercase forms are accepted.
         """
         self._validate(task_id=task_id, step_id=step_id, agent_role=agent_role, action_type=action_type)
+        safe_action = _sanitize_experience_text(action, 4000)
+        safe_result = _sanitize_experience_text(result, 4000)
         experience = Experience(
             task_id=task_id,
             step_id=step_id,
             agent_role=agent_role,
             action_type=action_type,
             outcome=outcome,
-            action=action,
-            result=result,
+            action=safe_action,
+            result=safe_result,
             ts=self._clock(),
         )
         with self._lock:
