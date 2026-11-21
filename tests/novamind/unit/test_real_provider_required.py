@@ -109,3 +109,24 @@ def test_factory_wrapper_rejects_generic_router_identity(monkeypatch):
     assert result["simulated"] is False
     assert result["text"] == ""
     assert "provider" in result["error"].lower()
+
+
+def test_factory_wrapper_rejects_routing_role_as_model_identity(monkeypatch):
+    class RoleOnlyModelRouter(RealContractRouter):
+        def generate(self, prompt, system="", role="fast", **kwargs):
+            return {
+                "ok": True,
+                "text": "response",
+                "provider": "integration-test-provider",
+                "model": "fast",
+            }
+
+    monkeypatch.setattr(llm_wrapper, "_load_router", lambda: RoleOnlyModelRouter())
+    result = asyncio.run(
+        llm_wrapper.make_llm_call(max_retries=0)({"user": "identify actual model"})
+    )
+
+    assert result["ok"] is False
+    assert result["simulated"] is False
+    assert result["text"] == ""
+    assert "model identity" in result["error"]
