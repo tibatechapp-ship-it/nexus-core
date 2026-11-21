@@ -498,7 +498,7 @@ def test_record_redacts_credentials_from_action_and_result(collector):
         action="Authorization: Bearer demo",
         result='api_key="demo" password=demo',
     )
-    assert "secret-value" not in exp.result
+    assert 'api_key="demo"' not in exp.result
     assert "password=demo" not in exp.result
     assert "[REDACTED]" in exp.action
     assert "[REDACTED]" in exp.result
