@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import math
 import re
 import threading
 from pathlib import Path
@@ -37,7 +38,7 @@ except ImportError:
 logger = logging.getLogger("core.learning_loop")
 
 
-def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
+def sanitize_learning_text(value: str, max_length: int | None = 4000) -> str:
     """Redact common credential forms before learning data reaches disk."""
     if not isinstance(value, str):
         raise TypeError("learning text must be a string")
@@ -66,7 +67,7 @@ def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
         "[REDACTED]",
         text,
     )
-    return text[:max_length]
+    return text if max_length is None else text[:max_length]
 
 
 @dataclass
@@ -142,13 +143,26 @@ class LearningLoop:
             raise TypeError("input_data must be a string")
         if not isinstance(outcome, str) or not outcome.strip():
             raise ValueError("outcome must be a non-empty string")
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(duration)
+            or duration < 0
+        ):
+            raise ValueError("duration must be a finite, non-negative number")
+        duration = float(duration)
+        if len(input_data.encode("utf-8")) > 1_048_576:
+            raise ValueError("input_data exceeds the 1 MiB learning record limit")
         if not all(isinstance(value, str) for value in (provider, model, error, user_feedback, input_summary)):
             raise TypeError("provider, model, error, user_feedback, and input_summary must be strings")
-        raw_tags = tags or []
+        raw_tags = [] if tags is None else tags
         if not isinstance(raw_tags, (list, tuple)) or any(not isinstance(tag, str) for tag in raw_tags):
             raise TypeError("tags must be a list of strings")
 
-        input_hash = hashlib.sha256(input_data.encode()).hexdigest()
+        sanitized_input = sanitize_learning_text(input_data, max_length=None)
+        if len(sanitized_input.encode("utf-8")) > 1_048_576:
+            raise ValueError("sanitized input_data exceeds the 1 MiB learning record limit")
+        input_hash = hashlib.sha256(sanitized_input.encode("utf-8")).hexdigest()
         if isinstance(output, dict):
             summary = output.get("summary") or output.get("verdict") or str(output)[:200]
         else:
@@ -160,9 +174,9 @@ class LearningLoop:
             agent=sanitize_learning_text(agent.strip(), max_length=100),
             task=sanitize_learning_text(task.strip(), max_length=500),
             input_hash=input_hash,
-            input_size=len(input_data),
+            input_size=len(sanitized_input),
             output_summary=sanitize_learning_text(summary, max_length=500),
-            outcome=outcome.strip(),
+            outcome=sanitize_learning_text(outcome.strip(), max_length=100),
             duration=duration,
             provider=sanitize_learning_text(provider, max_length=100),
             model=sanitize_learning_text(model, max_length=100),
