@@ -147,18 +147,22 @@ class LLMRouter:
             ))
         logger.info(f"Groq: {len(groq_keys)} keys loaded")
 
-        # 3. ZAI / GLM — 13 مفاتيح
-        for i in range(1, 14):
-            glm_key = os.environ.get(f"ZAI_API_KEY_{i}", "").strip()
-            if glm_key and len(glm_key) > 10:
-                self.providers.append(ProviderConfig(
-                    name=f"zai_glm_{i}",
-                    api_key=glm_key,
-                    base_url="https://api.z.ai/api/paas/v4",
-                    models={"fast": "glm-4.5-flash", "smart": "glm-4.5-flash"},
-                    priority=1 + i,
-                ))
-        logger.info("ZAI/GLM loaded")
+        # 3. ZAI / GLM — 13 keys. Respect the documented operator opt-out.
+        skip_glm = os.environ.get("SKIP_GLM", "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        if not skip_glm:
+            for i in range(1, 14):
+                glm_key = os.environ.get(f"ZAI_API_KEY_{i}", "").strip()
+                if glm_key and len(glm_key) > 10:
+                    self.providers.append(ProviderConfig(
+                        name=f"zai_glm_{i}",
+                        api_key=glm_key,
+                        base_url="https://api.z.ai/api/paas/v4",
+                        models={"fast": "glm-4.5-flash", "smart": "glm-4.5-flash"},
+                        priority=1 + i,
+                    ))
+        logger.info("ZAI/GLM %s", "skipped by configuration" if skip_glm else "loaded")
 
         # 4. OPENROUTER — up to 11 configured keys
         for i in range(1, 12):
