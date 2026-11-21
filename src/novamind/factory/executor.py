@@ -420,14 +420,32 @@ async def execute_agent(
                 "attempts": attempt + 1,
                 "duration_ms": int((time.time() - started) * 1000),
             }
-        if response.get("simulated") is True:
+
+        provider_name = response.get("provider")
+        model_name = response.get("model")
+        if (
+            response.get("ok") is not True
+            or response.get("simulated") is not False
+            or not isinstance(provider_name, str)
+            or not provider_name.strip()
+            or provider_name.strip().lower() in {
+                "mock", "mock-provider", "offline", "none", "unknown", "router", "auto"
+            }
+            or not isinstance(model_name, str)
+            or not model_name.strip()
+        ):
             return {
                 "success": False,
-                "status": "simulated_provider_rejected",
+                "status": "unverified_provider_response",
                 "agent": agent_id,
-                "error": "Simulated LLM output cannot be accepted as a real agent execution.",
+                "error": (
+                    "Provider response lacks explicit real-execution evidence "
+                    "(ok=true, simulated=false, provider and model identifiers)."
+                ),
+                "provider": str(provider_name or "unknown")[:100],
                 "duration_ms": int((time.time() - started) * 1000),
             }
+
         response_text = response.get("text", "")
         if not isinstance(response_text, str) or not response_text.strip():
             last_error = "LLM provider returned an empty response."
