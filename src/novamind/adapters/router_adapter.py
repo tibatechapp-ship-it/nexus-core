@@ -70,14 +70,24 @@ class RouterAdapter:
                 parameter.kind is inspect.Parameter.VAR_KEYWORD
                 for parameter in parameters.values()
             )
-            call_kwargs = {"system": system, "role": role, **clean_kwargs}
+            call_kwargs = {
+                "system": system,
+                "role": role,
+                "timeout": timeout,
+                **clean_kwargs,
+            }
             if not accepts_kwargs:
                 call_kwargs = {
                     key: value for key, value in call_kwargs.items()
                     if key in parameters
                 }
         except (TypeError, ValueError):
-            call_kwargs = {"system": system, "role": role, **clean_kwargs}
+            call_kwargs = {
+                "system": system,
+                "role": role,
+                "timeout": timeout,
+                **clean_kwargs,
+            }
 
         result = generate(prompt, **call_kwargs)
 
