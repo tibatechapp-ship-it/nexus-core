@@ -261,8 +261,8 @@ class LearnerAgent:
         import re
 
         normalized = pattern.lower()
-        normalized = re.sub(r"line\\s+\\d+", "line", normalized)
-        normalized = re.sub(r"[^\\w\\s]", "", normalized)
+        normalized = re.sub(r"line\s+\d+", "line", normalized)
+        normalized = re.sub(r"[^\w\s]", "", normalized)
         return " ".join(normalized.split())[:100]
 
     def stats(self) -> Dict:
