@@ -64,11 +64,11 @@ KNOWN_ACTION_TYPES = frozenset(
 
 
 _SECRET_PATTERNS = (
-    re.compile(r"""(?i)(authorization\\s*[:=]\\s*(?:bearer|basic)\\s+)[A-Za-z0-9._~+/-]+=*"""),
-    re.compile(r"""(?i)([\\"']?(?:api[_-]?key|secret|password|token)[\\"']?\\s*[:=]\\s*[\\"']?)[^\\s,\\"']+"""),
-    re.compile(r"""(?i)(authorization\\s*[:=]\\s*)(?!bearer\\s|basic\\s)[^\\s,\\"']+"""),
-    re.compile(r"\\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\\b"),
-    re.compile(r"\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b"),
+    re.compile(r"""(?i)(authorization\s*[:=]\s*(?:bearer|basic)\s+)[A-Za-z0-9._~+/-]+=*"""),
+    re.compile(r"""(?i)([\"']?(?:api[_-]?key|secret|password|token)[\"']?\s*[:=]\s*[\"']?)[^\s,\"']+"""),
+    re.compile(r"""(?i)(authorization\s*[:=]\s*)(?!bearer\s|basic\s)[^\s,\"']+"""),
+    re.compile(r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
 )
 
 
@@ -78,7 +78,7 @@ def _sanitize_experience_text(value: str, max_length: int) -> str:
         raise TypeError("experience text fields must be strings")
     text = value
     for pattern in _SECRET_PATTERNS:
-        text = pattern.sub(r"\\1[REDACTED]" if pattern.groups else "[REDACTED]", text)
+        text = pattern.sub(r"\1[REDACTED]" if pattern.groups else "[REDACTED]", text)
     return text[:max_length]
 
 
