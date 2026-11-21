@@ -421,6 +421,15 @@ async def execute_agent(
                 "duration_ms": int((time.time() - started) * 1000),
             }
 
+        if response.get("simulated") is True:
+            return {
+                "success": False,
+                "status": "simulated_provider_rejected",
+                "agent": agent_id,
+                "error": "Simulated LLM output cannot be accepted as a real agent execution.",
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+
         provider_name = response.get("provider")
         model_name = response.get("model")
         if (
