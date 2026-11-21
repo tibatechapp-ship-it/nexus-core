@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional
 
@@ -51,9 +52,21 @@ def _init_otel() -> None:
     })
     provider = TracerProvider(resource=resource)
 
-    # Exporter selection
+    # Exporter selection. Pytest and some ASGI servers temporarily replace
+    # sys.stdout; the BatchSpanProcessor exports asynchronously, after those
+    # capture streams may already be closed. Bind console output to the stable
+    # interpreter stream instead of the transient captured sys.stdout.
     if cfg.exporter == "console":
-        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+        stable_stream = getattr(sys, "__stdout__", None)
+        if stable_stream is not None and not getattr(stable_stream, "closed", False):
+            provider.add_span_processor(
+                BatchSpanProcessor(ConsoleSpanExporter(out=stable_stream))
+            )
+        else:
+            logger.warning(
+                "Console tracing disabled: stable stdout is unavailable; "
+                "use exporter='otlp' or exporter='none'."
+            )
     elif cfg.exporter == "otlp":
         try:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -63,8 +76,12 @@ def _init_otel() -> None:
                 BatchSpanProcessor(OTLPSpanExporter(endpoint=cfg.otlp_endpoint))
             )
         except ImportError:
-            logger.warning("OTLP exporter unavailable — falling back to console")
-            provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+            logger.warning("OTLP exporter unavailable — falling back to stable console")
+            stable_stream = getattr(sys, "__stdout__", None)
+            if stable_stream is not None and not getattr(stable_stream, "closed", False):
+                provider.add_span_processor(
+                    BatchSpanProcessor(ConsoleSpanExporter(out=stable_stream))
+                )
 
     otel_trace.set_tracer_provider(provider)
     _tracer = otel_trace.get_tracer(cfg.service_name, cfg.service_version)
