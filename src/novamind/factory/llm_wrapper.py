@@ -120,7 +120,8 @@ def make_llm_call(
                     provider = response.get("provider") or "unknown"
                     model_name = response.get("model") or model
                     if response.get("simulated") or str(provider).lower() in {
-                        "mock", "mock-provider", "offline"
+                        "mock", "mock-provider", "offline", "none", "unknown",
+                        "router", "auto"
                     }:
                         raise RuntimeError("simulated provider response rejected")
                     if provider == "unknown":
