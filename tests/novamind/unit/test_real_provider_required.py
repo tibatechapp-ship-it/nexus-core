@@ -89,3 +89,23 @@ def test_factory_wrapper_does_not_fallback_after_real_provider_failure(monkeypat
     assert result["simulated"] is False
     assert result["text"] == ""
     assert "upstream rejected request" in result["error"]
+
+
+def test_factory_wrapper_rejects_generic_router_identity(monkeypatch):
+    class UnidentifiedRouter(RealContractRouter):
+        def generate(self, prompt, system="", role="fast", **kwargs):
+            return {
+                "ok": True,
+                "text": "response without source identity",
+                "model": "test-model",
+            }
+
+    monkeypatch.setattr(llm_wrapper, "_load_router", lambda: UnidentifiedRouter())
+    result = asyncio.run(
+        llm_wrapper.make_llm_call(max_retries=0)({"user": "must identify source"})
+    )
+
+    assert result["ok"] is False
+    assert result["simulated"] is False
+    assert result["text"] == ""
+    assert "provider" in result["error"].lower()
