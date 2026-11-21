@@ -58,10 +58,12 @@ def test_pick_llm_for_links_both_executors_to_central_router() -> None:
     for pick in (factory_pick, hive_pick):
         router = pick("code")
         assert router is not None, "الربط ب2.3 انقطع — pick_llm_for أعاد None"
-        # عقد الموجّه المركزي: واجهة التوجيه حاضرة والمزوّدون معلنون
+        # Router wiring is architectural; provider availability is runtime
+        # configuration and must not be faked by registering MockProvider.
         assert hasattr(router, "generate_for_task")
         assert hasattr(router, "generate")
-        assert getattr(router, "providers", None), "موجّه بلا مزودين"
+        assert isinstance(router.providers, list)
+        assert not any(getattr(p, "name", "") == "mock" for p in router.providers)
 
 
 def test_pick_llm_for_is_importable_via_factory_package() -> None:
