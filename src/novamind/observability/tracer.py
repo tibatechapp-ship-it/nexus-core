@@ -156,17 +156,29 @@ def is_enabled() -> bool:
 
 
 def shutdown() -> None:
-    """Flush and shutdown tracer (for tests / app exit)."""
-    global _tracer, _initialized
-    if _OTEL_AVAILABLE and _tracer is not None:
-        try:
-            provider = otel_trace.get_tracer_provider()
-            if hasattr(provider, "shutdown"):
-                provider.shutdown()
-        except Exception:
-            pass
-    _tracer = None
-    _initialized = False
+    """Flush and shut down the process-wide provider at application exit.
+
+    OpenTelemetry's global TracerProvider cannot be replaced after registration.
+    Keep initialization latched after shutdown so later spans do not attempt to
+    register a second provider against the already-locked global API.
+    """
+    global _tracer
+    if not _OTEL_AVAILABLE or _tracer is None:
+        return
+
+    try:
+        provider = otel_trace.get_tracer_provider()
+        force_flush = getattr(provider, "force_flush", None)
+        if callable(force_flush):
+            force_flush(timeout_millis=5000)
+        shutdown_provider = getattr(provider, "shutdown", None)
+        if callable(shutdown_provider):
+            shutdown_provider()
+    except Exception:
+        logger.exception("OpenTelemetry provider shutdown failed")
+    finally:
+        _tracer = None
+        # _initialized remains True: the process-global provider is one-shot.
 
 
 __all__ = ["start_span", "set_span_attribute", "is_enabled", "shutdown"]
