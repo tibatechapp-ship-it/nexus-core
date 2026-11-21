@@ -129,7 +129,8 @@ def make_llm_call(
                 provider = _extract_provider(response) or "unknown"
                 actual_model = response.get("model") or model
                 if response.get("simulated") or provider.lower() in {
-                    "mock", "mock-provider", "offline"
+                    "mock", "mock-provider", "offline", "none", "unknown",
+                    "router", "auto"
                 }:
                     if fallback_to_mock:
                         return _mock(model, normalized_prompt)
