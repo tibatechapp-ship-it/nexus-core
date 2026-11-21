@@ -3,12 +3,19 @@ import asyncio
 from unittest.mock import patch
 
 
-def test_execute_agent_success_with_mock():
-    """Test successful agent execution using mocked LLM call."""
+def test_execute_agent_rejects_mock_as_real_provider():
+    """A mocked LLM response must never be accepted as a real agent run."""
     from novamind.core.hive.factory import executor
 
     async def fake_llm(prompt):
-        return {"text": "Mocked Success", "provider": "mock", "tokens": 100}
+        return {
+            "ok": True,
+            "simulated": True,
+            "text": "Mocked Success",
+            "provider": "mock",
+            "model": "test-model",
+            "tokens": 100,
+        }
 
     # Patch the symbol INSIDE executor's namespace, not llm_wrapper
     with patch.object(executor, "make_llm_call", return_value=fake_llm), \
@@ -17,8 +24,9 @@ def test_execute_agent_success_with_mock():
             executor.execute_agent("coder", "Hello World")
         )
 
-    assert result.get("success") is True or result.get("status") == "success", \
-        f"Expected success, got: {result}"
+    assert result.get("success") is False
+    assert result.get("status") == "simulated_provider_rejected", \
+        f"Mock output was not rejected: {result}"
 
 
 def test_execute_agent_handles_llm_exception():
