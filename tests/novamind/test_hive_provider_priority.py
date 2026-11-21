@@ -23,6 +23,7 @@ def _configure_fake_provider(monkeypatch, tmp_path):
 
 def test_skip_glm_removes_glm_providers(monkeypatch, tmp_path):
     _configure_fake_provider(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZAI_API_KEY_1", "test-zai-key-" + "z" * 30)
     monkeypatch.setenv("SKIP_GLM", "true")
     import novamind.core.llm_router as lr
     importlib.reload(lr)
@@ -36,6 +37,7 @@ def test_skip_glm_removes_glm_providers(monkeypatch, tmp_path):
 
 def test_first_provider_is_not_glm_when_skipped(monkeypatch, tmp_path):
     _configure_fake_provider(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZAI_API_KEY_1", "test-zai-key-" + "z" * 30)
     monkeypatch.setenv("SKIP_GLM", "true")
     import novamind.core.llm_router as lr
     importlib.reload(lr)
