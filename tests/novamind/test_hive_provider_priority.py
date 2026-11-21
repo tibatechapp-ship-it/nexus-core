@@ -44,4 +44,4 @@ def test_first_provider_is_not_glm_when_skipped(monkeypatch, tmp_path):
 
     router = lr.LLMRouter()
     first = router.providers[0].name
-    assert not first.startswith("glm-"), f"first provider = {first}"
+    assert first == "gemini", f"expected configured Gemini first, got {first}"
