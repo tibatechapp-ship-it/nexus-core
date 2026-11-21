@@ -24,8 +24,9 @@
 | `LLMRouter.async_generate_batch` | `(self, requests: List[Dict]) -> List[Dict]` |
 | `LLMRouter.list_providers` | `(self)` → قائمة قواميس `name/priority/enabled/calls/failures/models/last_error` |
 | `LLMRouter.stats` | `(self)` → `{total_providers, total_calls, total_failures, providers}` |
-| `MockProvider.generate` | `(self, prompt, system='', **kwargs)` → قاموس بدون شبكة |
-| `get_router` | `() -> LLMRouter` (singleton — يُعاد إنشاؤه إن كان mock-فقط) |
+| `MockProvider.generate` | `(self, prompt, system='', **kwargs)` → test double معلّم صراحةً بـ `simulated=True` |
+| `get_router` | `() -> LLMRouter` (singleton؛ لا يضيف mock تلقائيًا) |
+| `refresh_router` | `() -> LLMRouter` (إعادة بناء صريحة بعد تغيير إعدادات المزود) |
 
 ### 1.2 عقد نتيجة `generate`
 
@@ -34,6 +35,9 @@
 * نجاح: `{"ok": True, "text": str, "provider": str, "model": str, "elapsed": float}`
 * فشل: `{"ok": False, "text": "", "provider": "", "model": "", "error": str, "elapsed": float}`
 * المفتاح `ok` هو الحكم الوحيد — المتصل يفحصه ولا يفترض حقولًا أخرى.
+* غياب مزود حقيقي يعيد `ok=False` و`error="no LLM providers configured"`.
+* `MockProvider` لا يُسجَّل تلقائيًا مطلقًا؛ استخدامه محصور بالاختبارات
+  أو مسارات المحاكاة الصريحة، وتحتوي نتيجته `simulated=True`.
 
 ### 1.3 عقد قاطع الدارة (Circuit Breaker v1.46.0+)
 
@@ -153,3 +157,17 @@ acl="team:all")` يعيد دائمًا `{"slices", "tokens_used", "citations"}`
 2. اذكر السبب في الوصف (نمو المواصفة، إصلاح أمني، …).
 3. مرّة واحدة كل إصدار رئيسي (v2.0.0) تُراجع العقود كاملة وتُعلن
    الإهمالات بإطار زمني لإزالتها (دورة إصدار واحد على الأقل).
+
+
+### Live provider verification
+
+Hermetic unit tests and explicit MockProvider tests are not evidence of a live model call.
+To verify credentials, transport, routing, and a real response, run the opt-in smoke test
+from the repository root with provider credentials configured:
+
+```bash
+NEXUS_RUN_LIVE_PROVIDER_TESTS=1 pytest tests/integration/test_live_llm_provider.py -q
+```
+
+Without the explicit opt-in, the test is skipped. With the opt-in but no valid provider,
+it fails; it never silently falls back to a mock.

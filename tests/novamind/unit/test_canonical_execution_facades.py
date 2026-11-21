@@ -50,3 +50,82 @@ def test_hive_executor_preserves_legacy_provider_patching() -> None:
 
     assert result["success"] is True
     assert run.await_args.kwargs["llm_call"] is fake_llm
+
+
+def test_canonical_executor_fails_when_no_real_provider_is_configured() -> None:
+    from novamind.factory import executor as canonical_executor
+
+    with patch.object(canonical_executor, "is_llm_available", return_value=False):
+        result = asyncio.run(canonical_executor.execute_agent("coder", "write a parser"))
+
+    assert result["success"] is False
+    assert result["status"] == "llm_unavailable"
+    assert "no simulated output" in result["error"]
+
+
+def test_canonical_executor_rejects_explicit_simulated_provider_output() -> None:
+    from novamind.factory.executor import execute_agent
+
+    async def simulated_llm(_prompt):
+        return {
+            "ok": True,
+            "simulated": True,
+            "text": "synthetic successful response",
+            "provider": "mock",
+            "tokens": 0,
+        }
+
+    result = asyncio.run(
+        execute_agent("coder", "write a parser", llm_call=simulated_llm)
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "simulated_provider_rejected"
+
+
+def test_canonical_executor_retries_provider_failures_with_bounded_attempts() -> None:
+    from novamind.factory.executor import execute_agent
+
+    calls = {"count": 0}
+
+    async def unavailable(_prompt):
+        calls["count"] += 1
+        return {
+            "ok": False,
+            "simulated": False,
+            "text": "",
+            "provider": "groq_01",
+            "error": "temporary upstream failure",
+        }
+
+    result = asyncio.run(
+        execute_agent(
+            "coder",
+            "write a parser",
+            llm_call=unavailable,
+            max_retries=2,
+        )
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "llm_provider_error"
+    assert result["attempts"] == 3
+    assert calls["count"] == 3
+
+
+def test_canonical_executor_rejects_unverified_provider_metadata() -> None:
+    from novamind.factory.executor import execute_agent
+
+    async def incomplete_response(_prompt):
+        return {
+            "text": "plausible but unverified output",
+            "provider": "router",
+            "model": "unknown",
+        }
+
+    result = asyncio.run(
+        execute_agent("coder", "write a parser", llm_call=incomplete_response)
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "unverified_provider_response"

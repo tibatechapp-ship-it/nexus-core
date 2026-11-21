@@ -50,7 +50,8 @@ class ProviderConfig:
 
 
 class MockProvider:
-    """Mock LLM provider for CI/testing — no network, deterministic."""
+    """Deterministic test double. Its responses are always marked simulated."""
+
     name = "mock"
     api_key = "mock"
     base_url = ""
@@ -62,32 +63,6 @@ class MockProvider:
     last_error = ""
     last_call_at = 0.0
 
-    
-    def _get_ordered_candidates(self, role="fast", provider_override=None):
-        import collections
-        if provider_override:
-            return [p for p in self.providers if p.name == provider_override and p.enabled]
-        if not hasattr(self, "_rr_counters"):
-            self._rr_counters = collections.defaultdict(int)
-        unique = {}
-        for p in self.providers:
-            if p.enabled and p.name not in unique:
-                unique[p.name] = p
-        by_prio = collections.defaultdict(list)
-        for p in unique.values():
-            if p.models.get(role) or p.models.get("fast"):
-                by_prio[p.priority].append(p)
-        ordered = []
-        for prio in sorted(by_prio.keys()):
-            group = by_prio[prio]
-            if len(group) > 1:
-                idx = self._rr_counters[prio] % len(group)
-                ordered.extend(group[idx:] + group[:idx])
-                self._rr_counters[prio] = (self._rr_counters[prio] + 1) % len(group)
-            else:
-                ordered.extend(group)
-        return ordered
-
     def generate(self, prompt, system="", **kwargs):
         return {
             "ok": True,
@@ -95,6 +70,7 @@ class MockProvider:
             "provider": "mock",
             "model": "mock",
             "elapsed": 0.0,
+            "simulated": True,
         }
 
 
@@ -107,32 +83,26 @@ class LLMRouter:
     _COOLDOWN_BRIEF = 30
 
     def __init__(self):
-
-        # --- Z.ai GLM Auto-Registration ---
-        import os
-        from pathlib import Path
-        env_f = Path(".env")
-        e_vars = {}
-        if env_f.exists():
-            for l in env_f.read_text().splitlines():
-                if "=" in l and not l.strip().startswith("#"):
-                    k, v = l.strip().split("=", 1)
-                    e_vars[k.strip()] = v.strip().strip("'").strip('"')
         self.providers: List[ProviderConfig] = []
         self._clients: Dict[str, Any] = {}
         self._cooldowns: Dict[str, float] = {}  # provider -> cooldown_until
         self._load_from_env()
 
     def _load_from_env(self):
-        """تحميل كل المزودين من البيئة — 60 مزود كامل."""
-        env_path = Path(os.environ.get("NOVAMIND_HOME", "/public")) / ".env"
-        if env_path.exists():
-            for line in env_path.read_text(encoding="utf-8").split("\n"):
+        """Load configured provider credentials from environment variables and env files."""
+        home_env = Path(os.environ.get("NOVAMIND_HOME", "/public")) / ".env"
+        root_env = Path.cwd() / ".env"
+        env_files = list(dict.fromkeys((home_env, root_env)))
+        for env_path in env_files:
+            if not env_path.is_file():
+                continue
+            for line in env_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, val = line.split("=", 1)
-                os.environ.setdefault(key.strip(), val.strip())
+                value = val.strip().strip("'").strip('"')
+                os.environ.setdefault(key.strip(), value)
 
         # 1. GEMINI — 21 مفتاح
         gemini_keys = []
@@ -154,17 +124,9 @@ class LLMRouter:
                 },
                 priority=10 + idx,
             ))
-        # تعطيل المفاتيح المعطوبة تلقائياً (503 من Google)
-        broken_gemini_ids = {8, 13, 15, 16, 17, 19}
-        for p in self.providers:
-            if p.name.startswith("gemini_"):
-                try:
-                    idx = int(p.name.replace("gemini_", ""))
-                    if idx in broken_gemini_ids:
-                        p.enabled = False
-                except ValueError:
-                    pass
-        logger.info(f"Gemini: {len(gemini_keys)} keys loaded ({len(broken_gemini_ids)} disabled)")
+        # Provider health is learned from real request outcomes and cooldowns.
+        # Never permanently disable a key by slot number: credentials rotate.
+        logger.info("Gemini: %s keys loaded", len(gemini_keys))
 
         # 2. GROQ — 20 مفتاح
         groq_keys = []
@@ -185,20 +147,24 @@ class LLMRouter:
             ))
         logger.info(f"Groq: {len(groq_keys)} keys loaded")
 
-        # 3. ZAI / GLM — 13 مفاتيح
-        for i in range(1, 14):
-            glm_key = os.environ.get(f"ZAI_API_KEY_{i}", "").strip()
-            if glm_key and len(glm_key) > 10:
-                self.providers.append(ProviderConfig(
-                    name=f"zai_glm_{i}",
-                    api_key=glm_key,
-                    base_url="https://api.z.ai/api/paas/v4",
-                    models={"fast": "glm-4.5-flash", "smart": "glm-4.5-flash"},
-                    priority=1 + i,
-                ))
-        logger.info("ZAI/GLM loaded")
+        # 3. ZAI / GLM — 13 keys. Respect the documented operator opt-out.
+        skip_glm = os.environ.get("SKIP_GLM", "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        if not skip_glm:
+            for i in range(1, 14):
+                glm_key = os.environ.get(f"ZAI_API_KEY_{i}", "").strip()
+                if glm_key and len(glm_key) > 10:
+                    self.providers.append(ProviderConfig(
+                        name=f"zai_glm_{i}",
+                        api_key=glm_key,
+                        base_url="https://api.z.ai/api/paas/v4",
+                        models={"fast": "glm-4.5-flash", "smart": "glm-4.5-flash"},
+                        priority=1 + i,
+                    ))
+        logger.info("ZAI/GLM %s", "skipped by configuration" if skip_glm else "loaded")
 
-        # 4. OPENROUTER — 5 مفاتيح
+        # 4. OPENROUTER — up to 11 configured keys
         for i in range(1, 12):
             or_key = os.environ.get(f"OPENROUTER_API_KEY_{i}", "").strip()
             if or_key and len(or_key) > 20:
@@ -308,16 +274,18 @@ class LLMRouter:
         self._load_cooldowns()
 
         if not self.providers:
-            logger.warning("No LLM providers configured — using MockProvider")
-            self.providers.append(MockProvider())
+            logger.error(
+                "No real LLM providers configured; generation is disabled "
+                "until a valid provider is configured."
+            )
 
-        logger.info("loaded " + str(len(self.providers)) + " providers")
+        logger.info("loaded %s real LLM providers", len(self.providers))
 
     def _get_client(self, provider: ProviderConfig):
         if provider.name in self._clients:
             return self._clients[provider.name]
 
-        if provider.name == "gemini":
+        if provider.name == "gemini" or provider.name.startswith("gemini_"):
             from google import genai
             client = genai.Client(api_key=provider.api_key)
         else:
@@ -426,7 +394,20 @@ class LLMRouter:
         if not allow_fallback:
             candidates = candidates[:1]
 
+        if not candidates:
+            if provider and not any(p.name == provider for p in self.providers):
+                error = "provider not found: " + provider
+            elif not self.providers:
+                error = "no LLM providers configured"
+            else:
+                error = "no enabled provider supports role: " + role
+            return {
+                "ok": False, "text": "", "provider": "", "model": "",
+                "error": error, "elapsed": 0.0,
+            }
+
         last_error = ""
+        attempted = 0
 
         for p in candidates:
             if not self._is_cooled_down(p.name):
@@ -438,19 +419,34 @@ class LLMRouter:
             if not model:
                 continue
 
+            attempted += 1
             start = time.time()
             try:
-                if p.name == "gemini":
+                simulated = False
+                if p.name == "mock":
+                    mock_result = p.generate(
+                        prompt, system=system, temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    text = mock_result.get("text", "")
+                    simulated = bool(mock_result.get("simulated", True))
+                elif p.name == "gemini" or p.name.startswith("gemini_"):
                     text = self._call_gemini(p, model, prompt, system, temperature, max_tokens)
                 else:
                     text = self._call_openai_compatible(p, model, prompt, system, temperature, max_tokens)
+
+                if not isinstance(text, str) or not text.strip():
+                    raise RuntimeError("provider returned an empty response")
 
                 elapsed = time.time() - start
                 p.calls += 1
                 p.last_call_at = time.time()
 
-                return {"ok": True, "text": text, "provider": p.name,
-                        "model": model, "error": "", "elapsed": round(elapsed, 2)}
+                return {
+                    "ok": True, "text": text, "provider": p.name,
+                    "model": model, "error": "", "elapsed": round(elapsed, 2),
+                    "simulated": simulated,
+                }
 
             except Exception as e:
                 elapsed = time.time() - start
@@ -478,8 +474,17 @@ class LLMRouter:
                         pass
                 logger.warning("provider " + p.name + " failed: " + str(e)[:120])
 
-        return {"ok": False, "text": "", "provider": "", "model": "",
-                "error": last_error or "all providers failed", "elapsed": 0.0}
+        return {
+            "ok": False,
+            "text": "",
+            "provider": "",
+            "model": "",
+            "error": last_error or (
+                "all eligible providers are cooling down or unavailable"
+                if attempted == 0 else "all providers failed"
+            ),
+            "elapsed": 0.0,
+        }
 
     # ─────────────────────────────────────────────────────
     # Smart task-based routing
@@ -746,25 +751,26 @@ _router: Optional[LLMRouter] = None
 
 
 def get_router() -> LLMRouter:
-    """يُعيد الـ singleton router.
-
-    إذا كان الـ singleton موجوداً لكن فيه mock فقط (1 provider),
-    يُعيد إنشاءه لتحميل الـ providers الحقيقية.
-
-    هذا يمنع مشكلة "الترتيب" — عندما يُحمَّل الـ singleton مبكراً
-    بدون keys.
-    """
+    """Return the process-wide router without silently installing a mock."""
     global _router
-    # أعِد الإنشاء إذا:
-    # - لم يكن موجوداً
-    # - أو فيه mock فقط (1 provider اسمه "mock")
-    needs_reload = _router is None
-    if not needs_reload and hasattr(_router, "providers"):
-        providers = _router.providers
-        # 1 provider فقط = غالباً mock
-        if len(providers) <= 1:
-            needs_reload = True
-
-    if needs_reload:
+    if _router is None:
         _router = LLMRouter()
     return _router
+
+
+def refresh_router() -> LLMRouter:
+    """Rebuild the router after provider credentials/configuration change."""
+    global _router
+    _router = LLMRouter()
+    return _router
+
+
+__all__ = [
+    "DEFAULT_TIMEOUT",
+    "DEFAULT_RETRIES",
+    "ProviderConfig",
+    "MockProvider",
+    "LLMRouter",
+    "get_router",
+    "refresh_router",
+]

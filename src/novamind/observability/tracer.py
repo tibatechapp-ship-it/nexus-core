@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional
 
@@ -51,9 +52,21 @@ def _init_otel() -> None:
     })
     provider = TracerProvider(resource=resource)
 
-    # Exporter selection
+    # Exporter selection. Pytest and some ASGI servers temporarily replace
+    # sys.stdout; the BatchSpanProcessor exports asynchronously, after those
+    # capture streams may already be closed. Bind console output to the stable
+    # interpreter stream instead of the transient captured sys.stdout.
     if cfg.exporter == "console":
-        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+        stable_stream = getattr(sys, "__stdout__", None)
+        if stable_stream is not None and not getattr(stable_stream, "closed", False):
+            provider.add_span_processor(
+                BatchSpanProcessor(ConsoleSpanExporter(out=stable_stream))
+            )
+        else:
+            logger.warning(
+                "Console tracing disabled: stable stdout is unavailable; "
+                "use exporter='otlp' or exporter='none'."
+            )
     elif cfg.exporter == "otlp":
         try:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -63,8 +76,12 @@ def _init_otel() -> None:
                 BatchSpanProcessor(OTLPSpanExporter(endpoint=cfg.otlp_endpoint))
             )
         except ImportError:
-            logger.warning("OTLP exporter unavailable — falling back to console")
-            provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+            logger.warning("OTLP exporter unavailable — falling back to stable console")
+            stable_stream = getattr(sys, "__stdout__", None)
+            if stable_stream is not None and not getattr(stable_stream, "closed", False):
+                provider.add_span_processor(
+                    BatchSpanProcessor(ConsoleSpanExporter(out=stable_stream))
+                )
 
     otel_trace.set_tracer_provider(provider)
     _tracer = otel_trace.get_tracer(cfg.service_name, cfg.service_version)
@@ -139,17 +156,29 @@ def is_enabled() -> bool:
 
 
 def shutdown() -> None:
-    """Flush and shutdown tracer (for tests / app exit)."""
-    global _tracer, _initialized
-    if _OTEL_AVAILABLE and _tracer is not None:
-        try:
-            provider = otel_trace.get_tracer_provider()
-            if hasattr(provider, "shutdown"):
-                provider.shutdown()
-        except Exception:
-            pass
-    _tracer = None
-    _initialized = False
+    """Flush and shut down the process-wide provider at application exit.
+
+    OpenTelemetry's global TracerProvider cannot be replaced after registration.
+    Keep initialization latched after shutdown so later spans do not attempt to
+    register a second provider against the already-locked global API.
+    """
+    global _tracer
+    if not _OTEL_AVAILABLE or _tracer is None:
+        return
+
+    try:
+        provider = otel_trace.get_tracer_provider()
+        force_flush = getattr(provider, "force_flush", None)
+        if callable(force_flush):
+            force_flush(timeout_millis=5000)
+        shutdown_provider = getattr(provider, "shutdown", None)
+        if callable(shutdown_provider):
+            shutdown_provider()
+    except Exception:
+        logger.exception("OpenTelemetry provider shutdown failed")
+    finally:
+        _tracer = None
+        # _initialized remains True: the process-global provider is one-shot.
 
 
 __all__ = ["start_span", "set_span_attribute", "is_enabled", "shutdown"]
