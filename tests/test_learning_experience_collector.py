@@ -487,3 +487,46 @@ def test_concurrent_reads_during_writes_do_not_crash(collector):
     for thread in threads:
         thread.join(timeout=30)
     assert len(mem) == 200
+
+# --------------------------------------------------------------------------- #
+# Privacy: free-text experience fields
+# --------------------------------------------------------------------------- #
+def test_record_redacts_credentials_from_action_and_result(collector):
+    mem, _clock = collector
+    exp = mem.record(
+        "t1", "s1", "coder", "write_file", Outcome.SUCCESS,
+        action="Authorization: Bearer demo",
+        result='api_key="secret-value" password=hunter2',
+    )
+    assert "abcdefghijklmnop" not in exp.action
+    assert "secret-value" not in exp.result
+    assert "hunter2" not in exp.result
+    assert "[REDACTED]" in exp.action
+    assert "[REDACTED]" in exp.result
+
+
+def test_export_never_writes_known_credentials(tmp_path, collector):
+    mem, _clock = collector
+    mem.record(
+        "t1", "s1", "coder", "read_file", Outcome.FAILURE,
+        action="token: export-secret-123",
+        result="token: sample-value",
+    )
+    target = tmp_path / "experiences.json"
+    mem.export(target)
+    saved = target.read_text(encoding="utf-8")
+    assert "export-secret-123" not in saved
+    assert "[REDACTED]" in saved
+
+
+def test_import_redacts_legacy_or_external_records(collector):
+    mem, _clock = collector
+    added = mem._append_records([{
+        "task_id": "t1", "step_id": "s1", "agent_role": "coder",
+        "action_type": "read_file", "outcome": "success",
+        "action": "Authorization: Bearer imported-secret-token",
+        "result": "token: imported-sample",
+    }])
+    assert added == 1
+    experience = mem.all()[0]
+    assert "imported-secret-token" not in experience.action
