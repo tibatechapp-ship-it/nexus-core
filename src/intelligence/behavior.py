@@ -106,8 +106,13 @@ class BehaviorBaseline:
         evidence_ids = {item.evidence_id for item in self.evidence}
         if len(evidence_ids) != len(self.evidence):
             raise BehaviorContractError("baseline contains duplicate evidence IDs")
-        if any(item.evidence_id not in evidence_ids for item in self.cases):
-            raise BehaviorContractError("baseline case references unknown evidence")
+        case_evidence_ids = [item.evidence_id for item in self.cases]
+        if len(case_evidence_ids) != len(set(case_evidence_ids)):
+            raise BehaviorContractError("baseline cases must have distinct evidence references")
+        if set(case_evidence_ids) != evidence_ids:
+            raise BehaviorContractError(
+                "baseline evidence references must map one-to-one to baseline cases"
+            )
         object.__setattr__(self, "cases", tuple(self.cases))
         object.__setattr__(self, "evidence", tuple(self.evidence))
 
@@ -326,8 +331,16 @@ def compare_behavior(
     if baseline_evidence_ids.intersection(evidence_ids):
         return BehaviorComparison(BehaviorVerdict.INVALID, ("baseline and observation evidence IDs must be distinct",))
     known_observation_evidence = set(evidence_ids)
-    if any(item.evidence_id not in known_observation_evidence for item in observations):
-        return BehaviorComparison(BehaviorVerdict.INVALID, ("observation references unknown evidence",))
+    observation_ids = [item.evidence_id for item in observations]
+    if len(observation_ids) != len(set(observation_ids)):
+        return BehaviorComparison(
+            BehaviorVerdict.INVALID, ("observations must have distinct evidence references",)
+        )
+    if set(observation_ids) != known_observation_evidence:
+        return BehaviorComparison(
+            BehaviorVerdict.INVALID,
+            ("observation evidence references must map one-to-one to observations",),
+        )
 
     verified: list[str] = []
     for item in (*baseline.evidence, *observation_evidence):

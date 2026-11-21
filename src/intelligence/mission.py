@@ -19,7 +19,7 @@ from .behavior import (
     BehaviorBaseline, BehaviorComparison, BehaviorGateDecision, _required_text,
     compare_behavior, digest_payload, evaluate_behavior_gate,
 )
-from .capture import EvidenceSink, capture_observations
+from .capture import EvidenceSink, capture_observations, sanitize_payload
 from .contracts import IntelligenceResult, ResultStatus
 from .gate import AssuranceDecision, evaluate_assurance
 from .replay import ReplayCommandCase, execute_authorized_cases
@@ -36,7 +36,10 @@ _SENSITIVE_NAMES = {
     ".env", ".env.local", ".env.production", ".npmrc", ".netrc",
     ".pypirc", "id_rsa", "id_ed25519", "credentials.json", "token.json",
 }
-_SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
+_SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".p8", ".jks", ".keystore"}
+_SENSITIVE_DIRS = {
+    ".aws", ".ssh", ".azure", ".gcloud", ".kube", ".gnupg", ".docker",
+}
 
 
 class MissionBehaviorError(RuntimeError):
@@ -198,6 +201,11 @@ def _copy_verified_snapshot(source: Path, destination: Path) -> None:
                 raise MissionBehaviorError("symlink directory in mission worktree is not replayable")
             if name in _IGNORED_DIRS:
                 dirs.remove(name)
+                continue
+            if name.casefold() in _SENSITIVE_DIRS:
+                raise MissionBehaviorError(
+                    f"credential-bearing directory must be removed before replay: {name}"
+                )
         for name in sorted(files):
             item = current_path / name
             if item.is_symlink():
@@ -294,6 +302,22 @@ def run_mission_behavior_replay(
         "execution_mode": "container",
     })
     try:
+        baseline_cases = {item.case_id: item for item in baseline.cases}
+        requested_cases = {item.case_id: item for item in cases}
+        if set(requested_cases) != set(baseline_cases):
+            raise MissionBehaviorError(
+                "replay case IDs must exactly match the trusted baseline before execution"
+            )
+        sanitized_inputs = {
+            case_id: sanitize_payload(case.input_payload)
+            for case_id, case in requested_cases.items()
+        }
+        for case_id, sanitized_input in sanitized_inputs.items():
+            if digest_payload(sanitized_input) != baseline_cases[case_id].input_sha256:
+                raise MissionBehaviorError(
+                    f"replay input fixture differs from the trusted baseline: {case_id}"
+                )
+
         state_path = Path(state_root).expanduser().resolve(strict=True)
         repo_path = Path(mission.repo_path).expanduser().resolve(strict=True)
         if not state_path.is_dir() or not repo_path.is_dir():
@@ -342,14 +366,15 @@ def run_mission_behavior_replay(
             for index, case in enumerate(cases):
                 workspace = root / f"case-{index:04d}"
                 _copy_verified_snapshot(Path(context.worktree.root), workspace)
-                fixture_path = _stage_behavior_input(workspace, case.input_payload)
+                sanitized_input = sanitized_inputs[case.case_id]
+                fixture_path = _stage_behavior_input(workspace, sanitized_input)
                 command = tuple(
                     fixture_path if part == "{behavior_input}" else part
                     for part in case.argv
                 )
                 replay_cases.append(ReplayCommandCase(
                     case_id=case.case_id, argv=command,
-                    workspace=workspace, input_payload=case.input_payload,
+                    workspace=workspace, input_payload=sanitized_input,
                     timeout=case.timeout,
                 ))
             captured = execute_authorized_cases(
@@ -427,7 +452,8 @@ def run_mission_behavior_replay(
         return result
     except Exception as exc:
         store.audit("behavior.replay.failed", mission_id, {
-            "error_type": type(exc).__name__, "error": str(exc)[:500],
+            "error_type": type(exc).__name__,
+            "error": str(sanitize_payload(str(exc)))[:500],
         })
         if isinstance(exc, MissionBehaviorError):
             raise

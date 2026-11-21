@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Iterator
@@ -36,6 +37,38 @@ except ImportError:
 logger = logging.getLogger("core.learning_loop")
 
 
+def sanitize_learning_text(value: str, max_length: int = 4000) -> str:
+    """Redact common credential forms before learning data reaches disk."""
+    if not isinstance(value, str):
+        raise TypeError("learning text must be a string")
+    text = re.sub(
+        r"""(?i)(authorization\s*[:=]\s*(?:bearer|basic)\s+)[A-Za-z0-9._~+/-]+=*""",
+        r"\1[REDACTED]",
+        value,
+    )
+    text = re.sub(
+        r"""(?i)(["']?(?:api[_-]?key|secret|password|token)["']?\s*[:=]\s*["']?)[^\s,"']+""",
+        r"\1[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"""(?i)(authorization\s*[:=]\s*)(?!bearer\s|basic\s)[^\s,"']+""",
+        r"\1[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b",
+        "[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b",
+        "[REDACTED]",
+        text,
+    )
+    return text[:max_length]
+
+
 @dataclass
 class Experience:
     experience_id: str
@@ -52,6 +85,7 @@ class Experience:
     user_feedback: str = ""
     tags: List[str] = field(default_factory=list)
     timestamp: str = ""
+    input_summary: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
@@ -71,7 +105,12 @@ class LearningLoop:
             str(Path(__file__).resolve().parent.parent),
         )
         if storage_path is None:
-            storage_path = Path(base) / "memory" / "experiences.jsonl"
+            configured_path = os.environ.get("NOVAMIND_LEARNING_LOOP_PATH")
+            storage_path = (
+                Path(configured_path)
+                if configured_path
+                else Path(base) / "memory" / "experiences.jsonl"
+            )
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -94,20 +133,43 @@ class LearningLoop:
 
     def record(self, agent, task, input_data, output, outcome,
                duration=0.0, provider="", model="", error="",
-               user_feedback="", tags=None):
+               user_feedback="", tags=None, input_summary=""):
+        if not isinstance(agent, str) or not agent.strip():
+            raise ValueError("agent must be a non-empty string")
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("task must be a non-empty string")
+        if not isinstance(input_data, str):
+            raise TypeError("input_data must be a string")
+        if not isinstance(outcome, str) or not outcome.strip():
+            raise ValueError("outcome must be a non-empty string")
+        if not all(isinstance(value, str) for value in (provider, model, error, user_feedback, input_summary)):
+            raise TypeError("provider, model, error, user_feedback, and input_summary must be strings")
+        raw_tags = tags or []
+        if not isinstance(raw_tags, (list, tuple)) or any(not isinstance(tag, str) for tag in raw_tags):
+            raise TypeError("tags must be a list of strings")
+
         input_hash = hashlib.sha256(input_data.encode()).hexdigest()
         if isinstance(output, dict):
             summary = output.get("summary") or output.get("verdict") or str(output)[:200]
         else:
             summary = str(output)[:200]
+        summary = str(summary)
 
         exp = Experience(
-            experience_id="", agent=agent, task=task,
-            input_hash=input_hash, input_size=len(input_data),
-            output_summary=summary, outcome=outcome,
-            duration=duration, provider=provider, model=model,
-            error=error[:500], user_feedback=user_feedback,
-            tags=tags or [],
+            experience_id="",
+            agent=sanitize_learning_text(agent.strip(), max_length=100),
+            task=sanitize_learning_text(task.strip(), max_length=500),
+            input_hash=input_hash,
+            input_size=len(input_data),
+            output_summary=sanitize_learning_text(summary, max_length=500),
+            outcome=outcome.strip(),
+            duration=duration,
+            provider=sanitize_learning_text(provider, max_length=100),
+            model=sanitize_learning_text(model, max_length=100),
+            error=sanitize_learning_text(error, max_length=500),
+            user_feedback=sanitize_learning_text(user_feedback, max_length=200),
+            tags=[sanitize_learning_text(tag, max_length=100) for tag in raw_tags],
+            input_summary=sanitize_learning_text(input_summary, max_length=4000),
         )
 
         try:
@@ -120,8 +182,11 @@ class LearningLoop:
                         os.fsync(f.fileno())
                     finally:
                         self._release_file_lock(f)
-        except Exception as e:
-            logger.error(f"record failed: {e}")
+        except Exception:
+            # Returning an Experience acknowledges durable persistence. Do not
+            # manufacture that acknowledgement when append, flush, or fsync fails.
+            logger.exception("record failed")
+            raise
 
         return exp
 
@@ -206,6 +271,60 @@ class LearningLoop:
                 failures[e.agent] = failures.get(e.agent, 0) + 1
         return [{"agent": a, "failures": c}
                 for a, c in sorted(failures.items(), key=lambda x: -x[1])[:limit]]
+
+    def learn_from_pr_review(self, repo: str, pr_num: int, issues: List[Dict]) -> Dict:
+        """Persist PR review findings as one auditable learning experience."""
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if isinstance(pr_num, bool) or not isinstance(pr_num, int) or pr_num < 0:
+            raise ValueError("pr_num must be a non-negative integer")
+        if not isinstance(issues, list):
+            raise TypeError("issues must be a list of mappings")
+        if any(not isinstance(item, dict) for item in issues):
+            raise TypeError("each issue must be a mapping")
+
+        normalized = []
+        for item in issues:
+            description = item.get("description", item.get("message", ""))
+            if not isinstance(description, str) or not description.strip():
+                continue
+            normalized.append({
+                "description": sanitize_learning_text(description, max_length=2000),
+                "severity": sanitize_learning_text(str(item.get("severity", "info")), max_length=32),
+            })
+
+        if not normalized:
+            return {"learned": 0, "experience_id": None}
+
+        payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+        experience = self.record(
+            agent="pr-review-learner",
+            task=f"Learn from PR review {pr_num} in {repo.strip()[:300]}",
+            input_data=payload,
+            output={"summary": f"Recorded {len(normalized)} review findings"},
+            outcome="success",
+            tags=["pr-review", "review-learning"],
+            input_summary=payload,
+        )
+        return {"learned": len(normalized), "experience_id": experience.experience_id}
+
+    def record_feedback(self, pattern: str, liked: bool) -> Dict:
+        """Persist explicit feedback in the append-only experience ledger."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise TypeError("liked must be a boolean")
+        experience = self.record(
+            agent="feedback",
+            task="pattern-feedback",
+            input_data=pattern.strip(),
+            output={"summary": "positive feedback" if liked else "negative feedback"},
+            outcome="success",
+            user_feedback="liked" if liked else "disliked",
+            tags=["feedback", "positive" if liked else "negative"],
+            input_summary=pattern.strip(),
+        )
+        return {"ok": True, "experience_id": experience.experience_id}
 
     def clear(self, confirm: bool = False) -> Dict:
         if not confirm:

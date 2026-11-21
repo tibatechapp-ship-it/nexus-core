@@ -45,11 +45,11 @@ class Store:
         self.audit_events.append((action, ref, details or {}))
 
 
-def _baseline(sink, mission_id="mission-1"):
+def _baseline(sink, mission_id="mission-1", cases=None):
     return capture_baseline(
         target=f"mission:{mission_id}", revision="baseline-rev",
         run_id="baseline-run",
-        cases=[CapturedCase("health", {"path": "/health"}, {"status": 200})],
+        cases=cases or [CapturedCase("health", {"path": "/health"}, {"status": 200})],
         collected_by="baseline-harness", sink=sink,
     )
 
@@ -83,11 +83,15 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     mission = SimpleNamespace(id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo), report_path=str(report))
     store = Store(mission)
     sink = Sink()
-    baseline = _baseline(sink)
+    baseline = _baseline(sink, cases=[
+        CapturedCase("health", {"path": "/health"}, {"status": 200}),
+        CapturedCase("extra", {"path": "/extra"}, {"status": 404}),
+    ])
     monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: _context(source))
 
     def fake_execute(**kwargs):
         workspaces = [item.workspace for item in kwargs["cases"]]
+        assert len(workspaces) == 2
         assert len(set(workspaces)) == 2
         assert all((path / "app.py").is_file() for path in workspaces)
         assert all(path != source for path in workspaces)
@@ -114,9 +118,9 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
             and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
         ),
     )
-    assert result.comparison.verdict is BehaviorVerdict.INVALID
+    assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
     assert result.assurance.accepted is True
-    assert result.gate_decision.verdict.value == "rejected"
+    assert result.gate_decision.verdict.value == "assured"
     assert [item[0] for item in store.audit_events] == [
         "behavior.replay.requested",
         "behavior.replay.report_persisted",
@@ -124,7 +128,7 @@ def test_mission_replay_restores_snapshot_copies_per_case_and_audits(
     ]
     report_text = report.read_text(encoding="utf-8")
     assert "## التحقق السلوكي" in report_text
-    assert '"verdict": "invalid"' in report_text
+    assert '"verdict": "equivalent"' in report_text
     assert result.candidate_revision in report_text
     assert not list(state.glob("behavior-*"))
 
@@ -145,7 +149,7 @@ def test_mission_replay_rejects_noncompleted_mission_before_restore(tmp_path, mo
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -198,7 +202,7 @@ def test_mission_replay_verifies_baseline_before_invoking_runner(tmp_path, monke
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=baseline,
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: False,
         )
@@ -229,7 +233,7 @@ def test_mission_replay_rejects_checkpoint_from_earlier_phase(tmp_path, monkeypa
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -354,7 +358,7 @@ def test_mission_replay_rejects_state_root_inside_repository(tmp_path, monkeypat
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -380,7 +384,7 @@ def test_mission_replay_rejects_missing_checkpoint_worktree(tmp_path, monkeypatc
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -410,7 +414,7 @@ def test_mission_replay_wraps_runner_failure_and_cleans_workspace(tmp_path, monk
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -470,7 +474,7 @@ def test_mission_replay_audits_and_wraps_missing_roots(tmp_path, missing_kind) -
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state_path,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
@@ -492,8 +496,143 @@ def test_mission_replay_rejects_state_root_file(tmp_path) -> None:
         run_mission_behavior_replay(
             store=store, mission_id="mission-1", state_root=state_file,
             baseline=_baseline(sink),
-            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {})],
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
             run_id="candidate-run", collected_by="test", evidence_sink=sink,
             verify_evidence=lambda _: True,
         )
     assert store.audit_events[-1][0] == "behavior.replay.failed"
+
+
+@pytest.mark.parametrize("sensitive_dir", [".aws", ".ssh", ".kube", ".docker"])
+def test_snapshot_copy_rejects_credential_bearing_directories(tmp_path, sensitive_dir):
+    import src.intelligence.mission as module
+    source = tmp_path / "source"
+    source.mkdir()
+    secret_dir = source / sensitive_dir
+    secret_dir.mkdir()
+    (secret_dir / "credentials").write_text("not-for-replay", encoding="utf-8")
+    with pytest.raises(MissionBehaviorError, match="credential-bearing directory"):
+        module._copy_verified_snapshot(source, tmp_path / "copy")
+
+
+
+@pytest.mark.parametrize(
+    "case_specs,expected_error",
+    [
+        (
+            [BehaviorCaseSpec("other", ("cat", "{behavior_input}"), {"path": "/health"})],
+            "case IDs must exactly match",
+        ),
+        (
+            [BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/different"})],
+            "input fixture differs",
+        ),
+    ],
+)
+def test_mission_replay_preflights_case_ids_and_inputs_before_checkpoint_or_runner(
+    tmp_path, monkeypatch, case_specs, expected_error
+):
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    monkeypatch.setattr(
+        module, "restore_mission_context",
+        lambda *args, **kwargs: pytest.fail("checkpoint must not be restored"),
+    )
+    monkeypatch.setattr(
+        module, "execute_authorized_cases",
+        lambda **kwargs: pytest.fail("candidate code must not execute"),
+    )
+    with pytest.raises(MissionBehaviorError, match=expected_error):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink), cases=case_specs,
+            run_id="preflight-run", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda ref: (
+                ref.evidence_id in sink.items
+                and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
+            ),
+        )
+    assert [event[0] for event in store.audit_events] == [
+        "behavior.replay.requested", "behavior.replay.failed"
+    ]
+
+
+
+def test_mission_replay_redacts_fixture_before_staging_and_execution(tmp_path, monkeypatch):
+    import json
+    import src.intelligence.mission as module
+    source = tmp_path / "checkpoint"
+    source.mkdir()
+    (source / "app.py").write_text("pass", encoding="utf-8")
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    raw_input = {"path": "/health", "api_key": "sensitive-fixture-value"}
+    baseline = _baseline(sink, cases=[
+        CapturedCase("health", raw_input, {"status": 200}),
+    ])
+    monkeypatch.setattr(module, "restore_mission_context", lambda *a, **k: _context(source))
+
+    def fake_execute(**kwargs):
+        case = kwargs["cases"][0]
+        staged = Path(case.workspace) / ".nexus-behavior" / "input.json"
+        payload = json.loads(staged.read_text(encoding="utf-8"))
+        assert payload["api_key"] == "[REDACTED]"
+        assert "sensitive-fixture-value" not in staged.read_text(encoding="utf-8")
+        assert case.input_payload == payload
+        return (CapturedCase("health", payload, {"status": 200}),)
+
+    monkeypatch.setattr(module, "execute_authorized_cases", fake_execute)
+    result = run_mission_behavior_replay(
+        store=store, mission_id="mission-1", state_root=state,
+        baseline=baseline,
+        cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), raw_input)],
+        run_id="redacted-replay", collected_by="test", evidence_sink=sink,
+        verify_evidence=lambda ref: (
+            ref.evidence_id in sink.items
+            and hashlib.sha256(sink.items[ref.evidence_id]).hexdigest() == ref.sha256
+        ),
+    )
+    assert result.comparison.verdict is BehaviorVerdict.EQUIVALENT
+
+
+
+def test_mission_replay_redacts_secret_from_failure_audit(tmp_path, monkeypatch):
+    import src.intelligence.mission as module
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    store = Store(SimpleNamespace(
+        id="mission-1", status="done", phase="G_RELEASE", repo_path=str(repo)
+    ))
+    sink = Sink()
+    monkeypatch.setattr(
+        module, "restore_mission_context",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("runner failed: Bearer ghp_SUPERSECRETEXAMPLE1234567890")
+        ),
+    )
+    with pytest.raises(MissionBehaviorError, match="failed closed"):
+        run_mission_behavior_replay(
+            store=store, mission_id="mission-1", state_root=state,
+            baseline=_baseline(sink),
+            cases=[BehaviorCaseSpec("health", ("cat", "{behavior_input}"), {"path": "/health"})],
+            run_id="audit-redaction", collected_by="test", evidence_sink=sink,
+            verify_evidence=lambda _: True,
+        )
+    failure = store.audit_events[-1][2]
+    assert "ghp_SUPERSECRETEXAMPLE1234567890" not in failure["error"]
+    assert "[REDACTED]" in failure["error"]

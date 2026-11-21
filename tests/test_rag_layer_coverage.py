@@ -697,3 +697,75 @@ def test_sysinfo_malformed_uptime(monkeypatch: pytest.MonkeyPatch, fake_proc: Pa
 
     (fake_proc / "uptime").write_text("not-a-float\n", encoding="utf-8")
     assert si.uptime() == 0.0
+
+
+
+def test_sqlite_vec_store_fake_connection_covers_crud_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Cursor:
+        lastrowid = 41
+
+        def __init__(self, rows: list[tuple] | None = None) -> None:
+            self.rows = rows or []
+
+        def fetchone(self):
+            return self.rows[0] if self.rows else None
+
+        def fetchall(self):
+            return self.rows
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.loaded: list[str] = []
+            self.statements: list[str] = []
+            self.closed = False
+            self.deleted = False
+
+        def enable_load_extension(self, enabled: bool) -> None:
+            assert enabled is True
+
+        def load_extension(self, name: str) -> None:
+            self.loaded.append(name)
+            if name != "vec0":
+                raise sqlite3.OperationalError("not found")
+
+        def execute(self, sql: str, params=()):
+            self.statements.append(sql)
+            if "SELECT rowid FROM vectors_meta" in sql:
+                return Cursor([(41,)] if not self.deleted else [])
+            if "SELECT v.rowid, v.distance" in sql:
+                return Cursor([(41, 0.01, "doc-1", "alpha", '{"source":"test"}')])
+            if "DELETE FROM vectors WHERE" in sql:
+                self.deleted = True
+            return Cursor()
+
+        def commit(self) -> None:
+            pass
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = FakeConnection()
+    monkeypatch.setattr(sqlite3, "connect", lambda _path: connection)
+    store = SQLiteVecStore(str(tmp_path / "nested" / "vectors.db"), dim=4)
+    assert connection.loaded == ["vec0"]
+    store.add("doc-1", "alpha", [1.0, 0.0, 0.0, 0.0], {"source": "test"})
+    found = store.search([1.0, 0.0, 0.0, 0.0], k=1)
+    assert found == [
+        SearchResult(id="doc-1", text="alpha", distance=0.01, metadata={"source": "test"})
+    ]
+    assert store.delete("doc-1") is True
+    assert store.delete("missing") is False
+    store.clear()
+    store.close()
+    assert connection.closed is True
+    assert any("CREATE VIRTUAL TABLE" in sql for sql in connection.statements)
+    assert any("CREATE TABLE" in sql for sql in connection.statements)
+
+
+def test_embedding_to_blob_rejects_non_numeric_values() -> None:
+    import struct
+
+    with pytest.raises(struct.error):
+        _embedding_to_blob([1.0, "not-a-number"])  # type: ignore[list-item]

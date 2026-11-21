@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .behavior import _required_text, digest_payload
-from .capture import CapturedCase
+from .capture import CapturedCase, sanitize_payload
 from ..coder.container_sandbox import ContainerSandboxError, run_in_container
 from .behavior import ObservationStatus
 
@@ -152,7 +152,7 @@ def execute_authorized_cases(
             )
         except (ContainerSandboxError, OSError, ValueError) as exc:
             raise BehaviorReplayError(
-                f"isolated replay failed closed for case {case.case_id}: {exc}"
+                f"isolated replay failed closed for case {case.case_id}: {sanitize_payload(str(exc))}"
             ) from exc
         required = {"ok", "exit_code", "timeout", "truncated", "stdout", "stderr"}
         if not isinstance(result, Mapping) or not required.issubset(result):

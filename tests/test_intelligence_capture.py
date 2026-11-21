@@ -183,3 +183,46 @@ def test_capture_wraps_sink_exception_and_rejects_wrong_reference_type() -> None
             target="repo", revision="rev", run_id="wrong",
             cases=case, collected_by="test", sink=WrongSink(),
         )
+
+
+def test_capture_redacts_secret_fields_and_common_secret_patterns_before_persisting() -> None:
+    sink = MemoryEvidenceSink()
+    capture_observations(
+        target="repo:sample", revision="candidate", run_id="redaction-run",
+        cases=[CapturedCase(
+            "case-secret",
+            {"api_key": "sk-live-do-not-store", "safe": "hello"},
+            {
+                "authorization": "Bearer abc.def.ghi",
+                "message": "request failed: password=hunter2",
+                "provider": "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890",
+                "private_key": "-----BEGIN PRIVATE " + "KEY-----\\nsecret-material\\n-----END PRIVATE " + "KEY-----",
+            },
+        )],
+        collected_by="test-harness", sink=sink,
+    )
+    stored = next(iter(sink.items.values())).decode("utf-8")
+    expected_provider_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+    assert "sk-live-do-not-store" not in stored
+    assert "abc.def.ghi" not in stored
+    assert "hunter2" not in stored
+    assert expected_provider_token not in stored
+    assert "secret-material" not in stored
+    artifact = json.loads(stored)
+    assert artifact["input"]["api_key"] == "[REDACTED]"
+    assert artifact["output"]["authorization"] == "[REDACTED]"
+    assert artifact["redaction"] == "nexus.secret-redaction/v1"
+
+
+def test_capture_redacts_secret_like_values_in_plain_output_text() -> None:
+    sink = MemoryEvidenceSink()
+    capture_observations(
+        target="repo:sample", revision="candidate", run_id="plain-redaction",
+        cases=[CapturedCase(
+            "case-output", {}, {"stdout": "token=abc123xyz"},
+        )],
+        collected_by="test-harness", sink=sink,
+    )
+    stored = next(iter(sink.items.values())).decode("utf-8")
+    assert "abc123xyz" not in stored
+    assert "[REDACTED]" in stored
