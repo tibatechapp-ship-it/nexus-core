@@ -251,8 +251,10 @@ def pick_llm_for(specialty: str):
     try:
         from novamind.core.llm_router import get_router
 
-        router = get_router()
-        return router if getattr(router, "providers", None) else None
+        # Return the central router even when unconfigured so callers can
+        # inspect capability and receive its explicit no-provider failure.
+        # An empty provider list is not a synthetic execution capability.
+        return get_router()
     except Exception:
         return None
 
