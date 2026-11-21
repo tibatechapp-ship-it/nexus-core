@@ -9,7 +9,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dic
+from typing import Dict
 
 logger = logging.getLogger("agents.learner")
 
@@ -117,9 +117,9 @@ class LearnerAgent:
             raise ValueError("min_confidence must be between 0 and 1")
 
         try:
-            from novamind.core.learning_loop import learning_loop, sanitize_learning_tex
+            from novamind.core.learning_loop import learning_loop, sanitize_learning_text
 
-            safe_summary = sanitize_learning_text(summary.strip(), max_length=4000)
+            safe_summary = sanitize_learning_textt(summary.strip(), max_length=4000)
             experience = learning_loop.record(
                 agent="learner",
                 task=f"Learn from {source.strip()[:100]}",
@@ -156,15 +156,15 @@ class LearnerAgent:
         if not isinstance(source, str) or not source.strip():
             raise ValueError("source must be a non-empty string")
 
-        from novamind.core.learning_loop import sanitize_learning_tex
+        from novamind.core.learning_loop import sanitize_learning_text
 
-        normalized_pattern = sanitize_learning_text(pattern.strip(), max_length=200)
-        safe_context = sanitize_learning_text(context, max_length=200)
+        normalized_pattern = sanitize_learning_textt(pattern.strip(), max_length=200)
+        safe_context = sanitize_learning_textt(context, max_length=200)
         entry = {
             "pattern": normalized_pattern,
             "liked": liked,
             "context": safe_context,
-            "source": sanitize_learning_text(source.strip(), max_length=100),
+            "source": sanitize_learning_textt(source.strip(), max_length=100),
             "at": datetime.now(timezone.utc).isoformat(),
         }
 
