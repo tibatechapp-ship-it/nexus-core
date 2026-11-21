@@ -91,7 +91,20 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          pytest tests/novamind --cov=novamind --cov-report=term --tb=line
+          # The repository-wide coverage config deliberately omits NovaMind.
+          # Use a dedicated report config so this separate suite measures its
+          # own source instead of producing a misleading 0% / no-data report.
+          cat > /tmp/novamind.coveragerc <<'EOF'
+          [run]
+          branch = True
+          source = src/novamind
+          omit =
+              */tests/*
+          [report]
+          show_missing = True
+          skip_empty = True
+          EOF
+          pytest tests/novamind --cov=novamind --cov-config=/tmp/novamind.coveragerc --cov-report=term --tb=line
         env:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
