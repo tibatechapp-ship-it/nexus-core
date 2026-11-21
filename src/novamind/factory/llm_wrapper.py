@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from typing import Any, Callable, Dict
@@ -112,6 +113,10 @@ def make_llm_call(
                     timeout=timeout,
                     system=system,
                 )
+                # A legacy router may return an awaitable from its synchronous
+                # adapter call. Resolve that second await explicitly.
+                if inspect.isawaitable(response):
+                    response = await response
                 if isinstance(response, dict):
                     if response.get("ok") is False:
                         last_error = str(response.get("error") or "provider request failed")
