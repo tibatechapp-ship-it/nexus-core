@@ -60,20 +60,35 @@ class RouterAdapter:
             if k in {"temperature", "max_tokens", "provider", "allow_fallback"}
         }
 
-        # استدعِ Router الحقيقي
-        result = self._router.generate(
-            prompt,
-            system=system,
-            role=role,
-            **clean_kwargs,
-        )
+        # Adapt keyword arguments to legacy/test router signatures without
+        # swallowing errors raised *inside* the provider implementation.
+        generate = self._router.generate
+        try:
+            signature = inspect.signature(generate)
+            parameters = signature.parameters
+            accepts_kwargs = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+            call_kwargs = {"system": system, "role": role, **clean_kwargs}
+            if not accepts_kwargs:
+                call_kwargs = {
+                    key: value for key, value in call_kwargs.items()
+                    if key in parameters
+                }
+        except (TypeError, ValueError):
+            call_kwargs = {"system": system, "role": role, **clean_kwargs}
 
-        # ✅ إذا coroutine — أعِدها كما هي (llm_wrapper سينتظرها)
-        import inspect
-        if inspect.iscoroutine(result):
-            return result
+        result = generate(prompt, **call_kwargs)
 
-        # إذا dict/str — وحّدها
+        # Normalize async and sync responses identically so requested model and
+        # provider metadata survive coroutine-based legacy routers.
+        if inspect.isawaitable(result):
+            async def _await_and_normalize():
+                resolved = await result
+                return self._normalize_result(resolved, model, role)
+            return _await_and_normalize()
+
         return self._normalize_result(result, model, role)
 
     async def agenerate(
