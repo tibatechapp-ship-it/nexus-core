@@ -119,13 +119,24 @@ def make_llm_call(
                     text = response.get("text") or ""
                     provider = response.get("provider") or "unknown"
                     model_name = response.get("model") or model
-                    if response.get("simulated") or str(provider).lower() in {
+                    provider_identity = str(provider).strip().lower()
+                    if response.get("simulated") or provider_identity in {
                         "mock", "mock-provider", "offline", "none", "unknown",
-                        "router", "auto"
+                        "router", "auto", "fallback", ""
                     }:
-                        raise RuntimeError("simulated provider response rejected")
-                    if provider == "unknown":
-                        raise RuntimeError("router response did not identify the real provider")
+                        raise RuntimeError(
+                            "provider identity is missing or simulated; "
+                            "cannot certify a real model response"
+                        )
+                    model_identity = str(model_name).strip().lower()
+                    if model_identity in {
+                        "", "default", "unknown", "auto", "fast", "smart",
+                        "reasoning", "code"
+                    }:
+                        raise RuntimeError(
+                            "model identity is missing or only a routing role; "
+                            "cannot certify a real model response"
+                        )
                 else:
                     raise RuntimeError("router returned an unstructured response without provider metadata")
 
