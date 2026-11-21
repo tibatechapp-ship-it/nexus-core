@@ -12,6 +12,13 @@ def _configure_fake_provider(monkeypatch, tmp_path):
         "CEREBRAS_API_KEY", "NVIDIA_API_KEY", "SAMBANOVA_API_KEY",
     ):
         monkeypatch.delenv(key, raising=False)
+    for prefix, count in (
+        ("GROQ_API_KEY_", 20), ("ZAI_API_KEY_", 13),
+        ("GEMINI_API_KEY_", 20), ("OPENROUTER_API_KEY_", 11),
+        ("MISTRAL_API_KEY_", 9), ("OLLAMA_API_KEY_", 10),
+    ):
+        for index in range(1, count + 1):
+            monkeypatch.delenv(f"{prefix}{index}", raising=False)
 
 
 def test_skip_glm_removes_glm_providers(monkeypatch, tmp_path):
@@ -23,7 +30,7 @@ def test_skip_glm_removes_glm_providers(monkeypatch, tmp_path):
     router = lr.LLMRouter()
     names = [p.name for p in router.providers]
 
-    assert not any(n.startswith("glm-") for n in names), f"GLM still present: {names[:5]}"
+    assert not any("glm" in n.lower() for n in names), f"GLM still present: {names[:5]}"
     assert names, "no providers loaded"
 
 
