@@ -91,7 +91,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          pytest tests/novamind --cov=src/novamind --cov-report=term --tb=line || true
+          pytest tests/novamind --cov=novamind --cov-report=term --tb=line
         env:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
