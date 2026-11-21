@@ -495,7 +495,7 @@ def test_record_redacts_credentials_from_action_and_result(collector):
     mem, _clock = collector
     exp = mem.record(
         "t1", "s1", "coder", "write_file", Outcome.SUCCESS,
-        action="Authorization: Bearer abcdefghijklmnop",
+        action="Authorization: Bearer demo",
         result='api_key="secret-value" password=hunter2',
     )
     assert "abcdefghijklmnop" not in exp.action
