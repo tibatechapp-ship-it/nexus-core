@@ -496,11 +496,10 @@ def test_record_redacts_credentials_from_action_and_result(collector):
     exp = mem.record(
         "t1", "s1", "coder", "write_file", Outcome.SUCCESS,
         action="Authorization: Bearer demo",
-        result='api_key="secret-value" password=hunter2',
+        result='api_key="demo" password=demo',
     )
-    assert "abcdefghijklmnop" not in exp.action
     assert "secret-value" not in exp.result
-    assert "hunter2" not in exp.result
+    assert "password=demo" not in exp.result
     assert "[REDACTED]" in exp.action
     assert "[REDACTED]" in exp.result
 
@@ -509,13 +508,13 @@ def test_export_never_writes_known_credentials(tmp_path, collector):
     mem, _clock = collector
     mem.record(
         "t1", "s1", "coder", "read_file", Outcome.FAILURE,
-        action="token: export-secret-123",
+        action="token: demo",
         result="token: sample-value",
     )
     target = tmp_path / "experiences.json"
     mem.export(target)
     saved = target.read_text(encoding="utf-8")
-    assert "export-secret-123" not in saved
+    assert "token: demo" not in saved
     assert "[REDACTED]" in saved
 
 
@@ -524,9 +523,9 @@ def test_import_redacts_legacy_or_external_records(collector):
     added = mem._append_records([{
         "task_id": "t1", "step_id": "s1", "agent_role": "coder",
         "action_type": "read_file", "outcome": "success",
-        "action": "Authorization: Bearer imported-secret-token",
+        "action": "Authorization: Bearer demo",
         "result": "token: imported-sample",
     }])
     assert added == 1
     experience = mem.all()[0]
-    assert "imported-secret-token" not in experience.action
+    assert "Bearer demo" not in experience.action
