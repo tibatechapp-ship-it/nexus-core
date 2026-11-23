@@ -9,6 +9,8 @@ import pytest
 from src.ops.store import OpsStore
 from src.org.store import OrgStore
 from src.learning.lesson_store import LessonDatabase
+from src.memory.manager import MemoryManager
+from src.memory.knowledge_graph.graph import KnowledgeGraph
 from src.learning.interactions import (
     InteractionStore,
     get_interaction_store,
@@ -113,5 +115,40 @@ def test_reset_interaction_singleton_closes_connection(
     store = get_interaction_store()
     connection = store._conn
     reset_interaction_store()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
+def test_memory_manager_close_and_finalizer_release_shared_connection() -> None:
+    manager = MemoryManager(":memory:", embedder="hashing")
+    connection = manager.connection
+    manager.close()
+    manager.close()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
+    manager = MemoryManager(":memory:", embedder="hashing")
+    connection = manager.connection
+    manager_ref = weakref.ref(manager)
+    del manager
+    gc.collect()
+    assert manager_ref() is None
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
+
+def test_knowledge_graph_close_and_finalizer_release_connection() -> None:
+    graph = KnowledgeGraph()
+    connection = graph._conn
+    graph.close()
+    graph.close()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
+    graph = KnowledgeGraph()
+    connection = graph._conn
+    graph_ref = weakref.ref(graph)
+    del graph
+    gc.collect()
+    assert graph_ref() is None
     with pytest.raises(sqlite3.ProgrammingError, match="closed"):
         connection.execute("SELECT 1")
