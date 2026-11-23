@@ -226,3 +226,18 @@ def _isolate_novamind_data_dirs(tmp_path, monkeypatch):
                     target = tmp_path / attr.lower()
                     target.mkdir(parents=True, exist_ok=True)
                     monkeypatch.setattr(mod, attr, target, raising=False)
+
+def pytest_sessionfinish(session, exitstatus):
+    """Flush the batch trace exporter before pytest closes captured streams.
+
+    NovaMind tracing uses a background BatchSpanProcessor. Without an explicit
+    shutdown, its worker can export after pytest's capture stream is closed,
+    producing ``ValueError: I/O operation on closed file`` during teardown.
+    """
+    try:
+        from novamind.observability.tracer import shutdown
+
+        shutdown()
+    except Exception:
+        # Teardown must remain best-effort; never mask the test result.
+        pass
