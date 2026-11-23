@@ -207,7 +207,12 @@ class _RuntimeIsolation:
                 if self._had_novamind_home:
                     original_base = Path(self._saved_novamind_home or ".")
                 else:
-                    original_base = Path(module.__file__).resolve().parent.parent
+                    module_file = getattr(module, "__file__", None)
+                    original_base = (
+                        Path(module_file).resolve().parent.parent
+                        if isinstance(module_file, str)
+                        else Path.cwd()
+                    )
                 original_path = original_base / "memory" / "experiences.jsonl"
             self._learning_loops.append((loop, original_path))
             loop.storage_path = sandbox_path
