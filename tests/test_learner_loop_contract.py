@@ -28,6 +28,7 @@ def test_review_learning_persists_and_redacts_credentials(tmp_path: Path) -> Non
     assert experience.task == "pr_review_learning"
     assert "super-secret-token" not in experience.output_summary
     assert "api_key=[REDACTED]" in experience.output_summary
+    assert "confidence 0.90" in experience.output_summary
     stored = json.loads((tmp_path / "experiences.jsonl").read_text(encoding="utf-8"))
     assert "super-secret-token" not in json.dumps(stored)
     assert stored["input_size"] > 0
