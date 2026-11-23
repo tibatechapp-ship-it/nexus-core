@@ -53,18 +53,14 @@ jobs:
       # ── Layer 1: the stdlib-only framework (hard gate, ≥95% coverage) ──────
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
+        env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
 
       # pytest plugin finalizers may alter the session exit status. Enforce the
       # measured coverage again in a standalone coverage process so a printed
       # threshold failure can never leave this job green.
       - name: Independent framework coverage enforcement (floor 95%)
         run: python -m coverage report --fail-under=95
-
-      - name: SQLite lifecycle warning attribution (targeted)
-        run: pytest tests/test_sqlite_store_lifecycle.py tests/test_session_store.py tests/test_training_engine_hardening.py tests/test_build_api.py tests/test_misc_coverage.py tests/test_coverage_gaps_council.py -q
-        env:
-          PYTHONTRACEMALLOC: "1"
-
 
       # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
       # match a fresh deep generation (identity/reconcile/measurement/rule)
@@ -101,10 +97,24 @@ jobs:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
 
-      - name: Novamind unit + observability (non-blocking report)
-        run: pytest tests/novamind/unit tests/novamind/observability --tb=short
-        continue-on-error: true
+      # Real network proof is opt-in by credential availability. It never
+      # falls back to MockProvider; forks without secrets report an explicit skip.
+      - name: Live provider smoke (credential-gated, no mock fallback)
+        run: |
+          if [ -n "${ZAI_API_KEY_1:-}" ] || [ -n "${GROQ_API_KEY_1:-}" ]; then
+            export NEXUS_RUN_LIVE_PROVIDER_TESTS=1
+            pytest tests/integration/test_live_llm_provider.py -q
+          else
+            echo "::notice::Live provider smoke skipped: no provider secrets are available."
+          fi
         env:
+          ZAI_API_KEY_1: ${{ secrets.ZAI_API_KEY_1 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+
+      - name: NovaMind unit + observability (required)
+        run: pytest tests/novamind/unit tests/novamind/observability --tb=short
+        env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
 
@@ -127,6 +137,7 @@ jobs:
           EOF
           pytest tests/novamind --cov=novamind --cov-config=/tmp/novamind.coveragerc --cov-report=term --tb=line
         env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
   # ── Publish a shields.io coverage badge (no external service needed) ──────
