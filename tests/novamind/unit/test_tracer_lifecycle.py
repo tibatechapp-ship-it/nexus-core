@@ -97,14 +97,29 @@ def test_console_exporter_is_skipped_when_stable_stdout_is_closed(monkeypatch):
     class FakeProvider:
         def __init__(self, resource):
             captured["provider_created"] = True
-            self.processors = []
+            captured["processors"] = []
 
         def add_span_processor(self, processor):
-            self.processors.append(processor)
+            captured["processors"].append(processor)
+
+    class FakeTracer:
+        def start_span(self, name):
+            return SimpleNamespace(set_attribute=lambda *args: None, end=lambda: None)
+
+    class FakeTrace:
+        def set_tracer_provider(self, provider):
+            captured["provider"] = provider
+
+        def get_tracer(self, *args):
+            return FakeTracer()
+
+        def get_tracer_provider(self):
+            return captured["provider"]
 
     monkeypatch.setattr(tracer, "_OTEL_AVAILABLE", True)
     monkeypatch.setattr(tracer, "_initialized", False)
     monkeypatch.setattr(tracer, "_tracer", None)
+    monkeypatch.setattr(tracer, "otel_trace", FakeTrace())
     monkeypatch.setattr(tracer.sys, "__stdout__", ClosedStream())
     monkeypatch.setattr(tracer, "Resource", SimpleNamespace(create=lambda value: value))
     monkeypatch.setattr(tracer, "TracerProvider", FakeProvider)
@@ -123,6 +138,6 @@ def test_console_exporter_is_skipped_when_stable_stdout_is_closed(monkeypatch):
     tracer._init_otel()
 
     assert captured["provider_created"] is True
+    assert captured["processors"] == []
     assert tracer._initialized is True
     assert tracer._tracer is not None
-    assert tracer.otel_trace.get_tracer_provider().processors == []
