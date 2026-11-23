@@ -97,6 +97,20 @@ jobs:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
 
+      # Real network proof is opt-in by credential availability. It never
+      # falls back to MockProvider; forks without secrets report an explicit skip.
+      - name: Live provider smoke (credential-gated, no mock fallback)
+        run: |
+          if [ -n "${ZAI_API_KEY_1:-}" ] || [ -n "${GROQ_API_KEY_1:-}" ]; then
+            export NEXUS_RUN_LIVE_PROVIDER_TESTS=1
+            pytest tests/integration/test_live_llm_provider.py -q
+          else
+            echo "::notice::Live provider smoke skipped: no provider secrets are available."
+          fi
+        env:
+          ZAI_API_KEY_1: ${{ secrets.ZAI_API_KEY_1 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+
       - name: NovaMind unit + observability (required)
         run: pytest tests/novamind/unit tests/novamind/observability --tb=short
         env:
