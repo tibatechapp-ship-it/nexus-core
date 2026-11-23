@@ -238,10 +238,13 @@ def test_stats_and_list_providers_shape(router: LLMRouter) -> None:
 
 
 def test_get_router_returns_llm_router() -> None:
-    assert isinstance(get_router(), LLMRouter)
+    # A prior importlib.reload() redefines the class in the same module dict;
+    # compare against the module current class, not a stale imported symbol.
+    assert isinstance(get_router(), lr.LLMRouter)
 
 
 def test_module_reloads_cleanly() -> None:
     """إعادة تحميل الوحدة لا تفشل — أساس استقرار الاختبارات الأخرى."""
     fresh = importlib.reload(lr)
     assert hasattr(fresh, "LLMRouter") and hasattr(fresh, "get_router")
+    assert isinstance(fresh.get_router(), fresh.LLMRouter)
