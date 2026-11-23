@@ -27,6 +27,7 @@ def test_review_learning_persists_and_redacts_credentials(tmp_path: Path) -> Non
     assert experience.agent == "learner"
     assert experience.task == "pr_review_learning"
     assert "super-secret-token" not in experience.output_summary
+    assert "api_key=[REDACTED]" in experience.output_summary
     stored = json.loads((tmp_path / "experiences.jsonl").read_text(encoding="utf-8"))
     assert "super-secret-token" not in json.dumps(stored)
     assert stored["input_size"] > 0
@@ -46,6 +47,7 @@ def test_feedback_is_recorded_as_learning_experience(tmp_path: Path) -> None:
     loop = LearningLoop(tmp_path / "experiences.jsonl")
     exp = loop.record_feedback("use typed interfaces", True)
     assert exp.user_feedback == "liked"
+    assert "use typed interfaces" in exp.output_summary
     assert "feedback" in exp.tags
     assert loop.load_all()[0].task == "user_feedback"
 
