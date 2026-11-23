@@ -122,10 +122,10 @@ class LearningLoop:
         exp = Experience(
             experience_id="", agent=agent, task=task,
             input_hash=input_hash, input_size=len(input_data),
-            output_summary=_redact_learning_text(summary), outcome=outcome,
+            output_summary=_redact_learning_text(str(summary)), outcome=outcome,
             duration=duration, provider=provider, model=model,
-            error=_redact_learning_text(error)[:500],
-            user_feedback=_redact_learning_text(user_feedback),
+            error=_redact_learning_text(str(error))[:500],
+            user_feedback=_redact_learning_text(str(user_feedback)),
             tags=[_redact_learning_text(str(tag))[:100] for tag in (tags or [])],
         )
 
