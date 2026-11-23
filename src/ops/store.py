@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import weakref
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -108,8 +109,24 @@ class OpsStore:
         )
         raw.row_factory = sqlite3.Row
         self._conn = _LockedConnection(raw, self._lock)
+        # Explicit close is supported; finalizer is a last-resort safety net.
+        self._connection_finalizer = weakref.finalize(self, raw.close)
         with self._lock:
             self._migrate()
+
+    def close(self) -> None:
+        """Close the owned SQLite handle; safe to call more than once."""
+        with self._lock:
+            if self._connection_finalizer.alive:
+                self._connection_finalizer()
+
+    def __enter__(self):
+        """Support deterministic resource ownership with a context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
 
     # ── المخطط والهجرة ────────────────────────────────────────────────────
 
