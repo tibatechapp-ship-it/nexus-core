@@ -44,11 +44,11 @@ class LearningStorageError(RuntimeError):
 def _redact_learning_text(value: str) -> str:
     """Redact common credential assignments before storing learning output."""
     value = re.sub(
-        r"(?i)(api[_-]?key|secret|password|token|authorization)\\s*[:=]\\s*([^\\s,;]+)",
-        r"\\1=[REDACTED]",
+        r"(?i)(api[_-]?key|secret|password|token|authorization)\s*[:=]\s*([^\s,;]+)",
+        r"\1=[REDACTED]",
         value,
     )
-    return re.sub(r"(?i)bearer\\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
+    return re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
 
 
 @dataclass
