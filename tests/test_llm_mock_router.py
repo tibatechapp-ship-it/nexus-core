@@ -1,29 +1,29 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from novamind.core.llm_router import LLMRouter
 from src.llm.mock_router import setup_mock
 
 
-def test_setup_mock_installs_explicit_deterministic_simulation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    names = (
+def _restore_router_class(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
         "generate",
         "generate_for_task",
         "_load_from_env",
         "_cooldown_provider",
         "_is_cooled_down",
-    )
-    for name in names:
+    ):
         if hasattr(LLMRouter, name):
             monkeypatch.setattr(LLMRouter, name, getattr(LLMRouter, name))
         else:
             monkeypatch.setattr(LLMRouter, name, None, raising=False)
 
+
+def test_setup_mock_installs_explicit_deterministic_simulation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _restore_router_class(monkeypatch)
     setup_mock()
     router = LLMRouter()
     assert router.providers == []
@@ -57,6 +57,7 @@ def test_mock_role_responses_are_predictable(
     prompt: str,
     expected: str,
 ) -> None:
+    _restore_router_class(monkeypatch)
     monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: setattr(self, "providers", []))
     setup_mock()
     result = LLMRouter().generate(prompt, system=system)
