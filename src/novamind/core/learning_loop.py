@@ -181,7 +181,9 @@ class LearningLoop:
         )
         return {"experience": exp.to_dict(), "issues_recorded": len(normalized)}
 
-    def record_feedback(self, pattern: str, liked: bool) -> Experience:
+    def record_feedback(
+        self, pattern: str, liked: bool, context: str = "", source: str = "user"
+    ) -> Experience:
         """Persist user feedback as a learning experience."""
         if not isinstance(pattern, str) or not pattern.strip():
             raise ValueError("pattern must be a non-empty string")
@@ -194,8 +196,8 @@ class LearningLoop:
             input_data=pattern,
             output={"summary": f"User {label} suggestion: {_redact_learning_text(pattern)[:160]}"},
             outcome="partial",
-            user_feedback=label,
-            tags=["feedback", label],
+            user_feedback=_redact_learning_text(context)[:200] or label,
+            tags=["feedback", label, _redact_learning_text(source)[:64]],
         )
 
     def stream_all(self) -> Iterator[Experience]:
