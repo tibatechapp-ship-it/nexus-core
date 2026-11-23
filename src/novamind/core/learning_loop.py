@@ -174,7 +174,14 @@ class LearningLoop:
             input_data=payload,
             output={
                 "summary": f"PR review {repo[:100]}#{pr_num}: "
-                + "; ".join(issue["description"] for issue in normalized)[:160],
+                + "; ".join(
+                    issue["description"]
+                    + (
+                        f" (confidence {issue['confidence']:.2f})"
+                        if "confidence" in issue else ""
+                    )
+                    for issue in normalized
+                )[:160],
             },
             outcome="success",
             tags=["pr-review", repo[:100]],
