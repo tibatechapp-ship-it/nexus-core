@@ -143,7 +143,9 @@ class LearningLoop:
             if not isinstance(issue, dict):
                 continue
             safe = {}
-            for key in ("filename", "category", "severity", "rule_id", "message", "description"):
+            # Persist classification metadata only. Free-form finding text may
+            # contain source snippets, credentials, or attacker-controlled text.
+            for key in ("filename", "category", "severity", "rule_id"):
                 value = issue.get(key)
                 if isinstance(value, str) and value.strip():
                     safe[key] = value.strip()[:500]
