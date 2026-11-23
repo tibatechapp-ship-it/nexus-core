@@ -30,10 +30,16 @@ class SQLiteVecStore(VectorStore):
         if parent:
             os.makedirs(parent, exist_ok=True)
         self._conn = sqlite3.connect(path)
+        try:
+            self._conn.enable_load_extension(True)
+            self._load_vec()
+            self._init_schema()
+        except Exception:
+            close = getattr(self._conn, "close", None)
+            if callable(close):
+                close()
+            raise
         self._connection_finalizer = weakref.finalize(self, self._conn.close)
-        self._conn.enable_load_extension(True)
-        self._load_vec()
-        self._init_schema()
 
     def _load_vec(self) -> None:
         """يحمّل امتداد sqlite-vec."""
