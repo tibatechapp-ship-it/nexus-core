@@ -50,3 +50,22 @@ def test_pr_review_learning_validates_contract(tmp_path, repo, pr_num, issues):
     loop = LearningLoop(tmp_path / 'experiences.jsonl')
     with pytest.raises((ValueError, TypeError)):
         loop.learn_from_pr_review(repo, pr_num, issues)
+
+
+def test_user_feedback_is_recorded_without_claiming_task_success(tmp_path):
+    loop = LearningLoop(tmp_path / 'experiences.jsonl')
+    result = loop.record_feedback('prefer concise output', False, context='review', source='learner-agent')
+    assert result['recorded'] is True
+    experiences = loop.load_all()
+    assert len(experiences) == 1
+    assert experiences[0].agent == 'learner'
+    assert experiences[0].outcome == 'partial'
+    assert experiences[0].user_feedback == 'disliked'
+    assert 'prefer concise output' in (tmp_path / 'experiences.jsonl').read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('pattern,liked', [('', True), ('pattern', 1)])
+def test_user_feedback_validates_input(tmp_path, pattern, liked):
+    loop = LearningLoop(tmp_path / 'experiences.jsonl')
+    with pytest.raises((ValueError, TypeError)):
+        loop.record_feedback(pattern, liked)
