@@ -75,5 +75,7 @@ def test_mock_router_compatibility_methods_are_installed(
     router = LLMRouter()
     result = router.generate_for_task("review", "prompt", system="generic")
     assert result["simulated"] is True
+    assert result["text"] == "[Mock] prompt"
+    assert result["model"] == "mock"
     router._cooldown_provider("mock", seconds=5)
     assert router._is_cooled_down("mock") is True
