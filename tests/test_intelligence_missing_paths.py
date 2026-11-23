@@ -113,7 +113,11 @@ def test_report_append_rejects_symlink_and_oversized_section(tmp_path):
     link.symlink_to(report)
     with pytest.raises(MissionBehaviorError, match="missing or is not a regular file"):
         _append_behavior_report(SimpleNamespace(report_path=str(link)), _mission_result(), "run-link")
-    huge = _mission_result("x" * (130 * 1024))
+    base = _mission_result()
+    huge = MissionBehaviorReplayResult(
+        base.mission_id, base.baseline_revision, "x" * (130 * 1024),
+        base.comparison, base.assurance, base.gate_decision, base.evidence_ids,
+    )
     with pytest.raises(MissionBehaviorError, match="128 KiB"):
         _append_behavior_report(SimpleNamespace(report_path=str(report)), huge, "run-huge")
 
@@ -326,7 +330,7 @@ def test_behavior_contract_rejects_duplicate_ids_and_malformed_serialization():
             "cases": [{"case_id": "c", "input_sha256": _SHA, "output_sha256": _OUT, "evidence_id": "ev", "extra": 1}],
             "evidence": [ref.to_dict()],
         })
-    with pytest.raises(BehaviorContractError, match="invalid baseline case"):
+    with pytest.raises(BehaviorContractError, match="baseline case has unknown or missing fields"):
         BehaviorBaseline.from_dict({
             "target": "t", "revision": "r",
             "cases": [{"case_id": "c", "input_sha256": _SHA, "output_sha256": _OUT, "evidence_id": "ev", "unexpected": 1}],
