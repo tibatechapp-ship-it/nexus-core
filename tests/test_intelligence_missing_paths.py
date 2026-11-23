@@ -225,8 +225,8 @@ def test_mission_replay_enforces_combined_evidence_limit(tmp_path, monkeypatch):
     checkpoint = tmp_path / "checkpoint"
     checkpoint.mkdir()
     (checkpoint / "app.py").write_text("pass\n", encoding="utf-8")
-    references = tuple(_ref(f"base-{i}") for i in range(5000))
-    baseline = _baseline(refs=references)
+    monkeypatch.setattr(mission_module, "_MAX_COMBINED_EVIDENCE", 1)
+    baseline = _baseline()
     store = _Store(SimpleNamespace(id="case-1", status="done", phase="G_RELEASE", repo_path=str(repo)))
     monkeypatch.setattr(mission_module, "restore_mission_context", lambda *a, **k: _replay_context(checkpoint))
     monkeypatch.setattr(
