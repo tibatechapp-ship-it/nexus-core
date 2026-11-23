@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import struct
+import weakref
 from typing import Sequence, Any
 
 from .base import VectorStore, SearchResult
@@ -29,6 +30,7 @@ class SQLiteVecStore(VectorStore):
         if parent:
             os.makedirs(parent, exist_ok=True)
         self._conn = sqlite3.connect(path)
+        self._connection_finalizer = weakref.finalize(self, self._conn.close)
         self._conn.enable_load_extension(True)
         self._load_vec()
         self._init_schema()
@@ -112,4 +114,12 @@ class SQLiteVecStore(VectorStore):
         self._conn.commit()
 
     def close(self) -> None:
-        self._conn.close()
+        """Close the vector store connection; idempotent."""
+        if self._connection_finalizer.alive:
+            self._connection_finalizer()
+
+    def __enter__(self) -> SQLiteVecStore:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
