@@ -26,6 +26,8 @@ def test_pr_review_learning_records_allowlisted_metadata_only(tmp_path):
     assert exp.task == 'PR review: owner/repo#42'
     assert exp.outcome == 'partial'
     assert exp.input_size > 0
+    assert 'security' in exp.output_summary
+    assert 'unsafe-shell' in exp.output_summary
 
     persisted = (tmp_path / 'experiences.jsonl').read_text(encoding='utf-8')
     assert 'PRIVATE SOURCE' not in persisted
