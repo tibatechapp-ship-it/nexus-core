@@ -16,6 +16,9 @@
 
 from __future__ import annotations
 
+import importlib
+import os
+
 import pytest
 
 from src.fleet.inventory import build_inventory
@@ -66,3 +69,31 @@ def test_all_categories_are_covered() -> None:
     """بوابة الشمول: الثماني فئات معلنة في نوامind لا أقل."""
     covered = set(CATEGORY_SAMPLES)
     assert covered == {"code", "quality", "security", "infra", "data", "research", "ui", "meta"}
+
+def test_probe_runtime_isolation_sandboxes_learning_loop_and_restores_state() -> None:
+    """Probe must redirect persisted agent feedback and restore global state."""
+    from src.fleet.probe import _RuntimeIsolation
+
+    module = importlib.import_module("novamind.core.learning_loop")
+    loop = module.learning_loop
+    original_path = loop.storage_path
+    had_home = "NOVAMIND_HOME" in os.environ
+    original_home = os.environ.get("NOVAMIND_HOME")
+
+    isolation = _RuntimeIsolation()
+    try:
+        isolation.engage()
+        sandbox_home = os.environ["NOVAMIND_HOME"]
+        assert sandbox_home == str(isolation._tmp)
+        assert loop.storage_path == isolation._tmp / "memory" / "experiences.jsonl"
+
+        loop.record_feedback("fleet probe isolation", True, source="test")
+        assert loop.storage_path.is_file()
+        assert loop.storage_path.parent == isolation._tmp / "memory"
+    finally:
+        isolation.restore()
+
+    assert loop.storage_path == original_path
+    assert ("NOVAMIND_HOME" in os.environ) is had_home
+    assert os.environ.get("NOVAMIND_HOME") == original_home
+
