@@ -153,10 +153,16 @@ class LearningLoop:
 
         normalized = []
         for item in issues[:100]:
-            normalized.append({
+            normalized_issue = {
                 "description": _redact_learning_text(str(item.get("description", "")))[:2000],
-                "severity": _redact_learning_text(str(item.get("severity", "info")))[:32],
-            })
+                "severity": _redact_learning_text(str(item.get("severity", "info")))[:32,
+            }
+            if "confidence" in item:
+                confidence = float(item["confidence"])
+                if not 0.0 <= confidence <= 1.0:
+                    raise ValueError("issue confidence must be between 0 and 1")
+                normalized_issue["confidence"] = confidence
+            normalized.append(normalized_issue)
         payload = json.dumps(
             {"repo": repo[:300], "pr_num": pr_num, "issues": normalized},
             ensure_ascii=False,
