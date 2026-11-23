@@ -91,14 +91,13 @@ jobs:
         continue-on-error: true
         env:
           NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-coverage-learning.jsonl
+          ZAI_API_KEY_1: test
+          GROQ_API_KEY_1: test
         run: |
           # Include root-level tests that exercise NovaMind too; the dedicated
           # coverage config measures the NovaMind package and omits test files.
           pytest --cov=novamind --cov-config=coverage-novamind.ini \
             --cov-report=term-missing --tb=line || true
-        env:
-          ZAI_API_KEY_1: test
-          GROQ_API_KEY_1: test
   # ── Publish a shields.io coverage badge (no external service needed) ──────
   coverage-badge:
     name: publish coverage badge
