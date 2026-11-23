@@ -31,6 +31,7 @@ def test_pr_review_learning_records_allowlisted_metadata_only(tmp_path):
     assert 'PRIVATE SOURCE' not in persisted
     assert 'PRIVATE PATCH' not in persisted
     assert 'SECRET SHOULD NOT' not in persisted
+    assert 'shell invocation needs validation' not in persisted
 
 
 def test_pr_review_learning_ignores_empty_or_unstructured_findings(tmp_path):
