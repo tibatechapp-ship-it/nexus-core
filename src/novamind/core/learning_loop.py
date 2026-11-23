@@ -172,7 +172,10 @@ class LearningLoop:
             agent="learner",
             task="pr_review_learning",
             input_data=payload,
-            output={"summary": f"Recorded {len(normalized)} review issue(s)"},
+            output={
+                "summary": f"PR review {repo[:100]}#{pr_num}: "
+                + "; ".join(issue["description"] for issue in normalized)[:160],
+            },
             outcome="success",
             tags=["pr-review", repo[:100]],
         )
@@ -189,7 +192,7 @@ class LearningLoop:
             agent="learner",
             task="user_feedback",
             input_data=pattern,
-            output={"summary": f"User {label} a suggestion"},
+            output={"summary": f"User {label} suggestion: {_redact_learning_text(pattern)[:160]}"},
             outcome="partial",
             user_feedback=label,
             tags=["feedback", label],
