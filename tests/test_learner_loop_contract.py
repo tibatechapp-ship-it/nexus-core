@@ -86,7 +86,7 @@ def test_feedback_reports_secondary_persistence_failure(
 ) -> None:
     loop = LearningLoop(tmp_path / "experiences.jsonl")
     monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
-    monkeypatch.setattr(learner_module, "learning_loop", loop, raising=False)
+    monkeypatch.setattr(learning_loop_module, "learning_loop", loop)
     agent = learner_module.LearnerAgent()
 
     def fail_feedback(pattern: str, liked: bool) -> None:
