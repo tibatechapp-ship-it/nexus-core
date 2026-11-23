@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import novamind.core.learning_loop as learning_loop_module
+from novamind.core.learning_loop import LearningLoop, LearningStorageError
+from novamind.agents import learner as learner_module
+
+
+def test_review_learning_keeps_classifications_not_source_secrets(tmp_path: Path) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    result = loop.learn_from_pr_review(
+        repo="example/repo",
+        pr_num=42,
+        issues=[{
+            "category": "security",
+            "severity": "high",
+            "rule_id": "credential-leak",
+            "description": "api_key=super-secret-token",
+        }],
+    )
+
+    assert result["learned"] == 1
+    experience = loop.load_all()[0]
+    assert experience.agent == "pr_reviewer"
+    assert "security/high/credential-leak" in experience.output_summary
+    assert "super-secret-token" not in experience.output_summary
+    stored = json.loads((tmp_path / "experiences.jsonl").read_text(encoding="utf-8"))
+    assert "super-secret-token" not in json.dumps(stored)
+    assert "api_key=super-secret-token" not in json.dumps(stored)
+
+
+def test_review_learning_validates_contract(tmp_path: Path) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    with pytest.raises(ValueError, match="pr_num"):
+        loop.learn_from_pr_review("repo", -1, [])
+    with pytest.raises(TypeError, match="issues"):
+        loop.learn_from_pr_review("repo", 1, "bad")
+    assert loop.learn_from_pr_review("repo", 1, [{}])["learned"] == 0
+
+
+def test_feedback_is_recorded_as_learning_experience(tmp_path: Path) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    result = loop.record_feedback("api_key=super-secret", True, source="unit-test")
+    assert result["recorded"] is True
+    experience = loop.load_all()[0]
+    assert experience.user_feedback == "liked"
+    assert "api_key=[REDACTED]" in experience.output_summary
+    assert "super-secret" not in experience.output_summary
+
+
+def test_record_raises_when_storage_fails(tmp_path: Path) -> None:
+    storage_path = tmp_path / "not-a-file"
+    storage_path.mkdir()
+    loop = LearningLoop(storage_path)
+    with pytest.raises(LearningStorageError, match="persist"):
+        loop.record(
+            agent="test",
+            task="storage failure",
+            input_data="input",
+            output="output",
+            outcome="success",
+        )
+
+
+def test_learner_agent_learn_uses_canonical_experience_api(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
+    monkeypatch.setattr(learning_loop_module, "learning_loop", loop)
+    agent = learner_module.LearnerAgent()
+
+    result = agent.learn("session summary", source="unit-test", min_confidence=0.8)
+
+    assert result["ok"] is True
+    experience = loop.load_all()[0]
+    assert experience.task == "session_learning"
+    assert "confidence:0.80" in experience.tags
+    assert "session summary" in experience.output_summary
+
+
+def test_feedback_reports_secondary_persistence_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
+    monkeypatch.setattr(learning_loop_module, "learning_loop", loop)
+    agent = learner_module.LearnerAgent()
+
+    def fail_feedback(
+        pattern: str, liked: bool, context: str = "", source: str = "user"
+    ) -> None:
+        raise LearningStorageError("secondary store unavailable")
+
+    monkeypatch.setattr(loop, "record_feedback", fail_feedback)
+    result = agent.record_feedback(
+        "api_key=super-secret", True, context="token=another-secret"
+    )
+
+    assert result["ok"] is True
+    assert result["feedback_saved"] is True
+    assert result["learning_recorded"] is False
+    assert "secondary store unavailable" in result["warning"]
+    feedback_text = (tmp_path / "feedback.json").read_text(encoding="utf-8")
+    assert "super-secret" not in feedback_text
+    assert "another-secret" not in feedback_text
+    assert "api_key=[REDACTED]" in feedback_text
