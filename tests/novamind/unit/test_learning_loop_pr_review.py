@@ -64,6 +64,7 @@ def test_user_feedback_is_recorded_without_claiming_task_success(tmp_path):
     assert experiences[0].agent == 'learner'
     assert experiences[0].outcome == 'partial'
     assert experiences[0].user_feedback == 'disliked'
+    assert 'prefer concise output' in experiences[0].output_summary
     assert 'prefer concise output' in (tmp_path / 'experiences.jsonl').read_text(encoding='utf-8')
 
 
