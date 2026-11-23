@@ -30,7 +30,14 @@ def setup_mock() -> None:
             t = "آمن: يمكن التخفيف." if is_debate else "آمن: الطلب مقبول."
         else:
             t = f"[Mock] {p[:80]}"
-        return {"ok": True, "text": t, "provider": "mock", "elapsed": 0.01}
+        return {
+            "ok": True,
+            "text": t,
+            "provider": "mock",
+            "model": "mock",
+            "elapsed": 0.01,
+            "simulated": True,
+        }
 
     LLMRouter.generate = mock_gen  # type: ignore[method-assign]
     LLMRouter.generate_for_task = (  # type: ignore[method-assign]
