@@ -63,6 +63,25 @@ jobs:
       # coverage report --fail-under rounds the displayed percentage to a
       # whole number (94.77 becomes 95), which can create a false-green gate.
       # Read the unrounded JSON percentage and compare it exactly instead.
+      - name: Emit exact coverage and uncovered lines (always, diagnostic)
+        if: always()
+        run: |
+          python -m coverage json -o /tmp/framework-coverage-diagnostic.json --fail-under=0 || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report_path = Path('/tmp/framework-coverage-diagnostic.json')
+          if not report_path.exists():
+              print('Coverage JSON unavailable; test collection may have failed before coverage started.')
+              raise SystemExit(0)
+          report = json.loads(report_path.read_text())
+          print(f"Exact framework coverage: {report['totals']['percent_covered']}%")
+          for path, data in sorted(report.get('files', {}).items()):
+              missing = data.get('missing_lines', [])
+              if missing:
+                  print(f"UNCOVERED {path}: {missing}")
+          PY
+
       - name: Enforce framework coverage floor (exact independent gate)
         run: |
           python -m coverage json -o /tmp/framework-coverage.json --fail-under=0
