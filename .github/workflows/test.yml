@@ -53,6 +53,8 @@ jobs:
       # ── Layer 1: the stdlib-only framework (hard gate, ≥95% coverage) ──────
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
+        env:
+          PYTHONTRACEMALLOC: "1"
 
       # pytest plugin finalizers may alter the session exit status. Enforce the
       # measured coverage again in a standalone coverage process so a printed
