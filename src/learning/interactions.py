@@ -27,6 +27,7 @@ import weakref
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import RLock
+from types import TracebackType
 from typing import Any
 
 from src.knowledge.base import tokenize as _tokenize
@@ -99,7 +100,7 @@ class InteractionStore:
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        tb: object | None,
+        tb: TracebackType | None,
     ) -> None:
         self.close()
 
