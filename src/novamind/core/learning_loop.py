@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Iterator
@@ -34,6 +35,20 @@ except ImportError:
         HAS_MSVCRT = False
 
 logger = logging.getLogger("core.learning_loop")
+
+
+class LearningStorageError(RuntimeError):
+    """Raised when a learning record cannot be durably persisted."""
+
+
+def _redact_learning_text(value: str) -> str:
+    """Redact common credential assignments before learning data is stored."""
+    value = re.sub(
+        r"(?i)(api[_-]?key|secret|password|token|authorization)\\s*[:=]\\s*([^\\s,;]+)",
+        r"\\1=[REDACTED]",
+        value,
+    )
+    return re.sub(r"(?i)bearer\\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
 
 
 @dataclass
@@ -104,10 +119,11 @@ class LearningLoop:
         exp = Experience(
             experience_id="", agent=agent, task=task,
             input_hash=input_hash, input_size=len(input_data),
-            output_summary=summary, outcome=outcome,
+            output_summary=_redact_learning_text(summary), outcome=outcome,
             duration=duration, provider=provider, model=model,
-            error=error[:500], user_feedback=user_feedback,
-            tags=tags or [],
+            error=_redact_learning_text(error)[:500],
+            user_feedback=_redact_learning_text(user_feedback),
+            tags=[_redact_learning_text(str(tag))[:100] for tag in (tags or [])],
         )
 
         try:
@@ -121,9 +137,57 @@ class LearningLoop:
                     finally:
                         self._release_file_lock(f)
         except Exception as e:
-            logger.error(f"record failed: {e}")
+            logger.exception("record failed; refusing to report durable success")
+            raise LearningStorageError("Could not persist learning experience") from e
 
         return exp
+
+    def learn_from_pr_review(self, repo: str, pr_num: int, issues: list[dict]) -> Dict:
+        """Persist a normalized PR-review learning event."""
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if isinstance(pr_num, bool) or not isinstance(pr_num, int) or pr_num < 0:
+            raise ValueError("pr_num must be a non-negative integer")
+        if not isinstance(issues, list) or any(not isinstance(item, dict) for item in issues):
+            raise ValueError("issues must be a list of objects")
+
+        normalized = []
+        for item in issues[:100]:
+            normalized.append({
+                "description": _redact_learning_text(str(item.get("description", "")))[:2000],
+                "severity": _redact_learning_text(str(item.get("severity", "info")))[:32],
+            })
+        payload = json.dumps(
+            {"repo": repo[:300], "pr_num": pr_num, "issues": normalized},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        exp = self.record(
+            agent="learner",
+            task="pr_review_learning",
+            input_data=payload,
+            output={"summary": f"Recorded {len(normalized)} review issue(s)"},
+            outcome="success",
+            tags=["pr-review", repo[:100]],
+        )
+        return {"experience": exp.to_dict(), "issues_recorded": len(normalized)}
+
+    def record_feedback(self, pattern: str, liked: bool) -> Experience:
+        """Persist user feedback as a learning experience."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise ValueError("liked must be a boolean")
+        label = "liked" if liked else "disliked"
+        return self.record(
+            agent="learner",
+            task="user_feedback",
+            input_data=pattern,
+            output={"summary": f"User {label} a suggestion"},
+            outcome="partial",
+            user_feedback=label,
+            tags=["feedback", label],
+        )
 
     def stream_all(self) -> Iterator[Experience]:
         if not self.storage_path.exists():
