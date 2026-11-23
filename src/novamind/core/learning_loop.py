@@ -187,16 +187,24 @@ class LearningLoop:
             "context": context.strip()[:500],
             "liked": liked,
         }, ensure_ascii=False, sort_keys=True)
+        safe_pattern = " ".join(pattern.strip().split())[:160]
+        safe_pattern = re.sub(
+            r"(?i)(api[_-]?key|token|password|secret)\\s*[:=]\\s*\\S+",
+            r"\\1=[REDACTED]",
+            safe_pattern,
+        )
+        feedback_summary = f"User feedback ({'liked' if liked else 'disliked'}): {safe_pattern}"[:200]
         exp = self.record(
             agent="learner",
             task="user feedback",
             input_data=payload,
-            output={"summary": "User preference feedback recorded"},
+            output={"summary": feedback_summary},
             outcome="partial",
             user_feedback="liked" if liked else "disliked",
             tags=["user-feedback"],
         )
         return {"recorded": True, "experience_id": exp.experience_id}
+
     def stream_all(self) -> Iterator[Experience]:
         if not self.storage_path.exists():
             return
