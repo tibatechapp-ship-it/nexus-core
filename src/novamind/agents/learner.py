@@ -67,53 +67,66 @@ class LearnerAgent:
     # ═══════════════════════════════════════════════════════
     def record_feedback(self, pattern: str, liked: bool,
                         context: str = "", source: str = "user") -> Dict:
-        """
-        Record user feedback on a suggestion.
-        - liked: True (👍) or False (👎)
-        """
+        """Persist feedback locally and report central learning status."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise ValueError("liked must be a boolean")
+
+        from novamind.core.learning_loop import (
+            _redact_learning_text,
+            learning_loop,
+        )
+
+        safe_pattern = _redact_learning_text(pattern)[:200]
+        safe_context = _redact_learning_text(context)[:200]
+        safe_source = _redact_learning_text(source)[:80]
         entry = {
-            "pattern": pattern,
+            "pattern": safe_pattern,
             "liked": liked,
-            "context": context[:200],
-            "source": source,
+            "context": safe_context,
+            "source": safe_source,
             "at": datetime.now(timezone.utc).isoformat(),
         }
         self.feedback["entries"].append(entry)
 
-        # Update weights
-        key = self._normalize_pattern(pattern)
+        key = self._normalize_pattern(safe_pattern)
         if key not in self.feedback["pattern_weights"]:
-            self.feedback["pattern_weights"][key] = {"likes": 0, "dislikes": 0, "net": 0}
-
-        w = self.feedback["pattern_weights"][key]
+            self.feedback["pattern_weights"][key] = {
+                "likes": 0, "dislikes": 0, "net": 0,
+            }
+        weight = self.feedback["pattern_weights"][key]
         if liked:
-            w["likes"] += 1
-            w["net"] += 1
+            weight["likes"] += 1
+            weight["net"] += 1
         else:
-            w["dislikes"] += 1
-            w["net"] -= 1
+            weight["dislikes"] += 1
+            weight["net"] -= 1
 
+        # If local persistence fails, raise: in-memory mutation is not durable.
         self._save_feedback()
 
-        # The primary feedback file is durable; report secondary learning
-        # persistence separately rather than silently discarding its failure.
         learning_recorded = False
         warning = ""
         try:
-            from novamind.core.learning_loop import learning_loop
-            learning_loop.record_feedback(pattern, liked)
+            learning_loop.record_feedback(
+                safe_pattern, liked, context=safe_context, source=safe_source
+            )
             learning_recorded = True
         except Exception as exc:
             warning = f"{type(exc).__name__}: {exc}"[:200]
-            logger.warning("feedback saved locally; learning record failed: %s", warning)
+            logger.warning("feedback saved locally; central learning failed: %s", warning)
 
-        logger.info("feedback: %s -> %s", pattern[:50], "liked" if liked else "disliked")
+        logger.info(
+            "feedback: %s -> %s", safe_pattern[:50],
+            "liked" if liked else "disliked",
+        )
         result = {
             "ok": True,
             "feedback_saved": True,
             "learning_recorded": learning_recorded,
             "entry": entry,
-            "weight": w,
+            "weight": weight,
         }
         if warning:
             result["warning"] = warning
