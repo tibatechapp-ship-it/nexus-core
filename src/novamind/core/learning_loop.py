@@ -189,8 +189,8 @@ class LearningLoop:
         }, ensure_ascii=False, sort_keys=True)
         safe_pattern = " ".join(pattern.strip().split())[:160]
         safe_pattern = re.sub(
-            r"(?i)(api[_-]?key|token|password|secret)\\s*[:=]\\s*\\S+",
-            r"\\1=[REDACTED]",
+            r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*\S+",
+            r"\1=[REDACTED]",
             safe_pattern,
         )
         feedback_summary = f"User feedback ({'liked' if liked else 'disliked'}): {safe_pattern}"[:200]
