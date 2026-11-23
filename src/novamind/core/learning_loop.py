@@ -155,7 +155,7 @@ class LearningLoop:
         for item in issues[:100]:
             normalized_issue = {
                 "description": _redact_learning_text(str(item.get("description", "")))[:2000],
-                "severity": _redact_learning_text(str(item.get("severity", "info")))[:32,
+                "severity": _redact_learning_text(str(item.get("severity", "info")))[:32],
             }
             if "confidence" in item:
                 confidence = float(item["confidence"])
