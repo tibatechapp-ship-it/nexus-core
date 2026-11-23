@@ -187,7 +187,7 @@ class LearningLoop:
             output={"summary": "User preference feedback recorded"},
             outcome="partial",
             user_feedback="liked" if liked else "disliked",
-            tags=["user-feedback", source.strip()[:100] or "user"],
+            tags=["user-feedback"],
         )
         return {"recorded": True, "experience_id": exp.experience_id}
     def stream_all(self) -> Iterator[Experience]:
