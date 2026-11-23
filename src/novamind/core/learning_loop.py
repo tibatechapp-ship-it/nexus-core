@@ -165,6 +165,29 @@ class LearningLoop:
             tags=["pr-review", "review-findings"],
         )
         return {"learned": len(safe_issues), "experience_ids": [exp.experience_id]}
+    def record_feedback(self, pattern: str, liked: bool, context: str = "", source: str = "user") -> Dict:
+        """Persist user preference feedback without treating it as task success."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise TypeError("liked must be a bool")
+        if not isinstance(context, str) or not isinstance(source, str):
+            raise TypeError("context and source must be strings")
+        payload = json.dumps({
+            "pattern": pattern.strip()[:500],
+            "context": context.strip()[:500],
+            "liked": liked,
+        }, ensure_ascii=False, sort_keys=True)
+        exp = self.record(
+            agent="learner",
+            task="user feedback",
+            input_data=payload,
+            output={"summary": "User preference feedback recorded"},
+            outcome="partial",
+            user_feedback="liked" if liked else "disliked",
+            tags=["user-feedback", source.strip()[:100] or "user"],
+        )
+        return {"recorded": True, "experience_id": exp.experience_id}
     def stream_all(self) -> Iterator[Experience]:
         if not self.storage_path.exists():
             return
