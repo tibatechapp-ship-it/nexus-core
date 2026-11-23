@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import sqlite3
+import weakref
 from collections import Counter
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -121,6 +122,7 @@ class LessonDatabase:
     def __init__(self, path: str | os.PathLike[str] = ":memory:") -> None:
         self._connection = connect(path)
         self._lock = RLock()
+        self._connection_finalizer = weakref.finalize(self, self._connection.close)
         self.migrate_schema()
 
     # -- schema ------------------------------------------------------------
@@ -218,9 +220,22 @@ class LessonDatabase:
             self._connection.commit()
 
     def close(self) -> None:
-        """Close the underlying connection."""
+        """Close the underlying connection; idempotent and thread-safe."""
         with self._lock:
-            self._connection.close()
+            if self._connection_finalizer.alive:
+                self._connection_finalizer()
+
+    def __enter__(self) -> LessonDatabase:
+        """Support deterministic connection ownership."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object | None,
+    ) -> None:
+        self.close()
 
     @staticmethod
     def _row_to_lesson(row: sqlite3.Row) -> Lesson:
