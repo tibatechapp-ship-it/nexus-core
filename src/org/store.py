@@ -23,6 +23,7 @@ import secrets
 import sqlite3
 import threading
 import weakref
+from types import TracebackType
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -105,11 +106,16 @@ class OrgStore:
         with self._lock:
             self._migrate()
 
-    def __enter__(self):
+    def __enter__(self) -> OrgStore:
         """Support deterministic resource ownership with a context manager."""
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.close()
 
 
