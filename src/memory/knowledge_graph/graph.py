@@ -1,6 +1,7 @@
 """Simple SQLite-based Knowledge Graph."""
 from __future__ import annotations
 import sqlite3
+import weakref
 import json
 from dataclasses import dataclass, field
 from typing import Optional, Any
@@ -26,7 +27,19 @@ class KnowledgeGraph:
 
     def __init__(self: Any, path: str = ":memory:") -> None:
         self._conn = sqlite3.connect(path)
+        self._connection_finalizer = weakref.finalize(self, self._conn.close)
         self._init_schema()
+
+    def close(self) -> None:
+        """Close the graph's SQLite handle; idempotent."""
+        if self._connection_finalizer.alive:
+            self._connection_finalizer()
+
+    def __enter__(self) -> KnowledgeGraph:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
     def _init_schema(self) -> None:
         self._conn.executescript("""
