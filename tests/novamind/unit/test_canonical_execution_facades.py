@@ -129,3 +129,38 @@ def test_canonical_executor_rejects_unverified_provider_metadata() -> None:
 
     assert result["success"] is False
     assert result["status"] == "unverified_provider_response"
+
+
+def test_canonical_executor_accepts_verified_real_provider_response() -> None:
+    from types import SimpleNamespace
+    from novamind.factory import executor as canonical_executor
+
+    class PassingChain:
+        def check(self, output, stop_on_error=False):
+            return SimpleNamespace(passed=True, warnings=[])
+
+    async def real_provider(_prompt):
+        return {
+            "ok": True,
+            "simulated": False,
+            "text": '{"result": "completed"}',
+            "provider": "contract-provider",
+            "model": "contract-model-v1",
+            "tokens": 12,
+        }
+
+    with (
+        patch.object(canonical_executor, "get_agent", return_value=SimpleNamespace(specialty="coder")),
+        patch.object(canonical_executor, "can_agent_use_tool", return_value=True),
+        patch.object(canonical_executor, "get_agent_permissions", return_value=["run_tests"]),
+        patch.object(canonical_executor, "build_prompt", return_value="prompt"),
+        patch.object(canonical_executor, "build_default_chain", return_value=PassingChain()),
+        patch.object(canonical_executor, "parse_output", return_value={"result": "completed"}),
+    ):
+        result = asyncio.run(
+            canonical_executor.execute_agent("coder", "complete task", llm_call=real_provider)
+        )
+
+    assert result["success"] is True
+    assert result["verification"]["passed"] is True
+    assert result["tokens"] == 12
