@@ -41,13 +41,22 @@ class LearnerAgent:
         try:
             from novamind.core.learning_loop import learning_loop
 
-            # Add lesson
-            lessons = [{"description": summary, "severity": "info"}]
+            if not isinstance(summary, str) or not summary.strip():
+                return {"ok": False, "error": "summary must be a non-empty string"}
+            if not 0.0 <= min_confidence <= 1.0:
+                return {"ok": False, "error": "min_confidence must be between 0 and 1"}
+
             result = learning_loop.learn_from_pr_review(
-                repo=source, pr_num=0, issues=lessons,
+                repo=source,
+                pr_num=0,
+                issues=[{
+                    "description": summary.strip(),
+                    "severity": "info",
+                    "confidence": min_confidence,
+                }],
             )
 
-            logger.info(f"learned: {summary[:100]}")
+            logger.info("learned: %s", summary[:100])
             return {"ok": True, **result}
         except Exception as e:
             logger.error(f"learn failed: {e}")
@@ -86,15 +95,29 @@ class LearnerAgent:
 
         self._save_feedback()
 
-        # Also update learning_loop if available
+        # The primary feedback file is durable; report secondary learning
+        # persistence separately rather than silently discarding its failure.
+        learning_recorded = False
+        warning = ""
         try:
             from novamind.core.learning_loop import learning_loop
             learning_loop.record_feedback(pattern, liked)
-        except Exception:
-            pass
+            learning_recorded = True
+        except Exception as exc:
+            warning = f"{type(exc).__name__}: {exc}"[:200]
+            logger.warning("feedback saved locally; learning record failed: %s", warning)
 
-        logger.info(f"feedback: {pattern[:50]} → {'👍' if liked else '👎'}")
-        return {"ok": True, "entry": entry, "weight": w}
+        logger.info("feedback: %s -> %s", pattern[:50], "liked" if liked else "disliked")
+        result = {
+            "ok": True,
+            "feedback_saved": True,
+            "learning_recorded": learning_recorded,
+            "entry": entry,
+            "weight": w,
+        }
+        if warning:
+            result["warning"] = warning
+        return result
 
     def get_pattern_weight(self, pattern: str) -> float:
         """Get weight for a pattern. Higher = more preferred."""
