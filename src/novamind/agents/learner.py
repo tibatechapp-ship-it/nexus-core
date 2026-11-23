@@ -37,64 +37,100 @@ class LearnerAgent:
 
     def learn(self, summary: str, source: str = "session",
               min_confidence: float = 0.5) -> Dict:
-        """Learn from a session summary."""
+        """Persist a sanitized session lesson through the canonical loop."""
         try:
-            from novamind.core.learning_loop import learning_loop
-
-            # Add lesson
-            lessons = [{"description": summary, "severity": "info"}]
-            result = learning_loop.learn_from_pr_review(
-                repo=source, pr_num=0, issues=lessons,
+            from novamind.core.learning_loop import (
+                _redact_learning_text,
+                learning_loop,
             )
 
-            logger.info(f"learned: {summary[:100]}")
-            return {"ok": True, **result}
-        except Exception as e:
-            logger.error(f"learn failed: {e}")
-            return {"ok": False, "error": str(e)[:200]}
+            if not isinstance(summary, str) or not summary.strip():
+                return {"ok": False, "error": "summary must be a non-empty string"}
+            if isinstance(min_confidence, bool) or not 0.0 <= min_confidence <= 1.0:
+                return {"ok": False, "error": "min_confidence must be between 0 and 1"}
+            if not isinstance(source, str) or not source.strip():
+                return {"ok": False, "error": "source must be a non-empty string"}
+
+            safe_summary = _redact_learning_text(summary.strip())[:180]
+            experience = learning_loop.record(
+                agent="learner",
+                task="session_learning",
+                input_data=summary,
+                output={"summary": safe_summary},
+                outcome="partial",
+                user_feedback=f"source:{source[:80]}",
+                tags=["session", source[:80], f"confidence:{min_confidence:.2f}"],
+            )
+            logger.info("learned: %s", safe_summary[:100])
+            return {"ok": True, "experience": experience.to_dict()}
+        except Exception as exc:
+            logger.error("learn failed: %s", exc)
+            return {"ok": False, "error": str(exc)[:200]}
 
     # ═══════════════════════════════════════════════════════
     # Feedback Loop (NEW)
     # ═══════════════════════════════════════════════════════
     def record_feedback(self, pattern: str, liked: bool,
                         context: str = "", source: str = "user") -> Dict:
-        """
-        Record user feedback on a suggestion.
-        - liked: True (👍) or False (👎)
-        """
+        """Save sanitized local feedback and expose central-loop status."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise ValueError("liked must be a boolean")
+
+        from novamind.core.learning_loop import (
+            _redact_learning_text,
+            learning_loop,
+        )
+
+        safe_pattern = _redact_learning_text(pattern)[:200]
+        safe_context = _redact_learning_text(context)[:200]
+        safe_source = _redact_learning_text(source)[:80]
         entry = {
-            "pattern": pattern,
+            "pattern": safe_pattern,
             "liked": liked,
-            "context": context[:200],
-            "source": source,
+            "context": safe_context,
+            "source": safe_source,
             "at": datetime.now(timezone.utc).isoformat(),
         }
         self.feedback["entries"].append(entry)
 
-        # Update weights
-        key = self._normalize_pattern(pattern)
+        key = self._normalize_pattern(safe_pattern)
         if key not in self.feedback["pattern_weights"]:
-            self.feedback["pattern_weights"][key] = {"likes": 0, "dislikes": 0, "net": 0}
-
-        w = self.feedback["pattern_weights"][key]
+            self.feedback["pattern_weights"][key] = {
+                "likes": 0, "dislikes": 0, "net": 0,
+            }
+        weight = self.feedback["pattern_weights"][key]
         if liked:
-            w["likes"] += 1
-            w["net"] += 1
+            weight["likes"] += 1
+            weight["net"] += 1
         else:
-            w["dislikes"] += 1
-            w["net"] -= 1
+            weight["dislikes"] += 1
+            weight["net"] -= 1
 
         self._save_feedback()
 
-        # Also update learning_loop if available
+        learning_recorded = False
+        warning = ""
         try:
-            from novamind.core.learning_loop import learning_loop
-            learning_loop.record_feedback(pattern, liked)
-        except Exception:
-            pass
+            learning_loop.record_feedback(
+                safe_pattern, liked, context=safe_context, source=safe_source
+            )
+            learning_recorded = True
+        except Exception as exc:
+            warning = f"{type(exc).__name__}: {exc}"[:200]
+            logger.warning("feedback saved locally; central learning failed: %s", warning)
 
-        logger.info(f"feedback: {pattern[:50]} → {'👍' if liked else '👎'}")
-        return {"ok": True, "entry": entry, "weight": w}
+        result = {
+            "ok": True,
+            "feedback_saved": True,
+            "learning_recorded": learning_recorded,
+            "entry": entry,
+            "weight": weight,
+        }
+        if warning:
+            result["warning"] = warning
+        return result
 
     def get_pattern_weight(self, pattern: str) -> float:
         """Get weight for a pattern. Higher = more preferred."""
