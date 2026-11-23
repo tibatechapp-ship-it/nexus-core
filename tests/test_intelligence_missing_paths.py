@@ -336,7 +336,7 @@ def test_behavior_contract_rejects_duplicate_ids_and_malformed_serialization():
             "cases": [{"case_id": "c", "input_sha256": _SHA, "output_sha256": _OUT, "evidence_id": "ev", "unexpected": 1}],
             "evidence": [ref.to_dict()],
         })
-    with pytest.raises(BehaviorContractError, match="invalid observation fields"):
+    with pytest.raises(BehaviorContractError, match="observation has unknown or missing fields"):
         BehaviorObservation.from_dict({
             "case_id": "c", "input_sha256": _SHA, "output_sha256": _OUT,
             "status": "passed", "evidence_id": "ev", "unexpected": 1,
