@@ -22,6 +22,8 @@ import json
 import secrets
 import sqlite3
 import threading
+import weakref
+from types import TracebackType
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -99,8 +101,23 @@ class OrgStore:
         )
         raw.row_factory = sqlite3.Row
         self._conn = _LockedConnection(raw, self._lock)
+        # Explicit close is supported; finalizer is a last-resort safety net.
+        self._connection_finalizer = weakref.finalize(self, raw.close)
         with self._lock:
             self._migrate()
+
+    def __enter__(self) -> OrgStore:
+        """Support deterministic resource ownership with a context manager."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
 
     # ── المخطط والهجرة ────────────────────────────────────────────────────
 
@@ -2248,5 +2265,7 @@ class OrgStore:
         return now_iso()
 
     def close(self) -> None:
+        """Close the owned SQLite connection; idempotent and thread-safe."""
         with self._lock:
-            self._conn._conn.close()  # noqa: SLF001 — إغلاق الاتصال الخام فقط
+            if self._connection_finalizer.alive:
+                self._connection_finalizer()

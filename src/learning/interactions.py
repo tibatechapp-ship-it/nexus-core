@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import os
 import time
+import weakref
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import RLock
+from types import TracebackType
 from typing import Any
 
 from src.knowledge.base import tokenize as _tokenize
@@ -82,7 +84,25 @@ class InteractionStore:
         self._clock = clock
         self._lock = RLock()
         self._conn = connect(self.path)
+        self._connection_finalizer = weakref.finalize(self, self._conn.close)
         self._init_schema()
+
+    def close(self) -> None:
+        """Close the owned SQLite connection; idempotent."""
+        if self._connection_finalizer.alive:
+            self._connection_finalizer()
+
+    def __enter__(self) -> InteractionStore:
+        """Support deterministic connection ownership."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
 
     # -- schema ------------------------------------------------------------
     def _init_schema(self) -> None:
@@ -265,6 +285,8 @@ def get_interaction_store(
 
 
 def reset_interaction_store() -> None:
-    """Drop the singleton (tests / deliberate re-open)."""
+    """Close and drop the singleton (tests / deliberate re-open)."""
     global _STORE
+    if _STORE is not None:
+        _STORE.close()
     _STORE = None

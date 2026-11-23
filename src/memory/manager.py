@@ -20,6 +20,7 @@ import os
 import re
 import sqlite3
 import threading
+import weakref
 import time
 import uuid
 from collections.abc import Sequence
@@ -101,6 +102,7 @@ class MemoryManager:
         self._clock = clock
         self._path = str(default_memory_path() if path is None else path)
         self._connection = connect(self._path)
+        self._connection_finalizer = weakref.finalize(self, self._connection.close)
         self._lock = threading.RLock()
         self._embedder: Embedder | None = make_embedder(embedder)
         self.episodic = EpisodicMemory(self._connection, clock=clock)
@@ -127,9 +129,10 @@ class MemoryManager:
         return self._connection
 
     def close(self) -> None:
-        """Close the underlying connection."""
+        """Close the underlying connection; idempotent and thread-safe."""
         with self._lock:
-            self._connection.close()
+            if self._connection_finalizer.alive:
+                self._connection_finalizer()
 
     def __enter__(self) -> MemoryManager:
         return self

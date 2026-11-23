@@ -60,6 +60,12 @@ jobs:
       - name: Independent framework coverage enforcement (floor 95%)
         run: python -m coverage report --fail-under=95
 
+      - name: SQLite lifecycle warning attribution (targeted)
+        run: pytest tests/test_sqlite_store_lifecycle.py tests/test_session_store.py tests/test_training_engine_hardening.py tests/test_build_api.py tests/test_misc_coverage.py tests/test_coverage_gaps_council.py -q
+        env:
+          PYTHONTRACEMALLOC: "1"
+
+
       # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
       # match a fresh deep generation (identity/reconcile/measurement/rule)
       - name: Reports freshness (deep regen matches committed)
