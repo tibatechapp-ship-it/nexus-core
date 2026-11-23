@@ -30,11 +30,31 @@ def setup_mock() -> None:
             t = "آمن: يمكن التخفيف." if is_debate else "آمن: الطلب مقبول."
         else:
             t = f"[Mock] {p[:80]}"
-        return {"ok": True, "text": t, "provider": "mock", "elapsed": 0.01}
+        return {
+            "ok": True,
+            "text": t,
+            "provider": "mock",
+            "model": "mock",
+            "elapsed": 0.01,
+            "simulated": True,
+        }
 
     LLMRouter.generate = mock_gen  # type: ignore[method-assign]
-    LLMRouter.generate_for_task = (  # type: ignore[method-assign]
-        lambda self, *a, **kw: mock_gen(self, *a, **kw))
+
+    def mock_task(
+        self: Any,
+        task_type: str = "",
+        prompt: str = "",
+        system: str = "",
+        **kw: Any,
+    ) -> dict[str, Any]:
+        # Preserve the canonical generate_for_task signature; do not
+        # accidentally treat the task label as prompt text.
+        return mock_gen(
+            self, prompt=prompt, system=system, task_type=task_type, **kw
+        )
+
+    LLMRouter.generate_for_task = mock_task  # type: ignore[method-assign]
     LLMRouter._load_from_env = (  # type: ignore[method-assign]
         lambda self: setattr(self, "providers", []))
     LLMRouter._cooldown_provider = (  # type: ignore[method-assign]
