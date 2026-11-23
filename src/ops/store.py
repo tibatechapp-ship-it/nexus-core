@@ -114,12 +114,6 @@ class OpsStore:
         with self._lock:
             self._migrate()
 
-    def close(self) -> None:
-        """Close the owned SQLite handle; safe to call more than once."""
-        with self._lock:
-            if self._connection_finalizer.alive:
-                self._connection_finalizer()
-
     def __enter__(self):
         """Support deterministic resource ownership with a context manager."""
         return self
@@ -580,6 +574,7 @@ class OpsStore:
         return {r["state"]: int(r["n"]) for r in rows}
 
     def close(self) -> None:
-        """إغلاق الاتصال — للاستدعاء الصريح في نهاية العمليات الطويلة."""
+        """Close the owned SQLite connection; idempotent and thread-safe."""
         with self._lock:
-            self._conn._raw.close()
+            if self._connection_finalizer.alive:
+                self._connection_finalizer()
