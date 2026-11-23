@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Iterator
