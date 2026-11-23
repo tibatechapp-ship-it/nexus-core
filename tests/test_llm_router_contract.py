@@ -259,13 +259,15 @@ def test_stats_and_list_providers_shape(router: LLMRouter) -> None:
 
 
 def test_get_router_returns_llm_router() -> None:
-    assert isinstance(get_router(), LLMRouter)
+    # Compare against the module current class after possible importlib.reload.
+    assert isinstance(get_router(), lr.LLMRouter)
 
 
 def test_module_reloads_cleanly() -> None:
     """إعادة تحميل الوحدة لا تفشل — أساس استقرار الاختبارات الأخرى."""
     fresh = importlib.reload(lr)
     assert hasattr(fresh, "LLMRouter") and hasattr(fresh, "get_router")
+    assert isinstance(fresh.get_router(), fresh.LLMRouter)
 
 
 def test_get_router_does_not_install_mock_implicitly(monkeypatch) -> None:
