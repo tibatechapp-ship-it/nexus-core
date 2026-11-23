@@ -37,6 +37,20 @@ except ImportError:
 logger = logging.getLogger("core.learning_loop")
 
 
+class LearningStorageError(RuntimeError):
+    """Raised when learning data could not be durably persisted."""
+
+
+def _redact_learning_text(value: str) -> str:
+    """Redact common credential assignments before storing learning output."""
+    value = re.sub(
+        r"(?i)(api[_-]?key|secret|password|token|authorization)\s*[:=]\s*([^\s,;]+)",
+        r"\1=[REDACTED]",
+        value,
+    )
+    return re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
+
+
 @dataclass
 class Experience:
     experience_id: str
@@ -71,6 +85,9 @@ class LearningLoop:
             "NOVAMIND_HOME",
             str(Path(__file__).resolve().parent.parent),
         )
+        configured_path = os.environ.get("NOVAMIND_LEARNING_LOOP_PATH")
+        if storage_path is None and configured_path:
+            storage_path = Path(configured_path)
         if storage_path is None:
             storage_path = Path(base) / "memory" / "experiences.jsonl"
         self.storage_path = Path(storage_path)
@@ -105,10 +122,11 @@ class LearningLoop:
         exp = Experience(
             experience_id="", agent=agent, task=task,
             input_hash=input_hash, input_size=len(input_data),
-            output_summary=summary, outcome=outcome,
+            output_summary=_redact_learning_text(str(summary)), outcome=outcome,
             duration=duration, provider=provider, model=model,
-            error=error[:500], user_feedback=user_feedback,
-            tags=tags or [],
+            error=_redact_learning_text(str(error))[:500],
+            user_feedback=_redact_learning_text(str(user_feedback)),
+            tags=[_redact_learning_text(str(tag))[:100] for tag in (tags or [])],
         )
 
         try:
@@ -122,7 +140,8 @@ class LearningLoop:
                     finally:
                         self._release_file_lock(f)
         except Exception as e:
-            logger.error(f"record failed: {e}")
+            logger.exception("record failed; refusing to report durable success")
+            raise LearningStorageError("Could not persist learning experience") from e
 
         return exp
 
