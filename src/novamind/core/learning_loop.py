@@ -85,6 +85,9 @@ class LearningLoop:
             "NOVAMIND_HOME",
             str(Path(__file__).resolve().parent.parent),
         )
+        configured_path = os.environ.get("NOVAMIND_LEARNING_LOOP_PATH")
+        if storage_path is None and configured_path:
+            storage_path = Path(configured_path)
         if storage_path is None:
             storage_path = Path(base) / "memory" / "experiences.jsonl"
         self.storage_path = Path(storage_path)
