@@ -25,6 +25,7 @@ from .gate import AssuranceDecision, evaluate_assurance
 from .replay import ReplayCommandCase, execute_authorized_cases
 
 _MAX_CASES = 1000
+_MAX_COMBINED_EVIDENCE = 5000
 _MAX_SNAPSHOT_FILES = 100_000
 _MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024 * 1024
 _IGNORED_DIRS = {
@@ -366,7 +367,7 @@ def run_mission_behavior_replay(
                 verify_evidence=verify_evidence,
             )
             all_evidence = (*baseline.evidence, *references)
-            if len(all_evidence) > 5000:
+            if len(all_evidence) > _MAX_COMBINED_EVIDENCE:
                 raise MissionBehaviorError(
                     "combined baseline and candidate evidence exceeds 5000 references"
                 )
