@@ -37,6 +37,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from threading import RLock
+from types import TracebackType
 from typing import Any, Protocol
 
 from src.core.types import AgentResult
@@ -233,7 +234,7 @@ class LessonDatabase:
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        tb: object | None,
+        tb: TracebackType | None,
     ) -> None:
         self.close()
 
