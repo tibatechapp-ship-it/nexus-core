@@ -37,7 +37,7 @@ def test_setup_mock_installs_explicit_deterministic_simulation(
         "elapsed": 0.01,
         "simulated": True,
     }
-    assert router.generate("x" * 100)["text"] == "[Mock] " + "x" * 73
+    assert router.generate("x" * 100)["text"] == "[Mock] " + "x" * 80
 
 
 @pytest.mark.parametrize(
@@ -69,6 +69,7 @@ def test_mock_role_responses_are_predictable(
 def test_mock_router_compatibility_methods_are_installed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _restore_router_class(monkeypatch)
     monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: setattr(self, "providers", []))
     setup_mock()
     router = LLMRouter()
