@@ -28,7 +28,6 @@ jobs:
     env:
       NEXUS_ALLOW_OPEN: "1"
       NOVAMIND_HOME: ${{ github.workspace }}
-      NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
       TZ: UTC
     steps:
       - name: Checkout
@@ -54,6 +53,8 @@ jobs:
       # ── Layer 1: the stdlib-only framework (hard gate, ≥95% coverage) ──────
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
+        env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
 
       # pytest plugin finalizers may alter the session exit status. Enforce the
       # measured coverage again in a standalone coverage process so a printed
@@ -99,6 +100,7 @@ jobs:
       - name: NovaMind unit + observability (required)
         run: pytest tests/novamind/unit tests/novamind/observability --tb=short
         env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
 
@@ -121,6 +123,7 @@ jobs:
           EOF
           pytest tests/novamind --cov=novamind --cov-config=/tmp/novamind.coveragerc --cov-report=term --tb=line
         env:
+          NOVAMIND_LEARNING_LOOP_PATH: ${{ runner.temp }}/novamind-learning.jsonl
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test
   # ── Publish a shields.io coverage badge (no external service needed) ──────
