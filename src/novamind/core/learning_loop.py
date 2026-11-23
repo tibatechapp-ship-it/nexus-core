@@ -125,6 +125,46 @@ class LearningLoop:
 
         return exp
 
+    def learn_from_pr_review(self, repo: str, pr_num: int, issues: List[Dict]) -> Dict:
+        """Record sanitized PR-review findings as learning experiences.
+
+        Only allowlisted structured issue fields are retained; raw source,
+        patch text, credentials, and arbitrary provider output are not stored.
+        """
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if isinstance(pr_num, bool) or not isinstance(pr_num, int) or pr_num < 0:
+            raise ValueError("pr_num must be a non-negative integer")
+        if not isinstance(issues, list):
+            raise TypeError("issues must be a list")
+
+        safe_issues = []
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            safe = {}
+            for key in ("filename", "category", "severity", "rule_id", "message", "description"):
+                value = issue.get(key)
+                if isinstance(value, str) and value.strip():
+                    safe[key] = value.strip()[:500]
+            if safe:
+                safe_issues.append(safe)
+
+        if not safe_issues:
+            return {"learned": 0, "experience_ids": []}
+
+        task = f"PR review: {repo.strip()}#{pr_num}"
+        payload = json.dumps(safe_issues, ensure_ascii=False, sort_keys=True)
+        exp = self.record(
+            agent="pr_reviewer",
+            task=task,
+            input_data=payload,
+            output={"summary": f"Recorded {len(safe_issues)} review findings"},
+            outcome="partial",
+            duration=0.0,
+            tags=["pr-review", "review-findings"],
+        )
+        return {"learned": len(safe_issues), "experience_ids": [exp.experience_id]}
     def stream_all(self) -> Iterator[Experience]:
         if not self.storage_path.exists():
             return
