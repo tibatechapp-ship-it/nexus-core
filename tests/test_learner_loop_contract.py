@@ -93,10 +93,13 @@ def test_feedback_reports_secondary_persistence_failure(
         raise LearningStorageError("secondary store unavailable")
 
     monkeypatch.setattr(loop, "record_feedback", fail_feedback)
-    result = agent.record_feedback("secure defaults", True)
+    result = agent.record_feedback("api_key=super-secret", True, context="token=another-secret")
 
     assert result["ok"] is True
     assert result["feedback_saved"] is True
     assert result["learning_recorded"] is False
     assert "secondary store unavailable" in result["warning"]
-    assert (tmp_path / "feedback.json").exists()
+    feedback_text = (tmp_path / "feedback.json").read_text(encoding="utf-8")
+    assert "super-secret" not in feedback_text
+    assert "another-secret" not in feedback_text
+    assert "api_key=[REDACTED]" in feedback_text
