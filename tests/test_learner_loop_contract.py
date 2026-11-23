@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from novamind.core.learning_loop import LearningLoop, LearningStorageError
+import novamind.core.learning_loop as learning_loop_module
 from novamind.agents import learner as learner_module
 
 
@@ -68,7 +69,7 @@ def test_learner_agent_learn_uses_supported_learning_api(
 ) -> None:
     loop = LearningLoop(tmp_path / "experiences.jsonl")
     monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
-    monkeypatch.setattr(learner_module, "learning_loop", loop, raising=False)
+    monkeypatch.setattr(learning_loop_module, "learning_loop", loop)
     agent = learner_module.LearnerAgent()
 
     result = agent.learn("session summary", source="unit-test", min_confidence=0.8)
