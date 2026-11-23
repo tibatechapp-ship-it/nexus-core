@@ -73,3 +73,11 @@ def test_user_feedback_validates_input(tmp_path, pattern, liked):
     loop = LearningLoop(tmp_path / 'experiences.jsonl')
     with pytest.raises((ValueError, TypeError)):
         loop.record_feedback(pattern, liked)
+
+
+def test_user_feedback_summary_redacts_common_secret_assignments(tmp_path):
+    loop = LearningLoop(tmp_path / 'experiences.jsonl')
+    loop.record_feedback('api_key=very-secret-value', True)
+    summary = loop.load_all()[0].output_summary
+    assert 'very-secret-value' not in summary
+    assert '[REDACTED]' in summary
