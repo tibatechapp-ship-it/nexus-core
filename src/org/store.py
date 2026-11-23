@@ -105,12 +105,6 @@ class OrgStore:
         with self._lock:
             self._migrate()
 
-    def close(self) -> None:
-        """Close the owned SQLite handle; safe to call more than once."""
-        with self._lock:
-            if self._connection_finalizer.alive:
-                self._connection_finalizer()
-
     def __enter__(self):
         """Support deterministic resource ownership with a context manager."""
         return self
@@ -2265,5 +2259,7 @@ class OrgStore:
         return now_iso()
 
     def close(self) -> None:
+        """Close the owned SQLite connection; idempotent and thread-safe."""
         with self._lock:
-            self._conn._conn.close()  # noqa: SLF001 — إغلاق الاتصال الخام فقط
+            if self._connection_finalizer.alive:
+                self._connection_finalizer()
