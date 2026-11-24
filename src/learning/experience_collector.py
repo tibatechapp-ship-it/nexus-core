@@ -130,6 +130,12 @@ class Experience:
         required = ("task_id", "step_id", "agent_role", "action_type", "outcome")
         if any(not isinstance(data.get(key), str) for key in required):
             raise TypeError("experience identifiers, role, action type, and outcome must be strings")
+        if not data["task_id"].strip() or not data["step_id"].strip():
+            raise ValueError("experience task_id and step_id must be non-empty")
+        if data["agent_role"] not in KNOWN_AGENT_ROLES:
+            raise ValueError("experience contains an unknown agent_role")
+        if data["action_type"] not in KNOWN_ACTION_TYPES:
+            raise ValueError("experience contains an unknown action_type")
         action = data.get("action", "")
         result = data.get("result", "")
         if not isinstance(action, str) or not isinstance(result, str):
