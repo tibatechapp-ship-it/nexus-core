@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -146,7 +147,7 @@ def test_record_hashes_redacted_input_and_sanitizes_outcome(tmp_path: Path) -> N
     )
 
     safe_input = sanitize_learning_text(raw_input, max_length=None)
-    assert experience.input_hash == __import__("hashlib").sha256(
+    assert experience.input_hash == hashlib.sha256(
         safe_input.encode("utf-8")
     ).hexdigest()
     assert experience.input_hash != __import__("hashlib").sha256(
