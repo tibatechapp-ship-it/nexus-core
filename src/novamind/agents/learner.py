@@ -104,7 +104,7 @@ class LearnerAgent:
     ) -> Dict:
         """Persist a session lesson in the append-only learning ledger.
 
-        min_confidence is retained for API compatibility and validated, bu
+        min_confidence is retained for API compatibility and validated, but
         no confidence score is fabricated when the caller supplies none.
         """
         if not isinstance(summary, str) or not summary.strip():
@@ -136,8 +136,11 @@ class LearnerAgent:
                 "experience_id": experience.experience_id,
             }
         except Exception as exc:
-            logger.exception("Session learning failed")
-            return {"ok": False, "error": str(exc)[:200]}
+            from novamind.core.learning_loop import sanitize_learning_text
+
+            safe_error = sanitize_learning_text(str(exc), max_length=200)
+            logger.error("Session learning failed (%s)", type(exc).__name__)
+            return {"ok": False, "error": safe_error}
 
     def record_feedback(
         self,
@@ -192,9 +195,9 @@ class LearnerAgent:
             self.feedback = candidate
             try:
                 directory_synced = self._save_feedback()
-            except Exception:
+            except Exception as exc:
                 self.feedback = previous_feedback
-                logger.exception("Primary feedback persistence failed")
+                logger.error("Primary feedback persistence failed (%s)", type(exc).__name__)
                 raise
 
         learning_recorded = False
@@ -214,12 +217,15 @@ class LearnerAgent:
             if not learning_recorded:
                 warning = "Primary feedback saved, but the learning ledger did not acknowledge persistence."
         except Exception as exc:
+            from novamind.core.learning_loop import sanitize_learning_text
+
+            safe_error = sanitize_learning_text(str(exc), max_length=160)
             secondary_warning = (
                 "Primary feedback saved, but secondary learning-ledger persistence failed: "
-                + str(exc)[:160]
+                + safe_error
             )
             warning = f"{warning} {secondary_warning}" if warning else secondary_warning
-            logger.exception("Secondary learning-ledger persistence failed")
+            logger.error("Secondary learning-ledger persistence failed (%s)", type(exc).__name__)
 
         logger.info("feedback persisted for pattern: %s", normalized_pattern[:50])
         response = {
@@ -261,8 +267,8 @@ class LearnerAgent:
         import re
 
         normalized = pattern.lower()
-        normalized = re.sub(r"line\\s+\\d+", "line", normalized)
-        normalized = re.sub(r"[^\\w\\s]", "", normalized)
+        normalized = re.sub(r"line\s+\d+", "line", normalized)
+        normalized = re.sub(r"[^\w\s]", "", normalized)
         return " ".join(normalized.split())[:100]
 
     def stats(self) -> Dict:
