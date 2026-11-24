@@ -93,7 +93,7 @@ def test_feedback_reports_secondary_persistence_failure(
     def fail_feedback(
         pattern: str, liked: bool, context: str = "", source: str = "user"
     ) -> None:
-        raise LearningStorageError("secondary store unavailable")
+        raise LearningStorageError("secondary store unavailable api_key=secondary-secret")
 
     monkeypatch.setattr(loop, "record_feedback", fail_feedback)
     result = agent.record_feedback(
@@ -104,7 +104,27 @@ def test_feedback_reports_secondary_persistence_failure(
     assert result["feedback_saved"] is True
     assert result["learning_recorded"] is False
     assert "secondary store unavailable" in result["warning"]
+    assert "secondary-secret" not in result["warning"]
+    assert "api_key=[REDACTED]" in result["warning"]
     feedback_text = (tmp_path / "feedback.json").read_text(encoding="utf-8")
     assert "super-secret" not in feedback_text
     assert "another-secret" not in feedback_text
     assert "api_key=[REDACTED]" in feedback_text
+
+
+def test_learner_error_response_redacts_secret(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
+    monkeypatch.setattr(learning_loop_module, "learning_loop", loop)
+
+    def fail_record(*args, **kwargs):
+        raise LearningStorageError("write failed token=private-token")
+
+    monkeypatch.setattr(loop, "record", fail_record)
+    result = learner_module.LearnerAgent().learn("safe summary")
+
+    assert result["ok"] is False
+    assert "private-token" not in result["error"]
+    assert "token=[REDACTED]" in result["error"]
