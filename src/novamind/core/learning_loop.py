@@ -156,8 +156,10 @@ class LearningLoop:
         if not all(isinstance(value, str) for value in (provider, model, error, user_feedback, input_summary)):
             raise TypeError("provider, model, error, user_feedback, and input_summary must be strings")
         raw_tags = [] if tags is None else tags
-        if not isinstance(raw_tags, (list, tuple)) or any(not isinstance(tag, str) for tag in raw_tags):
-            raise TypeError("tags must be a list of strings")
+        if not isinstance(raw_tags, (list, tuple)) or any(
+            not isinstance(tag, str) or not tag.strip() for tag in raw_tags
+        ):
+            raise TypeError("tags must be a list of non-empty strings")
 
         sanitized_input = sanitize_learning_text(input_data, max_length=None)
         if len(sanitized_input.encode("utf-8")) > 1_048_576:
@@ -190,16 +192,27 @@ class LearningLoop:
             with self._lock:
                 with open(self.storage_path, "a", encoding="utf-8") as f:
                     self._acquire_file_lock(f)
+                    start_offset = f.tell()
                     try:
                         f.write(json.dumps(exp.to_dict(), ensure_ascii=False) + "\n")
                         f.flush()
                         os.fsync(f.fileno())
+                    except Exception:
+                        try:
+                            f.seek(start_offset)
+                            f.truncate()
+                            f.flush()
+                            os.fsync(f.fileno())
+                        except Exception:
+                            logger.error(
+                                "learning ledger rollback failed; manual integrity check required"
+                            )
+                        raise
                     finally:
                         self._release_file_lock(f)
-        except Exception:
-            # Returning an Experience acknowledges durable persistence. Do not
-            # manufacture that acknowledgement when append, flush, or fsync fails.
-            logger.exception("record failed")
+        except Exception as exc:
+            # Do not log raw OS exception text; it can expose sensitive paths.
+            logger.error("record failed; durable write unavailable (%s)", type(exc).__name__)
             raise
 
         return exp
