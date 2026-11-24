@@ -529,3 +529,37 @@ def test_import_redacts_legacy_or_external_records(collector):
     assert added == 1
     experience = mem.all()[0]
     assert "Bearer demo" not in experience.action
+
+
+@pytest.mark.parametrize("outcome", ["success", None, 1])
+def test_record_rejects_non_enum_outcome(collector, outcome):
+    mem, _clock = collector
+    with pytest.raises(TypeError, match="outcome must be an Outcome"):
+        mem.record("task", "step", "coder", "read_file", outcome)
+    assert len(mem) == 0
+
+
+@pytest.mark.parametrize("timestamp", [float("nan"), float("inf"), -1.0, True, "bad"])
+def test_record_rejects_invalid_clock(timestamp):
+    mem = ExperienceCollector(clock=lambda: timestamp)
+    with pytest.raises(ValueError, match="clock must return"):
+        mem.record("task", "step", "coder", "read_file", Outcome.SUCCESS)
+    assert len(mem) == 0
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"task_id": 1, "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success"},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success", "ts": float("nan")},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success", "action": None},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success", "ts": True},
+    ],
+)
+def test_from_dict_rejects_invalid_types_and_timestamps(payload):
+    with pytest.raises((TypeError, ValueError)):
+        Experience.from_dict(payload)
