@@ -221,7 +221,11 @@ class LearningLoop:
                     finally:
                         self._release_file_lock(f)
         except Exception as e:
-            logger.exception("record failed; refusing to report durable success")
+            # Avoid logging raw OS exception text, which may contain sensitive paths.
+            logger.error(
+                "record failed; durable write unavailable (%s)",
+                type(e).__name__,
+            )
             raise LearningStorageError("Could not persist learning experience") from e
 
         return exp
