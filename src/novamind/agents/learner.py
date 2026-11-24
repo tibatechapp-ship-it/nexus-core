@@ -39,7 +39,10 @@ class LearnerAgent:
             dir=str(FEEDBACK_FILE.parent),
         )
         try:
-            os.fchmod(fd, 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, 0o600)
+            else:
+                os.chmod(temporary_path, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 stream.write(
                     json.dumps(self.feedback, ensure_ascii=False, indent=2)
