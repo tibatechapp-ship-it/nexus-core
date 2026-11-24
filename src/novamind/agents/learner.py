@@ -64,8 +64,9 @@ class LearnerAgent:
             logger.info("learned: %s", safe_summary[:100])
             return {"ok": True, "experience": experience.to_dict()}
         except Exception as exc:
-            logger.error("learn failed: %s", exc)
-            return {"ok": False, "error": str(exc)[:200]}
+            safe_error = _redact_learning_text(str(exc))[:200]
+            logger.error("learn failed: %s", safe_error)
+            return {"ok": False, "error": safe_error}
 
     # ═══════════════════════════════════════════════════════
     # Feedback Loop (NEW)
@@ -118,7 +119,9 @@ class LearnerAgent:
             )
             learning_recorded = True
         except Exception as exc:
-            warning = f"{type(exc).__name__}: {exc}"[:200]
+            warning = _redact_learning_text(
+                f"{type(exc).__name__}: {exc}"
+            )[:200]
             logger.warning("feedback saved locally; central learning failed: %s", warning)
 
         result = {
