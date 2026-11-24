@@ -65,8 +65,12 @@ class LearnerAgent:
 
             if not isinstance(summary, str) or not summary.strip():
                 return {"ok": False, "error": "summary must be a non-empty string"}
-            if isinstance(min_confidence, bool) or not 0.0 <= min_confidence <= 1.0:
-                return {"ok": False, "error": "min_confidence must be between 0 and 1"}
+            if (
+                isinstance(min_confidence, bool)
+                or not isinstance(min_confidence, (int, float))
+                or not 0.0 <= min_confidence <= 1.0
+            ):
+                return {"ok": False, "error": "min_confidence must be a number between 0 and 1"}
             if not isinstance(source, str) or not source.strip():
                 return {"ok": False, "error": "source must be a non-empty string"}
 
@@ -101,6 +105,8 @@ class LearnerAgent:
             raise ValueError("pattern must be a non-empty string")
         if not isinstance(liked, bool):
             raise ValueError("liked must be a boolean")
+        if not isinstance(context, str) or not isinstance(source, str):
+            raise TypeError("context and source must be strings")
 
         from novamind.core.learning_loop import (
             _redact_learning_text,
