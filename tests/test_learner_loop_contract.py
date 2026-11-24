@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -220,3 +221,28 @@ def test_record_rejects_non_string_metadata_before_writing(tmp_path: Path) -> No
             provider=object(),
         )
     assert not loop.storage_path.exists()
+
+
+def test_feedback_save_is_atomic_and_private(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    feedback_file = tmp_path / "private-feedback.json"
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", feedback_file)
+    agent = learner_module.LearnerAgent()
+    agent.feedback["entries"].append({"pattern": "first", "liked": True})
+    agent._save_feedback()
+
+    if os.name == "posix":
+        assert feedback_file.stat().st_mode & 0o777 == 0o600
+    original = feedback_file.read_text(encoding="utf-8")
+    agent.feedback["entries"].append({"pattern": "second", "liked": False})
+
+    def fail_replace(source, destination):
+        raise OSError("atomic replace failed")
+
+    monkeypatch.setattr(learner_module.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="atomic replace failed"):
+        agent._save_feedback()
+
+    assert feedback_file.read_text(encoding="utf-8") == original
+    assert not list(tmp_path.glob(".private-feedback.json.*.tmp"))
