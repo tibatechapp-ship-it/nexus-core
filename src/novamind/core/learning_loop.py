@@ -214,10 +214,24 @@ class LearningLoop:
             with self._lock:
                 with open(self.storage_path, "a", encoding="utf-8") as f:
                     self._acquire_file_lock(f)
+                    start_offset = f.tell()
                     try:
                         f.write(json.dumps(exp.to_dict(), ensure_ascii=False) + "\n")
                         f.flush()
                         os.fsync(f.fileno())
+                    except Exception:
+                        # Best-effort rollback prevents a failed append from leaving
+                        # a truncated JSONL record that poisons subsequent reads.
+                        try:
+                            f.seek(start_offset)
+                            f.truncate()
+                            f.flush()
+                            os.fsync(f.fileno())
+                        except Exception:
+                            logger.error(
+                                "learning ledger rollback failed; manual integrity check required"
+                            )
+                        raise
                     finally:
                         self._release_file_lock(f)
         except Exception as e:
