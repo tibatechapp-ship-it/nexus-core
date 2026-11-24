@@ -563,3 +563,19 @@ def test_record_rejects_invalid_clock(timestamp):
 def test_from_dict_rejects_invalid_types_and_timestamps(payload):
     with pytest.raises((TypeError, ValueError)):
         Experience.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"task_id": "t", "step_id": "s", "agent_role": "unknown",
+         "action_type": "read_file", "outcome": "success"},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "unknown", "outcome": "success"},
+        {"task_id": " ", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success"},
+    ],
+)
+def test_from_dict_rejects_invalid_classifications_and_blank_ids(payload):
+    with pytest.raises(ValueError):
+        Experience.from_dict(payload)
