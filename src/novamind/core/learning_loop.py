@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import math
 import re
 import threading
 from pathlib import Path
@@ -41,14 +42,41 @@ class LearningStorageError(RuntimeError):
     """Raised when learning data could not be durably persisted."""
 
 
-def _redact_learning_text(value: str) -> str:
-    """Redact common credential assignments before storing learning output."""
-    value = re.sub(
-        r"(?i)(api[_-]?key|secret|password|token|authorization)\s*[:=]\s*([^\s,;]+)",
-        r"\1=[REDACTED]",
+def sanitize_learning_text(value: str, max_length: int | None = 4000) -> str:
+    """Redact common credential formats before learning data reaches disk."""
+    if not isinstance(value, str):
+        raise TypeError("learning text must be a string")
+    text = re.sub(
+        r"(?i)(authorization\s*[:=]\s*(?:bearer|basic)\s+)[A-Za-z0-9._~+/-]+=*",
+        r"\1[REDACTED]",
         value,
     )
-    return re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
+    text = re.sub(
+        r"""(?i)(["']?(?:api[_-]?key|secret|password|token)["']?\s*[:=]\s*["']?)[^\s,"']+""",
+        r"\1[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"""(?i)(authorization\s*[:=]\s*)(?!bearer\s|basic\s)[^\s,"']+""",
+        r"\1[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b",
+        "[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b",
+        "[REDACTED]",
+        text,
+    )
+    return text if max_length is None else text[:max_length]
+
+
+def _redact_learning_text(value: str) -> str:
+    """Compatibility helper for agent-facing redaction."""
+    return sanitize_learning_text(value, max_length=None)
 
 
 @dataclass
@@ -67,6 +95,7 @@ class Experience:
     user_feedback: str = ""
     tags: List[str] = field(default_factory=list)
     timestamp: str = ""
+    input_summary: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
@@ -110,23 +139,75 @@ class LearningLoop:
             except Exception:
                 pass
 
-    def record(self, agent, task, input_data, output, outcome,
-               duration=0.0, provider="", model="", error="",
-               user_feedback="", tags=None):
-        input_hash = hashlib.sha256(input_data.encode()).hexdigest()
+    def record(
+        self,
+        agent,
+        task,
+        input_data,
+        output,
+        outcome,
+        duration=0.0,
+        provider="",
+        model="",
+        error="",
+        user_feedback="",
+        tags=None,
+        input_summary="",
+    ):
+        """Validate, redact and durably append one learning experience."""
+        if not isinstance(agent, str) or not agent.strip():
+            raise ValueError("agent must be a non-empty string")
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("task must be a non-empty string")
+        if not isinstance(input_data, str):
+            raise TypeError("input_data must be a string")
+        if not isinstance(outcome, str) or not outcome.strip():
+            raise ValueError("outcome must be a non-empty string")
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(duration)
+            or duration < 0
+        ):
+            raise ValueError("duration must be a finite, non-negative number")
+        duration = float(duration)
+        if len(input_data.encode("utf-8")) > 1_048_576:
+            raise ValueError("input_data exceeds the 1 MiB learning record limit")
+        text_fields = (provider, model, error, user_feedback, input_summary)
+        if not all(isinstance(value, str) for value in text_fields):
+            raise TypeError(
+                "provider, model, error, user_feedback, and input_summary must be strings"
+            )
+        raw_tags = [] if tags is None else tags
+        if not isinstance(raw_tags, (list, tuple)) or any(
+            not isinstance(tag, str) or not tag.strip() for tag in raw_tags
+        ):
+            raise TypeError("tags must be a list of non-empty strings")
+
+        sanitized_input = sanitize_learning_text(input_data, max_length=None)
+        if len(sanitized_input.encode("utf-8")) > 1_048_576:
+            raise ValueError("sanitized input_data exceeds the 1 MiB learning record limit")
+        input_hash = hashlib.sha256(sanitized_input.encode("utf-8")).hexdigest()
         if isinstance(output, dict):
-            summary = output.get("summary") or output.get("verdict") or str(output)[:200]
+            summary = output.get("summary") or output.get("verdict") or str(output)
         else:
-            summary = str(output)[:200]
+            summary = str(output)
 
         exp = Experience(
-            experience_id="", agent=agent, task=task,
-            input_hash=input_hash, input_size=len(input_data),
-            output_summary=_redact_learning_text(str(summary)), outcome=outcome,
-            duration=duration, provider=provider, model=model,
-            error=_redact_learning_text(str(error))[:500],
-            user_feedback=_redact_learning_text(str(user_feedback)),
-            tags=[_redact_learning_text(str(tag))[:100] for tag in (tags or [])],
+            experience_id="",
+            agent=sanitize_learning_text(agent.strip(), max_length=100),
+            task=sanitize_learning_text(task.strip(), max_length=500),
+            input_hash=input_hash,
+            input_size=len(sanitized_input),
+            output_summary=sanitize_learning_text(str(summary), max_length=500),
+            outcome=sanitize_learning_text(outcome.strip(), max_length=100),
+            duration=duration,
+            provider=sanitize_learning_text(provider, max_length=100),
+            model=sanitize_learning_text(model, max_length=100),
+            error=sanitize_learning_text(error, max_length=500),
+            user_feedback=sanitize_learning_text(user_feedback, max_length=200),
+            tags=[sanitize_learning_text(tag, max_length=100) for tag in raw_tags],
+            input_summary=sanitize_learning_text(input_summary, max_length=4000),
         )
 
         try:
