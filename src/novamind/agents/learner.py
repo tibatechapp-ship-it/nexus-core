@@ -3,6 +3,8 @@ Learner Agent v2 — With feedback loop and weight adjustment.
 """
 import logging
 import json
+import os
+import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -29,11 +31,25 @@ class LearnerAgent:
         return {"entries": [], "pattern_weights": {}}
 
     def _save_feedback(self):
+        """Atomically persist private feedback with restrictive file permissions."""
         FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        FEEDBACK_FILE.write_text(
-            json.dumps(self.feedback, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{FEEDBACK_FILE.name}.",
+            suffix=".tmp",
+            dir=str(FEEDBACK_FILE.parent),
         )
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(self.feedback, ensure_ascii=False, indent=2)
+                )
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, FEEDBACK_FILE)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
     def learn(self, summary: str, source: str = "session",
               min_confidence: float = 0.5) -> Dict:
