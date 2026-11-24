@@ -151,7 +151,7 @@ def test_record_hashes_redacted_input_and_sanitizes_outcome(tmp_path: Path) -> N
     assert experience.input_hash == hashlib.sha256(
         safe_input.encode("utf-8")
     ).hexdigest()
-    assert experience.input_hash != __import__("hashlib").sha256(
+    assert experience.input_hash != hashlib.sha256(
         raw_input.encode("utf-8")
     ).hexdigest()
     assert "[REDACTED]" in experience.outcome
@@ -246,3 +246,30 @@ def test_feedback_save_is_atomic_and_private(
 
     assert feedback_file.read_text(encoding="utf-8") == original
     assert not list(tmp_path.glob(".private-feedback.json.*.tmp"))
+
+
+@pytest.mark.parametrize("confidence", [True, -0.01, 1.01, "0.7", float("nan")])
+def test_learner_rejects_invalid_confidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, confidence
+) -> None:
+    monkeypatch.setattr(learner_module, "FEEDBACK_FILE", tmp_path / "feedback.json")
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    monkeypatch.setattr(learning_loop_module, "learning_loop", loop)
+
+    result = learner_module.LearnerAgent().learn(
+        "summary", min_confidence=confidence
+    )
+
+    assert result["ok"] is False
+    assert "min_confidence" in result["error"]
+    assert not loop.storage_path.exists()
+
+
+@pytest.mark.parametrize("context,source", [(None, "user"), ("context", None), (1, "user")])
+def test_feedback_rejects_invalid_metadata_types(
+    context, source, tmp_path: Path
+) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    agent = learner_module.LearnerAgent()
+    with pytest.raises(TypeError, match="context and source"):
+        agent.record_feedback("pattern", True, context=context, source=source)
