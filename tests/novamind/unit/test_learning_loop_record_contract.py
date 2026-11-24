@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 
 import pytest
 
@@ -79,4 +80,45 @@ def test_record_rejects_input_larger_than_one_mib(tmp_path):
             outcome="success",
         )
 
+    assert not loop.storage_path.exists()
+
+
+def test_record_rolls_back_failed_fsync(tmp_path, monkeypatch):
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    real_fsync = os.fsync
+    calls = 0
+
+    def fail_once(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("simulated fsync failure")
+        real_fsync(fd)
+
+    monkeypatch.setattr("novamind.core.learning_loop.os.fsync", fail_once)
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        loop.record(
+            agent="test-agent",
+            task="rollback",
+            input_data="input",
+            output={"summary": "output"},
+            outcome="success",
+        )
+
+    assert calls == 2
+    assert loop.storage_path.read_text(encoding="utf-8") == ""
+
+
+@pytest.mark.parametrize("tags", [[""], [None], ""])
+def test_record_rejects_empty_or_invalid_tags(tmp_path, tags):
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    with pytest.raises(TypeError, match="tags must be a list of non-empty strings"):
+        loop.record(
+            agent="test-agent",
+            task="invalid tags",
+            input_data="input",
+            output={"summary": "output"},
+            outcome="success",
+            tags=tags,
+        )
     assert not loop.storage_path.exists()
