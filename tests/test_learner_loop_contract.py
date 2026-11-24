@@ -273,3 +273,31 @@ def test_feedback_rejects_invalid_metadata_types(
     agent = learner_module.LearnerAgent()
     with pytest.raises(TypeError, match="context and source"):
         agent.record_feedback("pattern", True, context=context, source=source)
+
+
+def test_record_rolls_back_partial_append_on_fsync_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    loop = LearningLoop(tmp_path / "experiences.jsonl")
+    real_fsync = os.fsync
+    calls = 0
+
+    def fail_first_fsync(fd: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("simulated fsync failure")
+        real_fsync(fd)
+
+    monkeypatch.setattr(learning_loop_module.os, "fsync", fail_first_fsync)
+    with pytest.raises(LearningStorageError, match="persist"):
+        loop.record(
+            agent="test-agent",
+            task="rollback append",
+            input_data="input",
+            output={"summary": "result"},
+            outcome="success",
+        )
+
+    assert calls == 2
+    assert loop.storage_path.read_text(encoding="utf-8") == ""
