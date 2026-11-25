@@ -108,14 +108,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install bandit
 
-      # The archived shell=True examples live under docs/legacy and are not
-      # executable application code. The live cache is included explicitly.
-      - name: Bandit (medium+ severity, agent and cache surface)
+      # Scan all active src code, not a hand-picked list. Exclude the migrated
+      # NovaMind package and archived legacy root from this gate; retain the
+      # still-active legacy hyper_agent entrypoint as an explicit target.
+      - name: Bandit (medium+ severity, active application source)
         run: |
-          bandit -r connectors hyper_app src/legacy_root/hyper_agent.py \
-            src/learning src/knowledge src/skills src/security \
-            src/orchestrator/agent_cache.py \
+          bandit -r connectors hyper_app src \
+            -x src/novamind,src/legacy_root \
             -ll -q
+          bandit src/legacy_root/hyper_agent.py -ll -q
 
   # ── Benchmarks: 20 standard tasks + p50 regression gate (>50% fails) ──────
   benchmarks-gate:
