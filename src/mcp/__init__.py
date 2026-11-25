@@ -3,7 +3,9 @@
 nexus-core speaks MCP ``2026-07-28`` (the stateless revision): a server
 advertises itself with ``server/discover`` and carries ``serverInfo`` in every
 result's ``_meta``; the legacy ``initialize`` handshake is still answered for
-older clients.
+older clients.  External SDK servers (for example ``mcp-hub``) are reachable
+through :class:`ExternalMCPClient` / :func:`build_mcp_hub_executor` without
+changing the legacy protocol.
 
 Quick start::
 
@@ -21,6 +23,20 @@ Run the framework server over stdio (for Claude Desktop, Cursor, …)::
 from __future__ import annotations
 
 from src.mcp.bridge import MCPToolExecutor
+from src.mcp.external import (
+    AuditEvent,
+    ExternalMCPClient,
+    ExternalMCPError,
+    ExternalServerConfig,
+)
+from src.mcp.mcp_hub import (
+    MCP_HUB_READ_TOOLS,
+    MCPHubConfig,
+    build_mcp_hub_client,
+    build_mcp_hub_executor,
+    mcp_hub_server_config,
+    qualified_mcp_hub_tools,
+)
 from src.mcp.client import (
     InProcessClient,
     MCPClientError,
@@ -90,6 +106,17 @@ __all__ = [
     "to_tool_schemas",
     # agent bridge
     "MCPToolExecutor",
+    # external MCP / mcp-hub
+    "AuditEvent",
+    "ExternalMCPClient",
+    "ExternalMCPError",
+    "ExternalServerConfig",
+    "MCP_HUB_READ_TOOLS",
+    "MCPHubConfig",
+    "build_mcp_hub_client",
+    "build_mcp_hub_executor",
+    "mcp_hub_server_config",
+    "qualified_mcp_hub_tools",
     # framework surface
     "build_framework_server",
     "serve_framework",
