@@ -1,7 +1,6 @@
 """Regression tests for agent-cache key isolation and safe persistence."""
 from __future__ import annotations
 
-import os
 import stat
 from pathlib import Path
 
