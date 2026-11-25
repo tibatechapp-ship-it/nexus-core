@@ -175,7 +175,7 @@ def embed(text: str, dims: int = 256) -> tuple[float, ...]:
         raise ValueError("الأبعاد لا تقل عن 1")
     vec = [0.0] * dims
     for word in re.findall(r"[\w]+", text.lower()):
-        idx = int(hashlib.sha1(word.encode("utf-8")).hexdigest(), 16) % dims
+        idx = int(hashlib.sha1(word.encode("utf-8"), usedforsecurity=False).hexdigest(), 16) % dims
         vec[idx] += 1.0
     norm = math.sqrt(sum(v * v for v in vec)) or 1.0
     return tuple(round(v / norm, 6) for v in vec)
