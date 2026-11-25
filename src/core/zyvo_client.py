@@ -101,7 +101,7 @@ class ZyvoClient:
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(request, timeout=self.timeout) as resp:  # nosec B310 — URL uses fixed http:// scheme
                 raw = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:  # pragma: no cover - network path
             raise ZyvoError(f"{method} {request.full_url} -> HTTP {exc.code}") from exc
