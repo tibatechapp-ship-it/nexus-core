@@ -30,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # full history + tags, for the version-sync guard
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v7
@@ -46,6 +46,9 @@ jobs:
         run: |
           python -m compileall -q src
 
+      # ض7 (v1.58.0): ruff is a real merge gate now — the old `|| true` made it
+      # advisory-only (lint errors kept the workflow green). The tree is clean
+      # under pyproject [tool.ruff]; any new violation fails the build.
       - name: Ruff lint
         run: ruff check --output-format=github .
 
@@ -127,11 +130,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The only third-party import in the benchmark chain is `textual`
+      # (via src/tui/__init__.py -> app.py); everything else is stdlib.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install textual
 
+      # Founding mode until benchmarks/baseline.json is committed: exits 0 and
+      # writes runs/baseline-candidate.json as an artifact. Once a
+      # runner-measured candidate is adopted (--adopt), this step enforces
+      # the gate: any task whose p50 regresses >50% AND >0.2ms vs the baseline
+      # fails the job — and so does any task that no longer succeeds 100%.
       - name: Run benchmarks + regression gate
         run: python scripts/benchmarks/run_benchmarks.py --check
 
