@@ -50,6 +50,24 @@ def test_cache_corrupt_and_non_object_entries_are_misses(tmp_cache: Path) -> Non
     assert cache.get("b", "p") is None
 
 
+def test_cache_invalid_timestamp_is_a_miss(tmp_cache: Path) -> None:
+    entry = tmp_cache / (cache._key("a", "p") + ".json")
+    entry.write_text('{"ts": "not-a-number", "result": "bad"}', encoding="utf-8")
+    assert cache.get("a", "p") is None
+
+
+def test_cache_replace_failure_cleans_temporary_file(
+    tmp_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_replace(source: str, destination: str) -> None:
+        raise OSError("simulated filesystem failure")
+
+    monkeypatch.setattr(cache.os, "replace", fail_replace)
+    cache.set("a", "p", "x")
+    assert cache.get("a", "p") is None
+    assert list(tmp_cache.iterdir()) == []
+
+
 def test_cache_does_not_follow_symlink(tmp_cache: Path) -> None:
     outside = tmp_cache.parent / "outside-cache.json"
     outside.write_text('{"ts": 9999999999, "result": "private"}', encoding="utf-8")
