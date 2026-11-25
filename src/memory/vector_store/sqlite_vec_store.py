@@ -102,7 +102,8 @@ class SQLiteVecStore(VectorStore):
 
     def delete(self, id: str) -> bool:
         row = self._conn.execute(
-            f"SELECT rowid FROM {self.table}_meta WHERE id = ?", (id,)  # nosec B608 — table identifier validated in __init__
+            f"SELECT rowid FROM {self.table}_meta WHERE id = ?",  # nosec B608 — table identifier validated in __init__
+            (id,)
         ).fetchone()
         if not row:
             return False
