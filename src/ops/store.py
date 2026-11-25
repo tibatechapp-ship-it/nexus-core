@@ -457,7 +457,7 @@ class OpsStore:
             "AND state NOT IN ("
             + ",".join("?" for _ in FINAL_STATES) + ") ORDER BY updated_at ASC",
             (cutoff, *sorted(FINAL_STATES)),
-        ).fetchall()
+        ).fetchall()  # nosec B608 — placeholder count is generated; values are bound
         return [self._row_to_ticket(r) for r in rows]
 
     # ── البوابات ──────────────────────────────────────────────────────────
@@ -551,7 +551,7 @@ class OpsStore:
         """أعداد الجداول — أساس لقطة اللوحة والملخصات."""
         out: dict[str, int] = {}
         for table in ("signals", "verdicts", "tickets", "gates", "digests", "slices"):
-            row = self._conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+            row = self._conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()  # nosec B608 — table names are a fixed tuple
             out[table] = int(row["n"])
         return out
 
