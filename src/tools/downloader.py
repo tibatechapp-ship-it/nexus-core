@@ -12,7 +12,11 @@ def _is_safe_url(url: str) -> bool:
         return False
     
     hostname = parsed.hostname
-    if not hostname:
+    if not hostname or parsed.username is not None or parsed.password is not None:
+        return False
+    try:
+        _ = parsed.port
+    except ValueError:
         return False
         
     if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # nosec B104 — these are rejected, not bound
