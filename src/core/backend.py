@@ -24,7 +24,7 @@ def _safe_urlopen(req: Any, *, timeout: float) -> Any:
     url = req.full_url if hasattr(req, "full_url") else str(req)
     if not (url.startswith("http://") or url.startswith("https://")):
         raise PermissionError(f"unsafe URL scheme (only http/https allowed): {url[:60]}")
-    return _urllib.urlopen(req, timeout=timeout)
+    return _urllib.urlopen(req, timeout=timeout)  # nosec B310 — scheme validated above
 
 __all__ = ["LLMBackend", "EchoBackend", "OllamaBackend"]
 
