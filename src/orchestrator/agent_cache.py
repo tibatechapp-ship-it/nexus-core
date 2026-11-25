@@ -50,7 +50,6 @@ def set(agent: str, prompt: str, result: Any) -> None:
     path = _path(agent, prompt)
     temporary_path: str | None = None
     try:
-        os.makedirs(_CACHE_DIR, mode=0o700, exist_ok=True)
         fd, temporary_path = tempfile.mkstemp(
             prefix=".cache-", suffix=".tmp", dir=_CACHE_DIR
         )
