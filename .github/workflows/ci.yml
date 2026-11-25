@@ -108,7 +108,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install bandit
 
-      # Scan all active src code, not a hand-picked list. Exclude the migrated
+      # Scan all active src code, not a hand-picked list. This includes the historically gated src/learning, src/knowledge, src/skills and src/security surfaces. Exclude the migrated
       # NovaMind package and archived legacy root from this gate; retain the
       # still-active legacy hyper_agent entrypoint as an explicit target.
       - name: Bandit (medium+ severity, active application source)
