@@ -13,7 +13,7 @@
 # The container binds 0.0.0.0 (a container that binds loopback is unreachable);
 # exposure is controlled by compose's published port / the platform's router.
 
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.15.2
 
 # ───────────────────────────── build stage ─────────────────────────────
 FROM python:${PYTHON_VERSION}-slim AS builder
