@@ -158,7 +158,7 @@ class MemoryStore(ABC):
     # -- shared surface ----------------------------------------------------
     def count(self) -> int:
         """How many rows the primary table holds."""
-        row = self._query_one(f"SELECT COUNT(*) AS n FROM {self._table}"  # nosec B608 — class identifier validated in __init__)
+        row = self._query_one(f"SELECT COUNT(*) AS n FROM {self._table}")  # nosec B608 — class identifier validated in __init__
         return int(row["n"]) if row is not None else 0
 
     def clear(self) -> None:
