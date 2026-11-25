@@ -115,14 +115,14 @@ def test_record_rejects_blank_identifiers(collector, field):
 
 def test_record_rejects_unknown_agent_role(collector):
     mem, _clock = collector
-    with pytest.raises(ValueError, match="unknown agent_role 'robot'"):
+    with pytest.raises(ValueError, match="unknown agent_role"):
         mem.record("t1", "s1", "robot", "read_file", Outcome.SUCCESS)
     assert len(mem) == 0
 
 
 def test_record_rejects_unknown_action_type(collector):
     mem, _clock = collector
-    with pytest.raises(ValueError, match="unknown action_type 'hack'"):
+    with pytest.raises(ValueError, match="unknown action_type"):
         mem.record("t1", "s1", "coder", "hack", Outcome.SUCCESS)
     assert len(mem) == 0
 
@@ -230,8 +230,10 @@ def test_from_dict_rejects_unknown_outcome():
         )
 
 
-def test_from_dict_requires_identifiers():
-    with pytest.raises(KeyError):
+def test_from_dict_rejects_missing_required_identifiers():
+    # from_dict validates required fields before constructing the dataclass;
+    # missing or non-string identifiers are a type-contract failure.
+    with pytest.raises(TypeError, match="must be strings"):
         Experience.from_dict(
             {"agent_role": "coder", "action_type": "read_file", "outcome": "success"}
         )
@@ -487,3 +489,95 @@ def test_concurrent_reads_during_writes_do_not_crash(collector):
     for thread in threads:
         thread.join(timeout=30)
     assert len(mem) == 200
+
+# --------------------------------------------------------------------------- #
+# Privacy: free-text experience fields
+# --------------------------------------------------------------------------- #
+def test_record_redacts_credentials_from_action_and_result(collector):
+    mem, _clock = collector
+    exp = mem.record(
+        "t1", "s1", "coder", "write_file", Outcome.SUCCESS,
+        action="Authorization: Bearer demo",
+        result='api_key="demo" password=demo',
+    )
+    assert 'api_key="demo"' not in exp.result
+    assert "password=demo" not in exp.result
+    assert "[REDACTED]" in exp.action
+    assert "[REDACTED]" in exp.result
+
+
+def test_export_never_writes_known_credentials(tmp_path, collector):
+    mem, _clock = collector
+    mem.record(
+        "t1", "s1", "coder", "read_file", Outcome.FAILURE,
+        action="token: demo",
+        result="token: sample-value",
+    )
+    target = tmp_path / "experiences.json"
+    mem.export(target)
+    saved = target.read_text(encoding="utf-8")
+    assert "token: demo" not in saved
+    assert "[REDACTED]" in saved
+
+
+def test_import_redacts_legacy_or_external_records(collector):
+    mem, _clock = collector
+    added = mem._append_records([{
+        "task_id": "t1", "step_id": "s1", "agent_role": "coder",
+        "action_type": "read_file", "outcome": "success",
+        "action": "Authorization: Bearer demo",
+        "result": "token: imported-sample",
+    }])
+    assert added == 1
+    experience = mem.all()[0]
+    assert "Bearer demo" not in experience.action
+
+
+@pytest.mark.parametrize("outcome", ["success", None, 1])
+def test_record_rejects_non_enum_outcome(collector, outcome):
+    mem, _clock = collector
+    with pytest.raises(TypeError, match="outcome must be an Outcome"):
+        mem.record("task", "step", "coder", "read_file", outcome)
+    assert len(mem) == 0
+
+
+@pytest.mark.parametrize("timestamp", [float("nan"), float("inf"), -1.0, True, "bad"])
+def test_record_rejects_invalid_clock(timestamp):
+    mem = ExperienceCollector(clock=lambda: timestamp)
+    with pytest.raises(ValueError, match="clock must return"):
+        mem.record("task", "step", "coder", "read_file", Outcome.SUCCESS)
+    assert len(mem) == 0
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"task_id": 1, "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success"},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success", "ts": float("nan")},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success", "action": None},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success", "ts": True},
+    ],
+)
+def test_from_dict_rejects_invalid_types_and_timestamps(payload):
+    with pytest.raises((TypeError, ValueError)):
+        Experience.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"task_id": "t", "step_id": "s", "agent_role": "unknown",
+         "action_type": "read_file", "outcome": "success"},
+        {"task_id": "t", "step_id": "s", "agent_role": "coder",
+         "action_type": "unknown", "outcome": "success"},
+        {"task_id": " ", "step_id": "s", "agent_role": "coder",
+         "action_type": "read_file", "outcome": "success"},
+    ],
+)
+def test_from_dict_rejects_invalid_classifications_and_blank_ids(payload):
+    with pytest.raises(ValueError):
+        Experience.from_dict(payload)

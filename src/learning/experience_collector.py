@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 import threading
 import time
 from collections import Counter
@@ -60,6 +62,25 @@ KNOWN_ACTION_TYPES = frozenset(
         "run_command", "web_search", "web_fetch", "delegate_task", "write_todos",
     }
 )
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"""(?i)(authorization\s*[:=]\s*(?:bearer|basic)\s+)[A-Za-z0-9._~+/-]+=*"""),
+    re.compile(r"""(?i)([\"']?(?:api[_-]?key|secret|password|token)[\"']?\s*[:=]\s*[\"']?)[^\s,\"']+"""),
+    re.compile(r"""(?i)(authorization\s*[:=]\s*)(?!bearer\s|basic\s)[^\s,\"']+"""),
+    re.compile(r"\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
+)
+
+
+def _sanitize_experience_text(value: str, max_length: int) -> str:
+    """Redact common credentials and bound free-text experience fields."""
+    if not isinstance(value, str):
+        raise TypeError("experience text fields must be strings")
+    text = value
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(r"\1[REDACTED]" if pattern.groups else "[REDACTED]", text)
+    return text[:max_length]
 
 
 class Outcome(StrEnum):
@@ -103,21 +124,41 @@ class Experience:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Experience:
-        """Rebuild an experience from :meth:`to_dict` output.
-
-        Raises ``KeyError`` for missing required fields, ``ValueError`` for an
-        unknown outcome value.
-        """
+        """Rebuild a validated, sanitized experience from serialized data."""
+        if not isinstance(data, dict):
+            raise TypeError("experience data must be a mapping")
+        required = ("task_id", "step_id", "agent_role", "action_type", "outcome")
+        if any(not isinstance(data.get(key), str) for key in required):
+            raise TypeError("experience identifiers, role, action type, and outcome must be strings")
+        if not data["task_id"].strip() or not data["step_id"].strip():
+            raise ValueError("experience task_id and step_id must be non-empty")
+        if data["agent_role"] not in KNOWN_AGENT_ROLES:
+            raise ValueError("experience contains an unknown agent_role")
+        if data["action_type"] not in KNOWN_ACTION_TYPES:
+            raise ValueError("experience contains an unknown action_type")
+        action = data.get("action", "")
+        result = data.get("result", "")
+        if not isinstance(action, str) or not isinstance(result, str):
+            raise TypeError("experience action and result must be strings")
+        timestamp = data.get("ts", 0.0)
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, (int, float))
+            or not math.isfinite(timestamp)
+            or timestamp < 0
+        ):
+            raise ValueError("experience timestamp must be finite and non-negative")
         return cls(
-            task_id=str(data["task_id"]),
-            step_id=str(data["step_id"]),
-            agent_role=str(data["agent_role"]),
-            action_type=str(data["action_type"]),
-            outcome=Outcome(str(data["outcome"])),
-            action=str(data.get("action", "")),
-            result=str(data.get("result", "")),
-            ts=float(data.get("ts", 0.0)),
+            task_id=data["task_id"],
+            step_id=data["step_id"],
+            agent_role=data["agent_role"],
+            action_type=data["action_type"],
+            outcome=Outcome(data["outcome"]),
+            action=_sanitize_experience_text(action, 4000),
+            result=_sanitize_experience_text(result, 4000),
+            ts=float(timestamp),
         )
+
 
 
 class ExperienceCollector:
@@ -153,15 +194,27 @@ class ExperienceCollector:
         canonical lowercase forms are accepted.
         """
         self._validate(task_id=task_id, step_id=step_id, agent_role=agent_role, action_type=action_type)
+        if not isinstance(outcome, Outcome):
+            raise TypeError("outcome must be an Outcome enum")
+        timestamp = self._clock()
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, (int, float))
+            or not math.isfinite(timestamp)
+            or timestamp < 0
+        ):
+            raise ValueError("clock must return a finite, non-negative timestamp")
+        safe_action = _sanitize_experience_text(action, 4000)
+        safe_result = _sanitize_experience_text(result, 4000)
         experience = Experience(
             task_id=task_id,
             step_id=step_id,
             agent_role=agent_role,
             action_type=action_type,
             outcome=outcome,
-            action=action,
-            result=result,
-            ts=self._clock(),
+            action=safe_action,
+            result=safe_result,
+            ts=float(timestamp),
         )
         with self._lock:
             self._buffer.append(experience)
@@ -169,19 +222,21 @@ class ExperienceCollector:
 
     @staticmethod
     def _validate(*, task_id: str, step_id: str, agent_role: str, action_type: str) -> None:
-        if not task_id or not task_id.strip():
-            logger.warning("record rejected: empty task_id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            logger.warning("record rejected: invalid task_id")
             raise ValueError("task_id must be a non-empty string")
-        if not step_id or not step_id.strip():
-            logger.warning("record rejected: empty step_id")
+        if not isinstance(step_id, str) or not step_id.strip():
+            logger.warning("record rejected: invalid step_id")
             raise ValueError("step_id must be a non-empty string")
-        if agent_role not in KNOWN_AGENT_ROLES:
-            logger.warning("record rejected: unknown agent_role %r", agent_role)
-            raise ValueError(f"unknown agent_role {agent_role!r}; expected one of {sorted(KNOWN_AGENT_ROLES)}")
-        if action_type not in KNOWN_ACTION_TYPES:
-            logger.warning("record rejected: unknown action_type %r", action_type)
+        if not isinstance(agent_role, str) or agent_role not in KNOWN_AGENT_ROLES:
+            logger.warning("record rejected: unknown agent_role")
             raise ValueError(
-                f"unknown action_type {action_type!r}; expected one of {sorted(KNOWN_ACTION_TYPES)}"
+                f"unknown agent_role; expected one of {sorted(KNOWN_AGENT_ROLES)}"
+            )
+        if not isinstance(action_type, str) or action_type not in KNOWN_ACTION_TYPES:
+            logger.warning("record rejected: unknown action_type")
+            raise ValueError(
+                f"unknown action_type; expected one of {sorted(KNOWN_ACTION_TYPES)}"
             )
 
     def all(self) -> list[Experience]:
