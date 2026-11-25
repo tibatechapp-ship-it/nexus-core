@@ -2,6 +2,7 @@
 import subprocess
 import os
 import ipaddress
+from pathlib import Path
 from urllib.parse import urlparse
 
 def _is_safe_url(url: str) -> bool:
@@ -14,7 +15,7 @@ def _is_safe_url(url: str) -> bool:
     if not hostname:
         return False
         
-    if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+    if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # nosec B104 — these are rejected, not bound
         return False
         
     try:
@@ -31,9 +32,14 @@ def download_file(url: str, output_name: str | None = None, output_dir: str = ".
     if not _is_safe_url(url):
         raise ValueError("Unsafe URL blocked (SSRF protection)")
     
-    base = os.path.abspath(output_dir)
-    if not base.startswith(os.path.abspath(os.getcwd())):
+    workspace = Path.cwd().resolve()
+    base_path = Path(output_dir).expanduser().resolve()
+    if not base_path.is_relative_to(workspace):
         raise ValueError("output_dir must be within the project workspace")
+    if output_name is not None:
+        if Path(output_name).name != output_name or output_name in {"", ".", ".."}:
+            raise ValueError("output_name must be a plain filename")
+    base = str(base_path)
     
     cmd = ["aria2c", "-c", "-x", "16", "-s", "16", "-d", base]
     if output_name:
