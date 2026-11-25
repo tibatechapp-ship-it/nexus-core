@@ -453,7 +453,7 @@ class OpsStore:
         """تذاكر خاملة غير نهائية — لم تتحرك منذ ``days`` يومًا."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         rows = self._conn.execute(
-            "SELECT * FROM tickets WHERE updated_at < ? "
+            "SELECT * FROM tickets WHERE updated_at < ? "  # nosec B608 — placeholders only, all values bound
             "AND state NOT IN ("
             + ",".join("?" for _ in FINAL_STATES) + ") ORDER BY updated_at ASC",
             (cutoff, *sorted(FINAL_STATES)),
