@@ -159,7 +159,7 @@ class ZyvoClient:
             f"http://{self.host}:{self.port}/event",
             headers={"Accept": "text/event-stream"},
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # nosec B310 — fixed http:// scheme; host is the configured local ZYVO endpoint
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # pragma: no cover
             for raw in resp:  # pragma: no cover - network path
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:"):
