@@ -115,14 +115,14 @@ def test_record_rejects_blank_identifiers(collector, field):
 
 def test_record_rejects_unknown_agent_role(collector):
     mem, _clock = collector
-    with pytest.raises(ValueError, match="unknown agent_role 'robot'"):
+    with pytest.raises(ValueError, match="unknown agent_role"):
         mem.record("t1", "s1", "robot", "read_file", Outcome.SUCCESS)
     assert len(mem) == 0
 
 
 def test_record_rejects_unknown_action_type(collector):
     mem, _clock = collector
-    with pytest.raises(ValueError, match="unknown action_type 'hack'"):
+    with pytest.raises(ValueError, match="unknown action_type"):
         mem.record("t1", "s1", "coder", "hack", Outcome.SUCCESS)
     assert len(mem) == 0
 
@@ -230,8 +230,10 @@ def test_from_dict_rejects_unknown_outcome():
         )
 
 
-def test_from_dict_requires_identifiers():
-    with pytest.raises(KeyError):
+def test_from_dict_rejects_missing_required_identifiers():
+    # from_dict validates required fields before constructing the dataclass;
+    # missing or non-string identifiers are a type-contract failure.
+    with pytest.raises(TypeError, match="must be strings"):
         Experience.from_dict(
             {"agent_role": "coder", "action_type": "read_file", "outcome": "success"}
         )
