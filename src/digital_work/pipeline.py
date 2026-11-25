@@ -22,6 +22,16 @@ XLSX_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 XLSX_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
+def _safe_xml_fromstring(data: bytes) -> ET.Element:
+    """Parse Office XML while refusing DTD/entity declarations."""
+    if len(data) > MAX_FILE_BYTES:
+        raise ValueError("Office XML part exceeds size limit")
+    upper = data.upper()
+    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
+        raise ValueError("DTD/entity declarations are not allowed in Office XML")
+    return ET.fromstring(data)  # nosec B314 — DTD/entity declarations rejected above
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -275,13 +285,13 @@ def validate_run(output_root: Path) -> dict[str, Any]:
     with zipfile.ZipFile(output_root / "report.docx") as document:
         if document.testzip() is not None:
             raise ValueError("DOCX ZIP integrity failed")
-        xml = ET.fromstring(document.read("word/document.xml"))
+        xml = _safe_xml_fromstring(document.read("word/document.xml"))
         if not list(xml.iter(f"{{{DOCX_NS}}}p")):
             raise ValueError("DOCX has no paragraphs")
     with zipfile.ZipFile(output_root / "analysis.xlsx") as workbook:
         if workbook.testzip() is not None:
             raise ValueError("XLSX ZIP integrity failed")
-        sheet = ET.fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+        sheet = _safe_xml_fromstring(workbook.read("xl/worksheets/sheet1.xml"))
         rows = list(sheet.iter(f"{{{XLSX_MAIN}}}row"))
         if len(rows) < 1:
             raise ValueError("XLSX has no worksheet rows")
