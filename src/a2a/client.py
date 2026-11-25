@@ -35,7 +35,11 @@ def host_allowed(url: str, allowlist: list[str]) -> bool:
     if not allowlist:
         return False
     try:
-        host = (urlsplit(url).hostname or "").lower()
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
+            return False
+        _ = parsed.port
     except ValueError:
         return False
     return bool(host) and host in {h.lstrip(".") for h in allowlist}
@@ -46,7 +50,7 @@ def _urllib_transport(
 ) -> tuple[int, str]:
     req = urllib.request.Request(url, data=body if method == "POST" else None,
                                  headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310 — _call enforces HTTP(S) host allowlist
         return int(getattr(resp, "status", 200)), resp.read().decode("utf-8")
 
 
