@@ -20,6 +20,7 @@ whole subsystem works on a phone with no extra dependencies.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -118,6 +119,8 @@ class MemoryStore(ABC):
     _table: str = "memory"
 
     def __init__(self, connection: sqlite3.Connection, *, clock: Clock = time.time) -> None:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", self._table):
+            raise ValueError("unsafe SQLite table identifier")
         self._connection = connection
         self._clock = clock
         # RLock, to stay consistent with AgentMetrics: helpers may nest.
@@ -155,12 +158,12 @@ class MemoryStore(ABC):
     # -- shared surface ----------------------------------------------------
     def count(self) -> int:
         """How many rows the primary table holds."""
-        row = self._query_one(f"SELECT COUNT(*) AS n FROM {self._table}")
+        row = self._query_one(f"SELECT COUNT(*) AS n FROM {self._table}"  # nosec B608 — class identifier validated in __init__)
         return int(row["n"]) if row is not None else 0
 
     def clear(self) -> None:
         """Remove every row from the primary table."""
-        self._execute(f"DELETE FROM {self._table}")
+        self._execute(f"DELETE FROM {self._table}")  # nosec B608 — class identifier validated in __init__
 
     def __len__(self) -> int:
         return self.count()
