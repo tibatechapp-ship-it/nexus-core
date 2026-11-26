@@ -170,3 +170,29 @@ def test_list_files_skips_cache_dirs(ws, reg):
 def test_list_files_blocks_outside(ws, reg):
     out = reg.call("list_files", {"directory": str(ws.parent)})
     assert "محظور" in out
+
+
+def test_safe_path_rejects_empty_and_nul(ws):
+    with pytest.raises(ValueError, match="مسار"):
+        safe_path("")
+    with pytest.raises(ValueError, match="مسار"):
+        safe_path("bad\x00name")
+
+
+def test_write_file_cleans_tmp_on_replace_failure(ws, dev_reg, monkeypatch):
+    import src.agent_loop.tools as tools_module
+
+    def fail_replace(src, dst):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(tools_module.os, "replace", fail_replace)
+    out = dev_reg.call("write_file", {"path": "ok.txt", "content": "hello", "approval": "yes"})
+    assert "خطأ" in out
+    assert not list(ws.glob(".agent-tmp-*"))
+
+
+def test_list_files_caps_results(ws, reg):
+    for index in range(35):
+        (ws / f"f{index:02}.txt").write_text("x")
+    out = reg.call("list_files", {"directory": "."})
+    assert len(out.splitlines()) == 30
