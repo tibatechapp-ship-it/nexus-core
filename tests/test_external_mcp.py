@@ -33,6 +33,7 @@ from src.mcp.external import (
     sanitize_tool_output,
 )
 from src.mcp.mcp_hub import (
+    MCP_HUB_MAX_CHAIN_STEPS,
     MCP_HUB_READ_TOOLS,
     MCPHubConfig,
     audit_dict,
@@ -40,6 +41,7 @@ from src.mcp.mcp_hub import (
     build_mcp_hub_executor,
     mcp_hub_server_config,
     qualified_mcp_hub_tools,
+    run_mcp_hub_read_chain,
 )
 from src.tools.executor import ToolCall
 
@@ -497,6 +499,26 @@ def test_mcp_hub_config_and_environment():
     assert MCPHubConfig("hub.sqlite3", pythonpath="/trusted/source").pythonpath == "/trusted/source"
 
 
+def test_read_chain_validation_is_fail_closed():
+    config = MCPHubConfig("hub.sqlite3", allowed_tools=frozenset({"search_servers"}))
+    with pytest.raises(ValueError, match=r"1\.\.5"):
+        run_mcp_hub_read_chain([], config=config)
+    with pytest.raises(ValueError, match=r"1\.\.5"):
+        run_mcp_hub_read_chain(
+            [("search_servers", {})] * (MCP_HUB_MAX_CHAIN_STEPS + 1), config=config
+        )
+    with pytest.raises(ValueError, match="not permitted"):
+        run_mcp_hub_read_chain([("get_server", {"server_id": 1})], config=config)
+    with pytest.raises(ValueError, match="within the mcp-hub read-only allowlist"):
+        run_mcp_hub_read_chain(
+            [("search_servers", {})],
+            config=config,
+            allowed_tools=frozenset({"search_servers", "get_server"}),
+        )
+    with pytest.raises(ValueError, match="mapping or a callable"):
+        run_mcp_hub_read_chain([("search_servers", "bad")], config=config)
+
+
 # ── real process integration ───────────────────────────────────────────────
 def _hub_root() -> str | None:
     configured = os.environ.get("MCP_HUB_ROOT")
@@ -595,6 +617,79 @@ def test_real_mcp_hub_extra_read_tool_and_schema_limits(tmp_path):
     assert events
     assert any(event["tool"] == "query_catalog" and event["ok"] is False for event in events)
     assert all("arguments" not in event and "output" not in event for event in events)
+
+
+@pytest.mark.integration
+def test_real_mcp_hub_read_chain_with_context_and_fail_fast(tmp_path):
+    pytest.importorskip("mcp")
+    pytest.importorskip("mcp_hub")
+    from mcp_hub.database import Catalog
+    from mcp_hub.models import Server
+
+    db = tmp_path / "chain.sqlite3"
+    catalog = Catalog(str(db))
+    catalog.add_server(
+        Server(
+            name="alpha-mcp-server",
+            description="seed server for chained integration test",
+            categories="search",
+            source="test",
+        )
+    )
+    config = MCPHubConfig(
+        db_path=db,
+        pythonpath=_hub_root(),
+        allowed_tools=frozenset({"list_categories", "servers_by_category", "get_server"}),
+    )
+
+    def rows(text: str) -> list[dict[str, Any]]:
+        parsed: Any = json.loads(text)
+        if isinstance(parsed, dict):
+            return [parsed]
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+        raise AssertionError(f"unexpected rows payload: {type(parsed).__name__}")
+
+    def category_args(previous: tuple[str, ...]) -> dict[str, Any]:
+        row = next(item for item in rows(previous[-1]) if item["category"] == "search")
+        return {"category": row["category"], "limit": 1}
+
+    def server_args(previous: tuple[str, ...]) -> dict[str, Any]:
+        return {"server_id": int(rows(previous[-1])[0]["id"])}
+
+    events: list[dict[str, Any]] = []
+    outputs = run_mcp_hub_read_chain(
+        [
+            ("mcp_hub.list_categories", {}),
+            ("mcp_hub.servers_by_category", category_args),
+            ("mcp_hub.get_server", server_args),
+        ],
+        config=config,
+        on_audit=lambda event: events.append(event.to_dict()),
+    )
+    assert len(outputs) == 3
+    assert any(item["category"] == "search" for item in rows(outputs[0]))
+    assert rows(outputs[1])[0]["name"] == "alpha-mcp-server"
+    assert json.loads(outputs[2])["name"] == "alpha-mcp-server"
+    assert [event["tool"] for event in events] == [
+        "list_categories",
+        "servers_by_category",
+        "get_server",
+    ]
+    assert all("arguments" not in event and "output" not in event for event in events)
+
+    failure_events: list[dict[str, Any]] = []
+    with pytest.raises(ExternalMCPError) as failure:
+        run_mcp_hub_read_chain(
+            [("get_server", {"server_id": 999_999})],
+            config=config,
+            on_audit=lambda event: failure_events.append(event.to_dict()),
+        )
+    assert failure.value.code == -32021
+    assert failure.value.data == {"step": 1, "tool": "get_server"}
+    assert failure_events
+    assert all(event["ok"] is False for event in failure_events)
+    assert all("arguments" not in event and "output" not in event for event in failure_events)
 
 
 @pytest.mark.integration

@@ -18,26 +18,33 @@ for source checkouts; installed wheels do not need it.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.mcp.bridge import MCPToolExecutor
-from src.mcp.external import ExternalMCPClient, ExternalServerConfig
+from src.mcp.external import ExternalMCPClient, ExternalMCPError, ExternalServerConfig
+from src.tools.executor import ToolCall
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from src.mcp.external import AuditEvent
 
 __all__ = [
     "MCP_HUB_ARGUMENT_LIMITS",
+    "MCP_HUB_MAX_CHAIN_STEPS",
     "MCP_HUB_READ_TOOLS",
     "MCPHubConfig",
     "build_mcp_hub_client",
     "build_mcp_hub_executor",
     "mcp_hub_server_config",
     "qualified_mcp_hub_tools",
+    "run_mcp_hub_read_chain",
 ]
+
+#: A practical agent flow should be short and auditable. The chain runner
+#: rejects longer sequences before starting a subprocess.
+MCP_HUB_MAX_CHAIN_STEPS = 5
 
 #: The complete read-only tool surface of mcp-hub 1.10.0.  Adding a tool here
 #: is an explicit policy decision, never an automatic consequence of discovery.
@@ -158,6 +165,76 @@ def build_mcp_hub_executor(
         max_calls_per_step=max_calls_per_step,
         allowed_tools=qualified_mcp_hub_tools(settings.allowed_tools),
     )
+
+
+def run_mcp_hub_read_chain(
+    steps: Sequence[tuple[str, Mapping[str, Any] | Callable[[tuple[str, ...]], Mapping[str, Any]]]],
+    *,
+    config: MCPHubConfig | None = None,
+    allowed_tools: frozenset[str] | None = None,
+    on_audit: Callable[[AuditEvent], None] | None = None,
+) -> tuple[str, ...]:
+    """Run a short, fail-fast read chain through a real ``MCPToolExecutor``.
+
+    Each step may either carry a static argument mapping or a callable that
+    receives the previous step outputs.  Tools are checked against the
+    configured read-only allowlist before the child process starts, so a chain
+    that tries to widen its own permissions emits no tool call and no audit
+    event.  Outputs are returned to the caller; audit events stay content-free.
+    """
+    if not steps or len(steps) > MCP_HUB_MAX_CHAIN_STEPS:
+        raise ValueError(f"read chain must have 1..{MCP_HUB_MAX_CHAIN_STEPS} steps")
+
+    settings = config or MCPHubConfig()
+    permitted = (
+        settings.allowed_tools
+        if allowed_tools is None
+        else frozenset(_normalise_tool(name) for name in allowed_tools)
+    )
+    if not permitted:
+        raise ValueError("allowed_tools must not be empty")
+    if not permitted <= settings.allowed_tools:
+        raise ValueError("read chain tools must be within the mcp-hub read-only allowlist")
+
+    prepared: list[
+        tuple[str, Mapping[str, Any] | Callable[[tuple[str, ...]], Mapping[str, Any]]]
+    ] = []
+    for name, arguments in steps:
+        bare = _normalise_tool(name)
+        if bare not in permitted:
+            raise ValueError(f"read chain tool {name!r} is not permitted")
+        if not isinstance(arguments, Mapping) and not callable(arguments):
+            raise ValueError("read chain arguments must be a mapping or a callable")
+        prepared.append((bare, arguments))
+
+    executor = build_mcp_hub_executor(
+        settings, on_audit=on_audit, max_steps=1, max_calls_per_step=1
+    )
+    outputs: list[str] = []
+    try:
+        for index, (bare, arguments) in enumerate(prepared, start=1):
+            resolved: Mapping[str, Any]
+            if isinstance(arguments, Mapping):
+                resolved = arguments
+            else:
+                candidate = arguments(tuple(outputs))
+                if not isinstance(candidate, Mapping):
+                    raise ValueError(f"read chain step {index} must return an argument mapping")
+                resolved = candidate
+            outcome = executor.execute(
+                ToolCall(f"{_PREFIX}{bare}", dict(resolved)),
+                allowed_tools=qualified_mcp_hub_tools(permitted),
+            )
+            if not outcome.ok:
+                raise ExternalMCPError(
+                    f"mcp-hub read chain stopped at step {index} ({bare})",
+                    code=-32021,
+                    data={"step": index, "tool": bare},
+                )
+            outputs.append(str(outcome.output or ""))
+        return tuple(outputs)
+    finally:
+        executor.client.close()
 
 
 def audit_dict(event: AuditEvent) -> dict[str, Any]:
