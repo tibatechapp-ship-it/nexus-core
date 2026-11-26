@@ -38,6 +38,39 @@ A second real flow reads the catalog with another allowed tool while keeping the
 
 `limit` is checked against the advertised schema (`1..200`) before any subprocess call. `mcp_hub.query_catalog` with `limit: 201` returns a structured `-32602` outcome through `MCPToolExecutor.execute()`.
 
+## Bounded read chains
+
+For practical work that needs more than one catalog lookup, use `run_mcp_hub_read_chain` from `src.mcp.mcp_hub`. It runs through the same `MCPToolExecutor`, keeps one child process for the whole chain, and stops at the first failed step:
+
+```python
+from src.mcp.mcp_hub import MCPHubConfig, run_mcp_hub_read_chain
+
+config = MCPHubConfig(
+    db_path="mcp_hub.sqlite3",
+    allowed_tools=frozenset({"list_categories", "servers_by_category", "get_server")),
+)
+
+def category_args(previous):
+    rows = json.loads(previous[-1])
+    row = next(item for item in rows if item["category"] == "search")
+    return {"category": row["category"], "limit": 1}
+
+def server_args(previous):
+    rows = json.loads(previous[-1])
+    return {"server_id": int(rows[0]["id"])}
+
+outputs = run_mcp_hub_read_chain(
+    [
+        ("mcp_hub.list_categories", {}),
+        ("mcp_hub.servers_by_category", category_args),
+        ("mcp_hub.get_server", server_args),
+    ],
+    config=config,
+)
+```
+
+Each step may carry a static argument mapping or a callable that receives earlier outputs. Chains are limited to `MCP_HUB_MAX_CHAIN_STEPS` (5) steps. The optional `allowed_tools` argument can narrow the chain below the config allowlist; both are checked before the subprocess starts, so an attempt to widen permission emits no tool call and no audit event. A failed step raises `ExternalMCPError` with code `-32021` and content-free `data` (`step`, `tool`).
+
 ## Policy and safety
 
 - `MCP_HUB_READ_TOOLS` is an explicit read-only allowlist of the 9 current tools. Discovery cannot add tools outside it.
@@ -62,7 +95,7 @@ A second real flow reads the catalog with another allowed tool while keeping the
 ## Tests
 
 - Unit: `tests/test_external_mcp.py` uses deterministic fake SDK servers for handshake, `notifications/initialized`, discovery, schema and numeric-limit validation, output sanitisation, size limits, audit shape, bounded read-only transport retry, reconnect and spawn errors.
-- Real process: the same file's `integration`-marked tests start an actual `mcp-hub` subprocess against a temporary SQLite database, seed servers, and drive a real `MCPToolExecutor` agent loop through `mcp_hub.search_servers` and `mcp_hub.query_catalog`. They also assert permission denial, a structured `-32602` for `limit: 201`, content-free audit events, reconnect success and reconnect-budget exhaustion.
+- Real process: the same file's `integration`-marked tests start an actual `mcp-hub` subprocess against a temporary SQLite database, seed servers, and drive a real `MCPToolExecutor` agent loop through `mcp_hub.search_servers` and `mcp_hub.query_catalog`. They also assert a three-step `run_mcp_hub_read_chain` that passes discovered categories and server IDs between steps, fail-fast `-32021` on a missing server, permission denial, a structured `-32602` for `limit: 201`, content-free audit events, reconnect success and reconnect-budget exhaustion.
 - The dedicated `.github/workflows/mcp-hub-integration.yml` installs `mcp>=1.27,<3` and the pinned `mcp-hub==1.10.0` wheel so the real-process tests are not skipped. It is a separate workflow to avoid overlap with open PRs that already modify `test.yml`.
 - Locally, set `MCP_HUB_ROOT=/path/to/mcp-hub-checkout` to run those tests against a source tree; the fixture adds `<root>/src` to the child `PYTHONPATH`.
 
