@@ -38,6 +38,7 @@ __all__ = [
     "DEFAULT_PROTOCOL_VERSION",
     "ExternalMCPClient",
     "ExternalMCPError",
+    "ExternalMCPTransportError",
     "ExternalServerConfig",
     "SUPPORTED_PROTOCOL_VERSIONS",
     "safe_child_env",
@@ -60,6 +61,8 @@ DEFAULT_MAX_OUTPUT_CHARS = 12_000
 DEFAULT_TIMEOUT_S = 5.0
 
 _JSON_TYPES = frozenset({"string", "number", "integer", "boolean", "array", "object"})
+ArgumentBounds = Mapping[str, int | float]
+ArgumentLimits = Mapping[str, Mapping[str, ArgumentBounds]]
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 #: Variables intentionally inherited by an external MCP child process.  Nothing
 #: else from the parent environment (API keys, tokens, proxy secrets) is passed.
@@ -73,6 +76,10 @@ _INJECTION_RE = re.compile(
 
 class ExternalMCPError(MCPClientError):
     """A transport, handshake, policy or tool-result failure (not a crash)."""
+
+
+class ExternalMCPTransportError(ExternalMCPError):
+    """A retryable transport failure (as opposed to a tool/policy error)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +98,13 @@ class ExternalServerConfig:
     max_tools: int = 100
     max_reconnects: int = 1
     reconnect_window_s: float = 60.0
+    #: Bounded retries after a transport failure. Only tools explicitly marked
+    #: safe in ``retry_safe_tools`` are ever replayed; default is no replay.
+    max_call_retries: int = 0
+    retry_safe_tools: frozenset[str] = frozenset()
+    #: Adapter-side numeric bounds. Official SDK tool schemas can drop
+    #: ``minimum``/``maximum``, so policy supplies them explicitly.
+    argument_limits: ArgumentLimits = field(default_factory=dict)
     allowed_tools: frozenset[str] | None = None
     #: When set (e.g. ``"mcp_hub"``), only ``<namespace>.<tool>`` is stripped
     #: before dispatch; a generic adapter with no namespace accepts bare names.
@@ -108,9 +122,22 @@ class ExternalServerConfig:
             raise ValueError("timeout and size limits must be positive and meaningful")
         if self.max_tools < 1 or self.max_reconnects < 0 or self.reconnect_window_s <= 0:
             raise ValueError("tool/reconnect limits must be positive")
-        if self.tool_namespace and not re.fullmatch(
-            r"[A-Za-z_][A-Za-z0-9_]*", self.tool_namespace
-        ):
+        if self.max_call_retries < 0 or self.max_call_retries > 2:
+            raise ValueError("max_call_retries must be between 0 and 2")
+        if not all(isinstance(name, str) and name for name in self.retry_safe_tools):
+            raise ValueError("retry_safe_tools must contain non-empty strings")
+        for tool, params in self.argument_limits.items():
+            if not isinstance(tool, str) or not tool or not isinstance(params, Mapping):
+                raise ValueError("argument_limits must map tool names to parameter maps")
+            for param, bounds in params.items():
+                if not isinstance(param, str) or not param or not isinstance(bounds, Mapping):
+                    raise ValueError("argument_limits bounds must be parameter mappings")
+                for key in ("minimum", "maximum"):
+                    if key in bounds and (
+                        not isinstance(bounds[key], (int, float)) or isinstance(bounds[key], bool)
+                    ):
+                        raise ValueError(f"argument_limits {key} must be numeric")
+        if self.tool_namespace and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", self.tool_namespace):
             raise ValueError("tool_namespace must be a short ASCII identifier")
         if self.allowed_tools is not None and not all(
             isinstance(name, str) and name for name in self.allowed_tools
@@ -184,8 +211,12 @@ def _matches_type(value: Any, expected: str) -> bool:
     return True
 
 
-def _validate_arguments(spec: Mapping[str, Any], arguments: Mapping[str, Any]) -> str | None:
-    """Validate call arguments against the advertised JSON schema (no coercion)."""
+def _validate_arguments(
+    spec: Mapping[str, Any],
+    arguments: Mapping[str, Any],
+    limits: Mapping[str, ArgumentBounds] | None = None,
+) -> str | None:
+    """Validate call arguments against schema plus adapter-side numeric bounds."""
     schema = spec.get("inputSchema")
     schema = schema if isinstance(schema, Mapping) else {}
     properties = schema.get("properties")
@@ -201,8 +232,43 @@ def _validate_arguments(spec: Mapping[str, Any], arguments: Mapping[str, Any]) -
         prop = properties.get(name)
         prop = prop if isinstance(prop, Mapping) else {}
         expected = prop.get("type")
-        if isinstance(expected, str) and expected in _JSON_TYPES and not _matches_type(value, expected):
+        if (
+            isinstance(expected, str)
+            and expected in _JSON_TYPES
+            and not _matches_type(value, expected)
+        ):
             return f"parameter {name!r} must be {expected}"
+        if _matches_type(value, "number"):
+            minimum = prop.get("minimum")
+            if (
+                isinstance(minimum, (int, float))
+                and not isinstance(minimum, bool)
+                and value < minimum
+            ):
+                return f"parameter {name!r} must be >= {minimum}"
+            maximum = prop.get("maximum")
+            if (
+                isinstance(maximum, (int, float))
+                and not isinstance(maximum, bool)
+                and value > maximum
+            ):
+                return f"parameter {name!r} must be <= {maximum}"
+        bounds = limits.get(name, {}) if limits is not None else {}
+        if bounds and _matches_type(value, "number"):
+            minimum = bounds.get("minimum")
+            if (
+                isinstance(minimum, (int, float))
+                and not isinstance(minimum, bool)
+                and value < minimum
+            ):
+                return f"parameter {name!r} must be >= {minimum}"
+            maximum = bounds.get("maximum")
+            if (
+                isinstance(maximum, (int, float))
+                and not isinstance(maximum, bool)
+                and value > maximum
+            ):
+                return f"parameter {name!r} must be <= {maximum}"
         enum = prop.get("enum")
         if isinstance(enum, list) and value not in enum:
             return f"parameter {name!r} must be one of {enum!r}"
@@ -321,7 +387,7 @@ class ExternalMCPClient:
         self._stopping = False
 
     # -- wire transport ----------------------------------------------------
-    def _set_fatal(self, error: ExternalMCPError) -> None:
+    def _set_fatal(self, error: ExternalMCPTransportError) -> None:
         """Publish a fatal transport error to every waiter exactly once."""
         if self._closing or self._stopping or self._fatal is not None:
             return
@@ -336,23 +402,27 @@ class ExternalMCPClient:
                 if not raw:
                     break
                 if len(raw) > self.config.max_response_bytes:
-                    self._set_fatal(ExternalMCPError("response exceeds configured byte limit"))
+                    self._set_fatal(
+                        ExternalMCPTransportError("response exceeds configured byte limit")
+                    )
                     return
                 if not raw.strip():
                     continue
                 try:
                     message = json.loads(raw.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError):
-                    self._set_fatal(ExternalMCPError("invalid JSON from external server"))
+                    self._set_fatal(ExternalMCPTransportError("invalid JSON from external server"))
                     return
                 if not isinstance(message, dict):
-                    self._set_fatal(ExternalMCPError("external server response is not an object"))
+                    self._set_fatal(
+                        ExternalMCPTransportError("external server response is not an object")
+                    )
                     return
                 self._queue.put(message)
         except (OSError, ValueError):
-            self._set_fatal(ExternalMCPError("stdio read failed"))
+            self._set_fatal(ExternalMCPTransportError("stdio read failed"))
         finally:
-            self._set_fatal(ExternalMCPError("external server closed the connection"))
+            self._set_fatal(ExternalMCPTransportError("external server closed the connection"))
 
     def _send_notification(self, method: str) -> None:
         """Write a JSON-RPC notification (no id, no response expected)."""
@@ -365,8 +435,8 @@ class ExternalMCPClient:
                 proc.stdin.write(payload + b"\n")
                 proc.stdin.flush()
             except OSError as exc:
-                self._set_fatal(ExternalMCPError(f"write failed: {type(exc).__name__}"))
-                raise self._fatal or ExternalMCPError("write failed") from exc
+                self._set_fatal(ExternalMCPTransportError(f"write failed: {type(exc).__name__}"))
+                raise self._fatal or ExternalMCPTransportError("write failed") from exc
 
     def _raw_request(self, method: str, params: Mapping[str, Any] | None = None) -> Any:
         """Send one request and wait for its matching response within the timeout."""
@@ -391,19 +461,21 @@ class ExternalMCPClient:
                 proc.stdin.write(payload + b"\n")
                 proc.stdin.flush()
             except OSError as exc:
-                self._set_fatal(ExternalMCPError(f"write failed: {type(exc).__name__}"))
-                raise self._fatal or ExternalMCPError("write failed") from exc
+                self._set_fatal(ExternalMCPTransportError(f"write failed: {type(exc).__name__}"))
+                raise self._fatal or ExternalMCPTransportError("write failed") from exc
         deadline = time.monotonic() + self.config.timeout_s
         while True:
             if self._fatal is not None:
                 raise self._fatal
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise ExternalMCPError(f"timeout after {self.config.timeout_s}s: {method}", code=-32000)
+                raise ExternalMCPTransportError(
+                    f"timeout after {self.config.timeout_s}s: {method}", code=-32000
+                )
             try:
                 message = self._queue.get(timeout=remaining)
             except queue.Empty as exc:
-                raise ExternalMCPError(
+                raise ExternalMCPTransportError(
                     f"timeout after {self.config.timeout_s}s: {method}", code=-32000
                 ) from exc
             if isinstance(message, ExternalMCPError):
@@ -447,7 +519,7 @@ class ExternalMCPClient:
         if self._closing:
             raise ExternalMCPError("client is closed", code=-32000)
         if self._proc is not None and self._proc.poll() is not None:
-            self._set_fatal(ExternalMCPError("external server closed the connection"))
+            self._set_fatal(ExternalMCPTransportError("external server closed the connection"))
         if self._fatal is not None:
             self._reconnect()
         if not self._initialized:
@@ -546,12 +618,19 @@ class ExternalMCPClient:
             self.on_audit(event)
 
     def call_tool(self, name: str, arguments: Mapping[str, Any] | None = None) -> str:
-        """Call one permitted, advertised tool and return sanitised text."""
+        """Call one permitted, advertised tool and return sanitised text.
+
+        A transport failure may be replayed once for tools explicitly listed in
+        ``retry_safe_tools`` (mcp-hub marks all of its read-only catalog tools).
+        Policy, schema and tool errors are never replayed.  One audit event is
+        emitted for the logical call, regardless of internal retries.
+        """
         tool_name = ""
         args = dict(arguments or {})
         started = time.perf_counter()
         chars = 0
         code: int | None = None
+        failed = False
         try:
             tool_name = self._unqualify(name)
             self._ensure_ready()
@@ -567,14 +646,29 @@ class ExternalMCPClient:
                 raise ExternalMCPError(
                     f"tool {tool_name!r} is not advertised by {self.config.name}", code=-32601
                 )
-            problem = _validate_arguments(spec, args)
+            limits = self.config.argument_limits.get(tool_name, {})
+            problem = _validate_arguments(spec, args, limits)
             if problem is not None:
                 raise ExternalMCPError(problem, code=-32602)
-            result = self._raw_request("tools/call", {"name": tool_name, "arguments": args})
-            text = self._result_text(tool_name, result)
-            chars = len(text)
-            return text
+            attempt = 0
+            while True:
+                try:
+                    result = self._raw_request("tools/call", {"name": tool_name, "arguments": args})
+                    text = self._result_text(tool_name, result)
+                    chars = len(text)
+                    return text
+                except ExternalMCPTransportError:
+                    retryable = (
+                        attempt < self.config.max_call_retries
+                        and tool_name in self.config.retry_safe_tools
+                        and not self._closing
+                    )
+                    if not retryable:
+                        raise
+                    attempt += 1
+                    self._reconnect()
         except Exception as exc:
+            failed = True
             code = exc.code if isinstance(exc, MCPClientError) else None
             raise
         finally:
@@ -582,7 +676,7 @@ class ExternalMCPClient:
                 AuditEvent(
                     server=self.config.name,
                     tool=tool_name or "<invalid>",
-                    ok=code is None,
+                    ok=not failed,
                     duration_ms=int((time.perf_counter() - started) * 1000),
                     chars=chars,
                     error_code=code,
