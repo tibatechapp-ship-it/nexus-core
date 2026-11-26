@@ -2,7 +2,6 @@ name: MIZAN Pull Request Security Scan
 
 on:
   pull_request:
-    branches: ["main"]
   workflow_dispatch:
 
 # Untrusted pull-request code is analyzed without executing repository scripts,
@@ -52,11 +51,22 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout exact PR revision
+      # The evidence adapter is trusted tooling pinned to an immutable main commit.
+      # Never execute scripts from the PR checkout being scanned.
+      - name: Checkout trusted evidence adapter
+        uses: actions/checkout@v7
+        with:
+          ref: 51430b2606aeccc842de37dbc43fee13e429a4be
+          path: mizan-tool
+          persist-credentials: false
+
+      # The candidate repository is data only, isolated in a separate directory.
+      - name: Checkout exact PR revision as scan input
         uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
+          path: target
           fetch-depth: 0
           persist-credentials: false
 
@@ -81,7 +91,17 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          python scripts/mizan/build_pr_evidence.py --output reports/mizan/pr-evidence.json
+          # The adapter currently captures MIZAN stdout/stderr before emitting them.
+          # Suppress raw output: scanner diagnostics may contain source-derived values.
+          set +e
+          python mizan-tool/scripts/mizan/build_pr_evidence.py --repo target --output reports/mizan/pr-evidence.json > "$RUNNER_TEMP/mizan-adapter.log" 2>&1
+          adapter_status=$?
+          set -e
+          echo "MIZAN evidence adapter exit code: $adapter_status"
+          if [ "$adapter_status" -ne 0 ]; then
+            echo "::error::MIZAN evidence generation failed; raw scanner output was suppressed to prevent secret disclosure."
+          fi
+          exit "$adapter_status"
 
       - name: Upload MIZAN evidence
         id: upload
