@@ -80,6 +80,15 @@ jobs:
           print('novamind test data ready')
           PY
 
+      - name: Blocking real-provider and tracing contracts
+        run: |
+          pytest tests/test_llm_router_contract.py -q
+          pytest tests/novamind/unit/test_real_provider_required.py tests/novamind/unit/test_tracer_lifecycle.py -q
+        env:
+          NEXUS_RUN_LIVE_PROVIDER_TESTS: "0"
+          ZAI_API_KEY_1: test
+          GROQ_API_KEY_1: test
+
       - name: Novamind unit + observability (non-blocking report)
         run: pytest tests/novamind/unit tests/novamind/observability --tb=short
         continue-on-error: true
@@ -91,7 +100,20 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          pytest tests/novamind --cov=src/novamind --cov-report=term --tb=line || true
+          # The repository-wide coverage config deliberately omits NovaMind.
+          # Use a dedicated report config so this separate suite measures its
+          # own source instead of producing a misleading 0% / no-data report.
+          cat > /tmp/novamind.coveragerc <<'EOF'
+          [run]
+          branch = True
+          source = src/novamind
+          omit =
+              */tests/*
+          [report]
+          show_missing = True
+          skip_empty = True
+          EOF
+          pytest tests/novamind --cov=novamind --cov-config=/tmp/novamind.coveragerc --cov-report=term --tb=line
         env:
           ZAI_API_KEY_1: test
           GROQ_API_KEY_1: test

@@ -15,6 +15,7 @@ import json
 import time
 import hashlib
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Iterator
@@ -124,6 +125,86 @@ class LearningLoop:
             logger.error(f"record failed: {e}")
 
         return exp
+
+    def learn_from_pr_review(self, repo: str, pr_num: int, issues: List[Dict]) -> Dict:
+        """Store review classifications as lessons without retaining source text."""
+        import re
+
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if isinstance(pr_num, bool) or not isinstance(pr_num, int) or pr_num < 0:
+            raise ValueError("pr_num must be a non-negative integer")
+        if not isinstance(issues, list):
+            raise TypeError("issues must be a list")
+
+        safe_issues = []
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            safe = {}
+            # Keep only classification labels; filenames and free-form text can
+            # expose private paths, code snippets, credentials, or prompt injection.
+            for key in ("category", "severity", "rule_id"):
+                value = issue.get(key)
+                if isinstance(value, str) and value.strip():
+                    normalized = re.sub(r"[^A-Za-z0-9_.:-]+", "_", value.strip())[:100]
+                    if normalized:
+                        safe[key] = normalized
+            if safe:
+                safe_issues.append(safe)
+
+        if not safe_issues:
+            return {"learned": 0, "experience_ids": []}
+
+        task = f"PR review: {repo.strip()}#{pr_num}"
+        payload = json.dumps(safe_issues, ensure_ascii=False, sort_keys=True)
+        patterns = sorted({
+            "/".join(item.get(key, "-") for key in ("category", "severity", "rule_id"))
+            for item in safe_issues
+        })[:20]
+        summary = (f"PR review classification patterns ({len(safe_issues)} findings): "
+                   + "; ".join(patterns))[:1000]
+        exp = self.record(
+            agent="pr_reviewer",
+            task=task,
+            input_data=payload,
+            output={"summary": summary},
+            outcome="partial",
+            duration=0.0,
+            tags=["pr-review", "review-findings"],
+        )
+        return {"learned": len(safe_issues), "experience_ids": [exp.experience_id]}
+
+    def record_feedback(self, pattern: str, liked: bool, context: str = "", source: str = "user") -> Dict:
+        """Persist user preference feedback without treating it as task success."""
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError("pattern must be a non-empty string")
+        if not isinstance(liked, bool):
+            raise TypeError("liked must be a bool")
+        if not isinstance(context, str) or not isinstance(source, str):
+            raise TypeError("context and source must be strings")
+        payload = json.dumps({
+            "pattern": pattern.strip()[:500],
+            "context": context.strip()[:500],
+            "liked": liked,
+        }, ensure_ascii=False, sort_keys=True)
+        safe_pattern = " ".join(pattern.strip().split())[:160]
+        safe_pattern = re.sub(
+            r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*\S+",
+            r"\1=[REDACTED]",
+            safe_pattern,
+        )
+        feedback_summary = f"User feedback ({'liked' if liked else 'disliked'}): {safe_pattern}"[:200]
+        exp = self.record(
+            agent="learner",
+            task="user feedback",
+            input_data=payload,
+            output={"summary": feedback_summary},
+            outcome="partial",
+            user_feedback="liked" if liked else "disliked",
+            tags=["user-feedback"],
+        )
+        return {"recorded": True, "experience_id": exp.experience_id}
 
     def stream_all(self) -> Iterator[Experience]:
         if not self.storage_path.exists():

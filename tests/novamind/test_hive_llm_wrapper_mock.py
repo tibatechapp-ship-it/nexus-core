@@ -39,7 +39,9 @@ async def test_make_llm_call_with_fake_router():
 async def test_make_llm_call_without_router_returns_mock():
     """Verify fallback behavior when NO router is provided (strict local mock)."""
     # Explicitly pass router=None to force local mock logic inside llm_wrapper
-    call_fn = llm_wrapper.make_llm_call(router=None, model="local-mock-model")
+    call_fn = llm_wrapper.make_llm_call(
+        router=None, model="local-mock-model", fallback_to_mock=True
+    )
     
     result = await call_fn("Hi there")
     
@@ -49,3 +51,30 @@ async def test_make_llm_call_without_router_returns_mock():
     assert result["provider"] == "mock-provider", f"Expected 'mock-provider', got '{result['provider']}'"
     # Model should match what was requested
     assert result["model"] == "local-mock-model"
+    assert result["ok"] is True
+    assert result["simulated"] is True
+
+
+@pytest.mark.asyncio
+async def test_make_llm_call_without_router_fails_closed_by_default():
+    call_fn = llm_wrapper.make_llm_call(router=None, model="production-model")
+    result = await call_fn("Do real work")
+    assert result["ok"] is False
+    assert result["simulated"] is False
+    assert result["text"] == ""
+    assert "no real LLM provider configured" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_make_llm_call_does_not_mock_router_signature_errors():
+    class BrokenRouter:
+        def generate(self, prompt):
+            raise TypeError("unsupported router contract")
+
+    call_fn = llm_wrapper.make_llm_call(router=BrokenRouter())
+    result = await call_fn("Do not synthesize a result")
+
+    assert result["ok"] is False
+    assert result["simulated"] is False
+    assert result["text"] == ""
+    assert "unsupported router contract" in result["error"]

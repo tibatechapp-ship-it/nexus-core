@@ -42,6 +42,7 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import inspect
+import os
 import signal
 import sys
 import tempfile
@@ -170,38 +171,79 @@ class _RuntimeIsolation:
         self._saved_path: Any = None
         self._owner_module: Any = None
         self._tracker: Any = None
+        self._learning_loops: list[tuple[Any, Any]] = []
+        self._saved_novamind_home = os.environ.get("NOVAMIND_HOME")
+        self._had_novamind_home = "NOVAMIND_HOME" in os.environ
 
     def engage(self) -> None:
+        # Record module instances before import: a cold import creates its
+        # singleton under the temporary home, so its original path must be
+        # reconstructed rather than saved as another temporary path.
+        loaded_modules = {
+            name: module
+            for name, module in sys.modules.items()
+            if name.endswith("core.learning_loop")
+        }
+        os.environ["NOVAMIND_HOME"] = str(self._tmp)
         try:
-            # استيراد استباقي: إن استورده وكيلٌ أثناء القياس لُبِن كاتبه
-            # على المسار الحقيقي قبل أن نسلك عليه الـsandbox
+            importlib.import_module("novamind.core.learning_loop")
+        except Exception:  # noqa: BLE001 — absence of this subsystem is harmless
+            pass
+
+        sandbox_path = self._tmp / "memory" / "experiences.jsonl"
+        seen_loops: set[int] = set()
+        for name, module in list(sys.modules.items()):
+            if not name.endswith("core.learning_loop"):
+                continue
+            loop = getattr(module, "learning_loop", None)
+            if loop is None or getattr(loop, "storage_path", None) is None:
+                continue
+            if id(loop) in seen_loops:
+                continue
+            seen_loops.add(id(loop))
+            if loaded_modules.get(name) is module:
+                original_path = loop.storage_path
+            else:
+                if self._had_novamind_home:
+                    original_base = Path(self._saved_novamind_home or ".")
+                else:
+                    module_file = getattr(module, "__file__", None)
+                    original_base = (
+                        Path(module_file).resolve().parent.parent
+                        if isinstance(module_file, str)
+                        else Path.cwd()
+                    )
+                original_path = original_base / "memory" / "experiences.jsonl"
+            self._learning_loops.append((loop, original_path))
+            loop.storage_path = sandbox_path
+            loop.storage_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Import eagerly so a module-level CostTracker cannot capture a repo path.
+        try:
             importlib.import_module("novamind.core.cost_router")
-        except Exception:  # noqa: BLE001 — غياب الوحدة يعني لا كاتب لعزله
-            return
+        except Exception:  # noqa: BLE001 — absence of this subsystem is harmless
+            pass
         cr = sys.modules.get("novamind.core.cost_router")
-        if cr is None:
-            return
-        self._owner_module = cr
-        sandbox = self._tmp / "cost_tracking.json"
-        # 1) المفرد الحي إن كُبِن قبل الحِمل
-        router = getattr(cr, "_cost_router", None)
-        tracker = getattr(router, "tracker", None) if router else None
-        if tracker is not None and getattr(tracker, "path", None):
-            self._tracker = tracker
-            self._saved_path = tracker.path
-            tracker.path = sandbox
-        # 2) أي بناء جديد أثناء الحِمل يُبنى على الـsandbox
-        real = cr.CostTracker
-        if not getattr(real, "_fleet_sandboxed", False):
-            self._saved_class = real
+        if cr is not None:
+            self._owner_module = cr
+            sandbox = self._tmp / "cost_tracking.json"
+            router = getattr(cr, "_cost_router", None)
+            tracker = getattr(router, "tracker", None) if router else None
+            if tracker is not None and getattr(tracker, "path", None):
+                self._tracker = tracker
+                self._saved_path = tracker.path
+                tracker.path = sandbox
+            real = getattr(cr, "CostTracker", None)
+            if real is not None and not getattr(real, "_fleet_sandboxed", False):
+                self._saved_class = real
 
-            class _SandboxedTracker(real):  # type: ignore[misc,valid-type]
-                def __init__(self, *a: Any, **kw: Any) -> None:
-                    kw.pop("path", None)
-                    super().__init__(path=sandbox, **kw)
+                class _SandboxedTracker(real):  # type: ignore[misc,valid-type]
+                    def __init__(self, *a: Any, **kw: Any) -> None:
+                        kw.pop("path", None)
+                        super().__init__(path=sandbox, **kw)
 
-            _SandboxedTracker._fleet_sandboxed = True  # type: ignore[attr-defined]
-            setattr(cr, "CostTracker", _SandboxedTracker)
+                _SandboxedTracker._fleet_sandboxed = True  # type: ignore[attr-defined]
+                setattr(cr, "CostTracker", _SandboxedTracker)
 
     def restore(self) -> None:
         try:
@@ -209,6 +251,12 @@ class _RuntimeIsolation:
                 setattr(self._owner_module, "CostTracker", self._saved_class)
             if self._tracker is not None and self._saved_path is not None:
                 self._tracker.path = self._saved_path
+            for loop, original_path in self._learning_loops:
+                loop.storage_path = original_path
+            if self._had_novamind_home:
+                os.environ["NOVAMIND_HOME"] = self._saved_novamind_home or ""
+            else:
+                os.environ.pop("NOVAMIND_HOME", None)
         finally:
             import shutil
 

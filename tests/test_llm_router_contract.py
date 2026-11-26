@@ -91,6 +91,7 @@ def test_provider_config_fields_unchanged() -> None:
 def test_result_success_shape() -> None:
     result = MockProvider().generate("hello")
     assert result["ok"] is True
+    assert result["simulated"] is True
     for key in ("text", "provider", "model", "elapsed"):
         assert key in result
 
@@ -102,12 +103,32 @@ def test_result_unknown_provider_is_failure_dict_not_exception() -> None:
     assert "error" in result
 
 
+def test_no_provider_is_explicit_failure_not_mock(monkeypatch) -> None:
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    router = LLMRouter()
+    result = router.generate("must not be simulated")
+    assert router.providers == []
+    assert result["ok"] is False
+    assert result["provider"] == ""
+    assert result["error"] == "no LLM providers configured"
+
+
 # ═══ 3. عقد قاطع الدارة — docs/CONTRACTS.md §1.3 ════════════════════════════════
 
 
 @pytest.fixture()
 def router() -> LLMRouter:
-    return LLMRouter()
+    instance = LLMRouter()
+    if not instance.providers:
+        instance.providers.append(
+            ProviderConfig(
+                name="contract-test-provider",
+                api_key="test-only",
+                base_url="https://provider.invalid/v1",
+                models={"fast": "test-model", "smart": "test-model"},
+            )
+        )
+    return instance
 
 
 def test_circuit_breaker_constants_unchanged() -> None:
@@ -245,3 +266,93 @@ def test_module_reloads_cleanly() -> None:
     """إعادة تحميل الوحدة لا تفشل — أساس استقرار الاختبارات الأخرى."""
     fresh = importlib.reload(lr)
     assert hasattr(fresh, "LLMRouter") and hasattr(fresh, "get_router")
+
+
+def test_get_router_does_not_install_mock_implicitly(monkeypatch) -> None:
+    monkeypatch.setattr(lr.LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.setattr(lr, "_router", None)
+    router = lr.get_router()
+    assert router.providers == []
+    assert router.generate("test")["ok"] is False
+
+
+def test_secondary_gemini_keys_use_native_gemini_call(router, monkeypatch, tmp_path) -> None:
+    gemini = ProviderConfig(
+        name="gemini_2",
+        api_key="test-key",
+        base_url="https://generativelanguage.googleapis.com",
+        models={"fast": "gemini-flash-latest", "smart": "gemini-pro-latest"},
+        priority=1,
+    )
+    router.providers = [gemini]
+    monkeypatch.setattr(LLMRouter, "_cooldown_path", lambda self: tmp_path / "cooldowns.json")
+    called = {}
+
+    def native_call(provider, model, prompt, system, temperature, max_tokens):
+        called["provider"] = provider.name
+        return "gemini response"
+
+    def incompatible_openai_call(*args, **kwargs):
+        raise AssertionError("Gemini must not use the OpenAI-compatible path")
+
+    monkeypatch.setattr(router, "_call_gemini", native_call)
+    monkeypatch.setattr(router, "_call_openai_compatible", incompatible_openai_call)
+
+    result = router.generate("probe")
+
+    assert result["ok"] is True
+    assert result["provider"] == "gemini_2"
+    assert called["provider"] == "gemini_2"
+
+
+def test_router_uses_mock_only_when_explicitly_injected(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.setattr(LLMRouter, "_cooldown_path", lambda self: tmp_path / "cooldowns.json")
+    router = LLMRouter()
+    router.providers = [MockProvider()]
+
+    result = router.generate("test-only mock request")
+
+    assert result["ok"] is True
+    assert result["provider"] == "mock"
+    assert result["simulated"] is True
+
+
+def test_rotated_gemini_key_is_not_disabled_by_its_slot(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("NOVAMIND_HOME", str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY_8", "g" * 40)
+    router = LLMRouter()
+    provider = next(p for p in router.providers if p.name == "gemini_8")
+    assert provider.enabled is True
+
+
+def test_provider_env_loading_honors_novamind_home_then_root(
+    monkeypatch, tmp_path
+) -> None:
+    root = tmp_path / "repo"
+    home = tmp_path / "novamind-home"
+    root.mkdir()
+    home.mkdir()
+    (root / ".env").write_text("GEMINI_API_KEY=" + "r" * 40 + chr(10))
+    (home / ".env").write_text("GEMINI_API_KEY=" + "h" * 40 + chr(10))
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("NOVAMIND_HOME", str(home))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    router = LLMRouter()
+
+    gemini = next(provider for provider in router.providers if provider.name == "gemini")
+    assert gemini.api_key == "h" * 40
+
+
+def test_router_refresh_is_explicit_and_replaces_singleton(monkeypatch) -> None:
+    monkeypatch.setattr(lr.LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.setattr(lr, "_router", None)
+
+    first = lr.get_router()
+    assert lr.get_router() is first
+
+    refreshed = lr.refresh_router()
+
+    assert refreshed is not first
+    assert lr.get_router() is refreshed
