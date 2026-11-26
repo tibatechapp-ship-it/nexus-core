@@ -84,6 +84,46 @@ Each step may carry a static argument mapping or a callable that receives earlie
 
 `pythonpath` is an administrator setting for source checkouts. With the published wheel it should be left unset.
 
+## Bounded resource reads
+
+`resources/read` is exposed as a separate read-only path. The URI is checked
+against `MCP_HUB_READ_RESOURCES` (`mcp-hub://stats` in 1.10.0) before any
+subprocess starts; discovery cannot widen that allowlist.
+
+```python
+from src.mcp.mcp_hub import MCPHubConfig, read_mcp_hub_resource
+
+text = read_mcp_hub_resource("mcp-hub://stats", config=MCPHubConfig(db_path="mcp_hub.sqlite3"))
+```
+
+Resource text is bounded, neutralised for marker injection and treated as data.
+One content-free audit event is emitted for the logical call (`server`,
+`tool=resources/read`, `ok`, `duration_ms`, `chars`, `error_code`); the URI and
+body are never logged. There is no tool replay for resource reads.
+
+## Read-only policy preflight
+
+The framework server registers `dry_run_policy` by default.  It answers a
+structural question before real work: would the current policy accept this
+step?  It never starts a subprocess, writes a file, runs a command or reads a
+secret.  Callers can disable it with `build_framework_server(include_preflight=False)`.
+
+```python
+from src.mcp import build_framework_server
+
+server = build_framework_server(root=".")
+decision = server.call_tool("dry_run_policy", {"kind": "resource_read", "uri": "mcp-hub://stats"})
+```
+
+Supported `kind` values are `tool_call`, `resource_read`, `path` and `plan`.
+The result contains only `ok`, a stable `reason` (for example `allowed`,
+`tool_not_allowed`, `path_outside_workspace`, `parameter_above_maximum`),
+`code` and `kind`.  No checked value is echoed back. Path checks are confined
+to the server root, refuse symlinks and sensitive names, and plan checks are
+structural only — no file is read or changed. Preflight uses the same
+default-deny allowlists and numeric limits as the real adapter and emits one
+content-free audit event per call.
+
 ## Failure behaviour
 
 - Handshake or discovery failure closes the child and raises `ExternalMCPError`.

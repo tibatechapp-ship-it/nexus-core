@@ -15,6 +15,7 @@ from src.mcp.client import InProcessClient
 _EXPECTED_LOCAL = {"read_file", "list_dir", "grep"}
 _EXPECTED_SECURITY = {"security_scan", "security_scan_text"}
 _EXPECTED_GIT = {"git_status", "git_log", "git_branches", "git_diff", "git_show"}
+_EXPECTED_PREFLIGHT = {"dry_run_policy"}
 
 
 def _git_repo(tmp_path):  # noqa: ANN001, ANN202
@@ -37,7 +38,6 @@ def fw_available() -> bool:  # noqa: ANN201
     return which("git") is not None
 
 
-
 # ── assembly ──────────────────────────────────────────────────────────────
 def test_build_framework_server_default(tmp_path):
     server = fw.build_framework_server(root=tmp_path)
@@ -47,6 +47,7 @@ def test_build_framework_server_default(tmp_path):
     assert _EXPECTED_SECURITY <= names
     assert _EXPECTED_LOCAL <= names
     assert _EXPECTED_GIT <= names
+    assert _EXPECTED_PREFLIGHT <= names
     assert "agent_architect" in names
     assert server.name == "nexus-core"
     # version comes from src.__version__ (single source), not a pinned literal
@@ -57,19 +58,21 @@ def test_build_framework_server_flags(tmp_path):
     only_agents = fw.build_framework_server(
         root=tmp_path, include_security=False, include_local_tools=False, include_git=False
     )
-    assert all(name.startswith("agent_") for name in only_agents.tool_names())
+    agent_names = set(only_agents.tool_names())
+    assert _EXPECTED_PREFLIGHT <= agent_names
+    assert all(name.startswith("agent_") for name in agent_names - _EXPECTED_PREFLIGHT)
     only_security = fw.build_framework_server(
         root=tmp_path, include_agents=False, include_local_tools=False, include_git=False
     )
-    assert set(only_security.tool_names()) == _EXPECTED_SECURITY
+    assert set(only_security.tool_names()) == _EXPECTED_SECURITY | _EXPECTED_PREFLIGHT
     only_local = fw.build_framework_server(
         root=tmp_path, include_agents=False, include_security=False, include_git=False
     )
-    assert set(only_local.tool_names()) == _EXPECTED_LOCAL
+    assert set(only_local.tool_names()) == _EXPECTED_LOCAL | _EXPECTED_PREFLIGHT
     only_git = fw.build_framework_server(
         root=tmp_path, include_agents=False, include_security=False, include_local_tools=False
     )
-    assert set(only_git.tool_names()) == _EXPECTED_GIT
+    assert set(only_git.tool_names()) == _EXPECTED_GIT | _EXPECTED_PREFLIGHT
 
 
 def test_build_framework_server_custom_identity(tmp_path):
@@ -101,7 +104,7 @@ def test_agent_tools_use_injected_factory(tmp_path, monkeypatch):
     server = fw.build_framework_server(
         root=tmp_path, include_security=False, include_local_tools=False, include_git=False
     )
-    assert server.tool_names() == ["agent_chooser"]
+    assert server.tool_names() == ["agent_chooser", "dry_run_policy"]
     result = server.call_tool("agent_chooser", {"task": "job", "context": "ctx"})
     assert result["isError"] is False
     assert result["content"][0]["text"] == "did:job"
@@ -149,7 +152,9 @@ def test_security_scan_path(tmp_path):
     client = InProcessClient(
         fw.build_framework_server(root=tmp_path, include_agents=False, include_local_tools=False)
     )
-    report = json.loads(client.call_tool("security_scan", {"target": "vuln.py", "profile": "secrets"}))
+    report = json.loads(
+        client.call_tool("security_scan", {"target": "vuln.py", "profile": "secrets"})
+    )
     assert report["target"].endswith("vuln.py")
     assert "score" in report
 
@@ -185,7 +190,9 @@ def test_security_scan_text(tmp_path):
     server = fw.build_framework_server(
         root=tmp_path, include_agents=False, include_local_tools=False
     )
-    result = server.call_tool("security_scan_text", {"text": "password = 'hunter2'", "path": "a.py"})
+    result = server.call_tool(
+        "security_scan_text", {"text": "password = 'hunter2'", "path": "a.py"}
+    )
     assert result["isError"] is False
     assert "findings" in result["content"][0]["text"]
 
@@ -212,25 +219,19 @@ def test_local_tools_roundtrip(tmp_path):
 
 
 def test_read_file_without_path_is_error(tmp_path):
-    server = fw.build_framework_server(
-        root=tmp_path, include_agents=False, include_security=False
-    )
+    server = fw.build_framework_server(root=tmp_path, include_agents=False, include_security=False)
     result = server.call_tool("read_file", {})
     assert result["isError"] is True
 
 
 def test_local_tool_escape_is_refused(tmp_path):
-    server = fw.build_framework_server(
-        root=tmp_path, include_agents=False, include_security=False
-    )
+    server = fw.build_framework_server(root=tmp_path, include_agents=False, include_security=False)
     result = server.call_tool("read_file", {"path": "../../etc/passwd"})
     assert result["isError"] is True
 
 
 def test_local_tool_missing_file_is_error(tmp_path):
-    server = fw.build_framework_server(
-        root=tmp_path, include_agents=False, include_security=False
-    )
+    server = fw.build_framework_server(root=tmp_path, include_agents=False, include_security=False)
     result = server.call_tool("list_dir", {"path": "nope"})
     assert result["isError"] is True
 

@@ -59,6 +59,7 @@ SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
 DEFAULT_MAX_RESPONSE_BYTES = 1_048_576
 DEFAULT_MAX_OUTPUT_CHARS = 12_000
 DEFAULT_TIMEOUT_S = 5.0
+MAX_RESOURCE_URI_CHARS = 512
 
 _JSON_TYPES = frozenset({"string", "number", "integer", "boolean", "array", "object"})
 ArgumentBounds = Mapping[str, int | float]
@@ -106,6 +107,9 @@ class ExternalServerConfig:
     #: ``minimum``/``maximum``, so policy supplies them explicitly.
     argument_limits: ArgumentLimits = field(default_factory=dict)
     allowed_tools: frozenset[str] | None = None
+    #: Exact resource URIs permitted for ``resources/read``. ``None`` means no
+    #: resource reads; default-deny is deliberate and discovery cannot widen it.
+    allowed_resources: frozenset[str] | None = None
     #: When set (e.g. ``"mcp_hub"``), only ``<namespace>.<tool>`` is stripped
     #: before dispatch; a generic adapter with no namespace accepts bare names.
     tool_namespace: str = ""
@@ -143,6 +147,14 @@ class ExternalServerConfig:
             isinstance(name, str) and name for name in self.allowed_tools
         ):
             raise ValueError("allowed_tools must contain non-empty strings")
+        if self.allowed_resources is not None and not all(
+            isinstance(uri, str)
+            and uri
+            and len(uri) <= MAX_RESOURCE_URI_CHARS
+            and "\x00" not in uri
+            for uri in self.allowed_resources
+        ):
+            raise ValueError("allowed_resources must contain short, non-empty URIs")
         for key, value in self.env.items():
             if not _ENV_KEY_RE.fullmatch(key):
                 raise ValueError(f"unsafe environment variable name: {key!r}")
@@ -602,6 +614,69 @@ class ExternalMCPClient:
                 f"{self.config.name} tool {name} failed: {text[:300]}", code=-32000
             )
         return sanitize_tool_output(text)
+
+    def _resource_text(self, result: Any) -> str:
+        """Validate, bound and neutralise a ``resources/read`` result."""
+        if not isinstance(result, Mapping):
+            raise ExternalMCPError("resource result is not an object", code=-32603)
+        contents = result.get("contents")
+        if not isinstance(contents, list) or not contents:
+            raise ExternalMCPError("resource result has no contents", code=-32603)
+        blocks: list[str] = []
+        for block in contents:
+            if not isinstance(block, Mapping) or not isinstance(block.get("text"), str):
+                raise ExternalMCPError("resource content block has no text", code=-32603)
+            blocks.append(block["text"])
+        if result.get("isError") is True:
+            raise ExternalMCPError("resource read failed", code=-32000)
+        text = "\n".join(blocks)
+        if len(text) > self.config.max_output_chars:
+            text = text[: self.config.max_output_chars] + (
+                f"\n[truncated at {self.config.max_output_chars} chars]"
+            )
+        return sanitize_tool_output(text)
+
+    def read_resource(self, uri: str) -> str:
+        """Read one exact-allowlisted resource with a single content-free audit."""
+        started = time.perf_counter()
+        chars = 0
+        code: int | None = None
+        failed = False
+        try:
+            if (
+                not isinstance(uri, str)
+                or not uri
+                or len(uri) > MAX_RESOURCE_URI_CHARS
+                or "\x00" in uri
+            ):
+                raise ExternalMCPError(
+                    "resource URI must be a short, non-empty string", code=-32602
+                )
+            allowed = self.config.allowed_resources
+            if allowed is None or uri not in allowed:
+                raise ExternalMCPError(
+                    f"resource is not allowed by {self.config.name} policy", code=-32001
+                )
+            self._ensure_ready()
+            result = self._raw_request("resources/read", {"uri": uri})
+            text = self._resource_text(result)
+            chars = len(text)
+            return text
+        except Exception as exc:
+            failed = True
+            code = exc.code if isinstance(exc, MCPClientError) else None
+            raise
+        finally:
+            self._audit(
+                AuditEvent(
+                    server=self.config.name,
+                    tool="resources/read",
+                    ok=not failed,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                    chars=chars,
+                    error_code=code,
+                )
+            )
 
     def _audit(self, event: AuditEvent) -> None:
         """Log an audit record without arguments or result content."""

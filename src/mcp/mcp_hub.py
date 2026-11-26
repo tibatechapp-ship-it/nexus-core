@@ -33,12 +33,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 __all__ = [
     "MCP_HUB_ARGUMENT_LIMITS",
     "MCP_HUB_MAX_CHAIN_STEPS",
+    "MCP_HUB_READ_RESOURCES",
     "MCP_HUB_READ_TOOLS",
     "MCPHubConfig",
     "build_mcp_hub_client",
     "build_mcp_hub_executor",
     "mcp_hub_server_config",
     "qualified_mcp_hub_tools",
+    "read_mcp_hub_resource",
     "run_mcp_hub_read_chain",
 ]
 
@@ -61,6 +63,10 @@ MCP_HUB_READ_TOOLS: frozenset[str] = frozenset(
         "query_catalog",
     }
 )
+
+#: The read-only resource surface of mcp-hub 1.10.0.  This is adapter policy;
+#: the server's own RESOURCE_SPECS are never discovered into or modified here.
+MCP_HUB_READ_RESOURCES: frozenset[str] = frozenset({"mcp-hub://stats"})
 
 #: Numeric bounds that the official SDK schema does not always advertise.
 #: These mirror the mcp-hub 1.10.0 read-only tool contracts; they are policy,
@@ -91,6 +97,7 @@ class MCPHubConfig:
     db_path: str | Path = "mcp_hub.sqlite3"
     pythonpath: str | Path | None = None
     allowed_tools: frozenset[str] = field(default_factory=lambda: MCP_HUB_READ_TOOLS)
+    allowed_resources: frozenset[str] = field(default_factory=lambda: MCP_HUB_READ_RESOURCES)
     timeout_s: float = 10.0
     max_output_chars: int = 12_000
     max_reconnects: int = 1
@@ -106,6 +113,12 @@ class MCPHubConfig:
             raise ValueError("max_call_retries must be between 0 and 2")
         normalised = frozenset(_normalise_tool(name) for name in self.allowed_tools)
         object.__setattr__(self, "allowed_tools", normalised)
+        resources = frozenset(self.allowed_resources)
+        if not all(isinstance(uri, str) and uri for uri in resources):
+            raise ValueError("allowed_resources must contain non-empty URIs")
+        if not resources <= MCP_HUB_READ_RESOURCES:
+            raise ValueError("resource URIs must be within the mcp-hub read-only allowlist")
+        object.__setattr__(self, "allowed_resources", resources)
 
 
 def qualified_mcp_hub_tools(tools: frozenset[str]) -> frozenset[str]:
@@ -124,6 +137,7 @@ def mcp_hub_server_config(config: MCPHubConfig | None = None) -> ExternalServerC
         command=(sys.executable, "-m", "mcp_hub.mcp_server"),
         env=overrides,
         allowed_tools=settings.allowed_tools,
+        allowed_resources=settings.allowed_resources,
         timeout_s=settings.timeout_s,
         max_output_chars=settings.max_output_chars,
         max_reconnects=settings.max_reconnects,
@@ -165,6 +179,27 @@ def build_mcp_hub_executor(
         max_calls_per_step=max_calls_per_step,
         allowed_tools=qualified_mcp_hub_tools(settings.allowed_tools),
     )
+
+
+def read_mcp_hub_resource(
+    uri: str,
+    *,
+    config: MCPHubConfig | None = None,
+    on_audit: Callable[[AuditEvent], None] | None = None,
+) -> str:
+    """Read one allowlisted mcp-hub resource through the bounded adapter.
+
+    The URI is checked before any subprocess starts.  The generic client emits
+    exactly one content-free audit event for the logical ``resources/read`` call.
+    """
+    settings = config or MCPHubConfig()
+    if not isinstance(uri, str) or not uri or uri not in settings.allowed_resources:
+        raise ExternalMCPError("resource is not allowed by mcp-hub policy", code=-32001)
+    client = build_mcp_hub_client(settings, on_audit=on_audit)
+    try:
+        return client.read_resource(uri)
+    finally:
+        client.close()
 
 
 def run_mcp_hub_read_chain(

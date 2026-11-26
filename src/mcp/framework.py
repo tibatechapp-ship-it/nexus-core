@@ -9,6 +9,8 @@
   confined to a workspace root exactly like :class:`~src.tools.executor.LocalToolExecutor`;
 * the **read-only git tools** — ``git_status`` / ``git_log`` / ``git_branches`` /
   ``git_diff`` / ``git_show`` (:mod:`src.mcp.git_tools`);
+* the **default-deny preflight tool** — ``dry_run_policy`` — which only checks
+  policies structurally and never starts a subprocess or touches a file;
 * optionally, strictly **dev-bounded coder tools** — ``coder_plan_preview`` /
   ``coder_apply_plan`` / ``coder_run_tests`` / ``coder_container_run`` — only when
   ``include_dev_tools=True`` is passed explicitly.
@@ -30,6 +32,7 @@ from src.mcp.protocol import error_content, text_content
 
 if TYPE_CHECKING:  # pragma: no cover - import-cycle guard
     from src.mcp.coder_tools import CoderAuditLog
+    from src.mcp.policy_preflight import PreflightAuditLog
 from src.mcp.server import MCPServer
 
 __all__ = [
@@ -76,8 +79,10 @@ def build_framework_server(
     include_security: bool = True,
     include_local_tools: bool = True,
     include_git: bool = True,
+    include_preflight: bool = True,
     include_dev_tools: bool = False,
     coder_audit: CoderAuditLog | None = None,
+    preflight_audit: PreflightAuditLog | None = None,
     name: str = "nexus-core",
     version: str | None = None,
 ) -> MCPServer:
@@ -107,6 +112,8 @@ def build_framework_server(
         _add_local_tools(server, workspace)
     if include_git:
         _add_git_tools(server, workspace)
+    if include_preflight:
+        _add_preflight_tool(server, workspace, preflight_audit)
     if include_dev_tools:
         _add_coder_tools(server, workspace, coder_audit)
     return server
@@ -362,6 +369,56 @@ def _make_git_handler(workspace: Path, fn: Callable[[Path, Mapping[str, Any]], s
             return text_content(fn(workspace, arguments))
         except GitError as exc:
             return error_content(str(exc))
+
+    return handler
+
+
+# -- default read-only policy preflight --------------------------------------
+_PREFLIGHT_READ_TOOLS: frozenset[str] = frozenset(
+    {
+        "read_file",
+        "list_dir",
+        "grep",
+        "git_status",
+        "git_log",
+        "git_branches",
+        "git_diff",
+        "git_show",
+    }
+)
+
+
+def _add_preflight_tool(
+    server: MCPServer, workspace: Path, audit: PreflightAuditLog | None
+) -> None:
+    """Register the structural, side-effect-free ``dry_run_policy`` tool."""
+    from src.mcp.mcp_hub import (
+        MCP_HUB_ARGUMENT_LIMITS,
+        MCP_HUB_READ_RESOURCES,
+        MCP_HUB_READ_TOOLS,
+    )
+    from src.mcp.policy_preflight import build_preflight_toolkit, preflight_tool_schema
+
+    toolkit = build_preflight_toolkit(
+        workspace,
+        audit=audit,
+        allowed_tools=frozenset(_PREFLIGHT_READ_TOOLS | MCP_HUB_READ_TOOLS),
+        allowed_resources=MCP_HUB_READ_RESOURCES,
+        argument_limits=MCP_HUB_ARGUMENT_LIMITS,
+    )
+    server.register(
+        "dry_run_policy",
+        _make_preflight_handler(toolkit),
+        description="[read-only] Structurally check a call/resource/path/plan; never executes it.",
+        input_schema=preflight_tool_schema(),
+    )
+
+
+def _make_preflight_handler(toolkit: Any) -> Any:
+    """A handler that delegates to the single audited preflight entry point."""
+
+    def handler(arguments: Mapping[str, Any]) -> dict[str, Any]:
+        return toolkit.call("dry_run_policy", dict(arguments))
 
     return handler
 
