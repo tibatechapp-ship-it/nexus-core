@@ -45,46 +45,46 @@ class _Clock:
 
 def test_similar_does_not_read_the_whole_table(tmp_path) -> None:
     clock = _Clock()
-    store = InteractionStore(str(tmp_path / "i.db"), clock=clock)
-    total = 1000
-    _seed(store, n_old=total, n_recent=5, clock=clock)
+    with InteractionStore(str(tmp_path / "i.db"), clock=clock) as store:
+        total = 1000
+        _seed(store, n_old=total, n_recent=5, clock=clock)
 
-    rows_read: list[int] = []
-    real_rows = store._rows
+        rows_read: list[int] = []
+        real_rows = store._rows
 
-    def counting_rows(sql, params=()):  # noqa: ANN001, ANN202 - test seam
-        out = real_rows(sql, params)
-        rows_read.append(len(out))
-        return out
+        def counting_rows(sql, params=()):  # noqa: ANN001, ANN202 - test seam
+            out = real_rows(sql, params)
+            rows_read.append(len(out))
+            return out
 
-    store._rows = counting_rows  # type: ignore[method-assign]
-    try:
-        results = store.similar("add a retry flag to the parser", k=5)
-    finally:
-        store._rows = real_rows  # type: ignore[method-assign]
+        store._rows = counting_rows  # type: ignore[method-assign]
+        try:
+            results = store.similar("add a retry flag to the parser", k=5)
+        finally:
+            store._rows = real_rows  # type: ignore[method-assign]
 
-    assert results, "the 5 matching rows must be found"
-    scanned = sum(rows_read)
-    assert scanned <= WINDOW_CAP, (
-        f"similar() read {scanned} rows (whole table = {total + 5}) — "
-        f"the window cap is not applied"
-    )
+        assert results, "the 5 matching rows must be found"
+        scanned = sum(rows_read)
+        assert scanned <= WINDOW_CAP, (
+            f"similar() read {scanned} rows (whole table = {total + 5}) — "
+            f"the window cap is not applied"
+        )
 
 
 def test_similar_still_ranks_and_limits(tmp_path) -> None:
     """Behaviour guard: capping the window must not break ranking / k."""
     clock = _Clock()
-    store = InteractionStore(str(tmp_path / "i.db"), clock=clock)
-    _seed(store, n_old=50, n_recent=5, clock=clock)
-    results = store.similar("add a retry flag to the parser", k=3)
-    assert len(results) == 3
-    assert all(r["score"] > 0 for r in results)
-    # newest-first among equals: the last seeded row is the most recent match
-    assert results[0]["answer"] == "recent answer 4"
+    with InteractionStore(str(tmp_path / "i.db"), clock=clock) as store:
+        _seed(store, n_old=50, n_recent=5, clock=clock)
+        results = store.similar("add a retry flag to the parser", k=3)
+        assert len(results) == 3
+        assert all(r["score"] > 0 for r in results)
+        # newest-first among equals: the last seeded row is the most recent match
+        assert results[0]["answer"] == "recent answer 4"
 
 
 def test_similar_empty_query_returns_empty(tmp_path) -> None:
     clock = _Clock()
-    store = InteractionStore(str(tmp_path / "i.db"), clock=clock)
-    _seed(store, n_old=10, n_recent=2, clock=clock)
-    assert store.similar("   ...   ") == []
+    with InteractionStore(str(tmp_path / "i.db"), clock=clock) as store:
+        _seed(store, n_old=10, n_recent=2, clock=clock)
+        assert store.similar("   ...   ") == []
