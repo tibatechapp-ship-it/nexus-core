@@ -54,6 +54,17 @@ from src.mcp.coder_tools import (
     CoderToolkit,
     build_coder_toolkit,
 )
+from src.mcp.memory_tools import (
+    MEMORY_READ_TOOLS,
+    MEMORY_WRITE_TOOLS,
+    MemoryAuditEvent,
+    MemoryAuditLog,
+    MemoryToolError,
+    MemoryToolkit,
+    TaskPlanStore,
+    build_memory_toolkit,
+    memory_tool_schemas,
+)
 from src.mcp.client import (
     InProcessClient,
     MCPClientError,
@@ -152,4 +163,14 @@ __all__ = [
     "CoderToolError",
     "CoderToolkit",
     "build_coder_toolkit",
+    # opt-in bounded project memory and task plans
+    "MEMORY_READ_TOOLS",
+    "MEMORY_WRITE_TOOLS",
+    "MemoryAuditEvent",
+    "MemoryAuditLog",
+    "MemoryToolError",
+    "MemoryToolkit",
+    "TaskPlanStore",
+    "build_memory_toolkit",
+    "memory_tool_schemas",
 ]

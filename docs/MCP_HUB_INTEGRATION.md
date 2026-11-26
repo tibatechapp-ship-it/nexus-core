@@ -169,6 +169,40 @@ approval tokens and secrets are never recorded. The default registry used by
 `run_agent`; nested-agent dispatch and direct writes must be requested through
 the explicit dev registry.
 
+## Opt-in bounded project memory and task plans
+
+A second opt-in group gives Zyko project-scoped memory and a bounded work plan.
+It is **not registered** unless the framework server is built with
+`include_memory_tools=True`:
+
+```python
+from src.mcp import build_framework_server
+
+server = build_framework_server(root=".", include_memory_tools=True)
+```
+
+The default database is `.zyko/memory.db` inside the server `workspace`. A
+custom `memory_db_path=` is accepted only when it stays inside that workspace,
+contains no `..` segments, no symlink components and no sensitive directory or
+secret-like filename.
+
+| Tool | Mode | Contract |
+| --- | --- | --- |
+| `memory_recall` | read-only | Searches only the exact `project`/`session` scope, scores up to 64 recent facts, redacts secret-shaped values and returns at most 8 bounded results. |
+| `memory_record` | bounded write | Stores one fact (max 4096 chars) under the exact scope. Requires `NEXUS_ENABLE_MEMORY_WRITES=1` and an explicit per-call `approval`. Secret-shaped content is refused. |
+| `task_plan_get` | read-only | Returns the scoped plan with a `done`/`doing`/`todo` summary and redacted step text. |
+| `task_plan_update` | bounded write | Replaces the scoped plan atomically (1..32 steps, 64-char ids, 256-char text, 8 KiB serialized cap) with an optional `expected_version` conflict guard. Requires the same env gate and approval. |
+
+Scope ids match `[A-Za-z0-9._:@-]{1,128}`; Arabic-Indic digits and other
+characters are rejected before any database access. There is no cross-scope
+read path: `project` and `session` are always required. Memory facts are stored
+through `MemoryManager.semantic` with subject `project/session`, while plans are
+keyed by `(project, session)` in a small `task_plans` table.
+
+Every call emits exactly one content-free audit event with `tool`,
+`permission_mode`, `ok`, `duration_ms`, `chars` and `error_code` only. Scope
+ids, arguments, memory text, plan text and approval tokens are never recorded.
+
 ## General MCP server management layer (assessment only)
 
 The adapter is deliberately one server, one process, one policy. A future multi-server layer would need, in this order:
