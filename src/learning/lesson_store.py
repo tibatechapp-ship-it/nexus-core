@@ -121,7 +121,13 @@ class LessonDatabase:
     def __init__(self, path: str | os.PathLike[str] = ":memory:") -> None:
         self._connection = connect(path)
         self._lock = RLock()
-        self.migrate_schema()
+        self._closed = False
+        try:
+            self.migrate_schema()
+        except BaseException:
+            self._connection.close()
+            self._closed = True
+            raise
 
     # -- schema ------------------------------------------------------------
     def migrate_schema(self) -> None:
@@ -218,9 +224,22 @@ class LessonDatabase:
             self._connection.commit()
 
     def close(self) -> None:
-        """Close the underlying connection."""
+        """Close the underlying connection; safe to call repeatedly."""
         with self._lock:
+            if self._closed:
+                return
             self._connection.close()
+            self._closed = True
+
+    def __enter__(self) -> "LessonDatabase":
+        """Return this database while its connection is open."""
+        if self._closed:
+            raise RuntimeError("lesson database is closed")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Close the connection when the managed scope exits."""
+        self.close()
 
     @staticmethod
     def _row_to_lesson(row: sqlite3.Row) -> Lesson:

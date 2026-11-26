@@ -5,7 +5,10 @@ Uses in-memory databases (and ``tmp_path`` files) — no shared state, no networ
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Callable, Iterator
 import json
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +19,23 @@ from src.learning import (
     Outcome,
     default_lesson_db_path,
 )
+
+
+@pytest.fixture()
+def database_factory() -> Iterator[Callable[[str | Path], LessonDatabase]]:
+    """Track every test database and close its connection during teardown."""
+    databases: list[LessonDatabase] = []
+
+    def create(path: str | Path = ":memory:") -> LessonDatabase:
+        database = LessonDatabase(path)
+        databases.append(database)
+        return database
+
+    try:
+        yield create
+    finally:
+        for database in reversed(databases):
+            database.close()
 
 
 def make_lesson(
@@ -44,23 +64,39 @@ def make_lesson(
 
 
 # ── schema ───────────────────────────────────────────────────────────────
-def test_migrate_creates_table_and_sets_version():
-    db = LessonDatabase(":memory:")
+def test_migrate_creates_table_and_sets_version(database_factory):
+    db = database_factory(":memory:")
     assert db.count() == 0
     version = db.connection.execute("PRAGMA user_version").fetchone()[0]
     assert version == 1
 
 
-def test_migrate_schema_is_idempotent():
-    db = LessonDatabase(":memory:")
+def test_migrate_schema_is_idempotent(database_factory):
+    db = database_factory(":memory:")
     db.migrate_schema()
     db.migrate_schema()
     assert db.count() == 0
 
 
+def test_lesson_database_close_is_idempotent(database_factory):
+    db = database_factory()
+    db.close()
+    db.close()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        db.count()
+
+
+def test_lesson_database_context_manager_closes_connection(database_factory):
+    db = database_factory()
+    with db as managed:
+        assert managed.count() == 0
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        db.count()
+
+
 # ── round trip ───────────────────────────────────────────────────────────
-def test_save_then_load_round_trips_every_field():
-    db = LessonDatabase(":memory:")
+def test_save_then_load_round_trips_every_field(database_factory):
+    db = database_factory(":memory:")
     lesson = make_lesson(evidence=("a:1", "a:2"), tags=frozenset({"x", "y"}))
     assert db.save([lesson]) == 1
 
@@ -68,8 +104,8 @@ def test_save_then_load_round_trips_every_field():
     assert loaded == [lesson]
 
 
-def test_load_is_newest_first():
-    db = LessonDatabase(":memory:")
+def test_load_is_newest_first(database_factory):
+    db = database_factory(":memory:")
     db.save(
         [
             make_lesson(lid="old", created_at=1.0),
@@ -80,8 +116,8 @@ def test_load_is_newest_first():
     assert [lesson.id for lesson in db.load()] == ["new", "mid", "old"]
 
 
-def test_save_upserts_same_id():
-    db = LessonDatabase(":memory:")
+def test_save_upserts_same_id(database_factory):
+    db = database_factory(":memory:")
     db.save([make_lesson(lid="a", confidence=0.4)])
     db.save([make_lesson(lid="a", confidence=0.9)])
 
@@ -89,8 +125,8 @@ def test_save_upserts_same_id():
     assert db.load()[0].confidence == pytest.approx(0.9)
 
 
-def test_load_skips_malformed_rows():
-    db = LessonDatabase(":memory:")
+def test_load_skips_malformed_rows(database_factory):
+    db = database_factory(":memory:")
     db.save([make_lesson(lid="good")])
     db.connection.execute(
         "INSERT INTO lessons (id, principle, source_outcome) VALUES (?, ?, ?)",
@@ -102,20 +138,20 @@ def test_load_skips_malformed_rows():
     assert [lesson.id for lesson in loaded] == ["good"]
 
 
-def test_persists_across_connections(tmp_path):
+def test_persists_across_connections(tmp_path, database_factory):
     path = tmp_path / "lessons.db"
-    first = LessonDatabase(path)
+    first = database_factory(path)
     first.save([make_lesson(lid="a")])
     first.close()
 
-    second = LessonDatabase(path)
+    second = database_factory(path)
     assert second.count() == 1
     assert second.load()[0].id == "a"
     second.close()
 
 
-def test_clear_and_count():
-    db = LessonDatabase(":memory:")
+def test_clear_and_count(database_factory):
+    db = database_factory(":memory:")
     db.save([make_lesson(lid="a"), make_lesson(lid="b")])
     assert db.count() == 2
     db.clear()
@@ -123,8 +159,8 @@ def test_clear_and_count():
 
 
 # ── store <-> db ─────────────────────────────────────────────────────────
-def test_store_save_to_and_load_from_db():
-    db = LessonDatabase(":memory:")
+def test_store_save_to_and_load_from_db(database_factory):
+    db = database_factory(":memory:")
     store = LessonStore(database=db)
     store.add(make_lesson(lid="a", confidence=0.8))
 
@@ -136,15 +172,15 @@ def test_store_save_to_and_load_from_db():
     assert restored.get("a") == store.get("a")
 
 
-def test_store_database_property_and_migrate():
-    db = LessonDatabase(":memory:")
+def test_store_database_property_and_migrate(database_factory):
+    db = database_factory(":memory:")
     store = LessonStore(database=db)
     assert store.database is db
     store.migrate_schema()
 
 
-def test_store_methods_accept_explicit_database():
-    db = LessonDatabase(":memory:")
+def test_store_methods_accept_explicit_database(database_factory):
+    db = database_factory(":memory:")
     store = LessonStore()  # no database configured
     store.add(make_lesson(lid="a"))
 
@@ -176,8 +212,8 @@ def test_default_lesson_db_path_falls_back_to_home(monkeypatch):
     assert "tyb-zyv-ai" in str(path)
 
 
-def test_saved_row_stores_json_encoded_evidence_and_tags():
-    db = LessonDatabase(":memory:")
+def test_saved_row_stores_json_encoded_evidence_and_tags(database_factory):
+    db = database_factory(":memory:")
     db.save([make_lesson(lid="a", evidence=("t:1",), tags=frozenset({"z", "a"}))])
     row = db.connection.execute("SELECT evidence, tags FROM lessons WHERE id='a'").fetchone()
     assert json.loads(row["evidence"]) == ["t:1"]
