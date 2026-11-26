@@ -30,12 +30,22 @@ from src.mcp.external import (
     ExternalServerConfig,
 )
 from src.mcp.mcp_hub import (
+    MCP_HUB_READ_RESOURCES,
     MCP_HUB_READ_TOOLS,
     MCPHubConfig,
     build_mcp_hub_client,
     build_mcp_hub_executor,
     mcp_hub_server_config,
     qualified_mcp_hub_tools,
+    read_mcp_hub_resource,
+)
+from src.mcp.policy_preflight import (
+    PreflightAuditEvent,
+    PreflightAuditLog,
+    PreflightDecision,
+    PreflightToolkit,
+    build_preflight_toolkit,
+    preflight_tool_schema,
 )
 from src.mcp.coder_tools import (
     CoderAuditEvent,
@@ -118,12 +128,21 @@ __all__ = [
     "ExternalMCPClient",
     "ExternalMCPError",
     "ExternalServerConfig",
+    "MCP_HUB_READ_RESOURCES",
     "MCP_HUB_READ_TOOLS",
     "MCPHubConfig",
     "build_mcp_hub_client",
     "build_mcp_hub_executor",
     "mcp_hub_server_config",
     "qualified_mcp_hub_tools",
+    "read_mcp_hub_resource",
+    # read-only policy preflight
+    "PreflightAuditEvent",
+    "PreflightAuditLog",
+    "PreflightDecision",
+    "PreflightToolkit",
+    "build_preflight_toolkit",
+    "preflight_tool_schema",
     # framework surface
     "build_framework_server",
     "serve_framework",
