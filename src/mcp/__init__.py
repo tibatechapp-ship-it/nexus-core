@@ -37,6 +37,13 @@ from src.mcp.mcp_hub import (
     mcp_hub_server_config,
     qualified_mcp_hub_tools,
 )
+from src.mcp.coder_tools import (
+    CoderAuditEvent,
+    CoderAuditLog,
+    CoderToolError,
+    CoderToolkit,
+    build_coder_toolkit,
+)
 from src.mcp.client import (
     InProcessClient,
     MCPClientError,
@@ -120,4 +127,10 @@ __all__ = [
     # framework surface
     "build_framework_server",
     "serve_framework",
+    # opt-in dev-bounded coder tools
+    "CoderAuditEvent",
+    "CoderAuditLog",
+    "CoderToolError",
+    "CoderToolkit",
+    "build_coder_toolkit",
 ]

@@ -15,6 +15,7 @@ from src.agent_loop.tools import Tool, ToolRegistry, build_default_registry
 
 # ───────────────────────────── helpers ─────────────────────────────
 
+
 class _FakeLLM:
     """Minimal stand-in for novamind's LLMRouter."""
 
@@ -22,23 +23,24 @@ class _FakeLLM:
         self.providers = providers or []
 
 
-def _msg(content: str | None = None,
-         tool_calls: list[Any] | None = None) -> SimpleNamespace:
+def _msg(content: str | None = None, tool_calls: list[Any] | None = None) -> SimpleNamespace:
     return SimpleNamespace(content=content, tool_calls=tool_calls)
 
 
 def _tc(name: str, args: dict[str, Any] | str) -> SimpleNamespace:
     raw = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
-    return SimpleNamespace(id=f"id-{name}", type="function",
-                           function=SimpleNamespace(name=name, arguments=raw))
+    return SimpleNamespace(
+        id=f"id-{name}", type="function", function=SimpleNamespace(name=name, arguments=raw)
+    )
 
 
 class _ScriptedLoop(AgentLoop):
     """AgentLoop whose _call_llm replays a fixed script of messages."""
 
     def __init__(self, script: list[SimpleNamespace], **kw: Any) -> None:
-        super().__init__(llm=_FakeLLM(), registry=kw.pop("registry", None) or build_default_registry(),
-                         **kw)
+        super().__init__(
+            llm=_FakeLLM(), registry=kw.pop("registry", None) or build_default_registry(), **kw
+        )
         self._script = list(script)
         self.calls = 0
 
@@ -46,13 +48,12 @@ class _ScriptedLoop(AgentLoop):
         self.calls += 1
         if not self._script:
             # keep answering forever → exercises the max_iterations guard
-            return {"ok": True,
-                    "message": _msg(content="sto",
-                                    tool_calls=[_tc("get_time", {})])}
+            return {"ok": True, "message": _msg(content="sto", tool_calls=[_tc("get_time", {})])}
         return {"ok": True, "message": self._script.pop(0)}
 
 
 # ───────────────────────────── loop ─────────────────────────────
+
 
 def test_system_prompt_mentions_react_steps() -> None:
     assert "فكر" in SYSTEM_PROMPT and "أجب" in SYSTEM_PROMPT
@@ -67,11 +68,20 @@ def test_loop_direct_answer() -> None:
 
 def test_loop_tool_then_answer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("NEXUS_ENABLE_DEV_TOOLS", "1")
     target = tmp_path / "hello.txt"
     loop = _ScriptedLoop(
-        [_msg(tool_calls=[_tc("write_file", {"path": str(target), "content": "abc"})]),
-         _msg(content="تم")],
-        verbose=False)
+        [
+            _msg(
+                tool_calls=[
+                    _tc("write_file", {"path": str(target), "content": "abc", "approval": "yes"})
+                ]
+            ),
+            _msg(content="تم"),
+        ],
+        registry=build_default_registry(include_dev_tools=True),
+        verbose=False,
+    )
     r = loop.run("write it")
     assert r["ok"] is True and r["iterations"] == 2
     assert target.read_text(encoding="utf-8") == "abc"
@@ -79,12 +89,28 @@ def test_loop_tool_then_answer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert any("write_file" in t["text"] for t in r["trace"])
 
 
+def test_loop_default_registry_cannot_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
+    target = tmp_path / "blocked.txt"
+    loop = _ScriptedLoop(
+        [
+            _msg(tool_calls=[_tc("write_file", {"path": str(target), "content": "abc"})]),
+            _msg(content="تم"),
+        ],
+        verbose=False,
+    )
+    loop.run("write it")
+    assert not target.exists()
+    assert any("غير موجودة" in t["text"] for t in loop.trace)
+
 
 def test_loop_bad_json_args_falls_back_to_empty() -> None:
     # arguments that are not valid JSON → args = {} → get_time runs with no args
     loop = _ScriptedLoop(
-        [_msg(tool_calls=[_tc("get_time", "{broken")]), _msg(content="ok")],
-        verbose=False)
+        [_msg(tool_calls=[_tc("get_time", "{broken")]), _msg(content="ok")], verbose=False
+    )
     r = loop.run("time?")
     assert r["ok"] is True and r["iterations"] == 2
     assert any("get_time" in t["text"] for t in r["trace"])
@@ -92,8 +118,8 @@ def test_loop_bad_json_args_falls_back_to_empty() -> None:
 
 def test_loop_unknown_tool_reports_error() -> None:
     loop = _ScriptedLoop(
-        [_msg(tool_calls=[_tc("nope_tool", {})]), _msg(content="done")],
-        verbose=False)
+        [_msg(tool_calls=[_tc("nope_tool", {})]), _msg(content="done")], verbose=False
+    )
     r = loop.run("x")
     assert r["ok"] is True
     assert any("غير موجودة" in t["text"] for t in r["trace"])
@@ -122,8 +148,7 @@ def test_loop_verbose_logging() -> None:
 
 
 def test_call_llm_no_enabled_groq_provider() -> None:
-    loop = AgentLoop(llm=_FakeLLM(providers=[]), registry=build_default_registry(),
-                     verbose=False)
+    loop = AgentLoop(llm=_FakeLLM(providers=[]), registry=build_default_registry(), verbose=False)
     assert loop._call_llm([{"role": "user", "content": "x"}])["ok"] is False
 
 
@@ -150,16 +175,22 @@ def test_call_llm_success_with_fake_client(monkeypatch: pytest.MonkeyPatch) -> N
         base_url = "http://localhost:2"
         models = {}
 
-    loop = AgentLoop(llm=_FakeLLM(providers=[_Other(), _Groq()]),
-                     registry=build_default_registry(), verbose=False)
+    loop = AgentLoop(
+        llm=_FakeLLM(providers=[_Other(), _Groq()]),
+        registry=build_default_registry(),
+        verbose=False,
+    )
 
     seen: dict[str, Any] = {}
 
     class _Completions:
         def create(self, **kw: Any) -> Any:
             seen.update(kw)
-            return SimpleNamespace(choices=[SimpleNamespace(
-                message=SimpleNamespace(content="ok-from-llm", tool_calls=None))])
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(message=SimpleNamespace(content="ok-from-llm", tool_calls=None))
+                ]
+            )
 
     class _Client:
         chat = SimpleNamespace(completions=_Completions())
@@ -180,8 +211,9 @@ def test_call_llm_provider_selection_and_error(monkeypatch: pytest.MonkeyPatch) 
         base_url = "http://localhost:1"
         models = {"fast": "m"}
 
-    loop = AgentLoop(llm=_FakeLLM(providers=[_P()]), registry=build_default_registry(),
-                     verbose=False)
+    loop = AgentLoop(
+        llm=_FakeLLM(providers=[_P()]), registry=build_default_registry(), verbose=False
+    )
 
     # make the OpenAI client construction fail → covered except branch
     class _FakeOpenAI:
@@ -194,6 +226,7 @@ def test_call_llm_provider_selection_and_error(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ───────────────────────────── tools ─────────────────────────────
+
 
 def test_tool_to_openai() -> None:
     t = Tool("n", "d", lambda: None, {"type": "object"})
@@ -212,34 +245,41 @@ def test_registry_register_and_call() -> None:
 
     assert reg.call("double", {"v": 3}) == "6"
     assert "غير موجودة" in reg.call("missing", {})
-    assert reg.call("double", {"v": "x"}).startswith("خطأ")   # raised inside tool
-    assert reg.call("double", {}).startswith("خطأ")            # missing argument
+    assert reg.call("double", {"v": "x"}).startswith("خطأ")  # raised inside tool
+    assert reg.call("double", {}).startswith("خطأ")  # missing argument
     assert len(reg.to_openai()) == 1
 
 
-def test_default_registry_has_all_nine_tools() -> None:
+def test_default_registry_is_read_only() -> None:
     reg = build_default_registry()
-    # run_shell removed (v1.32, RCE fix — use execute_code instead)
-    assert set(reg.tools) == {"search_memory", "remember", "list_agents", "run_agent",
-                              "read_file", "get_time", "write_file", "list_files"}
+    assert set(reg.tools) == {
+        "search_memory",
+        "remember",
+        "list_agents",
+        "read_file",
+        "get_time",
+        "list_files",
+    }
+    assert "غير موجودة" in reg.call("write_file", {"path": "x", "content": "y"})
+    assert "غير موجودة" in reg.call("run_agent", {"agent": "x", "prompt": "y"})
 
 
 def test_tool_get_time_and_file_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
     reg = build_default_registry()
     f = tmp_path / "a" / "b.txt"
-    assert "تم الكتابة" in reg.call("write_file", {"path": str(f), "content": "مرحبا"})
+    f.parent.mkdir(parents=True)
+    f.write_text("مرحبا", encoding="utf-8")
     assert reg.call("read_file", {"path": str(f)}) == "مرحبا"
     assert "مجلد غير موجود" in reg.call("list_files", {"directory": str(tmp_path / "nope")})
     assert "b.txt" in reg.call("list_files", {"directory": str(f.parent)})
-    # null byte → ValueError → generic "خطأ: ..." branch (safe_path rejects it)
-    assert reg.call("write_file", {"path": "bad\x00name", "content": "x"}).startswith("خطأ")
+    assert "غير موجودة" in reg.call("write_file", {"path": str(f), "content": "x"})
     assert reg.call("get_time", {})[:4].isdigit()
-
 
 
 def test_tool_read_file_edges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import os
+
     monkeypatch.setenv("NEXUS_AGENT_WORKSPACE", str(tmp_path))
     reg = build_default_registry()
     assert "غير موجود" in reg.call("read_file", {"path": str(tmp_path / "x")})
@@ -250,17 +290,16 @@ def test_tool_read_file_edges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     # forced IO failure → read_file must return a readable error
     def _boom_stat(self, **kw):
         raise OSError("io")
+
     real_stat = Path.stat
     monkeypatch.setattr(Path, "stat", _boom_stat)
     assert reg.call("read_file", {"path": str(big)}).startswith("خطأ")
     monkeypatch.setattr(Path, "stat", real_stat)
 
     assert "big.bin" in reg.call("list_files", {"directory": str(tmp_path)})
-    assert "مجلد غير موجود" in reg.call("list_files",
-                                        {"directory": str(tmp_path / "nope")})
+    assert "مجلد غير موجود" in reg.call("list_files", {"directory": str(tmp_path / "nope")})
     real_listdir = os.listdir
-    monkeypatch.setattr(os, "listdir",
-                        lambda p: (_ for _ in ()).throw(OSError("io")))
+    monkeypatch.setattr(os, "listdir", lambda p: (_ for _ in ()).throw(OSError("io")))
     assert reg.call("list_files", {"directory": str(tmp_path)}).startswith("خطأ")
     monkeypatch.setattr(os, "listdir", real_listdir)
 
@@ -284,8 +323,8 @@ def test_tool_memory_and_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "عدد الوكلاء" in reg.call("list_agents", {})
     out = reg.call("list_agents", {"category": "code"})
     assert "فئة code" in out or "خطأ" in out
-    # unknown agent → error string, not an exception
-    assert reg.call("run_agent", {"agent": "__none__", "prompt": "x"}).startswith("خطأ")
+    # nested agent dispatch is absent from the default read-only registry
+    assert "غير موجودة" in reg.call("run_agent", {"agent": "__none__", "prompt": "x"})
 
     # memory tool failures must degrade to a readable error
     monkeypatch.setattr(rag_mod, "get_bridge", lambda: (_ for _ in ()).throw(RuntimeError("x")))
@@ -307,6 +346,8 @@ def test_tool_search_memory_empty(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tool_run_agent_success(monkeypatch: pytest.MonkeyPatch) -> None:
     import nova.registry as reg_mod
 
+    monkeypatch.setenv("NEXUS_ENABLE_DEV_TOOLS", "1")
+
     class _Agent:
         def run(self, prompt: str) -> str:
             return f"ran {prompt}"
@@ -323,20 +364,27 @@ def test_tool_run_agent_success(monkeypatch: pytest.MonkeyPatch) -> None:
             raise KeyError(name)
 
     monkeypatch.setattr(reg_mod, "REGISTRY", _Reg())
-    reg = build_default_registry()
-    assert reg.call("run_agent", {"agent": "good", "prompt": "p"}) == "ran p"
+    reg = build_default_registry(include_dev_tools=True)
+    assert "موافقة" in reg.call("run_agent", {"agent": "good", "prompt": "p"})
+    assert reg.call("run_agent", {"agent": "good", "prompt": "p", "approval": "yes"}) == "ran p"
     # an agent with no known method → readable message, not an exception
-    assert "لا يملك طريقة" in reg.call("run_agent", {"agent": "nomethod", "prompt": "p"})
+    assert "لا يملك طريقة" in reg.call(
+        "run_agent", {"agent": "nomethod", "prompt": "p", "approval": True}
+    )
     # unknown agent → the except branch
-    assert reg.call("run_agent", {"agent": "nope", "prompt": "p"}).startswith("خطأ")
+    assert reg.call("run_agent", {"agent": "nope", "prompt": "p", "approval": "yes"}).startswith(
+        "خطأ"
+    )
 
 
 def test_tool_agents_exception_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     import nova.registry as reg_mod
 
-    reg = build_default_registry()
-    monkeypatch.setattr(reg_mod, "agents_by_category",
-                        lambda c: (_ for _ in ()).throw(RuntimeError("nope")))
+    monkeypatch.setenv("NEXUS_ENABLE_DEV_TOOLS", "1")
+    reg = build_default_registry(include_dev_tools=True)
+    monkeypatch.setattr(
+        reg_mod, "agents_by_category", lambda c: (_ for _ in ()).throw(RuntimeError("nope"))
+    )
     assert reg.call("list_agents", {"category": "code"}).startswith("خطأ")
 
     class _Reg:
@@ -344,6 +392,4 @@ def test_tool_agents_exception_branches(monkeypatch: pytest.MonkeyPatch) -> None
             raise RuntimeError("missing agent")
 
     monkeypatch.setattr(reg_mod, "REGISTRY", _Reg())
-    assert reg.call("run_agent", {"agent": "x", "prompt": "y"}).startswith("خطأ")
-
-
+    assert reg.call("run_agent", {"agent": "x", "prompt": "y", "approval": "yes"}).startswith("خطأ")

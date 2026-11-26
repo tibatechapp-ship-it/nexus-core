@@ -1,4 +1,5 @@
 """Tool Registry — الأدوات المتاحة للوكيل."""
+
 from __future__ import annotations
 import os
 import sys
@@ -11,24 +12,69 @@ from typing import Any, Callable
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, 'src'))
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 # ═══ حماية أدوات الملفات (mirrors C1/C2) ═══════════════════════
 try:
     from src.tools.executor import is_sensitive_file
 except ImportError:
+
     def is_sensitive_file(path: Path) -> bool:
-        return path.name in {".env", "id_rsa", "id_ed25519", "credentials"} or \
-               path.suffix in {".pem", ".key", ".p12", ".pfx"}
+        return path.name in {".env", "id_rsa", "id_ed25519", "credentials"} or path.suffix in {
+            ".pem",
+            ".key",
+            ".p12",
+            ".pfx",
+        }
+
 
 MAX_READ = 512 * 1024
 MAX_WRITE = 1024 * 1024
 _SENSITIVE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"})
-_SKIP_DIRS = frozenset({
-    ".git", "__pycache__", "node_modules", ".venv", "venv", ".tox",
-    ".mypy_cache", ".ruff_cache", ".pytest_cache", "dist", "build",
-    ".idea", ".vscode", "htmlcov", ".coverage",
-})
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "dist",
+        "build",
+        ".idea",
+        ".vscode",
+        "htmlcov",
+        ".coverage",
+    }
+)
+
+DEV_TOOLS_ENV = "NEXUS_ENABLE_DEV_TOOLS"
+_APPROVAL_TOKENS = frozenset(
+    {
+        "approve",
+        "approved",
+        "yes",
+        "true",
+        "1",
+        "موافق",
+        "موافقة",
+    }
+)
+
+
+def dev_tools_enabled() -> bool:
+    """True only when development tools were explicitly enabled in the environment."""
+    return os.environ.get(DEV_TOOLS_ENV) == "1"
+
+
+def approval_granted(value: Any) -> bool:
+    """True only for an explicit, narrowly defined approval decision."""
+    if value is True:
+        return True
+    return isinstance(value, str) and value.strip().casefold() in _APPROVAL_TOKENS
 
 
 def _workspace_root() -> Path:
@@ -66,7 +112,7 @@ class Tool:
                 "name": self.name,
                 "description": self.description,
                 "parameters": self.parameters,
-            }
+            },
         }
 
 
@@ -78,6 +124,7 @@ class ToolRegistry:
         def deco(fn: Any) -> Any:
             self.tools[name] = Tool(name, description, fn, parameters)
             return fn
+
         return deco
 
     def to_openai(self: Any) -> Any:
@@ -93,20 +140,25 @@ class ToolRegistry:
             return f"خطأ في {name}: {e}"
 
 
-def build_default_registry() -> Any:
-    """يبني السجل الافتراضي بالأدوات الست."""
+def build_default_registry(include_dev_tools: bool = False) -> Any:
+    """Build the default read-only registry.
+
+    Mutating tools (``write_file``) and nested-agent dispatch (``run_agent``)
+    are absent unless the caller opts in **and** ``NEXUS_ENABLE_DEV_TOOLS=1``.
+    Even then each call requires an explicit ``approval`` decision.
+    """
     reg = ToolRegistry()
 
     # ═══ 1. search_memory ═══
     @reg.register(
         "search_memory",
         "يبحث في الذاكرة الدلالية عن معلومات سابقة",
-        {"type": "object",
-         "properties": {"query": {"type": "string"}},
-         "required": ["query"]})
+        {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    )
     def search_memory(query: Any) -> Any:
         try:
             from src.memory.agent_rag_bridge import get_bridge
+
             docs = get_bridge().recall(query, k=3)
             if not docs:
                 return "لا توجد نتائج"
@@ -118,12 +170,12 @@ def build_default_registry() -> Any:
     @reg.register(
         "remember",
         "يحفظ معلومة جديدة في الذاكرة",
-        {"type": "object",
-         "properties": {"text": {"type": "string"}},
-         "required": ["text"]})
+        {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+    )
     def remember(text: Any) -> Any:
         try:
             from src.memory.agent_rag_bridge import get_bridge
+
             doc_id = get_bridge().remember(text)
             return f"تم الحفظ: {doc_id}"
         except Exception as e:
@@ -133,14 +185,20 @@ def build_default_registry() -> Any:
     @reg.register(
         "list_agents",
         "يعرض قائمة الوكلاء المتاحين (بإمكانك اختيار فئة)",
-        {"type": "object",
-         "properties": {
-             "category": {"type": "string",
-                          "description": "code/security/quality/... أو فارغ للكل"}
-         }})
-    def list_agents(category: Any ="") -> Any:
+        {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "code/security/quality/... أو فارغ للكل",
+                }
+            },
+        },
+    )
+    def list_agents(category: Any = "") -> Any:
         try:
             from nova.registry import REGISTRY, agents_by_category
+
             if category:
                 agents = agents_by_category(category)
                 return f"فئة {category}: {', '.join(agents)}"
@@ -148,36 +206,43 @@ def build_default_registry() -> Any:
         except Exception as e:
             return f"خطأ: {e}"
 
-    # ═══ 4. run_agent ═══
-    @reg.register(
-        "run_agent",
-        "يشغّل وكيلاً معيناً بمهمة",
-        {"type": "object",
-         "properties": {
-             "agent": {"type": "string"},
-             "prompt": {"type": "string"}
-         },
-         "required": ["agent", "prompt"]})
-    def run_agent(agent: Any, prompt: Any) -> Any:
-        try:
-            from nova.registry import REGISTRY
-            ag = REGISTRY.load_agent(agent)
-            methods = ["build", "run", "execute", "analyze",
-                       "fix", "review", "generate"]
-            m = next((x for x in methods if hasattr(ag, x)), None)
-            if not m:
-                return f"الوكيل {agent} لا يملك طريقة"
-            return str(getattr(ag, m)(prompt))[:800]
-        except Exception as e:
-            return f"خطأ: {e}"
+    # ═══ 4. run_agent (dev-bounded, never default) ═══
+    if include_dev_tools and dev_tools_enabled():
+
+        @reg.register(
+            "run_agent",
+            "يشغّل وكيلاً معيناً بمهمة (يتطلب تفعيلاً وموافقة صريحة)",
+            {
+                "type": "object",
+                "properties": {
+                    "agent": {"type": "string"},
+                    "prompt": {"type": "string"},
+                    "approval": {"type": ["boolean", "string"], "description": "قرار موافقة صريح"},
+                },
+                "required": ["agent", "prompt", "approval"],
+            },
+        )
+        def run_agent(agent: Any, prompt: Any, approval: Any = None) -> Any:
+            if not approval_granted(approval):
+                return "محظور: موافقة صريحة مطلوبة لتشغيل وكيل"
+            try:
+                from nova.registry import REGISTRY
+
+                ag = REGISTRY.load_agent(agent)
+                methods = ["build", "run", "execute", "analyze", "fix", "review", "generate"]
+                m = next((x for x in methods if hasattr(ag, x)), None)
+                if not m:
+                    return f"الوكيل {agent} لا يملك طريقة"
+                return str(getattr(ag, m)(prompt))[:800]
+            except Exception as e:
+                return f"خطأ: {e}"
 
     # ═══ 5. read_file ═══
     @reg.register(
         "read_file",
         "يقرأ محتوى ملف",
-        {"type": "object",
-         "properties": {"path": {"type": "string"}},
-         "required": ["path"]})
+        {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+    )
     def read_file(path: Any) -> Any:
         try:
             p = safe_path(str(path))
@@ -194,59 +259,67 @@ def build_default_registry() -> Any:
             return f"خطأ: {e}"
 
     # ═══ 6. get_time ═══
-    @reg.register(
-        "get_time",
-        "يُرجع الوقت والتاريخ الحالي",
-        {"type": "object", "properties": {}})
+    @reg.register("get_time", "يُرجع الوقت والتاريخ الحالي", {"type": "object", "properties": {}})
     def get_time() -> Any:
         return time.strftime("%Y-%m-%d %H:%M:%S")
 
-    # ═══ 7. write_file ═══
-    @reg.register(
-        "write_file",
-        "يكتب محتوى إلى ملف (يُنشئ المجلدات تلقائياً)",
-        {"type": "object",
-         "properties": {
-             "path": {"type": "string"},
-             "content": {"type": "string"}
-         },
-         "required": ["path", "content"]})
-    def write_file(path: Any, content: Any) -> Any:
-        try:
-            p = safe_path(str(path))
-            body = str(content)
-            if len(body.encode("utf-8")) > MAX_WRITE:
-                return f"المحتوى كبير جداً (> {MAX_WRITE // 1024}KB)"
-            if p.suffix == ".py":
-                try:
-                    compile(body, str(p), "exec")
-                except SyntaxError as e:
-                    return f"خطأ صياغة سطر {e.lineno}: {e.msg} — لم يُحفظ"
-            p.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".agent-tmp-", suffix=".tmp")
+    # ═══ 7. write_file (dev-bounded, never default) ═══
+    if include_dev_tools and dev_tools_enabled():
+
+        @reg.register(
+            "write_file",
+            "يكتب محتوى إلى ملف داخل مساحة العمل فقط (تفعيل وموافقة صريحة)",
+            {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "approval": {"type": ["boolean", "string"], "description": "قرار موافقة صريح"},
+                },
+                "required": ["path", "content", "approval"],
+            },
+        )
+        def write_file(path: Any, content: Any, approval: Any = None) -> Any:
+            if not approval_granted(approval):
+                return "محظور: موافقة صريحة مطلوبة للكتابة"
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(body)
-                os.replace(tmp, p)
-            except Exception:
+                p = safe_path(str(path))
+                body = str(content)
+                if len(body.encode("utf-8")) > MAX_WRITE:
+                    return f"المحتوى كبير جداً (> {MAX_WRITE // 1024}KB)"
+                if p.suffix == ".py":
+                    try:
+                        compile(body, str(p), "exec")
+                    except SyntaxError as e:
+                        return f"خطأ صياغة سطر {e.lineno}: {e.msg} — لم يُحفظ"
+                p.parent.mkdir(parents=True, exist_ok=True)
+                fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".agent-tmp-", suffix=".tmp")
                 try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-                raise
-            return f"تم الكتابة: {p.name} ({len(body)} حرف)"
-        except PermissionError as e:
-            return f"محظور: {e}"
-        except Exception as e:
-            return f"خطأ: {e}"
+                    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                        fh.write(body)
+                    os.replace(tmp, p)
+                except Exception:
+                    try:
+                        os.unlink(tmp)
+                    except OSError:
+                        pass
+                    raise
+                return f"تم الكتابة: {p.name} ({len(body)} حرف)"
+            except PermissionError as e:
+                return f"محظور: {e}"
+            except Exception as e:
+                return f"خطأ: {e}"
 
     # ═══ 8. list_files ═══
     @reg.register(
         "list_files",
         "يعرض ملفات مجلد",
-        {"type": "object",
-         "properties": {"directory": {"type": "string"}},
-         "required": ["directory"]})
+        {
+            "type": "object",
+            "properties": {"directory": {"type": "string"}},
+            "required": ["directory"],
+        },
+    )
     def list_files(directory: Any) -> Any:
         try:
             p = safe_path(str(directory))
