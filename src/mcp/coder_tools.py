@@ -143,7 +143,10 @@ def _safe_target(workspace: Path, raw: Any) -> tuple[Path, str]:
         raise CoderToolError("path must stay inside the workspace", CODE_WORKSPACE)
     if any(part in _SENSITIVE_DIRS for part in relative.parts):
         raise CoderToolError("path targets a sensitive directory", CODE_WORKSPACE)
-    target = (workspace / relative).resolve()
+    candidate = workspace / relative
+    if candidate.is_symlink():
+        raise CoderToolError("symlink targets are refused", CODE_WORKSPACE)
+    target = candidate.resolve()
     if target != workspace and not target.is_relative_to(workspace):
         raise CoderToolError("path escapes the workspace", CODE_WORKSPACE)
     try:
@@ -175,8 +178,6 @@ def _plan_changes(workspace: Path, plan: Any) -> list[dict[str, Any]]:
         target, relative = _safe_target(workspace, step.file)
         if step.action not in ("create", "edit", "delete"):
             raise CoderToolError("unsupported plan action", CODE_PLAN)
-        if target.is_symlink():
-            raise CoderToolError("symlink targets are refused", CODE_WORKSPACE)
         existing = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
         new = existing
         if step.action == "create":
@@ -202,7 +203,15 @@ def _plan_changes(workspace: Path, plan: Any) -> list[dict[str, Any]]:
                 compile(new, relative, "exec")
             except SyntaxError as exc:
                 raise CoderToolError("python syntax check failed", CODE_PLAN) from exc
-        changes.append({"target": target, "relative": relative, "old": existing, "new": new})
+        changes.append(
+            {
+                "target": target,
+                "relative": relative,
+                "action": step.action,
+                "old": existing,
+                "new": new,
+            }
+        )
     return changes
 
 
@@ -278,10 +287,10 @@ def _bounded_command(argv: list[str], workspace: Path, timeout: Any) -> dict[str
                 if not chunk:
                     break
                 sink = buffers[key]
+                if len(sink) + len(chunk) > MAX_OUTPUT_BYTES:
+                    truncated = True
                 if len(sink) < MAX_OUTPUT_BYTES:
                     sink.extend(chunk[: MAX_OUTPUT_BYTES - len(sink)])
-                else:
-                    truncated = True
         except (OSError, ValueError):
             pass
         finally:
@@ -393,7 +402,10 @@ class CoderToolkit:
             for change in changes:
                 target = change["target"]
                 snapshots.append((target, target.read_bytes() if target.exists() else None))
-                _atomic_write(target, change["new"])
+                if change["action"] == "delete":
+                    target.unlink(missing_ok=True)
+                else:
+                    _atomic_write(target, change["new"])
         except Exception as exc:
             for target, original in reversed(snapshots):
                 try:
