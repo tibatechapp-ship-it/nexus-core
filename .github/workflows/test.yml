@@ -80,6 +80,11 @@ jobs:
           print('novamind test data ready')
           PY
 
+      # This focused lifecycle regression is a blocking gate even while the
+      # broader Novamind report remains advisory.
+      - name: Console exporter lifecycle regression (blocking)
+        run: pytest tests/novamind/observability/test_tracer_lifecycle.py --tb=short
+
       - name: Novamind unit + observability (non-blocking report)
         run: pytest tests/novamind/unit tests/novamind/observability --tb=short
         continue-on-error: true
