@@ -12,7 +12,7 @@
 # the project into site-packages adds a packaging failure mode for zero benefit.
 
 # ── web layer (pyproject: [project.optional-dependencies].novamind) ──
-fastapi>=0.162.0,<1
+fastapi>=0.163.2,<1
 uvicorn[standard]>=0.54.0,<1
 pydantic>=2.14.3,<3
 pydantic-settings>=2.16.2,<3

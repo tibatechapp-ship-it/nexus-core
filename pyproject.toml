@@ -38,7 +38,7 @@ tui = ["textual>=0.80", "rich>=13"]
 # SHA256 when cryptography is absent (e.g. Termux), so it is never a hard dep.
 certification = ["cryptography>=46.0.6"]
 novamind = [
-    "fastapi",
+    "fastapi>=0.163.2",
     "uvicorn",
     "pydantic>=2.14.3",
     "pydantic-settings",
