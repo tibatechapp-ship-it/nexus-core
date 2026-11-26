@@ -99,6 +99,36 @@ Each step may carry a static argument mapping or a callable that receives earlie
 - The dedicated `.github/workflows/mcp-hub-integration.yml` installs `mcp>=1.27,<3` and the pinned `mcp-hub==1.10.0` wheel so the real-process tests are not skipped. It is a separate workflow to avoid overlap with open PRs that already modify `test.yml`.
 - Locally, set `MCP_HUB_ROOT=/path/to/mcp-hub-checkout` to run those tests against a source tree; the fixture adds `<root>/src` to the child `PYTHONPATH`.
 
+## Opt-in dev-bounded coder tools
+
+The framework server stays read-only by default. Dev-bounded coder tools are
+**not registered** unless the server is built with `include_dev_tools=True`:
+
+```python
+from src.mcp import build_framework_server
+
+server = build_framework_server(root=".", include_dev_tools=True)
+```
+
+Even when registered, mutating calls require both `NEXUS_ENABLE_DEV_TOOLS=1`
+and an explicit per-call `approval` decision. `NEXUS_ENABLE_DEV_TOOLS` is not
+set in `.env.example` because it is an opt-in capability gate, not routine
+configuration.
+
+| Tool | Mode | Contract |
+| --- | --- | --- |
+| `coder_plan_preview` | read-only | Returns a unified diff for a validated plan; never writes files and needs no approval. |
+| `coder_apply_plan` | dev-bounded | Applies a pre-validated `RepairPlan` inside the exact server `workspace_root`; refuses traversal, symlinks, sensitive dirs/files, oversized content and invalid Python syntax. |
+| `coder_run_tests` | dev-bounded | Runs only `pytest`, `ruff` or `mypy` on explicit workspace-confined targets; argv list, no shell, no network, timeout capped at `120s` and output at `64 KiB`. |
+| `coder_container_run` | container-sandbox | Blocked unless `NEXUS_ENABLE_CONTAINER_SANDBOX=1`, the image is pinned with `@sha256:<64 hex>` and an explicit human approval is supplied. |
+
+Every call emits exactly one audit event with `tool`, `permission_mode`, `ok`,
+`duration_ms`, `chars` and `error_code` only. Arguments, outputs, paths,
+approval tokens and secrets are never recorded. The default registry used by
+`AgentLoop` and `HybridRouter._run_loop()` contains no `write_file` or
+`run_agent`; nested-agent dispatch and direct writes must be requested through
+the explicit dev registry.
+
 ## General MCP server management layer (assessment only)
 
 The adapter is deliberately one server, one process, one policy. A future multi-server layer would need, in this order:

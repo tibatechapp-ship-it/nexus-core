@@ -19,6 +19,13 @@ def reg():
 
 
 @pytest.fixture
+def dev_reg(ws, monkeypatch):
+    """Opt-in registry: dev tools exist only with env + explicit builder flag."""
+    monkeypatch.setenv("NEXUS_ENABLE_DEV_TOOLS", "1")
+    return build_default_registry(include_dev_tools=True)
+
+
+@pytest.fixture
 def ws(tmp_path, monkeypatch):
     """Isolate cwd to tmp_path and workspace env to same."""
     monkeypatch.chdir(tmp_path)
@@ -27,6 +34,7 @@ def ws(tmp_path, monkeypatch):
 
 
 # ─── safe_path ─────────────────────────────────────────────────────
+
 
 def test_safe_path_accepts_inside(ws):
     assert safe_path("hello.txt") == (ws / "hello.txt").resolve()
@@ -53,6 +61,7 @@ def test_safe_path_rejects_ssh_dir(ws):
 
 
 # ─── read_file ─────────────────────────────────────────────────────
+
 
 def test_read_file_blocks_env(ws, reg):
     (ws / ".env").write_text("SECRET=xxx")
@@ -88,37 +97,57 @@ def test_read_file_normal_works(ws, reg):
 
 # ─── write_file ────────────────────────────────────────────────────
 
-def test_write_file_blocks_outside(ws, reg):
-    out = reg.call("write_file", {"path": "../evil.py", "content": "print(1)"})
+
+def test_write_file_absent_by_default(ws, reg):
+    out = reg.call("write_file", {"path": "ok.py", "content": "print(1)"})
+    assert "غير موجودة" in out
+    assert not (ws / "ok.py").exists()
+
+
+def test_write_file_blocks_outside(ws, dev_reg):
+    out = dev_reg.call(
+        "write_file", {"path": "../evil.py", "content": "print(1)", "approval": "yes"}
+    )
     assert "محظور" in out
     assert not (ws.parent / "evil.py").exists()
 
 
-def test_write_file_blocks_env(ws, reg):
-    out = reg.call("write_file", {"path": ".env", "content": "SECRET=x"})
+def test_write_file_blocks_env(ws, dev_reg):
+    out = dev_reg.call("write_file", {"path": ".env", "content": "not-a-secret", "approval": "yes"})
     assert "محظور" in out or "حساس" in out
     assert not (ws / ".env").exists()
 
 
-def test_write_file_rejects_syntax_error(ws, reg):
-    out = reg.call("write_file", {"path": "broken.py", "content": "def broken(:"})
+def test_write_file_requires_approval(ws, dev_reg):
+    out = dev_reg.call("write_file", {"path": "no.py", "content": "print(1)"})
+    assert "موافقة" in out
+    assert not (ws / "no.py").exists()
+
+
+def test_write_file_rejects_syntax_error(ws, dev_reg):
+    out = dev_reg.call(
+        "write_file", {"path": "broken.py", "content": "def broken(:", "approval": "yes"}
+    )
     assert "صياغة" in out
     assert not (ws / "broken.py").exists()
 
 
-def test_write_file_atomic_no_leftover(ws, reg):
-    out = reg.call("write_file", {"path": "ok.py", "content": "print(1)"})
+def test_write_file_atomic_no_leftover(ws, dev_reg):
+    out = dev_reg.call("write_file", {"path": "ok.py", "content": "print(1)", "approval": "yes"})
     assert "تم الكتابة" in out
     assert (ws / "ok.py").exists()
     assert not list(ws.glob(".agent-tmp-*"))
 
 
-def test_write_file_oversize_rejected(ws, reg):
-    out = reg.call("write_file", {"path": "big.txt", "content": "x" * (1200 * 1024)})
+def test_write_file_oversize_rejected(ws, dev_reg):
+    out = dev_reg.call(
+        "write_file", {"path": "big.txt", "content": "x" * (1200 * 1024), "approval": "yes"}
+    )
     assert "كبير" in out
 
 
 # ─── list_files ────────────────────────────────────────────────────
+
 
 def test_list_files_skips_sensitive(ws, reg):
     (ws / "hello.txt").write_text("ok")

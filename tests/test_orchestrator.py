@@ -16,6 +16,7 @@ from src.orchestrator.supervisor import Supervisor
 
 # ───────────────────────────── smart_router ─────────────────────────────
 
+
 def test_decide_simple_single_agent() -> None:
     d = SmartRouter().decide("راجع هذا السطر")
     assert isinstance(d, RouteDecision)
@@ -69,14 +70,18 @@ def test_estimate_time_values() -> None:
 
 # ───────────────────────────── hybrid_router ─────────────────────────────
 
-@pytest.mark.parametrize("prompt,expected", [
-    ("هل نستخدم postgres أم sqlite؟", "decision"),
-    ("احفظ هذه الملاحظة", "tool"),
-    ("اكتب دالة فيبوناتشي", "code"),
-    ("ابحث عن ثغرة أمنية", "decision"),
-    ("مرحبا بالعالم", "tool"),
-    ("هل نستخدم production أم staging", "decision"),
-])
+
+@pytest.mark.parametrize(
+    "prompt,expected",
+    [
+        ("هل نستخدم postgres أم sqlite؟", "decision"),
+        ("احفظ هذه الملاحظة", "tool"),
+        ("اكتب دالة فيبوناتشي", "code"),
+        ("ابحث عن ثغرة أمنية", "decision"),
+        ("مرحبا بالعالم", "tool"),
+        ("هل نستخدم production أم staging", "decision"),
+    ],
+)
 def test_classify(prompt: str, expected: str) -> None:
     assert classify(prompt) == expected
 
@@ -101,11 +106,15 @@ def test_hybrid_run_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_build_smart_answer() -> None:
     r = HybridRouter()
     assert r._build_smart_answer({}) == ""
-    out = r._build_smart_answer({"results": [
-        {"ok": True, "result": "good"},
-        {"ok": False, "error": "boom"},
-        {"ok": True, "result": ""},
-    ]})
+    out = r._build_smart_answer(
+        {
+            "results": [
+                {"ok": True, "result": "good"},
+                {"ok": False, "error": "boom"},
+                {"ok": True, "result": ""},
+            ]
+        }
+    )
     assert "good" in out and "boom" in out
 
 
@@ -118,6 +127,7 @@ def test_get_hybrid_router_singleton() -> None:
 
 
 # ───────────────────────────── agent_cache ─────────────────────────────
+
 
 @pytest.fixture
 def tmp_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -146,6 +156,7 @@ def test_cache_corrupt_and_bad_dir(tmp_cache: Path) -> None:
 
 
 # ───────────────────────────── supervisor ─────────────────────────────
+
 
 class _Reg:
     def __init__(self, agent: Any = None, error: Exception | None = None) -> None:
@@ -270,9 +281,17 @@ def test_execute_single(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_execute_sequential(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _sup(_StrAgent())
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="sequential", complexity="standard", category="code_generation",
-        agents=["a", "b"], reason=""))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="sequential",
+            complexity="standard",
+            category="code_generation",
+            agents=["a", "b"],
+            reason="",
+        ),
+    )
     monkeypatch.setattr(s, "_run_single", lambda a, p: {"ok": True, "agent": a, "result": "r"})
     out = s.execute("hi")
     assert len(out["results"]) == 2
@@ -280,9 +299,17 @@ def test_execute_sequential(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_execute_parallel(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _sup(_StrAgent())
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="parallel", complexity="complex", category="code_generation",
-        agents=["a", "b"], reason=""))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="parallel",
+            complexity="complex",
+            category="code_generation",
+            agents=["a", "b"],
+            reason="",
+        ),
+    )
     monkeypatch.setattr(s, "_run_single", lambda a, p: {"ok": True, "agent": a, "result": "r"})
     out = s.execute("hi")
     assert out["ok"] is True and len(out["results"]) == 2
@@ -302,9 +329,18 @@ def test_execute_council_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(bridge_mod, "get_council_bridge", lambda: _Bridge())
     s = _sup(_StrAgent())
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="council", complexity="critical", category="security",
-        agents=["a"], reason="", risk_level="high"))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="council",
+            complexity="critical",
+            category="security",
+            agents=["a"],
+            reason="",
+            risk_level="high",
+        ),
+    )
     out = s.execute("deploy production")
     assert out["ok"] is True
     assert out["results"][0]["agent"] == "council"
@@ -329,29 +365,44 @@ def test_execute_with_rag(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _sup(_StrAgent())
     s.use_rag = True
     monkeypatch.setattr(s, "_get_rag", lambda: rag)
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="single", complexity="simple", category="code_generation",
-        agents=["a"], reason=""))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="single",
+            complexity="simple",
+            category="code_generation",
+            agents=["a"],
+            reason="",
+        ),
+    )
     monkeypatch.setattr(s, "_run_single", lambda a, p: {"ok": True, "agent": a, "result": "r"})
     out = s.execute("hello")
     assert out["ok"] is True and rag.remembered is True
 
 
 def test_print_decision(capsys: pytest.CaptureFixture[str]) -> None:
-    Supervisor(use_rag=False, verbose=False)._print_decision(RouteDecision(
-        strategy="single", complexity="simple", category="code_generation",
-        agents=["coder"], reason="r"))
+    Supervisor(use_rag=False, verbose=False)._print_decision(
+        RouteDecision(
+            strategy="single",
+            complexity="simple",
+            category="code_generation",
+            agents=["coder"],
+            reason="r",
+        )
+    )
     assert "Smart Router" in capsys.readouterr().out
 
 
 # ═════════════════ coverage of the real (non-mocked) supervisor paths ═══════════
+
 
 def test_get_registry_real_import() -> None:
     """nova.registry exists in-tree → the lazy import must resolve."""
     s = Supervisor(use_rag=False, verbose=False)
     reg = s._get_registry()
     assert reg is not None
-    assert s._get_registry() is reg            # cached, line 39-40 executed
+    assert s._get_registry() is reg  # cached, line 39-40 executed
 
 
 def test_get_rag_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -360,12 +411,13 @@ def test_get_rag_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
     ok = Supervisor(use_rag=True, verbose=False)
     rag = ok._get_rag()
-    assert ok._rag is rag                       # success branch (45-47)
+    assert ok._rag is rag  # success branch (45-47)
 
     # broken bridge → the except branch must swallow it
     bad = Supervisor(use_rag=True, verbose=False)
-    monkeypatch.setitem(sys.modules, "src.memory.agent_rag_bridge",
-                        types.ModuleType("src.memory.agent_rag_bridge"))
+    monkeypatch.setitem(
+        sys.modules, "src.memory.agent_rag_bridge", types.ModuleType("src.memory.agent_rag_bridge")
+    )
     assert bad._get_rag() is None
     assert Supervisor(use_rag=False, verbose=False)._get_rag() is None
 
@@ -375,7 +427,7 @@ def test_execute_force_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(s, "_run_single", lambda a, p: {"ok": True, "agent": a, "result": "r"})
     out = s.execute("hi", force_strategy="parallel")
     assert out["decision"]["strategy"] == "parallel"
-    assert len(out["results"]) == 1            # force wins over the router decision
+    assert len(out["results"]) == 1  # force wins over the router decision
 
 
 def test_execute_unknown_strategy_is_empty_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -397,9 +449,17 @@ def test_execute_verbose_single(monkeypatch: pytest.MonkeyPatch, capsys) -> None
 def test_execute_sequential_verbose(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     s = _sup(_StrAgent())
     s.verbose = True
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="sequential", complexity="standard", category="code_generation",
-        agents=["a", "b"], reason=""))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="sequential",
+            complexity="standard",
+            category="code_generation",
+            agents=["a", "b"],
+            reason="",
+        ),
+    )
     monkeypatch.setattr(s, "_run_single", lambda a, p: {"ok": True, "agent": a, "result": "r"})
     s.execute("hi")
     out = capsys.readouterr().out
@@ -409,9 +469,17 @@ def test_execute_sequential_verbose(monkeypatch: pytest.MonkeyPatch, capsys) -> 
 def test_execute_parallel_verbose_and_timeout(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     s = _sup(_StrAgent())
     s.verbose = True
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="parallel", complexity="complex", category="code_generation",
-        agents=["a", "b"], reason=""))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="parallel",
+            complexity="complex",
+            category="code_generation",
+            agents=["a", "b"],
+            reason="",
+        ),
+    )
     monkeypatch.setattr(s, "_run_single", lambda a, p: {"ok": True, "agent": a, "result": "r"})
     s.execute("hi")
     assert capsys.readouterr().out.count("✅") >= 2
@@ -426,8 +494,7 @@ def test_execute_parallel_verbose_and_timeout(monkeypatch: pytest.MonkeyPatch, c
     assert all("died" in r.get("error", "") for r in out["results"])
 
 
-def test_execute_council_verbose_and_failure(monkeypatch: pytest.MonkeyPatch,
-                                             capsys) -> None:
+def test_execute_council_verbose_and_failure(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     import src.council.rag_bridge as bridge_mod
 
     class _Verdict:
@@ -435,17 +502,28 @@ def test_execute_council_verbose_and_failure(monkeypatch: pytest.MonkeyPatch,
         score = 0.2
         rounds = 2
 
-    monkeypatch.setattr(bridge_mod, "get_council_bridge",
-                        lambda: type("B", (), {
-                            "deliberate_with_memory": lambda self, p: _Verdict()})())
+    monkeypatch.setattr(
+        bridge_mod,
+        "get_council_bridge",
+        lambda: type("B", (), {"deliberate_with_memory": lambda self, p: _Verdict()})(),
+    )
     s = _sup(_StrAgent())
     s.verbose = True
-    monkeypatch.setattr(s.router, "decide", lambda p: RouteDecision(
-        strategy="council", complexity="critical", category="security",
-        agents=["a"], reason="", risk_level="high"))
+    monkeypatch.setattr(
+        s.router,
+        "decide",
+        lambda p: RouteDecision(
+            strategy="council",
+            complexity="critical",
+            category="security",
+            agents=["a"],
+            reason="",
+            risk_level="high",
+        ),
+    )
     out = s.execute("deploy production")
     assert "خطورة: high" in capsys.readouterr().out
-    assert out["ok"] is False                  # reject verdict
+    assert out["ok"] is False  # reject verdict
 
     def _bridge_boom() -> None:
         raise RuntimeError("council down")
@@ -461,9 +539,9 @@ def test_execute_cache_and_rag_failures(monkeypatch: pytest.MonkeyPatch) -> None
     def _cache_boom(a: str, p: str) -> None:
         raise RuntimeError("cache read down")
 
-    monkeypatch.setattr(cache, "get", _cache_boom)      # 71-72
+    monkeypatch.setattr(cache, "get", _cache_boom)  # 71-72
     out = s._run_single("coder", "hi")
-    assert out["ok"] is True                            # read failure is non-fatal
+    assert out["ok"] is True  # read failure is non-fatal
 
     def _cache_set_boom(a: str, p: str, r: Any) -> None:
         raise RuntimeError("cache write down")
@@ -503,8 +581,8 @@ def test_execute_rag_branches(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
                 raise RuntimeError("remember down")
 
     decide = lambda p: RouteDecision(  # noqa: E731
-        strategy="single", complexity="simple", category="code_generation",
-        agents=["a"], reason="")
+        strategy="single", complexity="simple", category="code_generation", agents=["a"], reason=""
+    )
     run = lambda a, p: {"ok": True, "agent": a, "result": "r"}  # noqa: E731
 
     # 1. rag is None → both `if rag:` false branches
@@ -544,6 +622,7 @@ def test_execute_rag_branches(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
 
 # ═════════════════ coverage of the real hybrid router paths ═════════════════
 
+
 def test_hybrid_verbose_run(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     r = HybridRouter(verbose=True)
     monkeypatch.setattr(r, "_run_loop", lambda p: {"ok": True, "method": "m"})
@@ -562,28 +641,35 @@ def test_hybrid_run_smart_real(monkeypatch: pytest.MonkeyPatch) -> None:
     r = HybridRouter(use_rag=False)
     out = r._run_smart("اكتب دالة")
     assert out["method"] == "smart_router" and out["decision"]
-    assert out["results"][0]["ok"] is False    # agent could not be loaded
+    assert out["results"][0]["ok"] is False  # agent could not be loaded
 
     # the wrapper must not swallow a broken Supervisor
-    monkeypatch.setattr(sup_mod, "Supervisor",
-                        lambda **kw: (_ for _ in ()).throw(RuntimeError("sup down")))
+    monkeypatch.setattr(
+        sup_mod, "Supervisor", lambda **kw: (_ for _ in ()).throw(RuntimeError("sup down"))
+    )
     assert r._run_smart("x")["error"] == "sup down"
 
 
 def test_hybrid_run_loop_real(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Loop:
-        def __init__(self, max_iterations: int = 8, verbose: bool = False) -> None:
+        def __init__(self, max_iterations: int = 8, verbose: bool = False, **kw: Any) -> None:
             self.max_iterations = max_iterations
             self.verbose = verbose
+            assert "registry" in kw and kw["registry"] is not None
 
         def run(self, prompt: str) -> dict:
-            return {"ok": True, "iterations": 3, "trace": [{"icon": "i", "text": "t"}],
-                    "answer": "loop answer", "error": ""}
+            return {
+                "ok": True,
+                "iterations": 3,
+                "trace": [{"icon": "i", "text": "t"}],
+                "answer": "loop answer",
+                "error": "",
+            }
 
     monkeypatch.setattr("src.agent_loop.loop.AgentLoop", _Loop)
     out = HybridRouter()._run_loop("ابحث عن ملف")
     assert out["method"] == "agent_loop" and out["answer"] == "loop answer"
-    assert out["iterations"] == 3
+    assert out["iterations"] == 3 and out["dev_tools"] is False
 
     class _BadLoop(_Loop):
         def run(self, prompt: str) -> dict:
@@ -615,8 +701,11 @@ def test_hybrid_run_council_real(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out["transcript"][0]["response"] == "ر" * 500
     assert out["answer"].startswith("القرار: approve")
 
-    monkeypatch.setattr(bridge_mod, "get_council_bridge",
-                        lambda: (_ for _ in ()).throw(RuntimeError("council down")))
+    monkeypatch.setattr(
+        bridge_mod,
+        "get_council_bridge",
+        lambda: (_ for _ in ()).throw(RuntimeError("council down")),
+    )
     assert HybridRouter()._run_council("x")["error"] == "council down"
 
 

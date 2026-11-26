@@ -8,9 +8,12 @@
 * the **read-only local tools** — ``read_file`` / ``list_dir`` / ``grep``,
   confined to a workspace root exactly like :class:`~src.tools.executor.LocalToolExecutor`;
 * the **read-only git tools** — ``git_status`` / ``git_log`` / ``git_branches`` /
-  ``git_diff`` / ``git_show`` (:mod:`src.mcp.git_tools`).
+  ``git_diff`` / ``git_show`` (:mod:`src.mcp.git_tools`);
+* optionally, strictly **dev-bounded coder tools** — ``coder_plan_preview`` /
+  ``coder_apply_plan`` / ``coder_run_tests`` / ``coder_container_run`` — only when
+  ``include_dev_tools=True`` is passed explicitly.
 
-Heavy framework modules are imported lazily inside the builders, so importing
+ Heavy framework modules are imported lazily inside the builders, so importing
 this module is cheap and side-effect free.
 
 ``python -m src.mcp`` runs this server over stdio.
@@ -21,9 +24,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.mcp.protocol import error_content, text_content
+
+if TYPE_CHECKING:  # pragma: no cover - import-cycle guard
+    from src.mcp.coder_tools import CoderAuditLog
 from src.mcp.server import MCPServer
 
 __all__ = [
@@ -54,6 +60,7 @@ def _framework_version() -> str:
     except Exception:  # pragma: no cover - version is a nicety, never fatal
         return "0.0.0"
 
+
 def _default_backend() -> Any:
     """An offline echo backend — enough to exercise agents with no API key."""
     from src.core.backend import EchoBackend
@@ -69,6 +76,8 @@ def build_framework_server(
     include_security: bool = True,
     include_local_tools: bool = True,
     include_git: bool = True,
+    include_dev_tools: bool = False,
+    coder_audit: CoderAuditLog | None = None,
     name: str = "nexus-core",
     version: str | None = None,
 ) -> MCPServer:
@@ -76,7 +85,9 @@ def build_framework_server(
 
     ``backend`` is used to instantiate the agents (default: an offline
     :class:`~src.core.backend.EchoBackend`); ``root`` confines the read-only tools
-    and the security scanner (default: the current directory).
+    and the security scanner (default: the current directory). Dev-bounded coder
+    tools are **never** exposed unless ``include_dev_tools=True``; even then,
+    mutating calls require ``NEXUS_ENABLE_DEV_TOOLS=1`` and explicit approval.
     """
     workspace = Path(root or Path.cwd()).resolve()
     server = MCPServer(
@@ -84,7 +95,8 @@ def build_framework_server(
         version=version or _framework_version(),
         instructions=(
             "nexus-core framework tools: 20 specialised agents, a static security "
-            "scanner, read-only workspace tools and read-only git inspection."
+            "scanner, read-only workspace tools and read-only git inspection. "
+            "Dev-bounded coder tools are opt-in and default-deny."
         ),
     )
     if include_agents:
@@ -95,6 +107,8 @@ def build_framework_server(
         _add_local_tools(server, workspace)
     if include_git:
         _add_git_tools(server, workspace)
+    if include_dev_tools:
+        _add_coder_tools(server, workspace, coder_audit)
     return server
 
 
@@ -285,7 +299,9 @@ def _add_git_tools(server: MCPServer, workspace: Path) -> None:
     )
     server.register(
         "git_log",
-        _make_git_handler(workspace, lambda root, args: git.git_log(root, limit=args.get("limit", 10))),
+        _make_git_handler(
+            workspace, lambda root, args: git.git_log(root, limit=args.get("limit", 10))
+        ),
         description="Recent commits (git log --oneline).",
         input_schema={
             "type": "object",
@@ -321,7 +337,9 @@ def _add_git_tools(server: MCPServer, workspace: Path) -> None:
     )
     server.register(
         "git_show",
-        _make_git_handler(workspace, lambda root, args: git.git_show(root, str(args.get("ref", "")))),
+        _make_git_handler(
+            workspace, lambda root, args: git.git_show(root, str(args.get("ref", "")))
+        ),
         description="Show a commit or object (git show).",
         input_schema={
             "type": "object",
@@ -344,6 +362,93 @@ def _make_git_handler(workspace: Path, fn: Callable[[Path, Mapping[str, Any]], s
             return text_content(fn(workspace, arguments))
         except GitError as exc:
             return error_content(str(exc))
+
+    return handler
+
+
+# -- opt-in dev-bounded coder tools -----------------------------------------
+_PLAN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": "Deterministic plan object: steps with action, file, find and patch_hint.",
+}
+_APPROVAL_SCHEMA: dict[str, Any] = {
+    "type": "string",
+    "description": "Explicit per-call approval token; required for mutating tools.",
+}
+_WORKSPACE_SCHEMA: dict[str, Any] = {
+    "type": "string",
+    "description": "Absolute workspace root; must match the server root exactly.",
+}
+
+
+def _add_coder_tools(server: MCPServer, workspace: Path, audit: CoderAuditLog | None) -> None:
+    """Register the opt-in, dev-bounded coder tools."""
+    from src.mcp.coder_tools import build_coder_toolkit
+
+    toolkit = build_coder_toolkit(workspace, audit=audit)
+    server.register(
+        "coder_plan_preview",
+        _make_coder_handler(toolkit, "coder_plan_preview"),
+        description="[dev] Return a unified diff for a plan; never writes files.",
+        input_schema={"type": "object", "properties": {"plan": _PLAN_SCHEMA}, "required": ["plan"]},
+    )
+    server.register(
+        "coder_apply_plan",
+        _make_coder_handler(toolkit, "coder_apply_plan"),
+        description="[dev] Apply a validated plan inside the workspace (env + approval required).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "plan": _PLAN_SCHEMA,
+                "workspace_root": _WORKSPACE_SCHEMA,
+                "approval": _APPROVAL_SCHEMA,
+            },
+            "required": ["plan", "workspace_root", "approval"],
+        },
+    )
+    server.register(
+        "coder_run_tests",
+        _make_coder_handler(toolkit, "coder_run_tests"),
+        description="[dev] Run allowlisted pytest/ruff/mypy on explicit workspace targets.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "enum": ["pytest", "ruff", "mypy"]},
+                "targets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": 32,
+                },
+                "timeout": {"type": "integer", "minimum": 1, "maximum": 120, "default": 120},
+                "workspace_root": _WORKSPACE_SCHEMA,
+                "approval": _APPROVAL_SCHEMA,
+            },
+            "required": ["command", "targets", "workspace_root", "approval"],
+        },
+    )
+    server.register(
+        "coder_container_run",
+        _make_coder_handler(toolkit, "coder_container_run"),
+        description="[dev] Run a sha256-pinned image with explicit human approval.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "image": {"type": "string", "description": "Image pinned with @sha256:<64 hex>"},
+                "command": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "workspace_root": _WORKSPACE_SCHEMA,
+                "approval": _APPROVAL_SCHEMA,
+            },
+            "required": ["image", "command", "workspace_root", "approval"],
+        },
+    )
+
+
+def _make_coder_handler(toolkit: Any, tool: str) -> Any:
+    """A handler that delegates to the toolkit's single audited entry point."""
+
+    def handler(arguments: Mapping[str, Any]) -> dict[str, Any]:
+        return toolkit.call(tool, dict(arguments))
 
     return handler
 

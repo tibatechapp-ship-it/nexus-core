@@ -1,4 +1,5 @@
 """Hybrid Router — يوجّه بين Smart Router / Agent Loop / Council."""
+
 from __future__ import annotations
 import os
 import sys
@@ -7,7 +8,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, 'src'))
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 
 # ═══ أنماط التصنيف ═══
@@ -112,6 +113,7 @@ class HybridRouter:
         """Smart Router + Supervisor."""
         try:
             from src.orchestrator.supervisor import Supervisor
+
             sup = Supervisor(use_rag=self.use_rag, verbose=False)
             r = sup.execute(prompt)
             return {
@@ -134,10 +136,20 @@ class HybridRouter:
             return {"ok": False, "method": "smart_router", "error": str(e)}
 
     def _run_loop(self, prompt: str) -> dict:
-        """Agent Loop (ReAct)."""
+        """Agent Loop (ReAct) with the read-only registry, never dev tools.
+
+        ``write_file`` and ``run_agent`` are not part of the default registry;
+        a caller that wants them must build a separate dev registry explicitly.
+        """
         try:
             from src.agent_loop.loop import AgentLoop
-            loop = AgentLoop(max_iterations=8, verbose=self.verbose)
+            from src.agent_loop.tools import build_default_registry
+
+            loop = AgentLoop(
+                max_iterations=8,
+                verbose=self.verbose,
+                registry=build_default_registry(),
+            )
             r = loop.run(prompt)
             return {
                 "ok": r.get("ok", False),
@@ -146,6 +158,7 @@ class HybridRouter:
                 "trace": r.get("trace", []),
                 "answer": r.get("answer", ""),
                 "error": r.get("error", ""),
+                "dev_tools": False,
             }
         except Exception as e:
             return {"ok": False, "method": "agent_loop", "error": str(e)}
@@ -154,6 +167,7 @@ class HybridRouter:
         """Council of Agents."""
         try:
             from src.council.rag_bridge import get_council_bridge
+
             b = get_council_bridge()
             b.engine.MAX_ROUNDS = 1
             r = b.deliberate_with_memory(prompt)
@@ -165,8 +179,7 @@ class HybridRouter:
                 "rounds": r.rounds,
                 "elapsed": r.elapsed,
                 "transcript": [
-                    {"phase": e["phase"], "member": e["member"],
-                     "response": e["response"][:500]}
+                    {"phase": e["phase"], "member": e["member"], "response": e["response"][:500]}
                     for e in r.transcript
                 ],
                 "answer": f"القرار: {r.verdict} ({r.score:.2f})",
@@ -190,6 +203,7 @@ class HybridRouter:
 
 # Singleton
 _router = None
+
 
 def get_hybrid_router(use_rag: bool = True, verbose: bool = False) -> HybridRouter:
     global _router
