@@ -17,11 +17,12 @@ import json
 import sys
 from typing import Any
 
-from src.org.contracts import Mission
+from src.org.contracts import Approval, Mission
 from src.org.dashboard import OrgDashboard
 from src.org.learning import LessonsEngine
 from src.org.metrics import OrgMetrics
 from src.org.pipeline import MissionPipeline
+from src.org.orchestrator import ExecutiveOrchestrator
 from src.org.store import OrgStore
 from src.ops.store import OpsStore
 
@@ -54,8 +55,33 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--title", required=True)
     m.add_argument("--objective", required=True)
     m.add_argument("--repo", default="")
+    m.add_argument("--mission-id", default="",
+                   help="تشغيل مهمة موجودة؛ مطلوب لمسار موافقة الحاوية")
+    m.add_argument("--execution-mode", choices=("process", "container"),
+                   required=True, help="وضع التشغيل الأمني الصريح")
+    m.add_argument("--trust-local", action="store_true",
+                   help="إقرار صريح بأن المستودع موثوق للتنفيذ المحلي")
+    m.add_argument("--container-image", default="",
+                   help="صورة حاوية مثبتة ببصمة sha256")
+    m.add_argument("--container-enabled", action="store_true",
+                   help="تفعيل تشغيل الحاوية صراحة")
+    m.add_argument("--approval-id", default="",
+                   help="معرّف موافقة run_untrusted المسجلة للمهمة")
     m.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None,
                    help="سقف توكنات الخرج للمهمة (اختياري، موجب)")
+
+    c = sub.add_parser("create-mission", help="إنشاء مهمة دون تشغيلها")
+    c.add_argument("--title", required=True)
+    c.add_argument("--objective", required=True)
+    c.add_argument("--repo", default="")
+    c.add_argument("--max-output-tokens", type=_positive_output_tokens, default=None)
+
+    resume = sub.add_parser(
+        "resume", help="استئناف مهمة متوقفة من checkpoint بعد قرار مشغّل صريح")
+    resume.add_argument("mission_id")
+    resume.add_argument("--by", required=True, help="هوية المشغّل")
+    resume.add_argument("--reason", required=True, help="سبب الاستئناف للتدقيق")
+    resume.add_argument("--expected-repo-root", default=None)
 
     s = sub.add_parser("show", help="عرض مهمة مخزنة")
     s.add_argument("mission_id")
@@ -65,6 +91,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("lessons", help="الدروس والأنماط")
 
     sub.add_parser("metrics", help="لقطة المقاييس")
+
+    r = sub.add_parser(
+        "request-run-approval",
+        help="طلب موافقة بشرية على تشغيل صورة حاوية مثبتة ببصمة sha256",
+    )
+    r.add_argument("mission_id")
+    r.add_argument("--container-image", required=True)
 
     a = sub.add_parser("approve", help="قرار موافقة بشرية")
     a.add_argument("approval_id")
@@ -85,12 +118,76 @@ def _emit(payload: Any) -> None:
 
 def _cmd_mission(args: argparse.Namespace) -> int:
     org, ops = _stores(args)
+    existing_mission = None
+    if args.mission_id:
+        existing_mission = org.mission_get(args.mission_id)
+        if existing_mission is None:
+            raise SystemExit(f"mission not found: {args.mission_id}")
+        if existing_mission.status != "created":
+            raise SystemExit(
+                f"mission cannot be executed from status {existing_mission.status!r}; "
+                "use the explicit resume workflow"
+            )
+        if (
+            existing_mission.title != args.title
+            or existing_mission.objective != args.objective
+            or existing_mission.repo_path != args.repo
+            or existing_mission.output_token_limit != args.max_output_tokens
+        ):
+            raise SystemExit("--mission-id fields must match the stored mission")
+    elif args.execution_mode == "container":
+        raise SystemExit(
+            "container mode requires --mission-id from create-mission so approval "
+            "is bound to the mission being executed"
+        )
+    if args.execution_mode == "process":
+        if not args.trust_local:
+            raise SystemExit("--execution-mode process requires --trust-local")
+        policy = {
+            "schema_version": 1, "execution_mode": "process",
+            "trusted_local": True,
+        }
+    else:
+        if not args.container_enabled or not args.container_image or not args.approval_id:
+            raise SystemExit(
+                "container mode requires --container-enabled, --container-image "
+                "and --approval-id"
+            )
+        policy = {
+            "schema_version": 1, "execution_mode": "container",
+            "container_enabled": True, "container_image": args.container_image,
+            "approval_id": args.approval_id,
+        }
     pipeline = MissionPipeline(org, ops, outdir=args.outdir)
     report = pipeline.run(title=args.title, objective=args.objective,
                           repo_path=args.repo,
-                          output_token_limit=args.max_output_tokens)
+                          output_token_limit=args.max_output_tokens,
+                          execution_policy=policy,
+                          existing_mission=existing_mission)
     _emit(report.to_dict())
     return 0 if report.mission.status == "done" else 1
+
+
+def _cmd_create_mission(args: argparse.Namespace) -> int:
+    org, _ = _stores(args)
+    mission = org.create_mission(Mission(
+        title=args.title, objective=args.objective, repo_path=args.repo,
+        output_token_limit=args.max_output_tokens,
+    ))
+    _emit(mission.to_dict())
+    return 0
+
+
+def _cmd_resume(args: argparse.Namespace) -> int:
+    org, ops = _stores(args)
+    orchestrator = ExecutiveOrchestrator(
+        org, ops, outdir=args.outdir)
+    mission = orchestrator.resume_mission(
+        args.mission_id, actor=args.by, reason=args.reason,
+        expected_repo_root=args.expected_repo_root,
+    )
+    _emit(mission.to_dict())
+    return 0 if mission.status == "done" else 1
 
 
 def _cmd_show(args: argparse.Namespace) -> int:
@@ -140,6 +237,33 @@ def _cmd_metrics(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_request_run_approval(args: argparse.Namespace) -> int:
+    org, _ = _stores(args)
+    mission = org.mission_get(args.mission_id)
+    if mission is None:
+        print(f"مهمة غير موجودة: {args.mission_id}", file=sys.stderr)
+        return 2
+    image = args.container_image
+    digest = (
+        image.rsplit("@sha256:", 1)[-1]
+        if image.count("@sha256:") == 1 else ""
+    )
+    if (image != image.strip() or not image.split("@sha256:", 1)[0].strip()
+            or len(digest) != 64
+            or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
+        print("الصورة يجب أن تكون مثبتة ببصمة sha256 صحيحة", file=sys.stderr)
+        return 2
+    approval = org.request_approval(Approval(
+        mission_id=mission.id, kind="run_untrusted", subject=image,
+        note="Authorize execution only inside this immutable container image",
+    ))
+    _emit({
+        "approval_id": approval.id, "kind": approval.kind,
+        "subject": approval.subject, "approved": approval.approved,
+    })
+    return 0
+
+
 def _cmd_approve(args: argparse.Namespace) -> int:
     org, _ = _stores(args)
     approval = org.decide_approval(args.approval_id, approved=args.yes,
@@ -154,9 +278,12 @@ def main(argv: list[str] | None = None) -> int:
     """نقطة الدخول — توجيه مباشر لأوامر معلنة."""
     args = build_parser().parse_args(argv)
     handlers = {
-        "mission": _cmd_mission, "show": _cmd_show,
+        "mission": _cmd_mission, "create-mission": _cmd_create_mission,
+        "show": _cmd_show, "resume": _cmd_resume,
         "dashboard": _cmd_dashboard, "lessons": _cmd_lessons,
-        "metrics": _cmd_metrics, "approve": _cmd_approve,
+        "metrics": _cmd_metrics,
+        "request-run-approval": _cmd_request_run_approval,
+        "approve": _cmd_approve,
     }
     return handlers[args.cmd](args)
 

@@ -168,3 +168,20 @@ def test_failed_checkpoint_commit_cleans_persisted_worktree(
         save_mission_context_snapshot(store, ctx, state_root)
 
     assert list(state_root.rglob("worktree-*")) == []
+
+
+
+def test_execution_policy_cannot_change_between_checkpoints(tmp_path: Path) -> None:
+    store, ctx, _, state_root = _context(tmp_path)
+    ctx.execution_policy = {
+        "schema_version": 1, "max_revision_loops": 1,
+        "execution_mode": "process", "trusted_local": True,
+    }
+    save_mission_context_snapshot(store, ctx, state_root)
+
+    ctx.execution_policy = {
+        "schema_version": 1, "max_revision_loops": 1,
+        "execution_mode": "process", "trusted_local": False,
+    }
+    with pytest.raises(OrgError, match="سياسة التنفيذ تغيّرت"):
+        save_mission_context_snapshot(store, ctx, state_root)

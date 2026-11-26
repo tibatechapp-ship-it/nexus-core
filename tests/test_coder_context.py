@@ -92,3 +92,18 @@ def test_lexical_retrieval_finds_related_typescript_without_defect_path(tmp_path
     assert "reconcileInvoice" in result["rendered"]
     assert "secrets/invoice.ts" not in result["rendered"]
     assert result["retrieval"] == "bm25_lexical"
+
+
+def test_context_normalizes_crlf_before_exact_patch_matching(tmp_path: Path) -> None:
+    source = b"def divide(a, b):\r\n    return a / b\r\n"
+    (tmp_path / "mathops.py").write_bytes(source)
+
+    result = build_code_context(
+        tmp_path,
+        {},
+        [{"file": "mathops.py", "description": "division by zero"}],
+    )
+
+    assert result["files"] == ["mathops.py"]
+    assert "\r" not in result["rendered"]
+    assert "    return a / b\n" in result["rendered"]

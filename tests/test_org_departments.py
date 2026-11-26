@@ -29,6 +29,42 @@ from src.ops.store import OpsStore
 OBJECTIVE = ("أضف حارس قسمة على صفر إلى دالة divide في وحدة calc.mathops "
              "مع اختبارات للحدية")
 
+class DeterministicCoderConnector:
+    """Test-only coder connector: deterministic detector and safe RepairPlan."""
+
+    def __init__(self) -> None:
+        self.usage_total = {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
+        self.providers_used: set[str] = set()
+        self.models_used: set[str] = set()
+
+    async def generate(self, prompt: str) -> dict:
+        import json
+        if "defect-discovery stage" in prompt:
+            return {"ok": True, "reply": "[]"}
+        if "planning stage" in prompt:
+            plan = {
+                "goal": "Add explicit division-by-zero guard",
+                "defects": [],
+                "steps": [{
+                    "file": "calc/mathops.py",
+                    "action": "edit",
+                    "reason": "Reject zero divisor",
+                    "find": "def divide(a, b):\n    return a / b",
+                    "patch_hint": (
+                        "def divide(a, divisor):\n"
+                        "    if divisor == 0:\n"
+                        "        raise ZeroDivisionError('division by zero')\n"
+                        "    return a / divisor"
+                    ),
+                    "risk": "low",
+                }],
+                "tests_to_run": ["tests/test_mathops.py"],
+            }
+            return {"ok": True, "reply": json.dumps(plan)}
+        return {"ok": False, "error": "unexpected coder prompt"}
+
+
+
 
 @pytest.fixture()
 def fixture_repo(tmp_path: Path) -> Path:
@@ -50,8 +86,11 @@ def fixture_repo(tmp_path: Path) -> Path:
 def depts(tmp_path: Path) -> Departments:
     org = OrgStore(":memory:")
     ops = OpsStore(":memory:")
-    return Departments(ProviderPool([ProviderConfig()]), org, ops,
-                       outdir=tmp_path / "reports")
+    return Departments(
+        ProviderPool([ProviderConfig()]), org, ops,
+        outdir=tmp_path / "reports",
+        coder_connector_factory=lambda runtime, mission_id: DeterministicCoderConnector(),
+    )
 
 
 @pytest.fixture()
@@ -110,6 +149,10 @@ class TestDevelopment:
             repo_path=str(fixture_repo), id=stored.id,
             phase=stored.phase, status=stored.status))
         ctx = MissionContext(mission=stored)
+        ctx.execution_policy = {
+            "schema_version": 1, "execution_mode": "process",
+            "trusted_local": True,
+        }
         intel.run(ctx)
         out = depts.development.run(ctx)
         assert out["status"] == "ok" and out["applied"]
@@ -129,6 +172,67 @@ class TestDevelopment:
         with pytest.raises(DepartmentError, match="غير معلن"):
             depts.development.run(MissionContext(mission=mission),  # type: ignore[arg-type]
                                   dev_kind="magic")
+
+    def test_missing_execution_policy_fails_closed(
+            self, depts: Departments, mission: object,
+            fixture_repo: Path) -> None:
+        from src.org.contracts import Mission
+
+        stored = depts.org_store.mission_get(mission.id)  # type: ignore[attr-defined]
+        stored = depts.org_store.mission_update(Mission(
+            title=stored.title, objective=stored.objective,
+            repo_path=str(fixture_repo), id=stored.id,
+            phase=stored.phase, status=stored.status))
+        ctx = MissionContext(mission=stored)
+        depts.intel.run(ctx)
+
+        with pytest.raises(DepartmentError, match="execution policy missing"):
+            depts.development.run(ctx)
+
+        assert ctx.worktree is not None
+        assert "if divisor == 0" not in ctx.worktree.read("calc/mathops.py")
+        assert "if divisor == 0" not in (
+            fixture_repo / "calc" / "mathops.py"
+        ).read_text(encoding="utf-8")
+
+    def test_engine_failure_never_transfers_partial_changes(
+            self, depts: Departments, mission: object,
+            fixture_repo: Path) -> None:
+        from src.org.contracts import Mission
+
+        stored = depts.org_store.mission_get(mission.id)  # type: ignore[attr-defined]
+        stored = depts.org_store.mission_update(Mission(  # type: ignore[arg-type]
+            title=stored.title, objective=stored.objective,
+            repo_path=str(fixture_repo), id=stored.id,
+            phase=stored.phase, status=stored.status))
+        ctx = MissionContext(mission=stored)
+        ctx.execution_policy = {
+            "schema_version": 1, "execution_mode": "process",
+            "trusted_local": True,
+        }
+        depts.intel.run(ctx)
+
+        class InvalidPlanConnector:
+            usage_total = {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
+            providers_used: set[str] = set()
+            models_used: set[str] = set()
+
+            async def generate(self, prompt: str) -> dict:
+                if "defect-discovery stage" in prompt:
+                    return {"ok": True, "reply": "[]"}
+                return {"ok": True, "reply": (
+                    '{"goal":"invalid","steps":[],"tests_to_run":[]}'
+                )}
+
+        depts.development.connector_factory = (
+            lambda runtime, mission_id: InvalidPlanConnector()
+        )
+        before = ctx.worktree.read("calc/mathops.py")  # type: ignore[union-attr]
+        with pytest.raises(DepartmentError, match="Coder Engine"):
+            depts.development.run(ctx)
+        assert ctx.worktree.read("calc/mathops.py") == before  # type: ignore[union-attr]
+        assert (fixture_repo / "calc" / "mathops.py").read_text() == before
+
 
 
 class TestSecurity:
@@ -200,3 +304,60 @@ class TestTooling:
         assert depts.qa is not None
         assert depts.council is not None
         assert depts.release is not None
+
+
+class TestRepairPlanWorktreeTransfer:
+    def test_edit_create_and_delete_are_explicit(self, tmp_path: Path) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        wt.write("pkg/mod.py", "VALUE = 1\n")
+        applied = wt.apply_repair_steps([
+            {"file": "pkg/mod.py", "action": "edit", "find": "VALUE = 1",
+             "patch_hint": "VALUE = 2"},
+            {"file": "pkg/new.py", "action": "create", "patch_hint": "NEW = True\n"},
+        ])
+        assert applied == ["pkg/mod.py", "pkg/new.py"]
+        assert wt.read("pkg/mod.py") == "VALUE = 2\n"
+        assert wt.read("pkg/new.py") == "NEW = True\n"
+        deleted = wt.apply_repair_steps([
+            {"file": "pkg/new.py", "action": "delete"}
+        ])
+        assert deleted == ["pkg/new.py"]
+        assert not (wt.root / "pkg/new.py").exists()
+
+    def test_ambiguous_find_rejects_entire_plan_without_partial_write(
+            self, tmp_path: Path) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        wt.write("first.py", "VALUE = 1\n")
+        wt.write("second.py", "VALUE = 1\nVALUE = 1\n")
+        with pytest.raises(ValueError, match="exactly once"):
+            wt.apply_repair_steps([
+                {"file": "first.py", "action": "edit", "find": "VALUE = 1",
+                 "patch_hint": "VALUE = 2"},
+                {"file": "second.py", "action": "edit", "find": "VALUE = 1",
+                 "patch_hint": "VALUE = 2"},
+            ])
+        assert wt.read("first.py") == "VALUE = 1\n"
+
+    @pytest.mark.parametrize("path", ["../escape.py", "/tmp/escape.py", "a/../../escape.py"])
+    def test_path_escape_is_rejected(self, tmp_path: Path, path: str) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        with pytest.raises(ValueError, match="unsafe|escapes"):
+            wt.apply_repair_steps([
+                {"file": path, "action": "create", "patch_hint": "x = 1"}
+            ])
+
+    def test_duplicate_paths_are_rejected(self, tmp_path: Path) -> None:
+        from src.org.sandbox import Worktree
+
+        wt = Worktree.from_source(tmp_path, files=[])
+        with pytest.raises(ValueError, match="duplicate"):
+            wt.apply_repair_steps([
+                {"file": "a.py", "action": "create", "patch_hint": "x = 1"},
+                {"file": "a.py", "action": "create", "patch_hint": "x = 2"},
+            ])

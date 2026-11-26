@@ -15,12 +15,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import difflib
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.org.agents import AgentOutcome, AgentRuntime, AgentSpec, Tool, ToolRegistry
+from src.coder.engine import run_engine
+from src.coder.org_connector import OrgRuntimeConnector
 from src.org.contracts import (
     Approval,
     Claim,
@@ -238,66 +244,23 @@ class RepoIntelDept:
 
 
 class DevelopmentDept:
-    """قسم التطوير — وكيل لكل نوع (backend/api/...) يولّد رقعة في نسخة عمل."""
+    """قسم التطوير — يفوض التخطيط والتنفيذ والتحقق إلى Coder Engine."""
 
-    def __init__(self, runtime: AgentRuntime) -> None:
+    def __init__(
+        self,
+        runtime: AgentRuntime,
+        connector_factory: Callable[[AgentRuntime, str], Any] | None = None,
+    ) -> None:
         self.runtime = runtime
-
-    def run(self, ctx: MissionContext, dev_kind: str = "backend") -> dict[str, Any]:
-        if dev_kind not in DEV_KINDS:
-            raise DepartmentError(f"نوع تطوير غير معلن: {dev_kind}")
-        if ctx.worktree is None:
-            raise DepartmentError("لا نسخة عمل — الذكاء يجب أن يسبق التطوير")
-        targets = ctx.affected.get("direct") or list(ctx.originals)[:1]
-        if not targets:
-            raise DepartmentError("لا ملفات هدف محددة للتطوير")
-        fn_name = self._function_hint(ctx.mission.objective, targets[0])
-        spec = AgentSpec(role=f"dev:{dev_kind}", dept="development",
-                         mission_id=ctx.mission.id,
-                         tools=frozenset({"read_repo"}), max_retries=1)
-        files_block = "\n".join(f"file: {t}" for t in targets[:3])
-        guard_desc = self._guard_hint(ctx.mission.objective)
-        prompt = (
-            f"TASK: {ctx.mission.objective}\n"
-            f"FUNCTION: {fn_name}\nGUARD: {guard_desc}\n"
-            f"TARGET FILES:\n{files_block}\n"
-            "أجب JSON بمفاتيح: changed_files (قائمة {path, content})، notes، "
-            "risks (قائمة {severity, message})."
-        )
-        outcome = self.runtime.ask_json(spec, prompt)
-        ctx.add_usage(outcome)
-        if not outcome.success:
-            raise DepartmentError(f"فشل وكيل التطوير: {outcome.error}")
-        changes = [c for c in outcome.data.get("changed_files", [])
-                   if isinstance(c, dict) and c.get("path")]
-        if not changes:
-            raise DepartmentError("وكيل التطوير أعاد لا تغييرات — فشل صريح")
-        applied = ctx.worktree.apply_changes(changes)
-        ctx.changed_files = sorted(set(applied))
-        ctx.diff_text = self._build_diff(ctx, changes)
-        ctx.dev_notes = str(outcome.data.get("notes", ""))
-        ctx.dev_risks = [r for r in outcome.data.get("risks", [])
-                         if isinstance(r, dict)]
-        statement = (f"طُبِّقت رقعة على {len(applied)} ملفًا مع حارس "
-                     f"«{guard_desc}»")
-        claim = Claim(mission_id=ctx.mission.id, agent_role=spec.role,
-                      statement=statement, claim_kind="fix",
-                      id=new_id("org-c", ctx.mission.id, spec.role, statement))
-        ctx.claims.append(claim)
-        self.runtime.store.add_evidence(Evidence(
-            mission_id=ctx.mission.id, kind="diff",
-            detail={"paths": applied, "diff_chars": len(ctx.diff_text)},
-            captured_by=spec.role, ok=True, claim_id=claim.id))
-        return {"status": "ok", "applied": applied, "diff_chars": len(ctx.diff_text),
-                "claim": claim}
+        self.connector_factory = connector_factory
 
     @staticmethod
     def _function_hint(objective: str, target: str) -> str:
-        """استنتاج حتمي لاسم الدالة من الهدف — لا اختراع صامت."""
+        """Backward-compatible deterministic hint for older department clients."""
         import re
-        m = re.search(r"دالة\s*[`\"']?(\w+)", objective)
-        if m:
-            return m.group(1)
+        match = re.search(r"دالة\s*[`\"']?(\w+)", objective)
+        if match:
+            return match.group(1)
         for word in ("divide", "split", "parse", "validate", "login", "create"):
             if word in objective.lower():
                 return word
@@ -305,18 +268,219 @@ class DevelopmentDept:
 
     @staticmethod
     def _guard_hint(objective: str) -> str:
+        """Backward-compatible guard description; never used as execution authority."""
         lowered = objective.lower()
-        for kw, hint in (("صفر", "القسمة على صفر"), ("zero", "القسمة على صفر"),
-                         ("empty", "مدخلات فارغة"), ("فارغ", "مدخلات فارغة"),
-                         ("auth", "طلبات بلا تصريح"), ("negative", "قيم سالبة")):
-            if kw in lowered:
+        for keyword, hint in (
+            ("صفر", "القسمة على صفر"), ("zero", "القسمة على صفر"),
+            ("empty", "مدخلات فارغة"), ("فارغ", "مدخلات فارغة"),
+            ("auth", "طلبات بلا تصريح"), ("negative", "قيم سالبة"),
+        ):
+            if keyword in lowered:
                 return hint
         return "مدخلات غير صالحة"
 
     @staticmethod
+    def _run_async(coro: Any) -> Any:
+        """Run the async engine from this synchronous department API."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(asyncio.run, coro).result()
+
+    def run(self, ctx: MissionContext, dev_kind: str = "backend") -> dict[str, Any]:
+        if dev_kind not in DEV_KINDS:
+            raise DepartmentError(f"نوع تطوير غير معلن: {dev_kind}")
+        if ctx.worktree is None:
+            raise DepartmentError("لا نسخة عمل — الذكاء يجب أن يسبق التطوير")
+        repo_path = ctx.mission.repo_path
+        if not repo_path or not Path(repo_path).is_dir():
+            raise DepartmentError("محرك Coder يحتاج مسار مستودع صالحًا")
+        targets = ctx.affected.get("direct") or list(ctx.originals)[:1]
+        if not targets:
+            raise DepartmentError("لا ملفات هدف محددة للتطوير")
+
+        # Execution mode is a mission-level security decision. Never silently
+        # fall back to the legacy process runner for an arbitrary repository.
+        execution_policy = ctx.execution_policy
+        execution_mode = execution_policy.get("execution_mode")
+        container_image = execution_policy.get("container_image")
+        container_enabled = execution_policy.get("container_enabled") is True
+        approval_id = execution_policy.get("approval_id")
+        approvals = self.runtime.store.approvals_for(ctx.mission.id)
+        container_approved = any(
+            item.id == approval_id
+            and item.kind == "run_untrusted"
+            and item.approved is True
+            and bool(item.decided_by)
+            and item.subject == container_image
+            for item in approvals
+        )
+        if execution_mode == "process":
+            if execution_policy.get("trusted_local") is not True:
+                raise DepartmentError(
+                    "process mode requires an explicit trusted_local mission policy"
+                )
+        elif execution_mode == "container":
+            if not container_enabled or not container_approved:
+                raise DepartmentError(
+                    "container mode requires explicit enablement and human approval"
+                )
+            digest = (container_image.rsplit("@sha256:", 1)[-1]
+                      if isinstance(container_image, str) and "@sha256:" in container_image
+                      else "")
+            if (len(digest) != 64
+                    or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
+                raise DepartmentError(
+                    "container mode requires a valid immutable sha256 image digest"
+                )
+        else:
+            raise DepartmentError(
+                "execution policy missing: choose approved container mode or "
+                "explicit trusted-local process mode"
+            )
+
+        engine_workdir = Path(tempfile.mkdtemp(prefix="nexus-coder-mission-"))
+        connector = (
+            self.connector_factory(self.runtime, ctx.mission.id)
+            if self.connector_factory is not None else
+            OrgRuntimeConnector(
+                self.runtime, mission_id=ctx.mission.id,
+                max_tokens=4000, max_retries=1, timeout_s=120.0,
+            )
+        )
+        try:
+            result = self._run_async(run_engine(
+                ctx.mission.objective, connector, root=Path(repo_path),
+                workdir=engine_workdir, max_iterations=3,
+                council_mode="off", execution_mode=execution_mode,
+                container_image=container_image,
+                container_enabled=container_enabled,
+                container_approved=container_approved,
+                test_timeout=90,
+                # The engine already runs the plan-declared tests. The org
+                # pipeline runs its own QA/security gates afterward; invoking
+                # the engine's repository-wide defaults here would recursively
+                # execute this same integration suite inside its own fixture.
+                gates=[],
+            ))
+            usage = connector.usage_total
+            if any(usage.values()):
+                ctx.add_usage(AgentOutcome(
+                    spec_role=f"dev:{dev_kind}", success=bool(result.get("ok")),
+                    tokens_in=int(usage["tokens_in"]),
+                    tokens_out=int(usage["tokens_out"]),
+                    cost_usd=usage["cost_usd"],
+                    provider_used=";".join(sorted(connector.providers_used)),
+                    model_used=";".join(sorted(connector.models_used)),
+                ))
+            if not result.get("ok"):
+                # Preserve bounded, actionable engine diagnostics at the org boundary.
+                # The full attempt log remains in the engine result; this summary
+                # identifies whether planning, patch application, or a test gate failed.
+                attempts = result.get("attempts", [])
+                recent = attempts[-3:] if isinstance(attempts, list) else []
+                diagnostics = []
+                for attempt in recent:
+                    if not isinstance(attempt, dict):
+                        continue
+                    item = {key: attempt.get(key) for key in (
+                        "iteration", "stage", "error", "tests_ok", "gate_ok"
+                    ) if key in attempt}
+                    gate = attempt.get("gate")
+                    if isinstance(gate, list):
+                        item["gate"] = gate[:3]
+                    diagnostics.append(item)
+                detail = str(result.get("error", "unknown"))[:240]
+                if diagnostics:
+                    import json
+                    detail += "; attempts=" + json.dumps(
+                        diagnostics, ensure_ascii=False, default=str
+                    )[:900]
+                raise DepartmentError("فشل Coder Engine: " + detail[:1200])
+            plan = result.get("plan")
+            if not isinstance(plan, dict) or not isinstance(plan.get("steps"), list):
+                raise DepartmentError("Coder Engine لم يُرجع RepairPlan قابلة للتطبيق")
+
+            repo_root = Path(repo_path).resolve()
+            allowed_paths = set(ctx.originals)
+            for key in ("direct", "transitive", "test_files"):
+                values = ctx.affected.get(key, [])
+                if isinstance(values, list):
+                    allowed_paths.update(str(value) for value in values)
+            allowed_dirs = {str(Path(value).parent.as_posix()) for value in allowed_paths}
+            for step in plan["steps"]:
+                if not isinstance(step, dict):
+                    raise DepartmentError("RepairPlan تحتوي خطوة غير صالحة")
+                rel = step.get("file")
+                if not isinstance(rel, str) or not rel:
+                    raise DepartmentError("RepairPlan تحتوي مسارًا فارغًا")
+                source = (repo_root / rel).resolve()
+                if not source.is_relative_to(repo_root):
+                    raise DepartmentError(f"مسار خارج المستودع مرفوض: {rel}")
+                if step.get("action") in {"edit", "delete"} and rel not in allowed_paths:
+                    raise DepartmentError(f"الملف خارج نطاق المهمة المعلن: {rel}")
+                if step.get("action") == "create":
+                    parent = Path(rel).parent.as_posix()
+                    if parent not in allowed_dirs:
+                        raise DepartmentError(f"إنشاء ملف خارج نطاق المهمة مرفوض: {rel}")
+                if rel not in ctx.originals:
+                    try:
+                        ctx.originals[rel] = (
+                            source.read_text(encoding="utf-8") if source.is_file() else ""
+                        )
+                    except (OSError, UnicodeError) as exc:
+                        raise DepartmentError(f"تعذر قراءة خط أساس {rel}: {exc}") from exc
+
+            try:
+                applied = ctx.worktree.apply_repair_steps(plan["steps"])
+            except (ValueError, OSError) as exc:
+                raise DepartmentError(f"رفض تطبيق RepairPlan: {exc}") from exc
+            if not applied:
+                raise DepartmentError("RepairPlan لم تنتج تغييرات قابلة للتطبيق")
+
+            changes: list[dict[str, str]] = []
+            for step in plan["steps"]:
+                rel = step["file"]
+                content = "" if step["action"] == "delete" else ctx.worktree.read(rel)
+                changes.append({"path": rel, "content": content})
+            ctx.changed_files = sorted(set(applied))
+            ctx.diff_text = self._build_diff(ctx, changes)
+            ctx.dev_notes = str(plan.get("goal", ctx.mission.objective))
+            ctx.dev_risks = [
+                {"severity": step.get("risk", "low"),
+                 "message": str(step.get("reason", ""))}
+                for step in plan["steps"] if step.get("risk") in {"medium", "high"}
+            ]
+            statement = (
+                f"نفّذ Coder Engine خطة إصلاح على {len(applied)} ملفًا "
+                "داخل نسخة العمل بعد اجتياز بوابة الاختبارات"
+            )
+            claim = Claim(
+                mission_id=ctx.mission.id, agent_role=f"dev:{dev_kind}",
+                statement=statement, claim_kind="fix",
+                id=new_id("org-c", ctx.mission.id, f"dev:{dev_kind}", statement),
+            )
+            ctx.claims.append(claim)
+            self.runtime.store.add_evidence(Evidence(
+                mission_id=ctx.mission.id, kind="diff",
+                detail={"paths": applied, "diff_chars": len(ctx.diff_text),
+                        "engine_iterations": result.get("iterations", 0),
+                        "promotion": result.get("promotion", "pending")},
+                captured_by=f"dev:{dev_kind}", ok=True, claim_id=claim.id,
+            ))
+            return {
+                "status": "ok", "applied": applied,
+                "diff_chars": len(ctx.diff_text), "engine": result, "claim": claim,
+            }
+        finally:
+            shutil.rmtree(engine_workdir, ignore_errors=True)
+
+    @staticmethod
     def _build_diff(ctx: MissionContext,
                     changes: list[dict[str, str]]) -> str:
-        """فرق نصي موحّد بين الأصل ونسخة العمل — حتمي قابل للتخزين كدليل."""
+        """فرق نصي موحّد بين الأصل ونسخة العمل — دليل قابل للتدقيق."""
         lines: list[str] = []
         by_path = {c["path"]: c.get("content", "") for c in changes}
         for path in sorted(set(list(by_path) + list(ctx.originals))):
@@ -327,9 +491,6 @@ class DevelopmentDept:
                 fromfile=f"a/{path}", tofile=f"b/{path}", lineterm="")
             lines.extend(diff)
         return "\n".join(lines)
-
-
-# ── 4: الأمن ──────────────────────────────────────────────────────────────
 
 
 class SecurityDept:
@@ -637,8 +798,11 @@ class ReleaseDept:
 class Departments:
     """مجمّع الأقسام الثمانية — بناء واحد بأسلاك مشتركة معلنة."""
 
-    def __init__(self, pool: ProviderPool, org_store: OrgStore,
-                 ops_store: OpsStore, outdir: str | Path = "reports/org") -> None:
+    def __init__(
+        self, pool: ProviderPool, org_store: OrgStore,
+        ops_store: OpsStore, outdir: str | Path = "reports/org",
+        coder_connector_factory: Callable[[AgentRuntime, str], Any] | None = None,
+    ) -> None:
         self.pool = pool
         self.org_store = org_store
         self.ops_store = ops_store
@@ -649,7 +813,7 @@ class Departments:
         self.runtime = AgentRuntime(pool, self.tools, org_store)
         self.requirements = RequirementsOffice(self.runtime)
         self.intel = RepoIntelDept(self.runtime, self.guard)
-        self.development = DevelopmentDept(self.runtime)
+        self.development = DevelopmentDept(self.runtime, coder_connector_factory)
         self.security = SecurityDept(self.runtime, self.guard)
         self.qa = QADept(self.runner, org_store)
         self.council = ReviewCouncil(self.runtime, org_store)

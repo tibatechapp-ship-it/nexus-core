@@ -88,6 +88,102 @@ class TestPlan:
             plan.validate()
 
 
+class TestExecutionPolicy:
+    def test_execute_rejects_mission_that_is_not_new(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="already running", objective="must not execute twice",
+        ))
+        running = Mission(
+            title=mission.title, objective=mission.objective,
+            repo_path=mission.repo_path, phase=mission.phase,
+            status="running", id=mission.id,
+        )
+        orchestrator.org_store.mission_update(running)
+        with pytest.raises(OrgError, match="cannot be executed from status"):
+            orchestrator.execute(
+                running,
+                execution_policy={
+                    "schema_version": 1, "execution_mode": "process",
+                    "trusted_local": True,
+                },
+            )
+
+    def test_container_requires_approved_image_bound_record(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        from src.org.contracts import Approval
+
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="container policy", objective="require image-specific approval",
+        ))
+        image = "registry.example/nexus-runner@sha256:" + "b" * 64
+        policy = {
+            "schema_version": 1, "execution_mode": "container",
+            "container_enabled": True, "container_image": image,
+            "approval_id": "org-a-not-approved",
+        }
+        with pytest.raises(OrgError, match="approved run_untrusted"):
+            orchestrator._validated_execution_policy(
+                mission.id, policy, require_approval=True)
+
+        approval = orchestrator.org_store.request_approval(Approval(
+            mission_id=mission.id, kind="run_untrusted", subject=image,
+        ))
+        with pytest.raises(OrgError, match="approved run_untrusted"):
+            orchestrator._validated_execution_policy(
+                mission.id, {**policy, "approval_id": approval.id},
+                require_approval=True)
+
+        orchestrator.org_store.decide_approval(
+            approval.id, approved=True, decided_by="test-operator")
+        accepted = orchestrator._validated_execution_policy(
+            mission.id, {**policy, "approval_id": approval.id},
+            require_approval=True)
+        assert accepted["container_image"] == image
+        with pytest.raises(OrgError, match="approved run_untrusted"):
+            orchestrator._validated_execution_policy(
+                mission.id, {**policy, "container_image": "registry.example/nexus-runner@sha256:" + "c" * 64,
+                             "approval_id": approval.id},
+                require_approval=True)
+
+
+    def test_resume_policy_keeps_checkpoint_revision_limit(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="resume revision policy", objective="preserve saved limit",
+        ))
+        orchestrator.max_revision_loops = 3
+        restored = orchestrator._validated_execution_policy(
+            mission.id,
+            {
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True, "max_revision_loops": 1,
+            },
+            require_approval=False, allow_checkpoint_limit=True,
+        )
+        assert restored["max_revision_loops"] == 1
+
+    def test_execution_policy_rejects_unknown_fields_and_boolean_schema(
+            self, orchestrator: ExecutiveOrchestrator) -> None:
+        mission = orchestrator.org_store.create_mission(Mission(
+            title="strict policy", objective="reject ambiguous policy",
+        ))
+        with pytest.raises(OrgError, match="unsupported execution policy schema"):
+            orchestrator._validated_execution_policy(
+                mission.id,
+                {"schema_version": True, "execution_mode": "process",
+                 "trusted_local": True},
+                require_approval=False,
+            )
+        with pytest.raises(OrgError, match="unsupported execution policy fields"):
+            orchestrator._validated_execution_policy(
+                mission.id,
+                {"schema_version": 1, "execution_mode": "process",
+                 "trusted_local": True, "container_image": "unexpected"},
+                require_approval=False,
+            )
+
+
 class TestPhaseGates:
     def test_execute_walks_phases_in_order(
             self, orchestrator: ExecutiveOrchestrator,
@@ -96,7 +192,11 @@ class TestPhaseGates:
             title="حارس قسمة",
             objective=("أضف حارس قسمة على صفر إلى دالة divide في وحدة "
                        "calc.mathops مع اختبارات للحدية"),
-            repo_path="examples/org_demo/fixture_repo"))
+            repo_path="examples/org_demo/fixture_repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.phase == "G_RELEASE"
         assert mission.status == "done"
         claimed_depts = {"executive", "repo_intel", "development",
@@ -134,7 +234,11 @@ class TestPhaseGates:
         mission = orchestrator.execute(Mission(
             title="تعطل بوابة التحقق",
             objective="تحقق من إصلاح تجريبي",
-            repo_path="examples/org_demo/fixture_repo"))
+            repo_path="examples/org_demo/fixture_repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.status == "failed"
         verify_tasks = [
             row for row in orchestrator.org_store.tasks_for_mission(mission.id)
@@ -149,7 +253,11 @@ class TestPhaseGates:
     def test_missing_repo_fails_loudly(
             self, orchestrator: ExecutiveOrchestrator) -> None:
         mission = orchestrator.execute(Mission(
-            title="t", objective="o", repo_path="/nonexistent/repo"))
+            title="t", objective="o", repo_path="/nonexistent/repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.status == "failed"
         rows = [r for r in orchestrator.org_store.tail_audit(20)
                 if r["action"] == "mission.failed"]
@@ -174,11 +282,11 @@ class TestRevisionLoop:
         from src.org.providers import MockProvider
 
         class TodoDevProvider(MockProvider):
-            def _dev_reply(self, prompt: str) -> str:
+            def _coder_plan_reply(self, prompt: str) -> str:
                 import json
-                base = json.loads(super()._dev_reply(prompt))
-                for c in base["changed_files"]:
-                    c["content"] += "\n# TODO: لاحقًا\n"
+                base = json.loads(super()._coder_plan_reply(prompt))
+                for step in base.get("steps", []):
+                    step["patch_hint"] += "\n# TODO: لاحقًا\n"
                 return json.dumps(base, ensure_ascii=False)
 
         pool = ProviderPool([ProviderConfig()])
@@ -198,7 +306,11 @@ class TestRevisionLoop:
             title="دورة مراجعة",
             objective=("أضف حارس قسمة على صفر إلى دالة divide في وحدة "
                        "calc.mathops مع اختبارات"),
-            repo_path="examples/org_demo/fixture_repo"))
+            repo_path="examples/org_demo/fixture_repo"),
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            })
         assert mission.status == "failed"
         assert mission.revision_loops >= 1
 
@@ -362,7 +474,8 @@ class TestExplicitMissionResume:
 
         ctx = MissionContext(
             mission=mission,
-            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+                              "execution_mode": "process", "trusted_local": True},
         )
         save_mission_context_snapshot(
             orchestrator.org_store, ctx, state_root)
@@ -370,6 +483,7 @@ class TestExplicitMissionResume:
         assert saved is not None
         assert saved["payload"]["context"]["execution_policy"] == {
             "schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+        "execution_mode": "process", "trusted_local": True,
         }
 
         release_calls: list[str] = []
@@ -425,7 +539,8 @@ class TestExplicitMissionResume:
         save_mission_context_snapshot(
             orchestrator.org_store, MissionContext(
                 mission=mission,
-                execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+                execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+                              "execution_mode": "process", "trusted_local": True},
             ), orchestrator.state_root)
 
         calls: list[str] = []
@@ -475,7 +590,8 @@ class TestExplicitMissionResume:
 
         ctx = MissionContext(
             mission=mission,
-            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops},
+            execution_policy={"schema_version": 1, "max_revision_loops": orchestrator.max_revision_loops,
+                              "execution_mode": "process", "trusted_local": True},
         )
         save_mission_context_snapshot(
             orchestrator.org_store, ctx, orchestrator.state_root)
@@ -571,6 +687,7 @@ class TestProcessInterruptionRecovery:
                 execution_policy={
                     "schema_version": 1,
                     "max_revision_loops": first.max_revision_loops,
+                    "execution_mode": "process", "trusted_local": True,
                 },
             ),
             state_root,
@@ -579,6 +696,7 @@ class TestProcessInterruptionRecovery:
         assert checkpoint is not None
         assert checkpoint["payload"]["context"]["execution_policy"] == {
             "schema_version": 1, "max_revision_loops": 1,
+            "execution_mode": "process", "trusted_local": True,
         }
         initial_tasks = first_store.tasks_for_mission(mission.id)
         mission_id = mission.id
@@ -625,6 +743,7 @@ class TestProcessInterruptionRecovery:
         assert latest is not None
         assert latest["payload"]["context"]["execution_policy"] == {
             "schema_version": 1, "max_revision_loops": 1,
+        "execution_mode": "process", "trusted_local": True,
         }
 
 
@@ -700,6 +819,7 @@ save_mission_context_snapshot(
     store,
     MissionContext(mission=mission, execution_policy={
         "schema_version": 1, "max_revision_loops": 1,
+    "execution_mode": "process", "trusted_local": True,
     }),
     state,
 )
@@ -822,6 +942,7 @@ class TestCheckpointLedgerDrift:
             first_store,
             MissionContext(mission=mission, execution_policy={
                 "schema_version": 1, "max_revision_loops": 2,
+                "execution_mode": "process", "trusted_local": True,
             }),
             state_root,
         )
@@ -901,6 +1022,7 @@ class TestCheckpointBeforePhaseTransition:
         # Simulate the crash only after that checkpoint, before phase advance.
         context = MissionContext(mission=mission, execution_policy={
             "schema_version": 1, "max_revision_loops": 1,
+        "execution_mode": "process", "trusted_local": True,
         })
         completed_ids = set()
         for task in plan.tasks:

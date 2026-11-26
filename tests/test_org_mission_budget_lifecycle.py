@@ -110,7 +110,51 @@ class TestMissionBudgetPersistence:
         assert store.mission_token_budget_get(mission.id) is None
 
 
+def test_org_cli_resume_parser_requires_operator_reason() -> None:
+    from src.org.cli import build_parser
+
+    args = build_parser().parse_args([
+        "resume", "mission-123", "--by", "operator", "--reason",
+        "reviewed recovery checkpoint",
+    ])
+    assert args.cmd == "resume"
+    assert args.mission_id == "mission-123"
+    assert args.by == "operator"
+    assert args.reason == "reviewed recovery checkpoint"
+
+
 class TestPipelineBudgetLifecycle:
+    def test_pipeline_reuses_existing_mission_without_creating_another(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        store = OrgStore(":memory:")
+        mission = store.create_mission(Mission(
+            title="existing", objective="retain identity",
+            repo_path="fixture", output_token_limit=200000,
+        ))
+        pipeline = MissionPipeline(
+            store, OpsStore(":memory:"), outdir=tmp_path / "reports")
+        captured: dict[str, object] = {}
+
+        def fake_execute(candidate: Mission, *, execution_policy: dict[str, object]) -> Mission:
+            captured["mission"] = candidate
+            captured["policy"] = execution_policy
+            return candidate
+
+        monkeypatch.setattr(pipeline.orchestrator, "execute", fake_execute)
+        report = pipeline.run(
+            title=mission.title, objective=mission.objective,
+            repo_path=mission.repo_path,
+            output_token_limit=mission.output_token_limit,
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            },
+            existing_mission=mission,
+        )
+        assert report.mission.id == mission.id
+        assert captured["mission"].id == mission.id
+        assert len(store.mission_list()) == 1
+
     def test_pipeline_configures_budget_before_agent_work_and_settles_it(
             self, tmp_path: Path) -> None:
         store = OrgStore(":memory:")
@@ -122,6 +166,10 @@ class TestPipelineBudgetLifecycle:
                        "calc.mathops مع اختبارات للحدية"),
             repo_path="examples/org_demo/fixture_repo",
             output_token_limit=200000,
+            execution_policy={
+                "schema_version": 1, "execution_mode": "process",
+                "trusted_local": True,
+            },
         )
 
         assert report.mission.status == "done"
@@ -141,6 +189,7 @@ def test_cli_exposes_and_validates_mission_output_token_cap() -> None:
     args = parser.parse_args([
         "mission", "--title", "bounded", "--objective", "test",
         "--max-output-tokens", "15000",
+        "--execution-mode", "process", "--trust-local",
     ])
     assert args.max_output_tokens == 15000
     with pytest.raises(SystemExit):

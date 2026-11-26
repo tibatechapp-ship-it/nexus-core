@@ -20,7 +20,7 @@ from typing import Any
 from src.org.contracts import Approval, Mission
 from src.org.dashboard import OrgDashboard
 from src.org.pipeline import MissionPipeline
-from src.org.store import OrgStore
+from src.org.store import OrgError, OrgStore
 from src.ops.store import OpsStore
 
 __all__ = ["build_org_router", "org_router_available"]
@@ -49,6 +49,27 @@ if _FASTAPI_OK:
         repo_path: str = ""
         output_token_limit: StrictInt | None = Field(
             default=None, gt=0, le=2**63 - 1)
+
+    class ExecutionPolicyIn(BaseModel):
+        """Explicit execution authority supplied for each mission run."""
+
+        execution_mode: str
+        trusted_local: bool = False
+        container_enabled: bool = False
+        container_image: str = ""
+        approval_id: str = ""
+
+    class ContainerApprovalIn(BaseModel):
+        """Request a human approval bound to one immutable container image."""
+
+        container_image: str
+
+    class ResumeIn(BaseModel):
+        """Explicit operator identity and reason for checkpoint resume."""
+
+        actor: str
+        reason: str
+        expected_repo_root: str | None = None
 
     class ApprovalIn(BaseModel):
         """مُدخل قرار موافقة — قرار واسم صانع القرار إلزاميًا."""
@@ -103,19 +124,81 @@ if _FASTAPI_OK:
                         output_token_limit=payload.output_token_limit))
             return mission.to_dict()
 
+        @router.post("/missions/{mission_id}/approvals/run-untrusted")
+        def request_container_approval(
+                mission_id: str, payload: ContainerApprovalIn,
+                authorization: str | None = Header(default=None)
+                ) -> dict[str, Any]:
+            _require_operator(authorization)
+            mission = org_store.mission_get(mission_id)
+            if mission is None:
+                raise HTTPException(status_code=404, detail="مهمة غير موجودة")
+            image = payload.container_image
+            digest = (
+                image.rsplit("@sha256:", 1)[-1]
+                if image.count("@sha256:") == 1 else ""
+            )
+            if (image != image.strip()
+                    or not image.split("@sha256:", 1)[0].strip()
+                    or len(digest) != 64
+                    or any(ch not in "0123456789abcdefABCDEF" for ch in digest)):
+                raise HTTPException(
+                    status_code=422,
+                    detail="container_image must be pinned to a sha256 digest")
+            approval = org_store.request_approval(Approval(
+                mission_id=mission.id, kind="run_untrusted", subject=image,
+                note="Authorize execution only inside this immutable container image",
+            ))
+            return {
+                "approval_id": approval.id, "kind": approval.kind,
+                "subject": approval.subject, "approved": approval.approved,
+            }
+
         @router.post("/missions/{mission_id}/run")
-        def run_mission(mission_id: str,
+        def run_mission(mission_id: str, payload: ExecutionPolicyIn,
                         authorization: str | None = Header(default=None)
                         ) -> dict[str, Any]:
             _require_operator(authorization)
             mission = org_store.mission_get(mission_id)
             if mission is None:
                 raise HTTPException(status_code=404, detail="مهمة غير موجودة")
-            report = pipeline.run(title=mission.title,
+            if mission.status != "created":
+                raise HTTPException(
+                    status_code=409,
+                    detail="المهمة ليست في حالة created؛ استخدم مسار الاستئناف الصريح",
+                )
+            try:
+                report = pipeline.run(title=mission.title,
                                   objective=mission.objective,
                                   repo_path=mission.repo_path,
-                                  output_token_limit=mission.output_token_limit)
+                                  output_token_limit=mission.output_token_limit,
+                                  execution_policy=payload.dict(exclude_unset=True),
+                                  existing_mission=mission)
+            except OrgError as exc:
+                status_code = 403 if "approval" in str(exc).lower() else 422
+                raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             return report.to_dict()
+
+        @router.post("/missions/{mission_id}/resume")
+        def resume_mission(
+                mission_id: str, payload: ResumeIn,
+                authorization: str | None = Header(default=None)
+                ) -> dict[str, Any]:
+            _require_operator(authorization)
+            if org_store.mission_get(mission_id) is None:
+                raise HTTPException(status_code=404, detail="مهمة غير موجودة")
+            try:
+                mission = pipeline.orchestrator.resume_mission(
+                    mission_id, actor=payload.actor, reason=payload.reason,
+                    expected_repo_root=payload.expected_repo_root,
+                )
+            except OrgError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            return mission.to_dict()
 
         @router.post("/approvals/{approval_id}/decide")
         def decide_approval(approval_id: str, payload: ApprovalIn,

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 import pytest
 
@@ -21,6 +22,9 @@ from src.ops.store import OpsStore
 
 OBJECTIVE = ("أضف حارس قسمة على صفر إلى دالة divide في وحدة calc.mathops "
              "مع اختبارات للحدية")
+LOCAL_EXECUTION_POLICY = {
+    "schema_version": 1, "execution_mode": "process", "trusted_local": True,
+}
 
 
 def _patched_pool(provider_cls: type[MockProvider]) -> ProviderPool:
@@ -38,13 +42,26 @@ def _patched_pool(provider_cls: type[MockProvider]) -> ProviderPool:
 
 
 class TestGreenPath:
+    def test_pipeline_requires_explicit_execution_policy(
+            self, tmp_path: Path) -> None:
+        pipeline = MissionPipeline(
+            OrgStore(":memory:"), OpsStore(":memory:"),
+            outdir=tmp_path / "missing-policy",
+        )
+        with pytest.raises(ValueError, match="execution_policy is required"):
+            pipeline.run(
+                title="must fail closed", objective="do not infer trust",
+                repo_path="examples/org_demo/fixture_repo",
+            )
+
     @pytest.fixture()
     def report(self, tmp_path: Path) -> object:
         org = OrgStore(":memory:")
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "reports")
         return pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                            repo_path="examples/org_demo/fixture_repo")
+                            repo_path="examples/org_demo/fixture_repo",
+                            execution_policy=LOCAL_EXECUTION_POLICY)
 
     def test_mission_done_at_release(self, report: object) -> None:
         assert report.mission.status == "done"  # type: ignore[attr-defined]
@@ -79,19 +96,18 @@ class TestGreenPath:
 class TestRejectedPaths:
     def test_broken_patch_rejected_at_verification(
             self, tmp_path: Path) -> None:
-        """رقعة تعطّل الاختبارات لا تصل للإصدار إطلاقًا."""
+        """رقعة تعطّل اختبارات المحرك لا تنتج ادعاء إصلاح أو تذكرة إصدار."""
 
         class BrokenDevProvider(MockProvider):
-            def _dev_reply(self, prompt: str) -> str:
+            def _coder_plan_reply(self, prompt: str) -> str:
                 import json
-                base = json.loads(super()._dev_reply(prompt))
-                for c in base["changed_files"]:
-                    if "test" not in c["path"]:
-                        c["content"] = (
-                            "def divide(value, divisor):\n"
-                            "    if divisor == 0:\n"
-                            "        raise ValueError(\"صفر\")\n"
-                            "    return value + divisor\n")
+                base = json.loads(super()._coder_plan_reply(prompt))
+                for step in base.get("steps", []):
+                    step["patch_hint"] = re.sub(
+                        r"(?m)^([ \t]*)return .* / .*$",
+                        r"\1return value + divisor",
+                        step["patch_hint"],
+                    )
                 return json.dumps(base, ensure_ascii=False)
 
         org = OrgStore(":memory:")
@@ -100,23 +116,25 @@ class TestRejectedPaths:
             org, ops, pool=_patched_pool(BrokenDevProvider),
             outdir=tmp_path / "reports")
         report = pipeline.run(title="رقعة معطوبة", objective=OBJECTIVE,
-                              repo_path="examples/org_demo/fixture_repo")
+                              repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         assert report.mission.status == "failed"
         assert report.mission.phase == "FAILED"
         assert report.ticket_id == ""  # لا تذكرة لمهمة رفضها التحقق
-        claims = {c.statement: c.status
-                  for c in org.claims_for(report.mission.id)}
-        assert any(status == "rejected" for status in claims.values())
+        claims = org.claims_for(report.mission.id)
+        # Coder Engine must reject a failed test gate before DevelopmentDept
+        # can create a fix claim. Verification cannot reject a claim that was
+        # correctly never emitted by an unsuccessful development stage.
+        assert not any(claim.claim_kind == "fix" for claim in claims)
 
     def test_todo_patch_rejected_at_review(self, tmp_path: Path) -> None:
         """رقعة بـTODO تُرفض مراجعةً وتُنهى المهمة بسقف الدورة."""
 
         class TodoDevProvider(MockProvider):
-            def _dev_reply(self, prompt: str) -> str:
+            def _coder_plan_reply(self, prompt: str) -> str:
                 import json
-                base = json.loads(super()._dev_reply(prompt))
-                for c in base["changed_files"]:
-                    c["content"] += "\n# TODO: لاحقًا\n"
+                base = json.loads(super()._coder_plan_reply(prompt))
+                for step in base.get("steps", []):
+                    step["patch_hint"] += "\n# TODO: لاحقًا\n"
                 return json.dumps(base, ensure_ascii=False)
 
         org = OrgStore(":memory:")
@@ -125,7 +143,7 @@ class TestRejectedPaths:
             org, ops, pool=_patched_pool(TodoDevProvider),
             outdir=tmp_path / "reports")
         pipeline.run(title="رقعة متأجلة", objective=OBJECTIVE,
-                     repo_path="examples/org_demo/fixture_repo")
+                     repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         mission = org.mission_list()[0]
         assert mission.status == "failed"
         assert mission.revision_loops >= 1
@@ -141,7 +159,7 @@ class TestDeterminism:
                                        outdir=tmp_path / f"r{i}")
             report = pipeline.run(title="حارس قسمة على صفر",
                                   objective=OBJECTIVE,
-                                  repo_path="examples/org_demo/fixture_repo")
+                                  repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
             ids.append(report.mission.id)
         assert ids[0] == ids[1]
 
@@ -156,7 +174,7 @@ class TestDeterminism:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "d")
         pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                     repo_path="examples/org_demo/fixture_repo")
+                     repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         dash = OrgDashboard(org, outdir=tmp_path / "d")
         assert dash.markdown_report() == dash.markdown_report()
 
@@ -172,7 +190,7 @@ class TestDeterminism:
             pipeline = MissionPipeline(org, ops,
                                        outdir=tmp_path / f"s{i}")
             pipeline.run(title="حارس قسمة على صفر", objective=OBJECTIVE,
-                         repo_path="examples/org_demo/fixture_repo")
+                         repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
             snap = OrgDashboard(org, outdir=tmp_path / f"s{i}").snapshot()
             snap.pop("usage")  # زمن استجابة حقيقي مقيس — ليس عقدًا حتميًا
             snaps.append(json.dumps(snap, sort_keys=True))
@@ -190,7 +208,7 @@ class TestObservability:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "m")
         report = pipeline.run(title="حارس قسمة", objective=OBJECTIVE,
-                              repo_path="examples/org_demo/fixture_repo")
+                              repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         assert report.mission.status == "done"
         metrics = OrgMetrics(org)
         snap = metrics.snapshot()
@@ -203,7 +221,7 @@ class TestObservability:
         ops = OpsStore(":memory:")
         pipeline = MissionPipeline(org, ops, outdir=tmp_path / "l")
         pipeline.run(title="حارس قسمة", objective=OBJECTIVE,
-                     repo_path="examples/org_demo/fixture_repo")
+                     repo_path="examples/org_demo/fixture_repo", execution_policy=LOCAL_EXECUTION_POLICY)
         engine = LessonsEngine(org)
         assert engine.lessons_for_planning()
         # الدروس لا تمنح صلاحيات ولا تعدّل سياسات — واجهة قراءة فقط
