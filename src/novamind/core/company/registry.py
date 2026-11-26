@@ -1,5 +1,6 @@
 """Soldier Registry - يحفظ الجنود في SQLite للأبد."""
 import sqlite3
+from contextlib import closing
 import json
 import logging
 import time
@@ -22,7 +23,7 @@ class SoldierRegistry:
         self._init_db()
     
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS soldiers (
                     id TEXT PRIMARY KEY,
@@ -59,7 +60,7 @@ class SoldierRegistry:
     def save(self, soldier: Soldier) -> bool:
         """يحفظ أو يحدّث جندياً."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn, conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO soldiers
                     (id, specialty, rank, rank_name, signature, system_prompt, mission,
@@ -99,7 +100,7 @@ class SoldierRegistry:
     
     def load(self, soldier_id: str) -> Optional[Soldier]:
         """يحمّل جندياً من DB."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute(
                 "SELECT id, specialty, rank_name, signature, system_prompt, mission, "
                 "trust_score, tasks_completed, tasks_failed, total_time, hallucination_events "
@@ -112,7 +113,7 @@ class SoldierRegistry:
     
     def load_all(self, status: str = "active") -> List[Soldier]:
         """يحمّل كل الجنود النشطين."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute(
                 "SELECT id, specialty, rank_name, signature, system_prompt, mission, "
                 "trust_score, tasks_completed, tasks_failed, total_time, hallucination_events "
@@ -142,7 +143,7 @@ class SoldierRegistry:
     
     def record_event(self, soldier_id: str, event_type: str, data: Dict = None):
         """يسجّل حدثاً لجندي."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 "INSERT INTO soldier_events (soldier_id, event_type, data, timestamp) "
                 "VALUES (?, ?, ?, ?)",
@@ -152,7 +153,7 @@ class SoldierRegistry:
     
     def mark_status(self, soldier_id: str, status: str):
         """يحدّث حالة جندي (active/exiled/retired)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 "UPDATE soldiers SET status = ?, updated_at = ? WHERE id = ?",
                 (status, time.time(), soldier_id)
@@ -161,7 +162,7 @@ class SoldierRegistry:
     
     def get_stats(self) -> Dict[str, Any]:
         """إحصائيات السجل."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute("SELECT COUNT(*) FROM soldiers")
             total = cur.fetchone()[0]
             cur = conn.execute("SELECT COUNT(*) FROM soldiers WHERE status = 'active'")

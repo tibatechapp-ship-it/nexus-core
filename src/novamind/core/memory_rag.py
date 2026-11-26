@@ -1,5 +1,6 @@
 """Simple RAG - استرجاع الدروس السابقة."""
 import sqlite3
+from contextlib import closing
 import logging
 import time
 from pathlib import Path
@@ -14,7 +15,7 @@ class SimpleRAG:
         self._init_db()
     
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS lessons (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +30,7 @@ class SimpleRAG:
             conn.commit()
     
     def record(self, specialty: str, task: str, response: str, success: bool):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 "INSERT INTO lessons (specialty, task, response, success, timestamp) VALUES (?,?,?,?,?)",
                 (specialty, task[:500], response[:1000], 1 if success else 0, time.time())
@@ -39,7 +40,7 @@ class SimpleRAG:
     def find_similar(self, specialty: str, task: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """بحث بسيط: keyword overlap."""
         task_words = set(task.lower().split())
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute(
                 "SELECT task, response, success FROM lessons WHERE specialty = ? ORDER BY timestamp DESC LIMIT 50",
                 (specialty,)
@@ -56,7 +57,7 @@ class SimpleRAG:
         return [s[1] for s in scored[:top_k]]
     
     def stats(self) -> Dict[str, Any]:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute("SELECT COUNT(*) FROM lessons")
             total = cur.fetchone()[0]
             cur = conn.execute("SELECT COUNT(*) FROM lessons WHERE success = 1")
