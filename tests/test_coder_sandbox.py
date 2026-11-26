@@ -21,6 +21,32 @@ def _plan(steps: list) -> RepairPlan:
                       tests_to_run=["test_x.py"])
 
 
+
+def test_run_cmd_does_not_inherit_host_secrets_or_pythonpath(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The child receives a small allowlist, never the host's secret-bearing env."""
+    monkeypatch.setenv("PYTHONPATH", "/attacker/controlled/path")
+    monkeypatch.setenv("OPENAI_API_KEY", "host-secret")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "cloud-secret")
+    monkeypatch.setenv("PATH", "/attacker/controlled/bin")
+    script = (
+        "import json, os; "
+        "print(json.dumps({k: os.environ.get(k) for k in "
+        "('PYTHONPATH', 'OPENAI_API_KEY', 'AWS_SECRET_ACCESS_KEY', 'PATH', "
+        "'HOME', 'TMPDIR')}))"
+    )
+    result = run_cmd([PY, "-c", script], tmp_path)
+    assert result["ok"] is True, result
+    child_env = json.loads(result["stdout"])
+    assert child_env["PYTHONPATH"] is None
+    assert child_env["OPENAI_API_KEY"] is None
+    assert child_env["AWS_SECRET_ACCESS_KEY"] is None
+    assert child_env["PATH"] != "/attacker/controlled/bin"
+    assert child_env["HOME"] == str(tmp_path)
+    assert child_env["TMPDIR"] == str(tmp_path)
+
+
 def test_new_workdir_is_isolated_and_empty() -> None:
     a, b = new_workdir(), new_workdir()
     assert a != b and a.exists() and not list(a.iterdir())

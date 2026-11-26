@@ -219,8 +219,17 @@ def run_cmd(cmd: list, workdir: Path, timeout: int = MAX_TIMEOUT_S) -> dict:
     session's process group is killed.
     """
     timeout = min(max(int(timeout), 1), MAX_TIMEOUT_S)
-    env = {"HOME": str(workdir), "TMPDIR": str(workdir), "PATH": os.environ.get("PATH", "/usr/bin"),
-           "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": os.environ.get("PYTHONPATH", "")}
+    # Never inherit the caller's environment: it may contain provider keys,
+    # cloud credentials, proxy settings, or an attacker-controlled PYTHONPATH.
+    # Keep only deterministic, non-secret variables needed by child processes.
+    env = {
+        "HOME": str(workdir),
+        "TMPDIR": str(workdir),
+        "PATH": os.defpath,
+        "LANG": "C.UTF-8",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+    }
     preexec = _make_limits if os.name == "posix" else None  # pragma: no cover - platform split
     try:
         proc = subprocess.Popen(  # noqa: S603 — argv list, no shell
