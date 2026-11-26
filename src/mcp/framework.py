@@ -13,7 +13,11 @@
   policies structurally and never starts a subprocess or touches a file;
 * optionally, strictly **dev-bounded coder tools** — ``coder_plan_preview`` /
   ``coder_apply_plan`` / ``coder_run_tests`` / ``coder_container_run`` — only when
-  ``include_dev_tools=True`` is passed explicitly.
+  ``include_dev_tools=True`` is passed explicitly;
+* optionally, **bounded project memory and task plans** — ``memory_recall`` /
+  ``memory_record`` / ``task_plan_get`` / ``task_plan_update`` — only when
+  ``include_memory_tools=True`` is passed explicitly, with an additional
+  ``NEXUS_ENABLE_MEMORY_WRITES=1`` gate plus approval for writes.
 
  Heavy framework modules are imported lazily inside the builders, so importing
 this module is cheap and side-effect free.
@@ -32,6 +36,7 @@ from src.mcp.protocol import error_content, text_content
 
 if TYPE_CHECKING:  # pragma: no cover - import-cycle guard
     from src.mcp.coder_tools import CoderAuditLog
+    from src.mcp.memory_tools import MemoryAuditLog
     from src.mcp.policy_preflight import PreflightAuditLog
 from src.mcp.server import MCPServer
 
@@ -81,8 +86,11 @@ def build_framework_server(
     include_git: bool = True,
     include_preflight: bool = True,
     include_dev_tools: bool = False,
+    include_memory_tools: bool = False,
     coder_audit: CoderAuditLog | None = None,
     preflight_audit: PreflightAuditLog | None = None,
+    memory_audit: MemoryAuditLog | None = None,
+    memory_db_path: str | Path | None = None,
     name: str = "nexus-core",
     version: str | None = None,
 ) -> MCPServer:
@@ -93,6 +101,9 @@ def build_framework_server(
     and the security scanner (default: the current directory). Dev-bounded coder
     tools are **never** exposed unless ``include_dev_tools=True``; even then,
     mutating calls require ``NEXUS_ENABLE_DEV_TOOLS=1`` and explicit approval.
+    Bounded memory tools are likewise unregistered unless
+    ``include_memory_tools=True``; their writes additionally require
+    ``NEXUS_ENABLE_MEMORY_WRITES=1`` and explicit approval.
     """
     workspace = Path(root or Path.cwd()).resolve()
     server = MCPServer(
@@ -101,7 +112,8 @@ def build_framework_server(
         instructions=(
             "nexus-core framework tools: 20 specialised agents, a static security "
             "scanner, read-only workspace tools and read-only git inspection. "
-            "Dev-bounded coder tools are opt-in and default-deny."
+            "Dev-bounded coder tools and bounded memory tools are opt-in and "
+            "default-deny."
         ),
     )
     if include_agents:
@@ -116,6 +128,8 @@ def build_framework_server(
         _add_preflight_tool(server, workspace, preflight_audit)
     if include_dev_tools:
         _add_coder_tools(server, workspace, coder_audit)
+    if include_memory_tools:
+        _add_memory_tools(server, workspace, memory_audit, memory_db_path)
     return server
 
 
@@ -503,6 +517,37 @@ def _add_coder_tools(server: MCPServer, workspace: Path, audit: CoderAuditLog | 
 
 def _make_coder_handler(toolkit: Any, tool: str) -> Any:
     """A handler that delegates to the toolkit's single audited entry point."""
+
+    def handler(arguments: Mapping[str, Any]) -> dict[str, Any]:
+        return toolkit.call(tool, dict(arguments))
+
+    return handler
+
+
+# -- opt-in bounded project memory and task plans ---------------------------
+def _add_memory_tools(
+    server: MCPServer,
+    workspace: Path,
+    audit: MemoryAuditLog | None,
+    db_path: str | Path | None,
+) -> None:
+    """Register the scoped, default-deny memory and task-plan tools."""
+    from src.mcp.memory_tools import build_memory_toolkit, memory_tool_schemas
+
+    toolkit = build_memory_toolkit(workspace, db_path=db_path, audit=audit)
+    schemas = memory_tool_schemas()
+    for name in ("memory_recall", "memory_record", "task_plan_get", "task_plan_update"):
+        description = str(schemas[name].get("description", "bounded memory tool"))
+        server.register(
+            name,
+            _make_memory_handler(toolkit, name),
+            description=description,
+            input_schema=schemas[name],
+        )
+
+
+def _make_memory_handler(toolkit: Any, tool: str) -> Any:
+    """A handler that delegates to the single audited memory entry point."""
 
     def handler(arguments: Mapping[str, Any]) -> dict[str, Any]:
         return toolkit.call(tool, dict(arguments))
