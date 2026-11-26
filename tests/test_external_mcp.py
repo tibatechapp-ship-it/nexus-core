@@ -46,7 +46,7 @@ from src.tools.executor import ToolCall
 ROOT = Path(__file__).resolve().parent.parent
 ENV = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(ROOT / "src")])}
 
-_FAKE_SERVER = r'''
+_FAKE_SERVER = r"""
 import json, sys
 TOOLS = [
     {"name": "echo", "description": "echo text",
@@ -108,7 +108,7 @@ for line in sys.stdin:
         response["result"] = result
     sys.stdout.write(json.dumps(response) + "\n")
     sys.stdout.flush()
-'''
+"""
 
 _INVALID_JSON = "import sys\nsys.stdin.readline()\nprint('{not json')\n"
 _CLOSED = "import sys\nsys.stdin.readline()\n"
@@ -119,9 +119,78 @@ _BAD_VERSION = (
     "'result':{'protocolVersion':'1999-01-01','serverInfo':{}}}))\n"
 )
 
+_NOTIFY_SERVER = r"""
+import json, os, pathlib, sys
+flag = pathlib.Path(os.environ["MCP_NOTIFY_FLAG"])
+for line in sys.stdin:
+    try:
+        message = json.loads(line)
+    except Exception:
+        continue
+    if "id" not in message:
+        if message.get("method") == "notifications/initialized":
+            flag.write_text("1")
+        continue
+    error = None
+    method = message.get("method")
+    if method == "initialize":
+        result = {"protocolVersion": "2025-11-25", "capabilities": {"tools": {}},
+                  "serverInfo": {"name": "notify-server", "version": "1"}}
+    elif method == "tools/list":
+        result = {"tools": []}
+    else:
+        error = {"code": -32601, "message": "unknown method"}
+        result = None
+    response = {"jsonrpc": "2.0", "id": message["id"]}
+    if error is not None:
+        response["error"] = error
+    else:
+        response["result"] = result
+    sys.stdout.write(json.dumps(response) + "\n")
+    sys.stdout.flush()
+"""
+
+_FLAKY_SERVER = r"""
+import json, os, pathlib, sys
+flag = pathlib.Path(os.environ["MCP_FLAKY_FLAG"])
+TOOLS = [{"name": "flaky", "description": "one-shot transport failure",
+          "inputSchema": {"type": "object", "properties": {}}}]
+for line in sys.stdin:
+    try:
+        message = json.loads(line)
+    except Exception:
+        continue
+    if "id" not in message:
+        continue
+    error = None
+    method = message.get("method")
+    if method == "initialize":
+        result = {"protocolVersion": "2025-11-25", "capabilities": {"tools": {}},
+                  "serverInfo": {"name": "flaky-server", "version": "1"}}
+    elif method == "tools/list":
+        result = {"tools": TOOLS}
+    elif method == "tools/call":
+        if not flag.exists():
+            flag.write_text("1")
+            break
+        result = {"content": [{"type": "text", "text": "ok"}]}
+    else:
+        error = {"code": -32601, "message": "unknown method"}
+        result = None
+    response = {"jsonrpc": "2.0", "id": message["id"]}
+    if error is not None:
+        response["error"] = error
+    else:
+        response["result"] = result
+    sys.stdout.write(json.dumps(response) + "\n")
+    sys.stdout.flush()
+"""
+
 
 def _fake_config(**kwargs: Any) -> ExternalServerConfig:
-    allowed = kwargs.pop("allowed_tools", frozenset({"echo", "enum", "boom", "inject", "huge", "badresult"}))
+    allowed = kwargs.pop(
+        "allowed_tools", frozenset({"echo", "enum", "boom", "inject", "huge", "badresult"})
+    )
     return ExternalServerConfig(
         name="unit",
         command=(sys.executable, "-c", _FAKE_SERVER),
@@ -157,9 +226,7 @@ def test_config_validation():
     with pytest.raises(ValueError):
         ExternalServerConfig(name="ok", command=())
     with pytest.raises(ValueError):
-        ExternalServerConfig(
-            name="ok", command=(sys.executable,), protocol_version="nope"
-        )
+        ExternalServerConfig(name="ok", command=(sys.executable,), protocol_version="nope")
     with pytest.raises(ValueError):
         ExternalServerConfig(name="ok", command=(sys.executable,), timeout_s=0)
     with pytest.raises(ValueError):
@@ -168,7 +235,9 @@ def test_config_validation():
         ExternalServerConfig(name="ok", command=(sys.executable,), tool_namespace="bad-name")
     with pytest.raises(ValueError):
         ExternalServerConfig(
-            name="ok", command=(sys.executable,), allowed_tools=frozenset({1})  # type: ignore[arg-type]
+            name="ok",
+            command=(sys.executable,),
+            allowed_tools=frozenset({1}),  # type: ignore[arg-type]
         )
     with pytest.raises(ValueError):
         ExternalServerConfig(name="ok", command=(sys.executable,), env={"lower": "x"})
@@ -208,12 +277,23 @@ def test_sanitize_output_and_schema_validation():
     assert _validate_arguments(spec, {"msg": "x", "mode": "z"}) is not None
     assert _validate_arguments(spec, {"msg": "x" * 20_000}) is not None
     assert _validate_arguments({}, {"anything": 1}) is None
+    bounded = {
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200}},
+        }
+    }
+    assert _validate_arguments(bounded, {"limit": 5}) is None
+    assert _validate_arguments(bounded, {"limit": 0}) == "parameter 'limit' must be >= 1"
+    assert _validate_arguments(bounded, {"limit": 201}) == "parameter 'limit' must be <= 200"
 
 
 # ── unit: transport round trips ────────────────────────────────────────────
 def test_external_handshake_discovery_and_calls():
     events: list[dict[str, Any]] = []
-    with ExternalMCPClient(_fake_config(), on_audit=lambda event: events.append(event.to_dict())) as client:
+    with ExternalMCPClient(
+        _fake_config(), on_audit=lambda event: events.append(event.to_dict())
+    ) as client:
         assert client.running is True
         names = client.tool_names()
         assert client.protocol_version == "2025-11-25"
@@ -301,6 +381,101 @@ def test_external_reconnect_budget_and_spawn_failure():
         ExternalMCPClient(missing).start()
 
 
+def test_retry_config_is_bounded():
+    with pytest.raises(ValueError):
+        ExternalServerConfig(name="unit", command=(sys.executable,), max_call_retries=3)
+    with pytest.raises(ValueError):
+        ExternalServerConfig(
+            name="unit", command=(sys.executable,), retry_safe_tools=frozenset({""})
+        )
+    with pytest.raises(ValueError):
+        ExternalServerConfig(
+            name="unit",
+            command=(sys.executable,),
+            argument_limits={"": {"limit": {"maximum": 1}}},  # type: ignore[list-item]
+        )
+    with pytest.raises(ValueError):
+        ExternalServerConfig(
+            name="unit",
+            command=(sys.executable,),
+            argument_limits={"echo": {"limit": {"maximum": "many"}}},  # type: ignore[dict-item]
+        )
+    config = ExternalServerConfig(
+        name="unit",
+        command=(sys.executable,),
+        max_call_retries=1,
+        retry_safe_tools=frozenset({"x"}),
+    )
+    assert config.max_call_retries == 1
+    assert config.retry_safe_tools == frozenset({"x"})
+
+
+def test_initialized_notification_is_sent(tmp_path):
+    marker = tmp_path / "initialized"
+    config = ExternalServerConfig(
+        name="unit",
+        command=(sys.executable, "-c", _NOTIFY_SERVER),
+        env=safe_child_env({"MCP_NOTIFY_FLAG": str(marker)}),
+        allowed_tools=frozenset(),
+        tool_namespace="unit",
+    )
+    client = ExternalMCPClient(config)
+    try:
+        assert client.tool_names() == []
+        assert marker.read_text() == "1"
+        assert client.protocol_version == "2025-11-25"
+        assert client.server_info["name"] == "notify-server"
+    finally:
+        client.close()
+
+
+def test_readonly_transport_retry_is_bounded_and_content_free(tmp_path):
+    flag = tmp_path / "flaky"
+    env = safe_child_env({"MCP_FLAKY_FLAG": str(flag)})
+
+    def config(**kwargs: Any) -> ExternalServerConfig:
+        return ExternalServerConfig(
+            name="unit",
+            command=(sys.executable, "-c", _FLAKY_SERVER),
+            env=env,
+            allowed_tools=frozenset({"flaky"}),
+            tool_namespace="unit",
+            **kwargs,
+        )
+
+    events: list[dict[str, Any]] = []
+    client = ExternalMCPClient(
+        config(
+            max_call_retries=1,
+            retry_safe_tools=frozenset({"flaky"}),
+        ),
+        on_audit=lambda event: events.append(event.to_dict()),
+    )
+    try:
+        assert client.call_tool("unit.flaky", {}) == "ok"
+        assert flag.exists()
+        assert len(events) == 1
+        assert events[0]["ok"] is True
+        assert all("arguments" not in e and "output" not in e for e in events)
+    finally:
+        client.close()
+
+    flag.unlink()
+    denied_events: list[dict[str, Any]] = []
+    no_retry = ExternalMCPClient(
+        config(max_call_retries=1, retry_safe_tools=frozenset()),
+        on_audit=lambda event: denied_events.append(event.to_dict()),
+    )
+    try:
+        with pytest.raises(ExternalMCPError) as error:
+            no_retry.call_tool("flaky", {})
+        assert "closed the connection" in str(error.value)
+        assert len(denied_events) == 1
+        assert denied_events[0]["ok"] is False
+    finally:
+        no_retry.close()
+
+
 # ── mcp-hub policy configuration ───────────────────────────────────────────
 def test_mcp_hub_config_and_environment():
     config = MCPHubConfig(db_path="hub.sqlite3", allowed_tools=frozenset({"search_servers"}))
@@ -311,6 +486,8 @@ def test_mcp_hub_config_and_environment():
     assert server.name == "mcp_hub"
     assert server.tool_namespace == "mcp_hub"
     assert server.command[1:] == ("-m", "mcp_hub.mcp_server")
+    assert server.argument_limits["query_catalog"]["limit"]["maximum"] == 200
+    assert server.retry_safe_tools == frozenset({"search_servers"})
     assert set(server.env) == {"MCP_HUB_DB"}
     assert "SHOULD_NOT_LEAK" not in server.env
     with pytest.raises(ValueError):
@@ -387,10 +564,46 @@ def test_real_mcp_hub_agent_call_and_permissions(tmp_path):
 
 
 @pytest.mark.integration
+def test_real_mcp_hub_extra_read_tool_and_schema_limits(tmp_path):
+    pytest.importorskip("mcp")
+    pytest.importorskip("mcp_hub")
+
+    config = MCPHubConfig(db_path=tmp_path / "catalog.sqlite3", pythonpath=_hub_root())
+    events: list[dict[str, Any]] = []
+    executor = build_mcp_hub_executor(config, on_audit=lambda event: events.append(event.to_dict()))
+    try:
+        schemas = {schema.name: schema for schema in executor.tool_schemas(prefix="")}
+        assert "query_catalog" in schemas
+
+        ok = executor.execute(
+            ToolCall("mcp_hub.query_catalog", {"kind": "server", "category": "arabic", "limit": 5})
+        )
+        assert ok.ok is True
+        payload = json.loads(ok.output or "{}")
+        assert payload["count"] >= 1
+        assert all(row["category"] == "arabic" for row in payload["results"])
+
+        bad = executor.execute(ToolCall("mcp_hub.query_catalog", {"kind": "server", "limit": 201}))
+        assert bad.ok is False
+        assert "must be <=" in (bad.error or "")
+        with pytest.raises(ExternalMCPError) as invalid:
+            executor.client.call_tool("mcp_hub.query_catalog", {"limit": 201})
+        assert invalid.value.code == -32602
+    finally:
+        executor.client.close()
+
+    assert events
+    assert any(event["tool"] == "query_catalog" and event["ok"] is False for event in events)
+    assert all("arguments" not in event and "output" not in event for event in events)
+
+
+@pytest.mark.integration
 def test_real_mcp_hub_reconnect_and_failure(tmp_path):
     pytest.importorskip("mcp")
     pytest.importorskip("mcp_hub")
-    config = MCPHubConfig(db_path=tmp_path / "hub.sqlite3", pythonpath=_hub_root(), max_reconnects=1)
+    config = MCPHubConfig(
+        db_path=tmp_path / "hub.sqlite3", pythonpath=_hub_root(), max_reconnects=1
+    )
     client = build_mcp_hub_client(config)
     try:
         proc = client._proc
@@ -480,9 +693,7 @@ def test_raw_request_error_shapes_timeouts_and_write_failures():
     client.start()
     client._next_id = 0
     client._queue.put({"jsonrpc": "2.0", "id": 999, "result": {"ignored": True}})
-    client._queue.put(
-        {"jsonrpc": "2.0", "id": 1, "error": {"code": "bad", "message": "bad code"}}
-    )
+    client._queue.put({"jsonrpc": "2.0", "id": 1, "error": {"code": "bad", "message": "bad code"}})
     with pytest.raises(ExternalMCPError) as error:
         client._raw_request("initialize", {"protocolVersion": "2025-11-25"})
     assert error.value.code is None

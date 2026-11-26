@@ -5,6 +5,7 @@ on:
     paths:
       - "src/mcp/**"
       - "tests/test_external_mcp.py"
+      - "docs/MCP_HUB_INTEGRATION.md"
       - "pytest.ini"
       - ".github/workflows/mcp-hub-integration.yml"
   workflow_dispatch:

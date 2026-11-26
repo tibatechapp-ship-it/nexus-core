@@ -18,7 +18,7 @@ for source checkouts; installed wheels do not need it.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -30,6 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from src.mcp.external import AuditEvent
 
 __all__ = [
+    "MCP_HUB_ARGUMENT_LIMITS",
     "MCP_HUB_READ_TOOLS",
     "MCPHubConfig",
     "build_mcp_hub_client",
@@ -54,6 +55,16 @@ MCP_HUB_READ_TOOLS: frozenset[str] = frozenset(
     }
 )
 
+#: Numeric bounds that the official SDK schema does not always advertise.
+#: These mirror the mcp-hub 1.10.0 read-only tool contracts; they are policy,
+#: not discovery data, and are enforced before any tools/call request.
+MCP_HUB_ARGUMENT_LIMITS: Mapping[str, Mapping[str, Mapping[str, int]]] = {
+    "search_servers": {"limit": {"minimum": 1, "maximum": 100}},
+    "servers_by_category": {"limit": {"minimum": 1, "maximum": 100}},
+    "provenance_events": {"limit": {"minimum": 1, "maximum": 50}},
+    "query_catalog": {"limit": {"minimum": 1, "maximum": 200}},
+}
+
 _NAMESPACE = "mcp_hub"
 _PREFIX = f"{_NAMESPACE}."
 
@@ -76,6 +87,7 @@ class MCPHubConfig:
     timeout_s: float = 10.0
     max_output_chars: int = 12_000
     max_reconnects: int = 1
+    max_call_retries: int = 1
 
     def __post_init__(self) -> None:
         """Reject empty paths and tools outside the known read-only surface."""
@@ -83,6 +95,8 @@ class MCPHubConfig:
             raise ValueError("db_path must be a non-empty path")
         if self.pythonpath is not None and not str(self.pythonpath).strip():
             raise ValueError("pythonpath must be a non-empty path when provided")
+        if self.max_call_retries < 0 or self.max_call_retries > 2:
+            raise ValueError("max_call_retries must be between 0 and 2")
         normalised = frozenset(_normalise_tool(name) for name in self.allowed_tools)
         object.__setattr__(self, "allowed_tools", normalised)
 
@@ -106,6 +120,9 @@ def mcp_hub_server_config(config: MCPHubConfig | None = None) -> ExternalServerC
         timeout_s=settings.timeout_s,
         max_output_chars=settings.max_output_chars,
         max_reconnects=settings.max_reconnects,
+        max_call_retries=settings.max_call_retries,
+        retry_safe_tools=settings.allowed_tools,
+        argument_limits=MCP_HUB_ARGUMENT_LIMITS,
         tool_namespace=_NAMESPACE,
     )
 
