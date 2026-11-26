@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sse_starlette.sse import EventSourceResponse
 
 from src.security.access import AccessGuard
+from src.security.path_confinement import is_safe_regular_file
 
 def safe_path(path_str: str) -> str:
     base = os.path.dirname(os.path.abspath(__file__))
@@ -564,6 +565,9 @@ async def api_review(request: Request):
     MAX_BYTES = 30_000
 
     for f in sorted(p.rglob("*")):
+        # Do not follow symlink entries while collecting source for an LLM review.
+        if not is_safe_regular_file(p, f):
+            continue
         if any(part.startswith(".") for part in f.parts if part != "."):
             continue
         if "node_modules" in f.parts or "__pycache__" in f.parts or "venv" in f.parts:
