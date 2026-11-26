@@ -32,8 +32,8 @@ def store() -> OrgStore:
 
 @pytest.fixture()
 def runtime(store: OrgStore) -> AgentRuntime:
-    return AgentRuntime(ProviderPool([ProviderConfig()]), ToolRegistry(),
-                        store)
+    return AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(),
+                        store, allow_simulated=True)
 
 
 def _spec(**kw: object) -> AgentSpec:
@@ -181,7 +181,7 @@ class TestAskJson:
             return original_get(name, model)
 
         monkeypatch.setattr(pool, "get", get_provider)
-        runtime = AgentRuntime(pool, ToolRegistry(), store)
+        runtime = AgentRuntime(pool, ToolRegistry(), store, allow_simulated=True)
         outcome = runtime.ask_json(
             _spec(mission_id=mission.id, max_tokens=1000, max_retries=0),
             "أجب JSON",
@@ -196,6 +196,7 @@ class TestAskJson:
     def test_outcome_carries_usage(self, runtime: AgentRuntime) -> None:
         out = runtime.ask_json(_spec(), "أجب JSON")
         assert out.tokens_in > 0 and out.attempts == 1
+        assert out.simulated is True
 
 
 class TestProviderFailure:
@@ -221,7 +222,35 @@ class TestProviderFailure:
                                      latency_ms=0.1)
 
         runtime = AgentRuntime(
-            ProviderPool([ProviderConfig()]), ToolRegistry(), store)
+            ProviderPool([ProviderConfig(name="mock", model="mock-1")]), ToolRegistry(), store, allow_simulated=True)
         runtime.pool.get = lambda name="", model="": ListProvider()  # type: ignore[assignment, return-value]
         out = runtime.ask_json(_spec(max_retries=1), "أجب")
         assert out.success is False
+
+
+def test_runtime_rejects_simulated_provider_by_default(store: OrgStore) -> None:
+    runtime = AgentRuntime(
+        ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+        ToolRegistry(),
+        store,
+    )
+    outcome = runtime.ask_json(_spec(max_retries=0), "أجب JSON")
+
+    assert outcome.success is False
+    assert outcome.simulated is True
+    assert outcome.provider_used == "mock"
+    assert "simulated provider response rejected" in outcome.error
+
+
+def test_runtime_allows_simulation_only_with_explicit_opt_in(store: OrgStore) -> None:
+    runtime = AgentRuntime(
+        ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+        ToolRegistry(),
+        store,
+        allow_simulated=True,
+    )
+    outcome = runtime.ask_json(_spec(max_retries=0), "أجب JSON")
+
+    assert outcome.success is True
+    assert outcome.simulated is True
+    assert outcome.provider_used == "mock"

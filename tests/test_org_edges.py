@@ -77,17 +77,19 @@ class TestOpenAICompatRealPath:
         resp = pool.complete_with_fallback(
             [{"role": "user", "content": "أجب JSON"}])
         assert resp.provider == "mock"
+        assert resp.simulated is True
         assert pool.last_errors  # محاولة الحقيقي مسجلة
 
 
 class TestAgentEdgePaths:
     def test_complete_returns_raw_response(self) -> None:
         store = OrgStore(":memory:")
-        runtime = AgentRuntime(ProviderPool([ProviderConfig()]),
-                               ToolRegistry(), store)
+        runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+                               ToolRegistry(), store, allow_simulated=True)
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         resp = runtime.complete(spec, "أجب")
         assert isinstance(resp, ModelResponse)
+        assert resp.simulated is True
 
     def test_complete_exhausted_raises(self) -> None:
         class BoomPool(ProviderPool):
@@ -110,8 +112,8 @@ class TestAgentEdgePaths:
     def test_record_failure_never_raises(self) -> None:
         """سجل الوكيل الفاشل لا يُسقط الاستدعاء (حد النظافة المعلن)."""
         store = OrgStore(":memory:")
-        runtime = AgentRuntime(ProviderPool([ProviderConfig()]),
-                               ToolRegistry(), store)
+        runtime = AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+                               ToolRegistry(), store, allow_simulated=True)
         spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m")
         # متجر مكسور عمدًا — السجل يبتلع الخطأ
         store.add_agent_run = lambda **kw: (_ for _ in ()).throw(  # type: ignore[method-assign]
@@ -150,8 +152,8 @@ class TestDeptFailurePaths:
                                                encoding="utf-8")
         m = org_store.create_mission(Mission(
             title="t", objective="شيء غير مطابق إطلاقًا", repo_path=str(tmp_path)))
-        pool = ProviderPool([ProviderConfig()])
-        runtime = AgentRuntime(pool, ToolRegistry(), org_store)
+        pool = ProviderPool([ProviderConfig(name="mock", model="mock-1")])
+        runtime = AgentRuntime(pool, ToolRegistry(), org_store, allow_simulated=True)
         from src.org.security import InjectionGuard
         intel = RepoIntelDept(runtime, InjectionGuard())
         out = intel.run(MissionContext(mission=m))
@@ -160,8 +162,8 @@ class TestDeptFailurePaths:
     def test_dev_requires_worktree(self, org_store: OrgStore) -> None:
         from src.org.departments import DevelopmentDept, DepartmentError
         m = org_store.create_mission(Mission(title="t", objective="o"))
-        dev = DevelopmentDept(AgentRuntime(ProviderPool([ProviderConfig()]),
-                                           ToolRegistry(), org_store))
+        dev = DevelopmentDept(AgentRuntime(ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+                                           ToolRegistry(), org_store, allow_simulated=True))
         with pytest.raises(DepartmentError, match="نسخة عمل"):
             dev.run(MissionContext(mission=m))
 
@@ -221,3 +223,31 @@ class TestTaskResultValidation:
                         id="org-t-1")
         data = spec.to_dict()
         assert data["id"] == "org-t-1" and data["deps"] == ["a"]
+
+
+def test_complete_rejects_simulated_provider_by_default() -> None:
+    store = OrgStore(":memory:")
+    runtime = AgentRuntime(
+        ProviderPool([ProviderConfig(name="mock", model="mock-1")]),
+        ToolRegistry(),
+        store,
+    )
+    spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m", max_retries=0)
+
+    with pytest.raises(ProviderError, match="simulated provider response rejected"):
+        runtime.complete(spec, "أجب")
+
+
+    def test_explicit_mock_fallback_is_still_rejected_by_default_runtime(self) -> None:
+        pool = ProviderPool([
+            ProviderConfig(name="openai-compat", model="m",
+                           base_url="http://127.0.0.1:9/v1", timeout_s=1),
+            ProviderConfig(name="mock", model="mock-1"),
+        ])
+        runtime = AgentRuntime(pool, ToolRegistry(), OrgStore(":memory:"))
+        spec = AgentSpec(role="qa:runner", dept="qa", mission_id="m", max_retries=0)
+
+        with pytest.raises(ProviderError, match="simulated provider response rejected"):
+            runtime.complete(spec, "أجب")
+
+        assert pool.last_errors
