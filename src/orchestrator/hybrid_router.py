@@ -138,8 +138,9 @@ class HybridRouter:
     def _run_loop(self, prompt: str) -> dict:
         """Agent Loop (ReAct) with the read-only registry, never dev tools.
 
-        ``write_file`` and ``run_agent`` are not part of the default registry;
-        a caller that wants them must build a separate dev registry explicitly.
+        ``write_file``, ``run_agent`` and memory writes (``remember``) are not
+        part of the default registry; a caller that wants them must build a
+        separate explicitly opted-in registry.
         """
         try:
             from src.agent_loop.loop import AgentLoop
