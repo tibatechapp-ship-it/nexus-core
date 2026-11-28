@@ -52,6 +52,7 @@ _SKIP_DIRS = frozenset(
 )
 
 DEV_TOOLS_ENV = "NEXUS_ENABLE_DEV_TOOLS"
+MEMORY_WRITE_ENV = "NEXUS_ENABLE_MEMORY_WRITES"
 _APPROVAL_TOKENS = frozenset(
     {
         "approve",
@@ -68,6 +69,11 @@ _APPROVAL_TOKENS = frozenset(
 def dev_tools_enabled() -> bool:
     """True only when development tools were explicitly enabled in the environment."""
     return os.environ.get(DEV_TOOLS_ENV) == "1"
+
+
+def memory_write_enabled() -> bool:
+    """True only when memory writes were explicitly enabled in the environment."""
+    return os.environ.get(MEMORY_WRITE_ENV) == "1"
 
 
 def approval_granted(value: Any) -> bool:
@@ -140,12 +146,17 @@ class ToolRegistry:
             return f"خطأ في {name}: {e}"
 
 
-def build_default_registry(include_dev_tools: bool = False) -> Any:
+def build_default_registry(
+    include_dev_tools: bool = False,
+    include_memory_write: bool = False,
+) -> Any:
     """Build the default read-only registry.
 
     Mutating tools (``write_file``) and nested-agent dispatch (``run_agent``)
     are absent unless the caller opts in **and** ``NEXUS_ENABLE_DEV_TOOLS=1``.
-    Even then each call requires an explicit ``approval`` decision.
+    Memory writes (``remember``) are absent unless the caller opts in **and**
+    ``NEXUS_ENABLE_MEMORY_WRITES=1``. Even then each call requires an explicit
+    ``approval`` decision.
     """
     reg = ToolRegistry()
 
@@ -166,20 +177,31 @@ def build_default_registry(include_dev_tools: bool = False) -> Any:
         except Exception as e:
             return f"خطأ: {e}"
 
-    # ═══ 2. remember ═══
-    @reg.register(
-        "remember",
-        "يحفظ معلومة جديدة في الذاكرة",
-        {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
-    )
-    def remember(text: Any) -> Any:
-        try:
-            from src.memory.agent_rag_bridge import get_bridge
+    # ═══ 2. remember (opt-in + approval, never default) ═══
+    if include_memory_write and memory_write_enabled():
 
-            doc_id = get_bridge().remember(text)
-            return f"تم الحفظ: {doc_id}"
-        except Exception as e:
-            return f"خطأ: {e}"
+        @reg.register(
+            "remember",
+            "يحفظ معلومة جديدة في الذاكرة (يتطلب تفعيلاً وموافقة صريحة)",
+            {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "approval": {"type": ["boolean", "string"], "description": "قرار موافقة صريح"},
+                },
+                "required": ["text", "approval"],
+            },
+        )
+        def remember(text: Any, approval: Any = None) -> Any:
+            if not approval_granted(approval):
+                return "محظور: موافقة صريحة مطلوبة لحفظ الذاكرة"
+            try:
+                from src.memory.agent_rag_bridge import get_bridge
+
+                doc_id = get_bridge().remember(str(text))
+                return f"تم الحفظ: {doc_id}"
+            except Exception as e:
+                return f"خطأ: {e}"
 
     # ═══ 3. list_agents ═══
     @reg.register(

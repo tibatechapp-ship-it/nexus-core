@@ -254,7 +254,6 @@ def test_default_registry_is_read_only() -> None:
     reg = build_default_registry()
     assert set(reg.tools) == {
         "search_memory",
-        "remember",
         "list_agents",
         "read_file",
         "get_time",
@@ -262,6 +261,7 @@ def test_default_registry_is_read_only() -> None:
     }
     assert "غير موجودة" in reg.call("write_file", {"path": "x", "content": "y"})
     assert "غير موجودة" in reg.call("run_agent", {"agent": "x", "prompt": "y"})
+    assert "غير موجودة" in reg.call("remember", {"text": "x", "approval": "yes"})
 
 
 def test_tool_get_time_and_file_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -316,9 +316,11 @@ def test_tool_memory_and_agents(monkeypatch: pytest.MonkeyPatch) -> None:
         def remember(self, text: str) -> str:
             return "d-42"
 
-    monkeypatch.setattr(rag_mod, "get_bridge", lambda: _Bridge())
+    bridge = _Bridge()
+    monkeypatch.setattr(rag_mod, "get_bridge", lambda: bridge)
     assert "تذكرة" in reg.call("search_memory", {"query": "q"})
-    assert reg.call("remember", {"text": "hi"}) == "تم الحفظ: d-42"
+    # default registry is read-only: no memory write tool at all
+    assert "غير موجودة" in reg.call("remember", {"text": "hi", "approval": "yes"})
 
     assert "عدد الوكلاء" in reg.call("list_agents", {})
     out = reg.call("list_agents", {"category": "code"})
@@ -326,10 +328,16 @@ def test_tool_memory_and_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     # nested agent dispatch is absent from the default read-only registry
     assert "غير موجودة" in reg.call("run_agent", {"agent": "__none__", "prompt": "x"})
 
+    # explicit opt-in + per-call approval is the only memory-write path
+    monkeypatch.setenv("NEXUS_ENABLE_MEMORY_WRITES", "1")
+    write_reg = build_default_registry(include_memory_write=True)
+    assert "موافقة" in write_reg.call("remember", {"text": "hi"})
+    assert write_reg.call("remember", {"text": "hi", "approval": True}) == "تم الحفظ: d-42"
+
     # memory tool failures must degrade to a readable error
     monkeypatch.setattr(rag_mod, "get_bridge", lambda: (_ for _ in ()).throw(RuntimeError("x")))
     assert reg.call("search_memory", {"query": "q"}).startswith("خطأ")
-    assert reg.call("remember", {"text": "hi"}).startswith("خطأ")
+    assert write_reg.call("remember", {"text": "hi", "approval": True}).startswith("خطأ")
 
 
 def test_tool_search_memory_empty(monkeypatch: pytest.MonkeyPatch) -> None:
