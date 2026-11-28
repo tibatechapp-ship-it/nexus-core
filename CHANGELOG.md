@@ -2,13 +2,15 @@
 
 All notable changes to this project. Newest first.
 
-## v1.71.0 — 2026-11-28 — Runtime hardening and bounded dev flows
+## v1.71.0 — 2026-11-28 — Runtime hardening, bounded dev flows, and evidence contracts
 
 - LLM router no longer injects `MockProvider` implicitly; mock-only runs require `NEXUS_ALLOW_MOCK_PROVIDER=1`.
 - CLI agent commands report missing Ollama keys and exit 2; `status` remains informational.
 - Coder council escalation fires after the final allowed iteration.
 - Coder write plans refuse VCS, dependency, and cache paths; container runs require dev-tools opt-in plus approval.
 - MCP non-allowlisted tools are rejected before subprocess startup.
+- Added bounded, versioned intelligence evidence contracts with strict field validation and digest-only evidence references.
+- Aligned project version mirrors to the `v1.71.0` release tag; the tag itself is unchanged.
 
 ## v1.70.0 — 2026-11-15 — التنظيم الهندسي الذاتي: ثمانية أقسام من الهدف إلى تذكرة ببوابة بشرية
 
