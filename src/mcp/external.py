@@ -512,7 +512,7 @@ class ExternalMCPClient:
             {
                 "protocolVersion": self.config.protocol_version,
                 "capabilities": {},
-                "clientInfo": {"name": "nexus-core", "version": "1.70.0"},
+                "clientInfo": {"name": "nexus-core", "version": "1.71.0"},
             },
         )
         if not isinstance(result, Mapping):
