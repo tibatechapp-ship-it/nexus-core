@@ -77,6 +77,47 @@ def test_cmd_ask_plain_result(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
     assert "RAW" in capsys.readouterr().out
 
 
+def test_backend_failure_is_actionable_and_exits_two(
+    isolated_cli: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import src.core.ollama_backend as ob
+
+    def no_keys() -> Any:
+        raise ob.OllamaError("لا مفاتيح Ollama!")
+
+    monkeypatch.setattr(ob, "OllamaBackend", no_keys)
+    assert cli.cmd_ask(_ns(question=["q"])) == 2
+    out = capsys.readouterr().out
+    assert "Backend غير جاهز" in out
+    assert "OLLAMA_API_KEY" in out
+
+
+def test_cmd_chat_backend_failure_exits_two(
+    isolated_cli: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import src.core.ollama_backend as ob
+
+    def no_keys() -> Any:
+        raise ob.OllamaError("لا مفاتيح Ollama!")
+
+    monkeypatch.setattr(ob, "OllamaBackend", no_keys)
+    assert cli.cmd_chat(_ns(agent="analyst")) == 2
+    assert "Backend غير جاهز" in capsys.readouterr().out
+
+
+def test_cmd_delegate_backend_failure_exits_two(
+    isolated_cli: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import src.core.ollama_backend as ob
+
+    def no_keys() -> Any:
+        raise ob.OllamaError("لا مفاتيح Ollama!")
+
+    monkeypatch.setattr(ob, "OllamaBackend", no_keys)
+    assert cli.cmd_delegate(_ns(agent="analyst", task=["do", "it"])) == 2
+    assert "Backend غير جاهز" in capsys.readouterr().out
+
+
 def test_cmd_chat_exit(isolated_cli: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import src.agents.analyst as a
     import src.agents.architect as ar

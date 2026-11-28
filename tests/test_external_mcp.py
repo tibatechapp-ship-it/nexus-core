@@ -339,6 +339,20 @@ def test_external_policy_and_error_paths():
         open_client.close()
 
 
+def test_denied_tool_never_starts_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = ExternalMCPClient(_fake_config(allowed_tools=frozenset({"echo"})))
+    try:
+        monkeypatch.setattr(
+            client, "_ensure_ready",
+            lambda: pytest.fail("denied call spawned the MCP subprocess"),
+        )
+        with pytest.raises(ExternalMCPError) as denied:
+            client.call_tool("unit.boom", {})
+        assert denied.value.code == -32001
+    finally:
+        client.close()
+
+
 def test_external_reports_tool_and_transport_errors():
     client = ExternalMCPClient(_fake_config())
     try:

@@ -708,12 +708,13 @@ class ExternalMCPClient:
         failed = False
         try:
             tool_name = self._unqualify(name)
-            self._ensure_ready()
             allowed = self.config.allowed_tools
             if allowed is not None and tool_name not in allowed:
+                # Denied tools must never spawn the child process.
                 raise ExternalMCPError(
                     f"tool {tool_name!r} is not allowed by {self.config.name} policy", code=-32001
                 )
+            self._ensure_ready()
             if not self._schemas:
                 self.list_tools()
             spec = self._schemas.get(tool_name)
