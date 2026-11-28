@@ -36,7 +36,7 @@ def _safe_urlopen(req: Any, *, timeout: float) -> Any:
     if not (url.startswith("http://") or url.startswith("https://")):
         raise PermissionError(f"unsafe URL scheme (only http/https allowed): {url[:60]}")
     import urllib.request as _urllib
-    return _urllib.urlopen(req, timeout=timeout)
+    return _urllib.urlopen(req, timeout=timeout)  # nosec B310 — scheme validated above
 
 __all__ = ["APIBackend"]
 

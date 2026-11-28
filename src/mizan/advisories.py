@@ -90,7 +90,7 @@ def _http_json(url: str, payload: dict[str, object] | None, timeout: float) -> d
         url, data=data,
         headers={"Content-Type": "application/json"} if data else {},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed OSV URL
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 — fixed HTTPS OSV endpoint
         return json.loads(resp.read().decode("utf-8"))
 
 

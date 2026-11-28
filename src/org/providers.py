@@ -27,6 +27,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -128,6 +129,19 @@ class OpenAICompatProvider(Provider):
     def __init__(self, cfg: ProviderConfig) -> None:
         if not cfg.base_url:
             raise ProviderError("مزوّد حقيقي يحتاج base_url معلنًا")
+        try:
+            parsed = urlsplit(cfg.base_url)
+            valid_url = (
+                parsed.scheme in {"http", "https"}
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+            )
+            _ = parsed.port
+        except ValueError:
+            valid_url = False
+        if not valid_url:
+            raise ProviderError("base_url must be a valid HTTP(S) URL without userinfo")
         self.cfg = cfg
         self.name = cfg.name
         self.model = cfg.model
@@ -150,7 +164,7 @@ class OpenAICompatProvider(Provider):
                                      method="POST")
         t0 = time.time()
         try:
-            with urllib.request.urlopen(req, timeout=self.cfg.timeout_s) as resp:
+            with urllib.request.urlopen(req, timeout=self.cfg.timeout_s) as resp:  # nosec B310 — base_url validated as HTTP(S)
                 data = json.loads(resp.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise ProviderError(

@@ -47,6 +47,7 @@ import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -125,7 +126,17 @@ class OTLPExporter:
         self.endpoint = endpoint or os.environ.get("NEXUS_OTLP_ENDPOINT", "")
         self.headers = headers or {}
         self.timeout = timeout
-        self.enabled = bool(self.endpoint)
+        try:
+            parsed = urlsplit(self.endpoint)
+            self.enabled = (
+                parsed.scheme in {"http", "https"}
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+            )
+            _ = parsed.port
+        except ValueError:
+            self.enabled = False
 
     def _payload(self, spans: list[dict[str, Any]]) -> dict[str, Any]:
         """حوّل spans محلية إلى OTLP/JSON (resourceSpans)."""
@@ -176,7 +187,7 @@ class OTLPExporter:
                     **self.headers,
                 },
             )
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # nosec B310 — endpoint validated as HTTP(S) in __init__
                 return bool(200 <= getattr(resp, "status", 200) < 300)
         except Exception:
             return False

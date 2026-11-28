@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 import sqlite3
 import struct
 from typing import Sequence, Any
@@ -21,6 +22,10 @@ class SQLiteVecStore(VectorStore):
     """
 
     def __init__(self: Any, path: str, dim: int = 512, table: str = "vectors") -> None:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", table):
+            raise ValueError("unsafe SQLite vector table identifier")
+        if not isinstance(dim, int) or not 1 <= dim <= 4096:
+            raise ValueError("vector dimension must be an integer from 1 to 4096")
         self.path = path
         self.dim = dim
         self.table = table
@@ -52,7 +57,7 @@ class SQLiteVecStore(VectorStore):
         self._conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS {self.table}
             USING vec0(embedding float[{self.dim}])
-        """)
+        """)  # nosec B608 — table identifier and dimension validated in __init__
         self._conn.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.table}_meta (
                 rowid INTEGER PRIMARY KEY,
@@ -60,18 +65,18 @@ class SQLiteVecStore(VectorStore):
                 text TEXT,
                 metadata TEXT
             )
-        """)
+        """)  # nosec B608 — table identifier validated in __init__
         self._conn.commit()
 
     def add(self, id: str, text: str, embedding: Sequence[float],
             metadata: dict | None = None) -> None:
         blob = _embedding_to_blob(embedding)
         cur = self._conn.execute(
-            f"INSERT INTO {self.table}(embedding) VALUES (?)", (blob,)
+            f"INSERT INTO {self.table}(embedding) VALUES (?)", (blob,)  # nosec B608 — table identifier validated in __init__
         )
         rowid = cur.lastrowid
         self._conn.execute(
-            f"INSERT OR REPLACE INTO {self.table}_meta(rowid, id, text, metadata) "
+            f"INSERT OR REPLACE INTO {self.table}_meta(rowid, id, text, metadata) "  # nosec B608 — table identifier validated in __init__
             f"VALUES (?, ?, ?, ?)",
             (rowid, id, text, json.dumps(metadata or {})),
         )
@@ -85,7 +90,7 @@ class SQLiteVecStore(VectorStore):
             JOIN {self.table}_meta m ON m.rowid = v.rowid
             WHERE v.embedding MATCH ? AND k = ?
             ORDER BY v.distance
-        """, (blob, k)).fetchall()
+        """, (blob, k)).fetchall()  # nosec B608 — table identifier validated in __init__
         return [
             SearchResult(
                 id=r[2], text=r[3],
@@ -97,18 +102,19 @@ class SQLiteVecStore(VectorStore):
 
     def delete(self, id: str) -> bool:
         row = self._conn.execute(
-            f"SELECT rowid FROM {self.table}_meta WHERE id = ?", (id,)
+            f"SELECT rowid FROM {self.table}_meta WHERE id = ?",  # nosec B608 — table identifier validated in __init__
+            (id,)
         ).fetchone()
         if not row:
             return False
-        self._conn.execute(f"DELETE FROM {self.table} WHERE rowid = ?", (row[0],))
-        self._conn.execute(f"DELETE FROM {self.table}_meta WHERE rowid = ?", (row[0],))
+        self._conn.execute(f"DELETE FROM {self.table} WHERE rowid = ?", (row[0],))  # nosec B608 — table identifier validated in __init__
+        self._conn.execute(f"DELETE FROM {self.table}_meta WHERE rowid = ?", (row[0],))  # nosec B608 — table identifier validated in __init__
         self._conn.commit()
         return True
 
     def clear(self) -> None:
-        self._conn.execute(f"DELETE FROM {self.table}")
-        self._conn.execute(f"DELETE FROM {self.table}_meta")
+        self._conn.execute(f"DELETE FROM {self.table}")  # nosec B608 — table identifier validated in __init__
+        self._conn.execute(f"DELETE FROM {self.table}_meta")  # nosec B608 — table identifier validated in __init__
         self._conn.commit()
 
     def close(self) -> None:

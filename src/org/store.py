@@ -1585,9 +1585,9 @@ class OrgStore:
                     raise OrgError("إكمال المهمة يتطلب مراجع الأدلة")
                 placeholders = ",".join("?" for _ in refs)
                 evidence_rows = self._conn.execute(
-                    f"SELECT id FROM evidence WHERE mission_id=? AND ok=1 AND id IN ({placeholders})",
+                    f"SELECT id FROM evidence WHERE mission_id=? AND ok=1 AND id IN ({placeholders})",  # nosec B608 — placeholders generated; all values bound
                     (row["mission_id"], *refs),
-                ).fetchall()
+                ).fetchall()  # nosec B608 — placeholder count generated; all values are bound
                 if len({r["id"] for r in evidence_rows}) != len(set(refs)):
                     raise OrgError("كل مراجع الأدلة يجب أن تشير إلى أدلة ناجحة للمهمة نفسها")
             decision_id = new_id("org-reconcile", task_id, decision_key)
@@ -2239,7 +2239,7 @@ class OrgStore:
                   "claims", "evidence", "approvals", "lessons", "org_metrics")
         out: dict[str, int] = {}
         for t in tables:
-            row = self._conn.execute(f"SELECT COUNT(*) AS c FROM {t}").fetchone()
+            row = self._conn.execute(f"SELECT COUNT(*) AS c FROM {t}").fetchone()  # nosec B608 — t is from a fixed tuple
             out[t] = int(row["c"])
         return out
 

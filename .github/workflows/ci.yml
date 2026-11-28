@@ -85,7 +85,7 @@ jobs:
           if [ "$fail" -eq 0 ]; then echo "No secrets detected."; fi
           exit $fail
 
-  # ── SAST: Bandit security scan on the agent / BYOK surface ────────────────
+  # ── SAST: make sure the agent/cache security boundary is actually gated ──
   sast:
     name: bandit SAST
     runs-on: ubuntu-latest
@@ -108,16 +108,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install bandit
 
-      # Real gate (NO `|| true`): the job fails on any MEDIUM+ finding in the
-      # security-relevant surface this project owns.  Pre-existing HIGH findings
-      # in the legacy workbench layer (src/agent_loop/tools.py B602 shell=True,
-      # src/orchestrator/agent_cache.py B324 MD5) are tracked separately and are
-      # intentionally outside this scope.
-      - name: Bandit (medium+ severity, agent surface)
+      # Scan all active src code, not a hand-picked list. This includes the historically gated src/learning, src/knowledge, src/skills and src/security surfaces. Exclude the migrated
+      # NovaMind package and archived legacy root from this gate; retain the
+      # still-active legacy hyper_agent entrypoint as an explicit target.
+      - name: Bandit (medium+ severity, active application source)
         run: |
-          bandit -r connectors hyper_app src/legacy_root/hyper_agent.py \
-            src/learning src/knowledge src/skills src/security \
+          bandit -r connectors hyper_app src \
+            -x src/novamind,src/legacy_root \
             -ll -q
+          bandit src/legacy_root/hyper_agent.py -ll -q
 
   # ── Benchmarks: 20 standard tasks + p50 regression gate (>50% fails) ──────
   benchmarks-gate:

@@ -120,13 +120,13 @@ class IsolatedRunner:
 
     def run_python(self, code: str, stdin: str = "") -> ProbeResult:
         """تنفيذ كود بايثون داخل العزل — ملف مؤقت يُحذف، والبيئة أدنى حدًا."""
-        env = {
-            "PATH": "/usr/bin:/bin",
-            "HOME": "/tmp",
-            "LANG": "C.UTF-8",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
         with tempfile.TemporaryDirectory(prefix="ops-sandbox-") as workdir:
+            env = {
+                "PATH": "/usr/bin:/bin",
+                "HOME": workdir,
+                "LANG": "C.UTF-8",
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
             script = Path(workdir) / "probe.py"
             script.write_text(code, encoding="utf-8")
             try:

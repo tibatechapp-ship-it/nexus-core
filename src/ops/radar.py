@@ -22,6 +22,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 from src.ops.contracts import Digest, Signal, now_iso, stable_id
 from src.ops.store import OpsStore
@@ -68,8 +69,19 @@ class RadarSource:
             raise ValueError(f"نوع المصدر غير معروف: {self.kind!r}")
         if self.cadence not in {"morning", "evening", "both"}:
             raise ValueError(f"فترة المصدر غير معروفة: {self.cadence!r}")
-        if not self.url.startswith(("http://", "https://")):
-            raise ValueError(f"رابط المصدر ليس HTTP(S): {self.url!r}")
+        try:
+            parsed = urlsplit(self.url)
+            safe_url = (
+                parsed.scheme in {"http", "https"}
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+            )
+            _ = parsed.port
+        except ValueError:
+            safe_url = False
+        if not safe_url:
+            raise ValueError(f"رابط المصدر ليس HTTP(S) صالحاً: {self.url!r}")
         object.__setattr__(self, "keywords", tuple(self.keywords))
 
 
@@ -181,7 +193,7 @@ def http_fetch(source: RadarSource, timeout: int = FETCH_TIMEOUT_SECONDS) -> lis
     req = urllib.request.Request(
         source.url, headers={"User-Agent": "nexus-core-ops-radar/1.62"}
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 — RadarSource validates HTTP(S) URL
         body = resp.read(1_000_000).decode("utf-8", errors="replace")
     items: list[dict[str, Any]] = []
     seen: set[str] = set()

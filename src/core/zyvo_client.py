@@ -101,7 +101,7 @@ class ZyvoClient:
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(request, timeout=self.timeout) as resp:  # nosec B310 — URL uses fixed http:// scheme
                 raw = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:  # pragma: no cover - network path
             raise ZyvoError(f"{method} {request.full_url} -> HTTP {exc.code}") from exc
@@ -159,7 +159,7 @@ class ZyvoClient:
             f"http://{self.host}:{self.port}/event",
             headers={"Accept": "text/event-stream"},
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # pragma: no cover
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # nosec B310 — fixed http:// scheme; host is the configured local ZYVO endpoint
             for raw in resp:  # pragma: no cover - network path
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:"):
