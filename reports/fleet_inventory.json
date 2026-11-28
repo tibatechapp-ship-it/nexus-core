@@ -1,7 +1,7 @@
 {
  "summary": {
   "total": 106,
-  "version": "1.70.0",
+  "version": "1.71.0",
   "by_framework": {
    "core": 20,
    "legacy": 7,

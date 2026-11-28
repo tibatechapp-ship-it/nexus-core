@@ -43,6 +43,12 @@ MAX_TOTAL_BYTES = 1024 * 1024
 MAX_TARGETS = 32
 MAX_COMMAND_PARTS = 64
 ALLOWED_CHECKS = frozenset({"pytest", "ruff", "mypy"})
+# Coder tools can write, so avoid VCS/dependency/build caches in addition to
+# the credential-file names already refused by the shared agent-loop helper.
+_BLOCKED_DIR_PARTS = _SENSITIVE_DIRS | frozenset({
+    ".git", ".venv", "venv", "node_modules", "__pycache__", ".tox",
+    ".mypy_cache", ".ruff_cache", ".pytest_cache", "dist", "build",
+})
 _IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/:+-]*@sha256:[a-f0-9]{64}$")
 
 CODE_DISABLED = -32010
@@ -141,7 +147,7 @@ def _safe_target(workspace: Path, raw: Any) -> tuple[Path, str]:
     relative = Path(raw)
     if relative.is_absolute() or ".." in relative.parts or raw.startswith("-"):
         raise CoderToolError("path must stay inside the workspace", CODE_WORKSPACE)
-    if any(part in _SENSITIVE_DIRS for part in relative.parts):
+    if any(part in _BLOCKED_DIR_PARTS for part in relative.parts):
         raise CoderToolError("path targets a sensitive directory", CODE_WORKSPACE)
     candidate = workspace / relative
     if candidate.is_symlink():
@@ -153,7 +159,7 @@ def _safe_target(workspace: Path, raw: Any) -> tuple[Path, str]:
         inside_parts = target.relative_to(workspace).parts
     except ValueError as exc:  # pragma: no cover - checked above
         raise CoderToolError("path escapes the workspace", CODE_WORKSPACE) from exc
-    if any(part in _SENSITIVE_DIRS for part in inside_parts) or is_sensitive_file(target):
+    if any(part in _BLOCKED_DIR_PARTS for part in inside_parts) or is_sensitive_file(target):
         raise CoderToolError("path targets a sensitive file", CODE_WORKSPACE)
     return target, raw
 
@@ -463,7 +469,8 @@ class CoderToolkit:
         }
 
     def container_run(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Run a pinned container image with explicit human approval."""
+        """Run a pinned container image with dev tools + explicit approval."""
+        _require_dev()
         if os.environ.get(CONTAINER_ENV) != "1":
             raise CoderToolError("container sandbox is disabled", CODE_CONTAINER)
         _require_approval(arguments)

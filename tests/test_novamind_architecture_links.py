@@ -52,8 +52,12 @@ def _pick_llm_callables():
     return factory_pick, hive_pick
 
 
-def test_pick_llm_for_links_both_executors_to_central_router() -> None:
+def test_pick_llm_for_links_both_executors_to_central_router(monkeypatch) -> None:
     """ب2.3: النسختان تعيدان موجّه الإطار المركزي — لا مسار محلي معزول."""
+    import novamind.core.llm_router as router_module
+
+    monkeypatch.setenv("NEXUS_ALLOW_MOCK_PROVIDER", "1")
+    monkeypatch.setattr(router_module, "_router", None)
     factory_pick, hive_pick = _pick_llm_callables()
     for pick in (factory_pick, hive_pick):
         router = pick("code")

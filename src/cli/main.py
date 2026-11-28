@@ -20,7 +20,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 # إعداد المسار
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -36,6 +36,22 @@ from src.skills.loader import SkillLoader
 
 _AGENT_SCAFFOLD = frozenset({"base", "registry", "state", "sub_agent", "communication", "metrics"})
 """وحدات بنية تحتية في src/agents — ليست وكلاء (نفس منطق nexus_agent)."""
+
+
+def _ollama_backend() -> Any | None:
+    """Create the CLI backend or print an actionable setup error.
+
+    Returns ``None`` on missing/invalid keys so ask/chat/delegate exit with
+    code 2 instead of leaking a raw constructor traceback.
+    """
+    from src.core.ollama_backend import OllamaBackend, OllamaError
+
+    try:
+        return OllamaBackend()
+    except OllamaError as exc:
+        print(f"❌ Backend غير جاهز: {exc}")
+        print("أضف مفتاحاً في ~/.config/zyvo/keys/ أو OLLAMA_API_KEY")
+        return None
 
 _REVIEW_SCRIPT = Path(tempfile.gettempdir()) / "run_5_agents.py"
 """سكريبت مراجعة الـ5 وكلاء الذي ينسخه ``nexus review``.
@@ -118,10 +134,11 @@ def cmd_agents(args: argparse.Namespace) -> int:
 
 def cmd_ask(args: argparse.Namespace) -> int:
     """سؤال سريع عبر وكيل واحد."""
-    from src.core.ollama_backend import OllamaBackend
     from src.agents.analyst import AnalystAgent
     
-    backend = OllamaBackend()
+    backend = _ollama_backend()
+    if backend is None:
+        return 2
     agent = AnalystAgent(backend)
     
     question = " ".join(args.question)
@@ -137,8 +154,6 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
 def cmd_chat(args: argparse.Namespace) -> int:
     """محادثة تفاعلية."""
-    from src.core.ollama_backend import OllamaBackend
-    
     print("=" * 60)
     print("  💬 Nexus Chat (اكتب 'exit' للخروج)")
     print("=" * 60)
@@ -151,7 +166,9 @@ def cmd_chat(args: argparse.Namespace) -> int:
     print()
     
     # Backend
-    backend = OllamaBackend()
+    backend = _ollama_backend()
+    if backend is None:
+        return 2
     
     # الوكيل
     from src.agents.analyst import AnalystAgent
@@ -282,8 +299,6 @@ def cmd_skill(args: argparse.Namespace) -> int:
 
 def cmd_delegate(args: argparse.Namespace) -> int:
     """يفوّض وكيلاً بمهمة."""
-    from src.core.ollama_backend import OllamaBackend
-    
     agent_name = args.agent
     task = " ".join(args.task)
     
@@ -305,7 +320,9 @@ def cmd_delegate(args: argparse.Namespace) -> int:
         print(f"❌ لا يوجد class Agent في {agent_name}")
         return 1
     
-    backend = OllamaBackend()
+    backend = _ollama_backend()
+    if backend is None:
+        return 2
     agent = cls(backend)
     
     print(f"🤖 {agent_name}: {task}")

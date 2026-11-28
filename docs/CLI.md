@@ -46,6 +46,15 @@
 
     ./scripts/nexus-web
 
+### أوامر الوكلاء
+
+    nexus ask "سؤال"
+    nexus chat
+    nexus delegate analyst "مهمة"
+
+عند غياب مفاتيح Ollama تطبع هذه الأوامر سبباً واضحاً وتعيد رمز خروج `2`؛
+`nexus status` يظل يعرض حالة Backend دون إيقاف باقي الفحص.
+
 ## المتغيرات البيئية
 
 | المتغير | الغرض |
@@ -56,3 +65,4 @@
 | NEXUS_AGENT | اسم الوكيل |
 | NEXUS_PROMPT | الطلب |
 | NEXUS_CMD | أمر CLI |
+| NEXUS_ALLOW_MOCK_PROVIDER | تفعيل صريح لمزوّد المحاكاة فقط (`1`) عند غياب المزودين الحقيقيين |

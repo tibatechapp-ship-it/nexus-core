@@ -102,11 +102,32 @@ def test_result_unknown_provider_is_failure_dict_not_exception() -> None:
     assert "error" in result
 
 
+def test_router_fails_closed_without_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEXUS_ALLOW_MOCK_PROVIDER", raising=False)
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    router = LLMRouter()
+    assert router.providers == []
+    result = router.generate("probe")
+    assert result["ok"] is False
+    assert result["error"] == "all providers failed"
+    assert result["provider"] == ""
+
+
+def test_mock_provider_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(LLMRouter, "_load_from_env", lambda self: None)
+    monkeypatch.delenv("NEXUS_ALLOW_MOCK_PROVIDER", raising=False)
+    assert LLMRouter().providers == []
+    monkeypatch.setenv("NEXUS_ALLOW_MOCK_PROVIDER", "1")
+    assert [p.name for p in LLMRouter().providers] == ["mock"]
+
+
 # ═══ 3. عقد قاطع الدارة — docs/CONTRACTS.md §1.3 ════════════════════════════════
 
 
 @pytest.fixture()
-def router() -> LLMRouter:
+def router(monkeypatch: pytest.MonkeyPatch) -> LLMRouter:
+    # Deterministic even on a runner with no provider keys: mock is explicit.
+    monkeypatch.setenv("NEXUS_ALLOW_MOCK_PROVIDER", "1")
     return LLMRouter()
 
 

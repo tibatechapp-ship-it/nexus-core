@@ -125,6 +125,25 @@ async def test_escalation_fires_once_after_two_failures(tmp_path: Path) -> None:
     assert "council escalation: focus on the failing gate first" in third_prompt
 
 
+async def test_escalation_fires_on_final_iteration_when_stalled(tmp_path: Path) -> None:
+    """B1.2: two failures on the last allowed try still consult the council once."""
+    council = CouncilDouble("final verdict")
+    conn = Scripted([
+        {"ok": True, "reply": "[]"},                     # detect
+        {"ok": True, "reply": "{goal: broken}"},         # it1: failure 1
+        {"ok": False, "error": "no plan"},               # it2: failure 2 — no next try
+    ])
+    result = await run_engine("g", conn, root=tmp_path, max_iterations=2,
+                              council=council, gates=PASS_GATE, test_timeout=90)
+    assert result["ok"] is False
+    assert result["error"] == "max_iterations"
+    assert result["iterations"] == 2
+    assert len(council.calls) == 1
+    assert result["escalation"]["triggered"] is True
+    assert result["escalation"]["iteration"] == 2
+    assert result["escalation"]["verdict"] == "final verdict"
+
+
 async def test_escalation_verdict_approves_high_risk(tmp_path: Path) -> None:
     """ب1.2: تصعيد على هدف عالي الخطر وحكم approve ⇒ ترقية معتمدة."""
     council = CouncilDouble("approve")

@@ -25,7 +25,12 @@
 | `LLMRouter.list_providers` | `(self)` → قائمة قواميس `name/priority/enabled/calls/failures/models/last_error` |
 | `LLMRouter.stats` | `(self)` → `{total_providers, total_calls, total_failures, providers}` |
 | `MockProvider.generate` | `(self, prompt, system='', **kwargs)` → قاموس بدون شبكة |
-| `get_router` | `() -> LLMRouter` (singleton — يُعاد إنشاؤه إن كان mock-فقط) |
+| `get_router` | `() -> LLMRouter` (singleton — يُعاد إنشاؤه إن كان فارغاً أو mock-فقط) |
+
+> **Startup contract (runtime hardening):** `MockProvider` لم يعد يُحقن تلقائياً.
+> إذا لم يُحمّل أي مزوّد حقيقي يبقى `LLMRouter.providers` فارغاً وتُعيد `generate`
+> قاموس فشل (`ok=False`) بدل إجابة مزعومة. الاختبارات/المحاكاة تفعّل صراحةً
+> عبر `NEXUS_ALLOW_MOCK_PROVIDER=1`.
 
 ### 1.2 عقد نتيجة `generate`
 

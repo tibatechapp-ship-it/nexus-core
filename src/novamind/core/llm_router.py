@@ -107,21 +107,20 @@ class LLMRouter:
     _COOLDOWN_BRIEF = 30
 
     def __init__(self):
-
-        # --- Z.ai GLM Auto-Registration ---
-        import os
-        from pathlib import Path
-        env_f = Path(".env")
-        e_vars = {}
-        if env_f.exists():
-            for l in env_f.read_text().splitlines():
-                if "=" in l and not l.strip().startswith("#"):
-                    k, v = l.strip().split("=", 1)
-                    e_vars[k.strip()] = v.strip().strip("'").strip('"')
+        # Env loading is centralised in _load_from_env() — the old local
+        # `.env` parse assigned `e_vars` and never used it.
         self.providers: List[ProviderConfig] = []
         self._clients: Dict[str, Any] = {}
         self._cooldowns: Dict[str, float] = {}  # provider -> cooldown_until
         self._load_from_env()
+        if not self.providers:
+            # Fail closed: a mock provider returning ok=True must never be
+            # injected implicitly. CI/tests can opt in explicitly.
+            if os.environ.get("NEXUS_ALLOW_MOCK_PROVIDER") == "1":
+                logger.warning("No LLM providers configured — explicit MockProvider opt-in")
+                self.providers.append(MockProvider())
+            else:
+                logger.error("No LLM providers configured — router stays empty (fail-closed)")
 
     def _load_from_env(self):
         """تحميل كل المزودين من البيئة — 60 مزود كامل."""
@@ -306,11 +305,6 @@ class LLMRouter:
 
         self.providers.sort(key=lambda p: p.priority)
         self._load_cooldowns()
-
-        if not self.providers:
-            logger.warning("No LLM providers configured — using MockProvider")
-            self.providers.append(MockProvider())
-
         logger.info("loaded " + str(len(self.providers)) + " providers")
 
     def _get_client(self, provider: ProviderConfig):

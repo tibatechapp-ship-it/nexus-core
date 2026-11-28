@@ -211,23 +211,26 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
     escalated = False
     escalation: JsonDict = {"triggered": False, "iteration": 0, "verdict": ""}
 
+    async def _escalate_once(iteration: int) -> None:
+        """Escalate once when stalled, including after the last allowed try."""
+        nonlocal escalated, escalation, feedback
+        if (council_mode != "escalate" or council is None
+                or escalated or failures < ESCALATE_AFTER_FAILURES):
+            return
+        escalated = True
+        escalation = {"triggered": True, "iteration": iteration, "verdict": ""}
+        trace_event("coder", "council", outcome="escalated",
+                    extra={"failures": str(failures)})
+        verdict = await _await_council(_start_council(council, last_plan),
+                                       council_timeout)
+        escalation["verdict"] = verdict
+        tail = feedback[-MAX_FEEDBACK // 2:]
+        feedback = f"council escalation: {verdict} | previous: {tail}" if feedback \
+            else f"council escalation: {verdict}"
+
     for iteration in range(1, max_iterations + 1):
         started = time.monotonic()
-        # ب1.2 — التصعيد عند العجز (وضع escalate فقط): بعد ESCALATE_AFTER_FAILURES
-        # محاولة فاشلة في التشغيل نفسه يُستشار المجلس مرة واحدة بسياق العجز،
-        # ليحلّ لا ليوقف — نص حكمه يصير feedback المحاولة التالية.
-        if (council_mode == "escalate" and council is not None
-                and not escalated and failures >= ESCALATE_AFTER_FAILURES):
-            escalated = True
-            escalation = {"triggered": True, "iteration": iteration, "verdict": ""}
-            trace_event("coder", "council", outcome="escalated",
-                        extra={"failures": str(failures)})
-            verdict = await _await_council(_start_council(council, last_plan),
-                                           council_timeout)
-            escalation["verdict"] = verdict
-            tail = feedback[-MAX_FEEDBACK // 2:]
-            feedback = f"council escalation: {verdict} | previous: {tail}" if feedback \
-                else f"council escalation: {verdict}"
+        await _escalate_once(iteration)
 
         plan, error = await _ask_plan(connector, goal, defects, context, feedback)
         if plan is None:
@@ -375,6 +378,9 @@ async def _run_engine(goal: str, connector: Any, root: Path, workdir: Path,
         if council_task is not None:
             council_task.cancel()
 
+    # A last-iteration failure has no next loop to consult the council —
+    # escalate once here so the verdict is still recorded in the result.
+    await _escalate_once(max_iterations)
     return {"ok": False, "error": "max_iterations", "iterations": max_iterations,
             "attempts": attempts, "workdir": str(workdir),
             "escalation": escalation}

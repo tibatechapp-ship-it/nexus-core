@@ -169,6 +169,25 @@ def test_apply_plan_refuses_traversal_sensitive_and_oversize(
     assert oversized["code"] == coder_module.CODE_LIMIT
 
 
+@pytest.mark.parametrize(
+    "relative",
+    [".git/config", ".venv/bin/python", "venv/x.py", "node_modules/pkg/index.js", "__pycache__/x.py"],
+)
+def test_apply_plan_refuses_vcs_deps_and_caches(
+    workspace: Path, toolkit: Any, monkeypatch: pytest.MonkeyPatch, relative: str
+) -> None:
+    monkeypatch.setenv(DEV_TOOLS_ENV, "1")
+    outcome = _call(
+        toolkit,
+        "coder_apply_plan",
+        plan=_create_plan(file=relative),
+        workspace_root=str(workspace),
+        approval=_APPROVAL,
+    )
+    assert outcome["code"] == coder_module.CODE_WORKSPACE
+    assert not (workspace / relative).exists()
+
+
 def test_run_tests_uses_allowlisted_argv(
     workspace: Path, toolkit: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -217,9 +236,26 @@ def test_run_tests_refusals(workspace: Path, toolkit: Any, monkeypatch: pytest.M
     assert too_long["code"] == coder_module.CODE_LIMIT
 
 
+def test_container_run_requires_dev_tools_opt_in(
+    workspace: Path, toolkit: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DEV_TOOLS_ENV, raising=False)
+    monkeypatch.setenv(coder_module.CONTAINER_ENV, "1")
+    outcome = _call(
+        toolkit,
+        "coder_container_run",
+        image=_PINNED_IMAGE,
+        command=["echo", "ok"],
+        workspace_root=str(workspace),
+        approval=_APPROVAL,
+    )
+    assert outcome["code"] == coder_module.CODE_DISABLED
+
+
 def test_container_run_requires_opt_in_pinned_image_and_approval(
     workspace: Path, toolkit: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv(DEV_TOOLS_ENV, "1")
     base = {
         "image": _PINNED_IMAGE,
         "command": ["echo", "ok"],
@@ -242,6 +278,7 @@ def test_container_run_success_delegates_to_sandbox(
 ) -> None:
     import src.coder.container_sandbox as sandbox_module
 
+    monkeypatch.setenv(DEV_TOOLS_ENV, "1")
     monkeypatch.setenv(coder_module.CONTAINER_ENV, "1")
     seen: dict[str, Any] = {}
 
@@ -712,6 +749,7 @@ def test_container_run_bad_command_and_sandbox_failure(
     import src.coder.container_sandbox as sandbox_module
 
     monkeypatch.setenv(coder_module.CONTAINER_ENV, "1")
+    monkeypatch.setenv(DEV_TOOLS_ENV, "1")
     base = {
         "image": _PINNED_IMAGE,
         "workspace_root": str(workspace),
@@ -752,6 +790,7 @@ def test_container_run_reports_failed_exit(
     import src.coder.container_sandbox as sandbox_module
 
     monkeypatch.setenv(coder_module.CONTAINER_ENV, "1")
+    monkeypatch.setenv(DEV_TOOLS_ENV, "1")
 
     def failed(*args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"ok": False, "exit_code": 7}
