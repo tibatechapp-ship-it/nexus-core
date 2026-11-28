@@ -27,10 +27,16 @@ class Supervisor:
         "detect", "inspect", "lint", "verify",
     ]
 
-    def __init__(self, use_rag: bool = True, verbose: bool = True) -> None:
+    def __init__(
+        self,
+        use_rag: bool = True,
+        verbose: bool = True,
+        parallel_timeout_s: float = 60.0,
+    ) -> None:
         self.router = SmartRouter()
         self.use_rag = use_rag
         self.verbose = verbose
+        self.parallel_timeout_s = float(parallel_timeout_s)
         self._rag: Any = None
         self._registry: Any = None
 
@@ -208,19 +214,40 @@ class Supervisor:
         elif decision.strategy == "parallel":
             if self.verbose:
                 print(f"⚡ تنفيذ متوازي ({len(decision.agents)} وكلاء)\n")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-                futures = {ex.submit(self._run_single, a, working_prompt): a
-                           for a in decision.agents}
-                for future in concurrent.futures.as_completed(futures):
-                    a = futures[future]
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+            pending: dict[concurrent.futures.Future[Any], str] = {}
+            try:
+                pending = {
+                    executor.submit(self._run_single, a, working_prompt): a
+                    for a in decision.agents
+                }
+                deadline = time.monotonic() + self.parallel_timeout_s
+                for future in concurrent.futures.as_completed(
+                    pending, timeout=self.parallel_timeout_s
+                ):
+                    a = pending[future]
                     try:
-                        r = future.result(timeout=60)
+                        r = future.result(timeout=max(0.0, deadline - time.monotonic()))
                         results.append(r)
                         if self.verbose:
                             s = "✅" if r.get("ok") else "❌"
                             print(f"  {s} {a} ({r.get('elapsed', 0)}ث)")
                     except Exception as e:
                         results.append({"ok": False, "agent": a, "error": str(e)})
+                    finally:
+                        pending.pop(future, None)
+            except concurrent.futures.TimeoutError:
+                for future, a in pending.items():
+                    future.cancel()
+                    results.append({
+                        "ok": False,
+                        "agent": a,
+                        "error": f"timeout after {self.parallel_timeout_s:g}s",
+                    })
+            finally:
+                # Never let a slow worker hold the supervisor open: pending
+                # work is cancelled and the executor is not waited on.
+                executor.shutdown(wait=False, cancel_futures=True)
 
         elif decision.strategy == "council":
             if self.verbose:

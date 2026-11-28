@@ -407,6 +407,24 @@ class LLMRouter:
                 ordered.extend(group)
         return ordered
 
+    def available_providers(self, role="fast", provider=None, allow_fallback=True):
+        """Names the router could actually use for one request.
+
+        Mirrors generate()'s candidate selection: enabled, not cooling down,
+        and carrying a model for ``role``. This is the single source of truth
+        for callers such as the factory wrapper.
+        """
+        candidates = self._get_ordered_candidates(role=role, provider_override=provider)
+        if provider:
+            candidates = [p for p in candidates if p.name == provider]
+        if not allow_fallback:
+            candidates = candidates[:1]
+        return [
+            p.name for p in candidates
+            if p.enabled and self._is_cooled_down(p.name)
+            and (p.models.get(role) or p.models.get("fast"))
+        ]
+
     def generate(self, prompt, system="", role="fast", temperature=0.2,
                  max_tokens=None, provider=None, allow_fallback=True):
         candidates = self._get_ordered_candidates(role=role, provider_override=provider)

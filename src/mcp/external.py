@@ -42,6 +42,7 @@ __all__ = [
     "ExternalServerConfig",
     "SUPPORTED_PROTOCOL_VERSIONS",
     "safe_child_env",
+    "sanitize_audit_tool",
     "sanitize_tool_output",
 ]
 
@@ -73,6 +74,9 @@ _INJECTION_RE = re.compile(
     r"</?(?:tool-call|tool-result|system|instructions|assistant|user)\b|<\|\w+[^>]*\|>",
     re.IGNORECASE,
 )
+#: Audits record the tool name only. Keep it a short ASCII token so an untrusted
+#: or rejected name cannot smuggle arguments, secrets or log-forging text into it.
+_AUDIT_TOOL_RE = re.compile(r"^[A-Za-z0-9_.:/-]{1,128}$")
 
 
 class ExternalMCPError(MCPClientError):
@@ -144,9 +148,10 @@ class ExternalServerConfig:
         if self.tool_namespace and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", self.tool_namespace):
             raise ValueError("tool_namespace must be a short ASCII identifier")
         if self.allowed_tools is not None and not all(
-            isinstance(name, str) and name for name in self.allowed_tools
+            isinstance(name, str) and sanitize_audit_tool(name) == name
+            for name in self.allowed_tools
         ):
-            raise ValueError("allowed_tools must contain non-empty strings")
+            raise ValueError("allowed_tools must contain short ASCII tool names")
         if self.allowed_resources is not None and not all(
             isinstance(uri, str)
             and uri
@@ -172,6 +177,10 @@ class AuditEvent:
     duration_ms: int
     chars: int
     error_code: int | None = None
+
+    def __post_init__(self) -> None:
+        """A rejected or untrusted tool name never reaches the audit record."""
+        object.__setattr__(self, "tool", sanitize_audit_tool(self.tool))
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe audit record."""
@@ -204,6 +213,13 @@ def safe_child_env(overrides: Mapping[str, str] | None = None) -> dict[str, str]
 def sanitize_tool_output(text: str) -> str:
     """Neutralise framework-marker injection in untrusted MCP result text."""
     return _INJECTION_RE.sub(lambda match: match.group(0).replace("<", "&lt;"), text)
+
+
+def sanitize_audit_tool(name: str) -> str:
+    """Return a safe audit token; anything untrusted becomes ``<invalid>``."""
+    if not isinstance(name, str) or not _AUDIT_TOOL_RE.fullmatch(name):
+        return "<invalid>"
+    return name
 
 
 def _matches_type(value: Any, expected: str) -> bool:
@@ -329,6 +345,23 @@ class ExternalMCPClient:
     def protocol_version(self) -> str | None:
         """The protocol version the server negotiated."""
         return self._negotiated_version
+
+    def _permitted_tool_names(self) -> frozenset[str]:
+        """Configured allowlist, or the discovered schemas when none was set.
+
+        ``None`` never means "any name": dispatch is still constrained to tools
+        the server actually advertised and validated by ``tools/list``.
+        """
+        if self.config.allowed_tools is not None:
+            return self.config.allowed_tools
+        return frozenset(self._schemas)
+
+    def _validated_tool_name(self, name: str) -> str:
+        """Unqualify and reject unsafe names before they reach a subprocess."""
+        candidate = self._unqualify(name)
+        if sanitize_audit_tool(candidate) != candidate:
+            raise ExternalMCPError("tool name must be a short ASCII identifier", code=-32602)
+        return candidate
 
     def start(self) -> None:
         """Spawn the child and start its reader thread (idempotent)."""
@@ -579,7 +612,7 @@ class ExternalMCPClient:
             if not isinstance(tool, Mapping):
                 continue
             name = tool.get("name")
-            if not isinstance(name, str) or not name:
+            if not isinstance(name, str) or sanitize_audit_tool(name) != name:
                 continue
             if self.config.allowed_tools is not None and name not in self.config.allowed_tools:
                 continue
@@ -707,7 +740,7 @@ class ExternalMCPClient:
         code: int | None = None
         failed = False
         try:
-            tool_name = self._unqualify(name)
+            tool_name = self._validated_tool_name(name)
             allowed = self.config.allowed_tools
             if allowed is not None and tool_name not in allowed:
                 # Denied tools must never spawn the child process.
@@ -717,6 +750,12 @@ class ExternalMCPClient:
             self._ensure_ready()
             if not self._schemas:
                 self.list_tools()
+            if tool_name not in self._permitted_tool_names():
+                # With no configured allowlist, the advertised schemas are the
+                # allowlist — discovery can never widen it by itself.
+                raise ExternalMCPError(
+                    f"tool {tool_name!r} is not declared by {self.config.name}", code=-32601
+                )
             spec = self._schemas.get(tool_name)
             if spec is None:
                 raise ExternalMCPError(

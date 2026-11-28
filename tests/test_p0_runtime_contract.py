@@ -12,6 +12,8 @@ from novamind.core.llm_router import LLMRouter, ProviderConfig
 from novamind.factory import llm_wrapper
 from src.agent_loop.tools import build_default_registry
 
+pytestmark = pytest.mark.llm_contract
+
 
 def _router_with_provider(name: str = "contract") -> LLMRouter:
     router = LLMRouter()

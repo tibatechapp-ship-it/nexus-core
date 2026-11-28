@@ -31,10 +31,29 @@ def _load_router():
         return None
 
 
-def _enabled_providers(router: Any) -> list[str]:
-    """Return enabled provider names; an empty router means LLM is unavailable."""
+def _enabled_providers(
+    router: Any,
+    *,
+    role: str = "fast",
+    provider: str | None = None,
+    allow_fallback: bool = True,
+) -> list[str]:
+    """Return names the router could actually use, not merely enabled names.
+
+    `LLMRouter.available_providers` is authoritative when present (it honours
+    cooldowns, role models, provider overrides and fallback). Older/custom
+    routers fall back to the historical enabled-provider scan.
+    """
     if router is None:
         return []
+    authoritative = getattr(router, "available_providers", None)
+    if callable(authoritative):
+        try:
+            names = authoritative(role=role, provider=provider, allow_fallback=allow_fallback)
+        except TypeError:
+            names = authoritative()
+        if isinstance(names, (list, tuple, set)):
+            return [str(name) for name in names if name]
     providers = getattr(router, "providers", None)
     if isinstance(providers, dict):
         candidates = list(providers.values())
@@ -112,7 +131,12 @@ def make_llm_call(
             except (TypeError, ValueError):
                 max_tokens = None
 
-        if not _enabled_providers(active_router):
+        if not _enabled_providers(
+            active_router,
+            role=role,
+            provider=provider,
+            allow_fallback=allow_fallback,
+        ):
             if fallback_to_mock:
                 return {
                     "text": f"[MOCK] {user[:200]}",
