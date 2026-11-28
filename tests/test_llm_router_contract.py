@@ -29,6 +29,8 @@ from novamind.core.llm_router import (  # noqa: E402
     get_router,
 )
 
+pytestmark = pytest.mark.llm_contract
+
 # ═══ 1. التوقيعات المثبتة — docs/CONTRACTS.md §1.1 ══════════════════════════════
 
 EXPECTED_SIGNATURES: dict[str, str] = {

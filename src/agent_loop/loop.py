@@ -36,6 +36,7 @@ class AgentLoop:
         registry: Any = None,
         max_iterations: int = 8,
         verbose: bool = True,
+        provider_timeout_s: float | None = None,
     ) -> None:
         self.llm = llm
         if self.llm is None:
@@ -44,7 +45,51 @@ class AgentLoop:
         self.registry = registry or build_default_registry()
         self.max_iterations = max_iterations
         self.verbose = verbose
+        self.provider_timeout_s = provider_timeout_s
         self.trace: list[dict[str, Any]] = []
+
+    def _provider_timeout(self) -> float:
+        """Neutral request timeout shared with the LLM router (not Groq-only)."""
+        if self.provider_timeout_s is not None:
+            return float(self.provider_timeout_s)
+        try:
+            from novamind.core.llm_router import DEFAULT_TIMEOUT
+            return float(DEFAULT_TIMEOUT)
+        except Exception:
+            return 60.0
+
+    def _select_provider(self) -> Any | None:
+        """Choose the first provider the router itself considers available."""
+        providers = list(getattr(self.llm, "providers", None) or [])
+        available = getattr(self.llm, "available_providers", None)
+        if callable(available):
+            try:
+                names = available(role="fast")
+            except TypeError:
+                names = available()
+            if isinstance(names, (list, tuple, set)):
+                by_name = {str(getattr(p, "name", "")): p for p in providers}
+                for name in names:
+                    candidate = by_name.get(str(name))
+                    # Mock is only ever an explicit CI opt-in, never a real
+                    # network provider for the ReAct loop.
+                    if candidate is not None and "mock" not in str(name).casefold():
+                        return candidate
+                return None
+
+        for provider in providers:
+            if not getattr(provider, "enabled", True):
+                continue
+            name = str(getattr(provider, "name", ""))
+            if "mock" in name.casefold():
+                continue
+            models = getattr(provider, "models", None) or {}
+            getter = getattr(models, "get", None)
+            fast = getter("fast") if callable(getter) else None
+            smart = getter("smart") if callable(getter) else None
+            if fast or smart:
+                return provider
+        return None
 
     def _log(self, icon: str, text: Any) -> None:
         if self.verbose:
@@ -57,17 +102,16 @@ class AgentLoop:
             # نحتاج استدعاء مباشر مع tools
             from openai import OpenAI
 
-            # استخدم مزود Groq
-            provider = None
-            for p in self.llm.providers:
-                if p.name.startswith("groq") and p.enabled:
-                    provider = p
-                    break
-
+            # استخدم أول مزود متاح حسب ترتيب LLMRouter — لا تخصيص لـ Groq.
+            provider = self._select_provider()
             if not provider:
                 return {"ok": False, "error": "لا يوجد مزود متاح"}
 
-            client = OpenAI(api_key=provider.api_key, base_url=provider.base_url)
+            client = OpenAI(
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+                timeout=self._provider_timeout(),
+            )
             model = provider.models.get("fast", "llama-3.1-8b-instant")
 
             response = client.chat.completions.create(  # type: ignore[call-overload]

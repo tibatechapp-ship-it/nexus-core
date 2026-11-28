@@ -54,6 +54,10 @@ jobs:
       - name: Framework test suite with coverage (floor 95%)
         run: pytest --cov --cov-fail-under=95 --ignore=tests/novamind
 
+      # ── Mandatory LLM contract gate: never hidden by --ignore=tests/novamind ─
+      - name: LLM provider contract gate
+        run: python -m pytest -m llm_contract --tb=short
+
       # ── Reports freshness gate (ب4.1 — v1.51.0): committed reports must ────
       # match a fresh deep generation (identity/reconcile/measurement/rule)
       - name: Reports freshness (deep regen matches committed)
