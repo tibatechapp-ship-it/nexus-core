@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mizan-pr-${{ github.event.pull_request.number }}
+  group: mizan-pr-${{ github.event.pull_request.number || github.run_number }}
   cancel-in-progress: true
 
 jobs:
@@ -64,8 +64,8 @@ jobs:
       - name: Checkout exact PR revision as scan input
         uses: actions/checkout@v7
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: target
           fetch-depth: 0
           persist-credentials: false
@@ -87,9 +87,9 @@ jobs:
         id: scan
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.run_number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           # The adapter currently captures MIZAN stdout/stderr before emitting them.
           # Suppress raw output: scanner diagnostics may contain source-derived values.
@@ -108,7 +108,7 @@ jobs:
         if: always() && hashFiles('reports/mizan/pr-evidence.json') != ''
         uses: actions/upload-artifact@v7
         with:
-          name: mizan-evidence-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          name: mizan-evidence-pr-${{ github.event.pull_request.number || github.run_number }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: reports/mizan/pr-evidence.json
           if-no-files-found: error
           retention-days: 14
@@ -117,8 +117,8 @@ jobs:
         if: always()
         env:
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.run_number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           {
             echo "## MIZAN PR Evidence"
